@@ -132,53 +132,55 @@ Break one of these and the product is a different product.
 
 ## Open — the checklist
 
+Last reviewed 2026-07-31, after the first CI Mac build and the first real voice calls.
+
 **Release blockers**
 
-- [ ] **Decide which repo is the SDK and publish it.** DDUET support exists only in
-      `../wss-dduet` (`agentduet 1.0.1b1`); `../wss-sdk-python` (`1.0.0b9`) has `Network` but
-      **no `SendDduetMessage`** and no DDUET anywhere. Neither is on PyPI. `1.0.1b1` sorts ABOVE
-      `1.0.0b9`, so a version range would resolve to the older fork. Until then `pyproject.toml`
-      cannot declare a real dependency and the binary bundles whatever the build venv has.
-- [ ] **Windows and macOS binaries.** No cross-compiling; needs CI on each OS (GitHub Actions is
-      disabled by org default — an admin must enable it). macOS needs notarization (Apple
-      Developer ID) or Gatekeeper blocks it; Windows shows SmartScreen without a signing cert.
+- [ ] **Publish the SDK.** `agentduet` is not on PyPI. It is ONE repo on two branches —
+      `B3Networks/wss-sdk-python`, `feature/dduet-channel` (has DDUET, `1.0.1b1`) and
+      `feat/adapters-extra` — not two repos, whatever the local folder names suggest. CI works
+      around it with a committed wheel in `vendor/`, which **goes stale silently**: nothing
+      checks it against the branch. Publishing deletes `vendor/` and makes `pyproject.toml`
+      able to declare a real dependency.
+- [x] **macOS binary** — CI builds a `.app` in a DMG on `macos-14`, smoke-tested for providers
+      and voice. Actions had to be enabled for the repo first (org default disables it on NEW
+      repos; the tell is a run stuck `queued` with an EMPTY job list).
+- [ ] **Notarization.** The `.app` is unsigned, so first launch needs right-click → Open.
+      Acceptable for a colleague, not past that. Needs an Apple Developer ID.
+- [ ] **Windows binary**, and **Intel Mac**: the `macos-13` job never starts — that label is on
+      GitHub's retirement track. Decide whether Intel is supported before promising it.
 - [ ] **Connector provisioning.** Every install needs its OWN `AGENTDUET_CONNECTOR_UUID` — one
       client per connector, and a second one races `call.answer()`. `init` should obtain one.
+      **This is the biggest get-started gap**: a new user installs cleanly and then stops dead,
+      waiting on a human to hand-provision one.
 - [ ] **Notifications are Linux-only** (`notify.py` → `notify-send`, falls back to stdout). No
       escalation alert on macOS or Windows, which for this product reads as broken.
-- [ ] **Nothing starts at login.** "Answers while you sleep" needs launchd / Task Scheduler /
-      systemd-user. Not written.
+- [ ] **Nothing starts at login**, and **closing the window stops the agent entirely**
+      (`shell.py` returns when `webview.start()` does). Both contradict "answers while you
+      sleep". Needs launchd / Task Scheduler / systemd-user, plus a decision on close: tray
+      icon, close-means-hide, or ask. Today the most natural gesture takes it off the air
+      silently.
 - [ ] **Credential storage on Windows** — use the OS credential store, or say plainly that the
       key is plaintext protected only by file mode.
 
 **Backend, not this package** (one handoff document, four items)
 
 - [ ] Identity: does DDUET issue a stable identity, and carry the verified property?
-- [ ] Directory/discovery — how does someone find an owner to write to?
+- [ ] **Directory/discovery — how does someone find an owner to write to?** Sharpened by the
+      first calls: DDUET carries NO phone number (the subscriber is the connector uuid; the
+      visitor is an email), so there is currently no address an owner can hand out. The channel
+      is live and unreachable.
 - [ ] Outbound initiate: DDUET is passive, so an agent cannot start a conversation. Held replies
       are delivered only when the person next writes.
 - [ ] Unverified askers: with `knowledge/` flat and public, an unverified visitor reads
       everything. Decide the disclosure tier before strangers are in scope.
 
-**Voice — decided, not started** (the phone number on the connector reaching the model)
+**Voice — answering real calls as of 2026-07-31**
 
-- [ ] **Pick the realtime model and add a second slot** (`SECRETARY_VOICE_MODEL`). The attached
-      text model cannot do audio, so calls need their own. Note: `qwen3.5-omni` supports tool
-      calling and **`qwen3-omni` does not** — and tool calling is exactly what keeps a booking
-      inside its bounds.
-- [ ] **Wire an adapter from `../agentduet-adapters`** (`gemini.py`, `grok_voice.py`, `qwen.py`,
-      `nova_sonic.py`). They already emit `TranscriptDelta(role="user"|"agent")` per completed
-      turn and support function tools — this is integration, not invention. The SDK exports the
-      whole call surface (`Call`, `CallAudioConfig`, `CallState`, `IncomingCallNotification`) on
-      the SAME connector, so no second client is needed — confirm call events and DDUET messages
-      coexist on one `SessionManager`.
-- [ ] **Transcripts into the existing record**, via `memory.append` + `brain.record`, so a call
-      appears in the conversation view, the escalation queue and the digest like any other
-      exchange. Caller identity is the E.164 from caller ID and arrives VERIFIED (`TELCO` is in
-      `people.SELF_VOUCHING_NETWORKS`); the conversation id is the call id.
-- [ ] **A tool bridge to the same gates**: `search_knowledge` for grounding from granted folders,
-      the capability path through `check_bounds` + `schedule.book`, and an `escalate` tool that
-      records the item and returns something to say.
+- [x] Adapter wired on the daemon's ONE client; transcripts land via `memory.append` +
+      `brain.record`; the tool bridge (`search_knowledge`, `book` → `check_bounds`,
+      `transfer_to_owner`, `escalate`) is in place. `SECRETARY_VOICE_MODEL`, `SECRETARY_VOICE`
+      and `SECRETARY_CALL_SAMPLE_RATE` exist.
 - [ ] **Decide what an escalation SOUNDS like.** "Stanley has it and will come back to you" is
       fine in chat and unacceptable with someone on the line: a holding phrase while it checks,
       then an answer or a callback promise. Also decide what happens when the owner IS at the
@@ -186,6 +188,9 @@ Break one of these and the product is a different product.
       picking a model.
 - [ ] **Post-hoc grounding check** on the transcript — flag claims not supported by what
       `search_knowledge` returned. The honest limit of speech-to-speech.
+- [ ] **DashScope caps concurrent realtime connections per ACCOUNT** ("connections too much
+      max_connections 100"). It presents as SILENCE on the call, not an error, and the account
+      is shared with the other agents in this workspace. Needs a health signal at least.
 
 **Product**
 
@@ -198,6 +203,19 @@ Break one of these and the product is a different product.
 
 **Engineering**
 
+- [ ] **`sim.html` uses `localStorage` unguarded, 9 times** (conversation id, canvases, active
+      tab). Browser-only today so it works, but the pywebview window has NO `localStorage` —
+      referencing it raises `ReferenceError` — and unlike the owner page's preferences, these
+      carry real state: losing them loses the conversation and its canvases. `web.html` routes
+      through a `store` wrapper and the debug flag moved server-side (`run/ui.json`); do the
+      same here before this page is ever opened in a webview.
+- [ ] **A native window is a THIRD engine and needs its own pass.** Browser testing cannot find
+      its failures — one missing global silently unwired the settings link, the quit button and
+      the chat form, and the unwired form navigated away and dropped the access token. The page
+      keeps a `window.onerror` reporter (a 404 to `/__jserr` that lands in the access log)
+      because a window has no console.
+- [ ] **macOS window not bundled.** The `.app` opens the owner site in the default browser.
+      pyobjc is pip-installable so it plausibly bundles, unlike GTK on Linux.
 - [ ] **MCP face has drifted: 16 of 34 registry operations exposed.** Register from
       `tools.OWNER_TOOLS` instead of listing by hand. (Parked — MCP is low priority.)
       Also needs `mcp.server.fastmcp`, absent from the installed `mcp`.
