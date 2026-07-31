@@ -1695,6 +1695,35 @@ def _row_sender_name(r: dict) -> str:
     return people.display_name(who, True)
 
 
+#: View preferences. NOT settings.md: that file is parsed by heading and holds what the AGENT
+#: is (name, pronoun, never-say) — a knowledge edit that renamed a heading once silently emptied
+#: the never-say list, so it is not a place to put unrelated keys. This is derived instance
+#: state, which is what run/ is for.
+#:
+#: Server-side rather than localStorage because the owner site is rendered by THREE engines now
+#: (browser, WebKitGTK in the pywebview window, WebKit in the macOS .app) and the window has no
+#: localStorage at all — referencing it there raises ReferenceError.
+UI_PREFS = paths.RUN / "ui.json"
+
+
+def ui_prefs() -> dict:
+    try:
+        return json.loads(UI_PREFS.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def set_ui_pref(key: str, value) -> str:
+    prefs = ui_prefs()
+    prefs[key] = value
+    try:
+        UI_PREFS.parent.mkdir(parents=True, exist_ok=True)
+        UI_PREFS.write_text(json.dumps(prefs, indent=2))
+    except OSError as exc:
+        return f"could not save: {exc}"
+    return f"{key} = {value}"
+
+
 def state() -> dict:
     """Structured snapshot for the web dashboard (chat is not good at showing state).
 
@@ -1710,6 +1739,7 @@ def state() -> dict:
     perms = permissions.load()
     return {
         "channel": status.snapshot(),
+        "ui": ui_prefs(),
         "today": today,
         "total": len(all_rows),
         "today_count": len([r for r in all_rows if r["at"].startswith(today)]),

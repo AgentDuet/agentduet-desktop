@@ -154,10 +154,13 @@
 
   $('back').href = '/?t=' + T;
 
-  // Same localStorage key the dashboard reads on load, so returning to it applies the change.
-  $('debug').checked = localStorage.getItem('secretary.debug') === '1';
-  $('debug').onchange = () =>
-    localStorage.setItem('secretary.debug', $('debug').checked ? '1' : '0');
+  // Stored on the instance, not in the browser. The owner site is rendered by three engines
+  // now (browser, the pywebview window, the macOS app) and the window has no localStorage at
+  // all — reading it there threw and took the whole page down with it.
+  fetch(`/api/ui?t=${T}`).then(r => r.json())
+    .then(u => { $('debug').checked = !!u.debug; })
+    .catch(() => {});
+  $('debug').onchange = () => post('/api/ui', {debug: $('debug').checked});
   $('rerun').onclick = () => { location.href = '/setup?t=' + T; };
 
   (async () => {

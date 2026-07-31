@@ -547,6 +547,17 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response({"error": "unauthorised"}, status=401)
         return web.json_response(tools.state())
 
+    async def api_ui(request):
+        """View preferences. Server-side because the window has no localStorage — see
+        tools.UI_PREFS."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        if request.method == "GET":
+            return web.json_response(tools.ui_prefs())
+        body = await request.json()
+        out = [tools.set_ui_pref(k, v) for k, v in body.items()]
+        return web.json_response({"ok": True, "message": "; ".join(out)})
+
     async def api_chat(request):
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
@@ -840,6 +851,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/api/setup/examples", api_setup_examples),
         web.post("/api/setup/example", api_setup_example),
         web.get("/api/state", api_state),
+        web.get("/api/ui", api_ui),
+        web.post("/api/ui", api_ui),
         web.post("/api/chat", api_chat),
         web.post("/api/resolve", api_resolve),
         web.post("/api/send", api_send),
