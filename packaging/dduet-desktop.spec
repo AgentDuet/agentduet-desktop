@@ -15,6 +15,7 @@
 # Build:  pyinstaller packaging/dduet-desktop.spec --noconfirm
 # Result: dist/dduet-desktop (dist/dduet-desktop.exe on Windows)
 
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
@@ -58,3 +59,32 @@ exe = EXE(
     onefile=True,
     upx=False,             # UPX compression is a reliable way to trip antivirus heuristics
 )
+
+# macOS: also wrap it in a .app, because a bare Unix executable is not something you hand to
+# someone evaluating how easy this is to start. Downloaded, it arrives without the executable
+# bit and double-clicking opens a Terminal window — which tells you nothing about the product.
+# A .app double-clicks, appears in the Dock, and behaves like software.
+#
+# It is NOT signed or notarized, so the first launch still trips Gatekeeper ("the developer
+# cannot be verified"); right-click -> Open clears it once. Signing needs an Apple Developer ID
+# and is the honest fix before anyone outside the team sees this.
+#
+# console=True above means stdout exists but nobody sees it when launched from Finder, so the
+# daemon also logs to $DDUET_HOME/run/daemon.log — otherwise a failed start is silent.
+if sys.platform == "darwin":
+    app = BUNDLE(
+        exe,
+        name="DDuet Desktop.app",
+        icon=None,
+        bundle_identifier="com.b3networks.dduet-desktop",
+        info_plist={
+            "CFBundleName": "DDuet Desktop",
+            "CFBundleDisplayName": "DDuet Desktop",
+            "CFBundleShortVersionString": "0.1.0",
+            "CFBundleVersion": "0.1.0",
+            "NSHighResolutionCapable": True,
+            # It answers the phone while the owner is away, so it must not be culled when it
+            # has no visible window.
+            "LSUIElement": False,
+        },
+    )

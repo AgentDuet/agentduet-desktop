@@ -52,7 +52,17 @@ OUTBOX = RUN / "outbox.jsonl"      # owner replies queued by secretary_mcp.reply
 # already-set variable, that stale copy won every race against the real config. The daemon
 # then ran a model the owner had already replaced, reporting nothing wrong.
 load_dotenv(paths.ENV_FILE)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+# Log to a FILE as well as stdout. Launched from Finder as a .app — the way the owner will
+# actually start it — stdout goes nowhere, so without this a failed start is completely
+# silent: no window, no error, nothing to send anyone. This file is the first thing to ask
+# for in a bug report.
+_handlers: list[logging.Handler] = [logging.StreamHandler()]
+try:
+    paths.RUN.mkdir(parents=True, exist_ok=True)
+    _handlers.append(logging.FileHandler(paths.RUN / "daemon.log", encoding="utf-8"))
+except OSError:
+    pass          # a read-only or missing instance dir must not stop the daemon starting
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", handlers=_handlers)
 logger = logging.getLogger("secretary")
 # The SDK's connect/inbound logs are DEBUG; without this a silent channel looks
 # identical to a working one with no traffic.

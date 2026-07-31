@@ -66,8 +66,22 @@ jobs:
           DDUET_HOME: ${{ runner.temp }}/dduet-smoke
         run: ./dist-bin/dduet-desktop status
 
+      # A .app is a DIRECTORY, and upload-artifact zips it without reliably preserving the
+      # executable bit — the bundle then does nothing when double-clicked. A DMG keeps
+      # permissions intact, and it is also the format a Mac user expects: open, drag across.
+      - name: Package the app (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          hdiutil create -volname "DDuet Desktop" \
+            -srcfolder "dist-bin/DDuet Desktop.app" \
+            -ov -format UDZO "dduet-desktop-${{ matrix.name }}.dmg"
+
       - uses: actions/upload-artifact@v4
         with:
           name: dduet-desktop-${{ matrix.name }}
-          path: dist-bin/dduet-desktop
+          # The DMG on macOS, the bare binary on Linux. Both paths are listed because a
+          # per-OS `path` would need two upload steps for no gain.
+          path: |
+            dduet-desktop-${{ matrix.name }}.dmg
+            dist-bin/dduet-desktop
           if-no-files-found: error
