@@ -16,8 +16,17 @@ VENV=.venv-build          # the venv holding the working agentduet SDK
 "$VENV/bin/python" -m dduet_desktop.cli stop 2>/dev/null || true
 sleep 1
 
+# Default is headless-with-browser, because that is what iterating wants. `./dev.sh --window`
+# opens the native window instead — note that CLOSING that window ends the run, by design.
+WINDOW=""
+if [ "${1:-}" = "--window" ]; then WINDOW="1"; shift; fi
+
 LOG="${TMPDIR:-/tmp}/dduet-dev.log"
-nohup "$VENV/bin/python" -m dduet_desktop.cli run --no-window "$@" > "$LOG" 2>&1 &
+if [ -n "$WINDOW" ]; then
+  nohup "$VENV/bin/python" -m dduet_desktop.cli run "$@" > "$LOG" 2>&1 &
+else
+  nohup "$VENV/bin/python" -m dduet_desktop.cli run --no-window "$@" > "$LOG" 2>&1 &
+fi
 for _ in $(seq 20); do
   sleep 1
   URL=$(cat "${DDUET_HOME:-$HOME/.dduet}/run/site-url" 2>/dev/null || true)

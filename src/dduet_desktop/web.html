@@ -285,7 +285,10 @@
     <div class="col-body"><div id="thread" class="thread"></div></div>
     <div class="composer">
       <div class="hint" id="sendTo">select a person to write to them</div>
-      <form id="sendForm">
+      <!-- onsubmit="return false" is a FAILSAFE, not a duplicate of the JS handler: a native
+           submit navigates to the page URL without ?t=, which 401s and kills the session. That
+           is exactly what a single early script error caused. -->
+      <form id="sendForm" onsubmit="return false">
         <input id="sendText" placeholder="Write as yourself…" autocomplete="off" disabled>
         <button id="sendBtn" disabled>Send</button>
       </form>
@@ -303,7 +306,7 @@
     <div class="log" id="log">
       <div class="msg bot">Ask me anything about your queries — "what's waiting?", "grant Celine the partner folder", "has anyone asked about pricing?"</div>
     </div>
-    <form id="f">
+    <form id="f" onsubmit="return false">
       <input id="m" placeholder="Ask your secretary…" autocomplete="off">
       <button id="send">Send</button>
     </form>
@@ -311,6 +314,27 @@
 </main>
 
 <script>
+  // TEMP DIAGNOSTIC: report any script error to the server so it shows up in the access log.
+  // A webview has no console we can read.
+  // A native window has NO CONSOLE, so a script error is completely invisible — and because
+  // handlers are assigned as the script runs, one early throw silently unwires the whole page.
+  // This reports to a path that does not exist on purpose: the 404 lands in the access log,
+  // which is also daemon.log. Zero server code, and it is the only way to see a webview error.
+  window.onerror = function (m, src, line, col) {
+    try { new Image().src = '/__jserr?m=' + encodeURIComponent(m) + '&line=' + line; } catch (e) {}
+  };
+
+  // localStorage DOES NOT EXIST in the pywebview/WebKitGTK window — referencing it throws a
+  // ReferenceError, not a SecurityError, so it cannot be feature-detected with `if
+  // (window.localStorage)` alone in every engine. These preferences are a nicety; losing them
+  // must never take the page down with them, which is exactly what happened: the throw
+  // stopped the settings link, the quit button and the chat form's submit handler from ever
+  // being wired, and an unwired form submits natively to `/`, dropping the access token.
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* no store: fine */ } },
+  };
+
   const T = new URLSearchParams(location.search).get('t') || '';
   const $ = id => document.getElementById(id);
   const esc = s => (s||'').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
@@ -503,7 +527,7 @@
     // Remembered only to pick the right layout BEFORE the first /api/state returns. Without it
     // every load flashes the layout it is about to leave — three empty columns on a fresh
     // install, which is the exact thing this is here to avoid.
-    localStorage.setItem('secretary.quiet', quiet ? '1' : '0');
+    store.set('secretary.quiet', quiet ? '1' : '0');
     const note = $('quietNote');
     if (!note) return;
     note.hidden = !quiet;
@@ -575,8 +599,8 @@
   // Remembered across reloads: someone debugging stays in debug, and an owner who never
   // turns it on never sees a reason code. The switch itself lives in settings — it is a
   // preference, and it was sitting in the People heading where it read like a filter.
-  if (localStorage.getItem('secretary.debug') === '1') document.body.classList.add('debug');
-  if (localStorage.getItem('secretary.quiet') === '1') document.body.classList.add('quiet');
+  if (store.get('secretary.debug') === '1') document.body.classList.add('debug');
+  if (store.get('secretary.quiet') === '1') document.body.classList.add('quiet');
 
 
   // Shows a live bubble while waiting. After a few seconds it names what is most
