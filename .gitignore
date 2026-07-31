@@ -1,9 +1,15 @@
-# Build output — the binary is 44 MB and is rebuilt from source; it belongs on a Release,
-# never in git history.
+# Build output — the binaries are ~57 MB and are rebuilt from source; they belong on a
+# Release, never in git history. The packaged forms are listed separately because a DMG or a
+# .app can be produced anywhere, not just under dist-bin/.
 /dist/
 /dist-bin/
 /build/
 *.spec.bak
+*.dmg
+*.app/
+# NOT a blanket *.whl: vendor/ deliberately commits the SDK wheel, since it is not on PyPI and
+# its repo is private. See vendor/README.md.
+/wheels/
 
 # Environments
 /.venv*/
