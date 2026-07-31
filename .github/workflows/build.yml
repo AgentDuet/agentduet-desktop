@@ -44,8 +44,15 @@ jobs:
           # Voice. A different org (AgentDuet) but PUBLIC, so no credentials. Without this the
           # binary starts fine and silently cannot answer calls: voice.available() catches the
           # ImportError and reports "voice not enabled", which reads as a config problem.
-          pip install "git+https://github.com/AgentDuet/agentduet-adapters"
-          pip install ".[qwen]" pyinstaller
+          #
+          # The [qwen] EXTRA is required, not optional polish: it pulls soxr + numpy, which the
+          # adapter imports to resample call audio. Installing the bare package builds a binary
+          # whose voice path dies on import — silently, because that same ImportError is caught.
+          pip install "agentduet-adapters[qwen] @ git+https://github.com/AgentDuet/agentduet-adapters"
+          # ALL THREE providers, because the model is config rather than code: the setup wizard
+          # offers Gemini, Anthropic and Qwen, and it defaults to Gemini. A binary built with
+          # only [qwen] fails on the first screen for anyone who takes the default.
+          pip install ".[gemini,anthropic,qwen]" pyinstaller
 
       - name: Build the binary
         run: pyinstaller --noconfirm --distpath dist-bin packaging/dduet-desktop.spec
@@ -53,10 +60,25 @@ jobs:
       # Proves the binary RUNS, not merely that it linked. PyInstaller happily produces a
       # binary that dies at first import because a lazy import was never collected — that has
       # bitten this project, so a build that cannot answer `status` is a failed build.
+      #
+      # It also asserts WHAT THE BUILD CAN DO. Everything optional in this package degrades to
+      # a caught ImportError and a polite message, so a binary missing a provider or the voice
+      # adapter looks healthy and fails later in someone else's hands. The first macOS build
+      # passed this step while having no Gemini, no Anthropic and no working voice.
       - name: Smoke test
         env:
           DDUET_HOME: ${{ runner.temp }}/dduet-smoke
-        run: ./dist-bin/dduet-desktop status
+          # Presence-only check in voice.available(); never used to call anything. Without it
+          # the step cannot tell "adapter missing" from "no key configured".
+          DASHSCOPE_API_KEY: ci-smoke-test-not-a-real-key
+        run: |
+          ./dist-bin/dduet-desktop status | tee status.txt
+          for p in gemini anthropic qwen; do
+            grep -qE "providers:.*\b$p\b" status.txt \
+              || { echo "::error::binary was built without the $p provider"; exit 1; }
+          done
+          grep -q "voice    : available" status.txt \
+            || { echo "::error::binary cannot answer calls — check agentduet-adapters[qwen]"; exit 1; }
 
       # A .app is a DIRECTORY, and upload-artifact zips it without reliably preserving the
       # executable bit — the bundle then does nothing when double-clicked. A DMG keeps

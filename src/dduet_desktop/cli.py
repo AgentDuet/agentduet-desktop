@@ -106,6 +106,27 @@ def cmd_status(args) -> int:
           f"knowledge {len(list(paths.KNOWLEDGE.glob('*.md'))) if paths.KNOWLEDGE.is_dir() else 0} doc(s), "
           f"capabilities{'' if caps.is_file() else ' MISSING'}")
     print(f"  examples : {paths.EXAMPLES}")
+
+    # WHAT THIS BUILD CAN ACTUALLY DO. In a frozen binary the answer is decided at BUILD time —
+    # a provider or the voice adapter that was not installed on the build machine is simply
+    # absent, and every import of it is caught and turned into a polite "not available". That
+    # is indistinguishable from a configuration problem to whoever is holding it. The first
+    # macOS build shipped without Gemini, Anthropic, soxr and numpy: the setup wizard's default
+    # model would have failed on screen one, and voice was silently impossible.
+    #
+    # So the build reports itself, and CI asserts on these lines.
+    providers = []
+    for label, mod in (("gemini", "google.genai"), ("anthropic", "anthropic"), ("qwen", "httpx")):
+        try:
+            __import__(mod)
+            providers.append(label)
+        except ImportError:
+            pass
+    print(f"  providers: {', '.join(providers) if providers else 'NONE — no model can be attached'}")
+
+    from . import voice
+    ok, why = voice.available()
+    print(f"  voice    : {'available' if ok else 'NOT available — ' + why}")
     return 0
 
 
