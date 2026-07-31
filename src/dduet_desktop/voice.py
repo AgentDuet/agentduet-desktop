@@ -68,6 +68,15 @@ VOICE = os.getenv("SECRETARY_VOICE", "Jennifer")
 #: in one direction and an ASR that transcribes nothing in the other. 8000 / 16000 / 24000 only.
 CALL_SAMPLE_RATE = int(os.getenv("SECRETARY_CALL_SAMPLE_RATE", "24000"))
 
+#: How long an answered call may stay silent before we give up on it. The realtime session can
+#: die AFTER connecting — the observed case is DashScope refusing on an ACCOUNT-WIDE cap
+#: ("connections too much max_connections 100"), which arrives as an error frame the adapter
+#: logs but does not surface as an event. We therefore cannot know the model is dead; we can
+#: only notice that it never spoke. Answering and then saying nothing is the worst outcome
+#: available: the caller believes they got through. Hanging up at least prompts a redial.
+#: The greeting normally lands in ~1.5s, so this is generous.
+SILENCE_TIMEOUT = float(os.getenv("SECRETARY_CALL_SILENCE_TIMEOUT", "6"))
+
 
 def available() -> tuple[bool, str]:
     """(usable, why not) — checked before registering a call handler."""
@@ -237,6 +246,7 @@ def _make_recorder(caller: str, verified: bool, convo: str):
     own rather than borrowed by the next question.
     """
     pending: list[str] = []          # caller utterances not yet answered
+    spoke = asyncio.Event()          # set on the first transcript of either side
 
     async def _write(question: str, answer: str) -> None:
         await asyncio.to_thread(
@@ -249,6 +259,7 @@ def _make_recorder(caller: str, verified: bool, convo: str):
         text = (getattr(ev, "text", "") or "").strip()
         if not text:
             return
+        spoke.set()          # proof the model is alive; see SILENCE_TIMEOUT
         if getattr(ev, "role", "") == "user":
             # Several utterances before a reply (a pause mid-sentence, or an interruption)
             # belong to one question — joined, so none is dropped.
@@ -268,6 +279,7 @@ def _make_recorder(caller: str, verified: bool, convo: str):
             await _write(question, "")
 
     _on_transcript.flush = _flush
+    _on_transcript.spoke = spoke
     return _on_transcript
 
 
@@ -335,9 +347,36 @@ def register(sm, owner_name: str) -> bool:
             await ms.close()
             return
         recorder = va_recorder
+
+        async def _watchdog() -> None:
+            """Hang up a call the model never speaks on. See SILENCE_TIMEOUT."""
+            try:
+                await asyncio.wait_for(recorder.spoke.wait(), SILENCE_TIMEOUT)
+                return                     # it spoke; nothing to do
+            except asyncio.TimeoutError:
+                pass
+            logger.error(
+                "call %s: the voice model never spoke within %.0fs — hanging up rather than "
+                "leaving the caller in silence. Check the log for a provider error frame; the "
+                "known cause is the DashScope ACCOUNT-WIDE concurrent-session cap.",
+                call.id, SILENCE_TIMEOUT)
+            try:
+                from .notify import escalate_to_owner
+                escalate_to_owner(
+                    who, "(a call was answered but the agent could not speak)",
+                    "voice model silent — call dropped")
+            except Exception:
+                pass                       # notifying must never mask the hangup
+            try:
+                await call.disconnect()
+            except Exception as exc:
+                logger.error("could not hang up the silent call %s: %s", call.id, exc)
+
+        dog = asyncio.create_task(_watchdog())
         try:
             await va._bridge(call, ms)
         finally:
+            dog.cancel()
             live.pop("call", None)
             await recorder.flush()          # the last question, if it was never answered
             # The SDK closes ms from its on_hangup handler, which covers the normal ending.
