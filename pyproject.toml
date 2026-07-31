@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dduet-desktop"
+version = "0.1.0"
+description = "A personal secretary that answers external parties on your behalf, on your own machine."
+requires-python = ">=3.12"   # the SDK requires 3.12
+dependencies = [
+  "agentduet>=1.0.0b7",      # the DDUET channel
+  "aiohttp>=3.9",            # the local owner site
+  "python-dotenv>=1.0",      # reads $DDUET_HOME/.env
+  "mcp>=1.0",                # the owner surface, for whatever AI app they already use
+]
+
+# One provider is required, none in particular — the model is config, not code.
+[project.optional-dependencies]
+gemini = ["google-genai>=1.0"]
+anthropic = ["anthropic>=0.40"]
+qwen = ["httpx>=0.27"]        # DashScope's OpenAI-compatible endpoint
+# The owner's view in a native window rather than a browser tab. Optional on purpose: the site
+# is the primary surface and must come up even where no system webview exists.
+ui = ["pywebview>=5.0"]
+
+[project.scripts]
+dduet-desktop = "dduet_desktop.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# Templates, examples and the served pages are DATA, not importable code.
+[tool.setuptools.package-data]
+dduet_desktop = ["*.html", "templates/**/*", "examples/**/*"]

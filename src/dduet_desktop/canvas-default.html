@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arrange a time</title>
+<style>
+  /* The framework's fallback surface. Capability-NEUTRAL on purpose: it names nothing about
+     any particular domain, because it is served for every capability that has no page of its
+     own. A capability with a richer shape (a menu, options, quantities) ships its own page —
+     see examples/pizza-delivery/. */
+  :root{
+    --ink:#101418; --muted:#5b6675; --faint:#8b96a3;
+    --paper:#f6f7f8; --surface:#fff; --line:#e2e6ea;
+    --accent:#00b2ff; --accent-ink:#0077b0; --good:#1a7f5a; --good-bg:#e8f5ef;
+    --sans:"SF Pro Display",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--ink:#eef3f7;--muted:#93a6b5;--faint:#6b7c8a;--paper:#0f1419;--surface:#161d24;
+      --line:#242e38;--good:#4ade9e;--good-bg:#13322a;--accent-ink:#4cc7ff;}
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:var(--sans);background:var(--paper);color:var(--ink);
+    -webkit-font-smoothing:antialiased;min-height:100vh;}
+  .wrap{max-width:640px;margin:0 auto;padding:1.4rem 1.1rem 6rem;}
+  h1{font-size:1.2rem;font-weight:750;letter-spacing:-.02em;}
+  .lede{font-size:.86rem;color:var(--muted);margin:.5rem 0 1.2rem;line-height:1.5;}
+  h2{font-family:var(--mono);font-size:.64rem;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);font-weight:700;margin:1.4rem 0 .6rem;}
+  .limits{background:var(--surface);border:1px solid var(--line);border-radius:11px;
+    padding:.7rem .85rem;font-size:.82rem;color:var(--muted);line-height:1.6;}
+  .slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:.4rem;}
+  .slot{font:inherit;font-size:.8rem;padding:.45rem .3rem;border:1px solid var(--line);
+    border-radius:9px;background:var(--surface);color:var(--ink);cursor:pointer;}
+  .slot:hover:not(:disabled){border-color:var(--accent);}
+  .slot.on{background:var(--accent-ink);border-color:var(--accent-ink);color:#fff;font-weight:650;}
+  /* Taken slots are shown struck through rather than hidden: "why can't I have 7pm?" is
+     answered here instead of becoming a chat message. */
+  .slot:disabled{opacity:.4;cursor:not-allowed;text-decoration:line-through;}
+  .daylabel{font-family:var(--mono);font-size:.62rem;color:var(--faint);margin:.7rem 0 .3rem;
+    letter-spacing:.08em;text-transform:uppercase;}
+  .note{font-size:.84rem;color:var(--muted);margin-top:1.1rem;line-height:1.5;}
+  textarea{width:100%;font:inherit;font-size:.88rem;padding:.6rem .7rem;margin-top:.5rem;
+    border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);
+    resize:vertical;min-height:4.5rem;}
+  .bar{position:fixed;left:0;right:0;bottom:0;background:var(--surface);
+    border-top:1px solid var(--line);padding:.7rem 1.1rem;}
+  .bar .inner{max-width:640px;margin:0 auto;display:flex;align-items:center;gap:.9rem;}
+  .bar .sum{flex:1;font-size:.84rem;}
+  .bar .sum .none{color:var(--faint);}
+  button.go{font:inherit;font-size:.9rem;font-weight:700;padding:.62rem 1.3rem;border:0;
+    border-radius:10px;background:var(--accent-ink);color:#fff;cursor:pointer;flex:none;}
+  button.go:disabled{opacity:.4;cursor:not-allowed;}
+  .result{margin-top:1rem;padding:.8rem .9rem;border-radius:11px;font-size:.87rem;line-height:1.5;}
+  .result.ok{background:var(--good-bg);color:var(--good);border:1px solid var(--good);}
+  .result.no{background:#fff1ee;color:#b3261e;border:1px solid #f0523d;}
+  @media (prefers-color-scheme:dark){ .result.no{background:#2a1512;color:#ffb4a8;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="title">Arrange a time</h1>
+  <p class="lede">Pick a time that suits you. You can also just message us — this page is here
+    to save you typing, not to replace the conversation.</p>
+
+  <div class="limits" id="limits"></div>
+
+  <h2>Available times</h2>
+  <div id="slots"></div>
+
+  <h2>Anything we should know?</h2>
+  <textarea id="detail" placeholder="Optional — a note for whoever picks this up."></textarea>
+
+  <div id="result"></div>
+  <p class="note" id="note"></p>
+</div>
+
+<div class="bar"><div class="inner">
+  <div class="sum" id="sum"><span class="none">No time selected</span></div>
+  <button class="go" id="go" disabled>Confirm</button>
+</div></div>
+
+<script>
+  const token = location.pathname.split('/').pop();
+  const $ = id => document.getElementById(id);
+  const esc = s => (s||'').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+  let chosen = '';
+
+  function show(ok, msg){
+    $('result').innerHTML = `<div class="result ${ok ? 'ok' : 'no'}">${esc(msg)}</div>`;
+    $('result').scrollIntoView({block: 'nearest'});
+  }
+
+  function renderSlots(all){
+    let html = '', day = '';
+    all.forEach(s => {
+      if (s.day !== day){ day = s.day; html += `<div class="daylabel">${esc(day)}</div><div class="slots">`; }
+      html += `<button class="slot${chosen === s.at ? ' on' : ''}" data-at="${esc(s.at)}"
+                 ${s.free ? '' : 'disabled title="already taken"'}>${esc(s.time)}</button>`;
+    });
+    $('slots').innerHTML = html + '</div>';
+    document.querySelectorAll('.slot').forEach(b => b.onclick = () => {
+      chosen = b.dataset.at; renderSlots(all);
+      $('sum').innerHTML = `<b>${esc(chosen.slice(0,10))} at ${esc(chosen.slice(11,16))}</b>`;
+      $('go').disabled = false;
+    });
+  }
+
+  async function load(){
+    const r = await fetch(`/api/canvas/menu?c=${token}`);
+    if (!r.ok){ show(false, 'This link is not valid.'); return; }
+    const d = await r.json();
+    // Everything shown here comes from the capability the owner declared — the same limits the
+    // server enforces on submit, so the page cannot offer what would then be refused.
+    if (d.label) { $('title').textContent = d.label; document.title = d.label; }
+    const lim = [];
+    if (d.menu.hours) lim.push(`Available ${esc(d.menu.hours)}`);
+    if (d.menu.max_quantity) lim.push(`Up to ${d.menu.max_quantity} at a time`);
+    $('limits').innerHTML = lim.length
+      ? lim.map(l => `&middot; ${l}`).join('<br>')
+      : '&middot; No limits declared.';
+    $('note').textContent = d.for ? `Arranging as ${d.for}.` : '';
+    renderSlots(d.slots);
+  }
+
+  $('go').onclick = async () => {
+    $('go').disabled = true;
+    const detail = $('detail').value.trim();
+    const r = await fetch(`/api/canvas/order?c=${token}`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      // No line items: a generic capability arranges a time, not a basket. `what` carries the
+      // asker's own note so whoever picks it up sees what they said.
+      body: JSON.stringify({lines: [{name: detail || 'requested via the page', qty: 1}],
+                            at: chosen})});
+    const d = await r.json();
+    show(d.ok, d.message);
+    // Tell the embedding conversation what happened, or the page is a dead end: the asker acts
+    // here and the chat carries on as though nothing did.
+    if (d.ok && window.parent !== window)
+      window.parent.postMessage({type: 'canvas-order', message: d.message}, location.origin);
+    if (d.ok){ chosen = ''; $('detail').value = ''; $('sum').innerHTML = '<span class="none">No time selected</span>'; }
+    await load();
+  };
+
+  load();
+</script>
+</body>
+</html>

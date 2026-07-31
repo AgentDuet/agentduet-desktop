@@ -1,0 +1,15 @@
+{
+  "pizza_delivery": {
+    "what": "taking food and pizza delivery orders \u2014 dinner, lunch, a pizza, a delivery for tonight",
+    "action": "book_slot",
+    "bounds": {
+      "hours": "11:00-21:00",
+      "block_minutes": 30,
+      "max_quantity": 6,
+      "verified_only": true,
+      "radius_km": 5
+    },
+    "declared_at": "2026-07-28T20:14:03",
+    "canvas_label": "Order"
+  }
+}

@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Named after the person, not the mechanism: this page IS the verified Pauline (see the
+     asker field below), and the point of the title is telling the two tabs apart. -->
+<title>Pauline's View</title>
+<style>
+  :root{
+    --ink:#101418; --muted:#5b6675; --faint:#8b96a3;
+    --paper:#f6f7f8; --surface:#fff; --line:#e2e6ea; --line2:#eef1f4;
+    --accent:#00b2ff; --accent-ink:#0077b0; --coral:#f0523d;
+    --good:#1a7f5a; --good-bg:#e8f5ef;
+    --me-bg:#0077b0; --me-fg:#ffffff; --warn-bg:#fff6f4;
+    --sans:"SF Pro Display",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--ink:#eef3f7;--muted:#93a6b5;--faint:#6b7c8a;--paper:#0f1419;--surface:#161d24;
+      --line:#242e38;--line2:#1c242c;--good:#4ade9e;--good-bg:#13322a;--warn-bg:#2a1512;
+      --accent-ink:#4cc7ff;
+      --me-bg:#134a66; --me-fg:#eaf6ff;}
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  /* `display:flex` on a class beats the UA rule for [hidden], so an element styled as a
+     flex container ignores the attribute and stays visible. That is why the ordering pane
+     rendered as a blank box on load, and why the escalation nav would show with 0 items. */
+  [hidden]{display:none !important;}
+  body{font-family:var(--sans);background:var(--paper);color:var(--ink);
+    -webkit-font-smoothing:antialiased;height:100vh;display:flex;flex-direction:column;}
+  .banner{background:var(--coral);color:#fff;font-family:var(--mono);font-size:.7rem;
+    padding:.4rem .9rem;letter-spacing:.04em;}
+  header{display:flex;align-items:center;gap:.8rem;padding:.75rem 1.1rem;
+    border-bottom:1px solid var(--line);flex-wrap:wrap;}
+  header h1{font-size:.95rem;font-weight:700;}
+  header a{margin-left:auto;font-size:.8rem;color:var(--accent-ink);text-decoration:none;}
+
+  .controls{display:flex;gap:.6rem;padding:.75rem 1.1rem;border-bottom:1px solid var(--line);
+    flex-wrap:wrap;align-items:flex-end;}
+  .fld{display:flex;flex-direction:column;gap:.25rem;}
+  .fld label{font-family:var(--mono);font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint);}
+  input,select{font:inherit;font-size:.86rem;padding:.45rem .6rem;border:1px solid var(--line);
+    border-radius:8px;background:var(--paper);color:var(--ink);}
+  input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent;}
+  #asker{min-width:15rem;font-family:var(--mono);}
+  .badge{font-family:var(--mono);font-size:.66rem;padding:.3rem .55rem;border-radius:6px;font-weight:650;}
+  .badge.v{background:var(--good-bg);color:var(--good);}
+  .badge.a{background:var(--warn-bg);color:var(--coral);}
+
+  main{flex:1;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);overflow:hidden;
+    transition:grid-template-columns .18s ease;}
+  /* When the agent offers an ordering page it appears HERE, beside the conversation, rather
+     than in a new tab. That is the whole "one surface" argument for the web channel: on SMS a
+     canvas can only be a link, but in a chat the choices can sit next to the chat. */
+  main.canvasing{grid-template-columns:minmax(0,.9fr) minmax(0,1.35fr);}
+  @media (max-width:880px){ main{grid-template-columns:1fr;grid-template-rows:1fr auto;} }
+  .chat{display:flex;flex-direction:column;overflow:hidden;}
+  .log{flex:1;overflow-y:auto;padding:1.1rem;display:flex;flex-direction:column;gap:.6rem;}
+  .msg{max-width:82%;font-size:.88rem;line-height:1.45;padding:.55rem .8rem;border-radius:11px;
+    white-space:pre-wrap;word-wrap:break-word;}
+  .msg.me{align-self:flex-end;background:var(--me-bg);color:var(--me-fg);border-bottom-right-radius:3px;}
+  .msg.bot{align-self:flex-start;background:var(--surface);border:1px solid var(--line);
+    border-bottom-left-radius:3px;}
+  .msg.esc{border-left:3px solid var(--coral);}
+  .msg.bot a{color:var(--accent-ink);text-decoration:underline;word-break:break-all;}
+  .tag{font-family:var(--mono);font-size:.62rem;color:var(--faint);margin-top:.3rem;}
+  form{display:flex;gap:.5rem;padding:.8rem 1.1rem;border-top:1px solid var(--line);}
+  form input{flex:1;}
+  button{font:inherit;font-size:.86rem;font-weight:650;padding:.5rem 1rem;border:0;border-radius:8px;
+    background:var(--ink);color:var(--paper);cursor:pointer;}
+  button:disabled{opacity:.45;cursor:not-allowed;}
+
+  /* Flex column, not a scrolling block: the ordering pane fills the column and its
+     iframe needs a definite height to render at all. The pending list keeps its own
+     scroll instead. */
+  .side{border-left:1px solid var(--line);padding:1.1rem;overflow:hidden;
+    display:flex;flex-direction:column;min-height:0;}
+  @media (max-width:880px){ .side{border-left:0;border-top:1px solid var(--line);} }
+  h2{font-family:var(--mono);font-size:.63rem;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);margin-bottom:.5rem;}
+  h2+h2{margin-top:1.3rem;}
+  .kv{font-size:.8rem;line-height:1.7;}
+  .kv b{font-weight:650;}
+  .kv code{font-family:var(--mono);font-size:.72rem;color:var(--accent-ink);}
+  .yes{color:var(--good);font-weight:650;} .no{color:var(--coral);font-weight:650;}
+  /* thinking indicator — replies take ~6s (model call), and 15s+ when the retrieval
+     loop re-searches. Silence for that long reads as "broken", so show the wait. */
+  .thinking{display:flex;align-items:center;gap:.5rem;}
+  .dots{display:inline-flex;gap:3px;}
+  .dots i{width:5px;height:5px;border-radius:50%;background:var(--faint);
+    animation:bounce 1.2s infinite ease-in-out;}
+  .dots i:nth-child(2){animation-delay:.15s} .dots i:nth-child(3){animation-delay:.3s}
+  @keyframes bounce{0%,60%,100%{opacity:.25;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+  @media (prefers-reduced-motion:reduce){.dots i{animation:none;opacity:.6}}
+  .elapsed{font-family:var(--mono);font-size:.66rem;color:var(--faint);}
+  /* Asker-side list: their own pending items only. No reason, no briefing, nobody
+     else's items — see tools.pending_for_asker. */
+  .pend{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:8px;padding:.5rem .65rem;margin-bottom:.4rem;}
+  .pend .q{font-size:.8rem;line-height:1.4;}
+  .pend .t{font-family:var(--mono);font-size:.62rem;color:var(--faint);margin-top:.2rem;}
+  .pend-none{font-size:.8rem;color:var(--faint);}
+  /* The right column is a tab strip over a stack of panes. Tabs rather than one
+     show/hide pane because a canvas is not a single feature: the escalation list and any
+     number of agent-offered surfaces are peers here, and switching between them must not
+     lose what the asker half-filled in. */
+  .tabs{display:flex;gap:.25rem;flex:none;border-bottom:1px solid var(--line);
+    margin:0 0 .7rem;overflow-x:auto;scrollbar-width:none;}
+  .tabs::-webkit-scrollbar{display:none;}
+  .tab{display:flex;align-items:center;gap:.35rem;font:inherit;font-size:.72rem;font-weight:650;
+    padding:.35rem .55rem;border:0;border-bottom:2px solid transparent;background:none;
+    color:var(--faint);cursor:pointer;white-space:nowrap;}
+  .tab:hover{color:var(--ink);}
+  .tab.on{color:var(--ink);border-bottom-color:var(--accent);}
+  .tab .n{font-family:var(--mono);font-size:.6rem;background:var(--line2);color:var(--muted);
+    padding:.05rem .28rem;border-radius:4px;}
+  .tab .x{font-size:.9rem;line-height:1;color:var(--faint);opacity:.55;}
+  .tab .x:hover{opacity:1;color:var(--coral);}
+  .panes{flex:1;min-height:0;display:flex;}
+  .pane{display:none;flex:1;min-height:0;flex-direction:column;}
+  .pane.on{display:flex;}
+  .pane.scroll{overflow-y:auto;}
+  .pane iframe{flex:1;min-height:0;width:100%;border:0;border-radius:10px;background:var(--surface);}
+  .msg.tool{background:transparent;border:0;font-family:var(--mono);font-size:.64rem;
+    color:var(--faint);padding:.1rem .2rem;max-width:100%;}
+
+</style>
+</head>
+<body>
+<div class="banner">TEST HARNESS — forges inbound messages. Never enable outside local testing.</div>
+<header>
+  <h1>Channel simulator</h1>
+  <span id="vbadge" class="badge a">anonymous</span>
+  <a id="ownerlink" href="#">← owner view</a>
+</header>
+
+<div class="controls">
+  <!-- No identity picker: this page IS Pauline, verified. AgentDuet/DDUET owns
+       verification, so choosing it here only simulated a decision we don't make.
+       The unverified path still has coverage in test_behaviour.py. -->
+  <div class="fld"><label for="asker">Signed in as</label>
+    <input id="asker" value="+6591234567" readonly title="Pauline — verified by the channel"></div>
+  <div class="fld"><label for="network">Channel (transport)</label>
+    <select id="network">
+      <option value="DDUET">DDUET — web chat</option>
+      <option value="WHATSAPP">WhatsApp</option>
+      <option value="TELCO">Telco</option>
+    </select>
+  </div>
+  <div class="fld"><label>&nbsp;</label><button id="clear" type="button">New conversation</button></div>
+</div>
+
+<main>
+  <section class="chat">
+    <div class="log" id="log">
+      <div class="msg bot">You are the <b>external party</b>. Send a message and see what the secretary replies.
+Switch the channel with the same identity to see verification change the answer.</div>
+    </div>
+    <form id="f">
+      <input id="m" placeholder="Ask the secretary something…" autocomplete="off">
+      <button id="send">Send</button>
+    </form>
+  </section>
+
+  <aside class="side" id="side">
+    <div class="tabs" id="tabs" role="tablist"></div>
+    <div class="panes" id="panes">
+      <div class="pane scroll on" id="pane-pending" role="tabpanel">
+        <div id="pending"><div class="pend-none">Nothing pending.</div></div>
+        <h2>Last decision</h2>
+        <div class="kv" id="dec">—</div>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<script>
+  const T = new URLSearchParams(location.search).get('t') || '';
+  const $ = id => document.getElementById(id);
+  const esc = s => (s||'').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+  // The agent offers an ordering link in chat. Escaped text left it unclickable, so the one
+  // affordance that saves the asker typing required them to copy-paste a URL.
+  // Escape FIRST, then linkify: the input is a model-generated reply, so nothing in it may
+  // become markup — only a URL we recognise afterwards becomes an anchor.
+  const link = s => esc(s).replace(/https?:\/\/[^\s<>"')]+/g,
+    u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+  // This page is always the verified Pauline. Verification is the channel's job
+  // (AgentDuet/DDUET), not something a test page should be able to toggle.
+  const verified = true;
+  // Conversation id stands in for DDUET's dduet_session_uid. Kept in localStorage so a
+  // refresh continues the same conversation instead of silently starting a new one —
+  // otherwise the agent's memory resets while the page looks unchanged.
+  const CONVO_KEY = 'secretary.sim.convo';
+  // Open canvases are part of the asker's session, not of one reply. Remembering them here is
+  // what makes a refresh keep them: the link in the transcript is a weak hook, since stored
+  // turns are truncated to 400 chars and age out of the agent's memory after two hours.
+  const CANVAS_KEY = 'secretary.sim.canvases';   // [{url, label}]
+  const TAB_KEY    = 'secretary.sim.tab';        // 'pending' | a canvas url
+  function newConvo(){
+    const c = 'sim-' + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem(CONVO_KEY, c);
+    localStorage.removeItem(CANVAS_KEY);   // a new conversation is not mid-order
+    localStorage.removeItem(TAB_KEY);
+    return c;
+  }
+  let convo = localStorage.getItem(CONVO_KEY) || newConvo();
+
+
+  // Shows a live bubble while waiting. After a few seconds it names what is most
+  // likely happening, so a 15s two-search answer doesn't look like a hang.
+  function startThinking(logEl){
+    const el = document.createElement('div');
+    el.className = 'msg bot thinking';
+    el.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>' +
+                   '<span class="what">thinking</span><span class="elapsed"></span>';
+    logEl.appendChild(el); logEl.scrollTop = 1e9;
+    const t0 = Date.now();
+    const tick = setInterval(() => {
+      const s = (Date.now() - t0) / 1000;
+      el.querySelector('.elapsed').textContent = s.toFixed(0) + 's';
+      const what = el.querySelector('.what');
+      if (s > 12)      what.textContent = 'still looking';
+      else if (s > 4)  what.textContent = 'searching the permitted folders';
+    }, 250);
+    return () => { clearInterval(tick); el.remove(); };
+  }
+
+  $('ownerlink').href = '/?t=' + T;
+
+  const CANVAS_URL = /https?:\/\/[^\s<>"')]*\/c\/[A-Za-z0-9_-]+/;
+  const canvasPath = u => { try { return new URL(u, location.href).pathname; } catch { return u; } };
+  const tokenOf = u => canvasPath(u).split('/').pop();
+
+  // Open canvases, oldest first. The pane and its iframe are created once and kept alive —
+  // switching tabs must not reset a half-filled order, which re-pointing one shared iframe
+  // would do.
+  let pendingCount = 0;
+  let canvases = [];
+  try { canvases = JSON.parse(localStorage.getItem(CANVAS_KEY) || '[]'); } catch { canvases = []; }
+  let activeTab = localStorage.getItem(TAB_KEY) || 'pending';
+
+  const saveTabs = () => {
+    localStorage.setItem(CANVAS_KEY, JSON.stringify(canvases));
+    localStorage.setItem(TAB_KEY, activeTab);
+  };
+  const paneId = url => 'pane-' + tokenOf(url);
+
+  // The label is the capability's, served by the daemon. The page must not name a surface it
+  // did not author — that is what keeps the tab strip generic across canvas use-cases.
+  async function labelFor(url){
+    try {
+      const r = await fetch(`/api/canvas/info?c=${encodeURIComponent(tokenOf(url))}`);
+      if (r.ok) return (await r.json()).label || 'Panel';
+    } catch {}
+    return 'Panel';
+  }
+
+  function renderTabs(){
+    const tab = (id, label, closable) =>
+      `<button class="tab${activeTab === id ? ' on' : ''}" role="tab" data-id="${esc(id)}"
+        aria-selected="${activeTab === id}">${esc(label)}` +
+      (closable ? `<span class="x" data-close="${esc(id)}" title="close">&times;</span>` : '') +
+      `</button>`;
+    const badge = pendingCount ? ` <span class="n">${pendingCount}</span>` : '';
+    $('tabs').innerHTML = tab('pending', 'Waiting with Stanley', false).replace('</button>', badge + '</button>')
+      + canvases.map(c => tab(c.url, c.label, !c.standing)).join('');
+    $('tabs').querySelectorAll('.tab').forEach(b => b.onclick = ev => {
+      const close = ev.target.dataset.close;
+      if (close) { ev.stopPropagation(); closeCanvas(close); return; }
+      activate(b.dataset.id);
+      if (b.dataset.id === 'pending') refreshPending();   // badge and pane must agree
+    });
+  }
+
+  function activate(id){
+    activeTab = id;
+    document.querySelectorAll('.pane').forEach(p => p.classList.remove('on'));
+    const pane = $(id === 'pending' ? 'pane-pending' : paneId(id));
+    if (pane) pane.classList.add('on');
+    else activeTab = 'pending', $('pane-pending').classList.add('on');
+    // A canvas needs the room; the pending list does not.
+    document.querySelector('main').classList.toggle('canvasing', activeTab !== 'pending');
+    renderTabs(); saveTabs();
+  }
+
+  function ensurePane(url){
+    if ($(paneId(url))) return;
+    const d = document.createElement('div');
+    d.className = 'pane'; d.id = paneId(url); d.setAttribute('role', 'tabpanel');
+    d.innerHTML = `<iframe title="agent-provided page" src="${esc(url)}"></iframe>`;
+    $('panes').appendChild(d);
+  }
+
+  // Opening is idempotent: a second offer of the same canvas focuses the tab it already has
+  // instead of stacking duplicates.
+  async function openCanvas(url){
+    let entry = canvases.find(c => canvasPath(c.url) === canvasPath(url));
+    if (!entry) {
+      entry = {url, label: 'Loading…'};
+      canvases.push(entry);
+      ensurePane(url);
+      renderTabs();
+      entry.label = await labelFor(url);
+    }
+    ensurePane(entry.url);
+    activate(entry.url);
+  }
+
+  function closeCanvas(url){
+    canvases = canvases.filter(c => canvasPath(c.url) !== canvasPath(url));
+    const pane = $(paneId(url));
+    if (pane) pane.remove();
+    activate(canvases.length && activeTab === url ? canvases[canvases.length - 1].url
+             : activeTab === url ? 'pending' : activeTab);
+  }
+
+  // A canvas link in the transcript switches tabs. It is an anchor so it still reads and
+  // behaves like a link, but following it would leave the conversation, which is the one
+  // thing the embedded pane exists to avoid.
+  $('log').addEventListener('click', ev => {
+    const a = ev.target.closest('a');
+    if (!a || !CANVAS_URL.test(a.href)) return;
+    ev.preventDefault();
+    openCanvas(a.href);
+  });
+
+  function maybeOpenCanvas(reply){
+    const m = (reply || '').match(CANVAS_URL);
+    if (m) openCanvas(m[0]);
+  }
+
+  // The page tells us when an order lands, so the CONVERSATION knows what happened on it.
+  // Without this the canvas is a dead end: the asker orders and the chat carries on as if
+  // nothing did. Same origin, so the origin check is exact rather than a wildcard.
+  window.addEventListener('message', ev => {
+    if (ev.origin !== location.origin) return;
+    if (!ev.data || ev.data.type !== 'canvas-order') return;
+    $('log').insertAdjacentHTML('beforeend',
+      `<div class="msg bot">${link(ev.data.message || 'Order placed.')}` +
+      `<div class="tag">via the ordering page</div></div>`);
+    $('log').scrollTop = 1e9;
+    refreshPending();
+  });
+
+  function syncBadge(){
+    const b = $('vbadge');
+    b.className = 'badge ' + (verified ? 'v' : 'a');
+    b.textContent = verified ? 'verified identity' : 'unverified / anonymous';
+  }
+  syncBadge();
+
+  // Rebuild the visible transcript from stored turns. The server already keeps them for
+  // the agent's own memory, so the page has no business being the only record.
+  async function restoreHistory(){
+    const a = $('asker').value.trim();
+    const r = await fetch(`/api/history?t=${T}&asker=${encodeURIComponent(a)}`
+                          + `&verified=${verified?1:0}&conversation=${encodeURIComponent(convo)}`);
+    if(!r.ok) return;
+    const d = await r.json();
+    if(!(d.turns||[]).length) return;
+    $('log').innerHTML = '';
+    d.turns.forEach(t => {
+      // An owner reply is one-sided — she asked nothing at that moment, so rendering the
+      // stored placeholder question put a bogus "(owner replied)" in her own transcript.
+      if (t.reason !== 'owner:delivered')
+        $('log').insertAdjacentHTML('beforeend', `<div class="msg me">${esc(t.q)}</div>`);
+      $('log').insertAdjacentHTML('beforeend', `<div class="msg bot">${link(t.a)}</div>`);
+    });
+    $('log').insertAdjacentHTML('beforeend',
+      `<div class="msg tool" style="align-self:center">— restored ${d.turns.length} earlier turn(s) —</div>`);
+    $('log').scrollTop = 1e9;
+  }
+
+  // What the owner offers, shown from the first message so the asker can DISCOVER it. Until
+  // now the ordering page was mentioned only when the agent asked for a missing detail, so
+  // finding it depended on asking the right thing first.
+  async function loadStanding(){
+    const a = $('asker').value.trim();
+    const r = await fetch(`/api/canvas/available?t=${T}&asker=${encodeURIComponent(a)}`
+                          + `&verified=${verified ? 1 : 0}`);
+    if (!r.ok) return;
+    const d = await r.json();
+    (d.canvases || []).forEach(c => {
+      if (canvases.some(x => canvasPath(x.url) === canvasPath(c.url))) return;
+      canvases.push({url: c.url, label: c.label, standing: true});
+      ensurePane(c.url);
+    });
+    renderTabs();          // deliberately no activate(): discoverable, not intrusive
+    saveTabs();
+  }
+
+  // Runs before any fetch, so the tabs are back on screen immediately after a reload rather
+  // than waiting on history that may no longer carry the link.
+  (function restoreCanvases(){
+    canvases.forEach(c => ensurePane(c.url));
+    activate(activeTab);
+    // Labels are re-read rather than trusted from storage: the owner may have renamed the
+    // capability since, and a stale tab name is a lie about what the pane contains.
+    canvases.forEach(async c => { c.label = await labelFor(c.url); renderTabs(); saveTabs(); });
+  })();
+
+  // Owner replies that were held for delivery. DDUET is passive — the daemon cannot open
+  // a session — so a reply sat in the queue until the person wrote again. But an OPEN
+  // page IS a live session, so it can be delivered now. Without this, replying from the
+  // owner side looked like nothing happened over here.
+  async function deliverHeld(){
+    const a = $('asker').value.trim();
+    const r = await fetch(`/api/deliver?t=${T}`, {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({asker: a, conversation: convo})});
+    if(!r.ok) return;
+    const d = await r.json();
+    (d.delivered||[]).forEach(m => $('log').insertAdjacentHTML('beforeend',
+      `<div class="msg bot">${link(m.text)}</div>`));
+    if((d.delivered||[]).length) $('log').scrollTop = 1e9;
+  }
+
+  // Live updates without a refresh. Connects to the PING-ONLY socket — the owner feed
+  // carries full state (every escalation + briefing), which this side must never see.
+  function connectLive(){
+    const ws = new WebSocket(`ws://${location.host}/ws/asker?t=${T}`);
+    ws.onmessage = e => {
+      const d = JSON.parse(e.data);
+      if(d.type === 'changed'){ refreshPending(); deliverHeld(); }
+    };
+    ws.onclose = () => setTimeout(connectLive, 3000);
+  }
+
+  async function refreshPending(){
+    const a = $('asker').value.trim();
+    const r = await fetch(`/api/pending?t=${T}&asker=${encodeURIComponent(a)}&verified=${verified?1:0}`);
+    if(!r.ok) return;
+    const d = await r.json();
+    $('pending').innerHTML = (d.pending||[]).length
+      ? d.pending.map(p => `<div class="pend"><div class="q">${esc(p.question)}</div>`+
+                            `<div class="t">${esc(p.at.replace('T',' '))}</div></div>`).join('')
+      : '<div class="pend-none">Nothing pending.</div>';
+    pendingCount = (d.pending || []).length;
+    renderTabs();
+  }
+
+  refreshPending(); restoreHistory(); deliverHeld(); connectLive(); loadStanding();
+  $('clear').onclick = () => {
+    $('log').innerHTML = ''; $('dec').textContent = '—';
+    convo = newConvo();
+  };
+
+  $('f').onsubmit = async ev => {
+    ev.preventDefault();
+    const text = $('m').value.trim(); if(!text) return;
+    $('m').value=''; $('send').disabled = true;
+    $('log').insertAdjacentHTML('beforeend', `<div class="msg me">${esc(text)}</div>`);
+    const stop = startThinking($('log'));
+    try{
+      const r = await fetch('/api/sim?t='+T, {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({asker:$('asker').value.trim(), message:text,
+                              network:$('network').value, verified: verified,
+                              conversation: convo})});
+      const d = await r.json();
+      stop();
+      if(d.error) throw new Error(d.error);
+      const cls = d.outcome === 'escalated' ? 'msg bot esc' : 'msg bot';
+      $('log').insertAdjacentHTML('beforeend',
+        `<div class="${cls}">${link(d.reply)}<div class="tag">${esc(d.outcome)}${d.reason?' · '+esc(d.reason.replace('policy:','')):''}</div></div>`);
+        maybeOpenCanvas(d.reply);   // open the ordering page beside the chat
+      $('dec').innerHTML =
+        `<b>outcome</b> ${esc(d.outcome)}<br>`+
+        `<b>reason</b> ${esc(d.reason||'—')}<br>`+
+        `<b>verified</b> <span class="${d.verified?'yes':'no'}">${d.verified}</span><br>`+
+        `<b>profile applied</b> <span class="${d.profile_applied?'yes':'no'}">${d.profile_applied}</span>`+
+        `${d.profile_name?' — <b>'+esc(d.profile_name)+'</b>':''}<br>`+
+        `<b>turns</b> ${d.turns||0} in this conversation<br>`+
+        `<b>folders</b> <code>${(d.folders||[]).join('</code> <code>')||'none'}</code><br>`+
+        `<b>answered from</b> <code>${(d.sources||[]).join('</code> <code>')||'—'}</code>`;
+    }catch(err){
+      stop();
+      $('log').insertAdjacentHTML('beforeend', `<div class="msg bot">error: ${esc(String(err.message||err))}</div>`);
+    }
+    $('send').disabled = false; $('log').scrollTop = 1e9; refreshPending();
+  };
+</script>
+</body>
+</html>

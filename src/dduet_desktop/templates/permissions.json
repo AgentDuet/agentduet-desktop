@@ -1,0 +1,12 @@
+{
+  "_comment": "Folders the agent may READ. knowledge/ is one flat folder readable by anyone who writes in; facts only one person may hear go in people/<identity>.md. 'askers' adds per-identity access to folders OUTSIDE knowledge/.",
+  "default": {
+    "folders": [
+      "knowledge"
+    ]
+  },
+  "askers": {},
+  "grants": [],
+  "trusted_identities": [],
+  "_comment_trusted": "Identities the OWNER vouches for. Treated as verified even on a channel that cannot vouch for itself."
+}

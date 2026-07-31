@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Set up your secretary</title>
+<style>
+  :root{
+    --ink:#101418; --paper:#f6f7f8; --surface:#fff; --line:#e2e6ea; --line2:#eef1f4;
+    --muted:#5b6675; --faint:#8b96a3;
+    --accent:#00b2ff; --accent-ink:#0077b0; --coral:#f0523d;
+    --good:#1a7f5a; --good-bg:#e8f5ef;
+    --sans:"SF Pro Display",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--ink:#eef3f7;--paper:#0f1419;--surface:#161d24;--line:#242e38;--line2:#1c242c;
+      --muted:#93a6b5;--faint:#6b7c8a;--accent-ink:#4cc7ff;--good:#4ade9e;--good-bg:#13322a;}
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:var(--sans);background:var(--paper);color:var(--ink);
+    -webkit-font-smoothing:antialiased;line-height:1.5;}
+  .wrap{max-width:44rem;margin:0 auto;padding:2.4rem 1.3rem 5rem;}
+  h1{font-size:1.6rem;font-weight:780;letter-spacing:-.02em;}
+  .lede{color:var(--muted);margin-top:.5rem;}
+
+  .steps{display:flex;gap:.5rem;margin:1.8rem 0 1.4rem;font-family:var(--mono);font-size:.66rem;
+    letter-spacing:.08em;text-transform:uppercase;}
+  .steps div{flex:1;padding:.45rem .5rem;border-radius:7px;background:var(--line2);
+    color:var(--faint);text-align:center;}
+  .steps div.on{background:var(--accent-ink);color:#fff;}
+  .steps div.done{background:var(--good-bg);color:var(--good);}
+
+  section.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    padding:1.4rem 1.4rem 1.5rem;display:none;}
+  section.card.on{display:block;}
+  h2{font-size:1.12rem;font-weight:720;}
+  .hint{color:var(--muted);font-size:.9rem;margin-top:.4rem;}
+  label{display:block;margin-top:1.1rem;font-size:.88rem;font-weight:650;}
+  label .sm{display:block;font-weight:400;color:var(--muted);font-size:.83rem;margin-top:.15rem;}
+  input,textarea,select{width:100%;font:inherit;font-size:.94rem;margin-top:.4rem;
+    padding:.55rem .7rem;border:1px solid var(--line);border-radius:9px;
+    background:var(--paper);color:var(--ink);}
+  textarea{min-height:4.5rem;resize:vertical;}
+  .row{display:flex;gap:.6rem;align-items:flex-end;}
+  .row > *{flex:1;}
+  button{font:inherit;font-size:.92rem;font-weight:700;padding:.6rem 1.15rem;border:0;
+    border-radius:10px;background:var(--accent-ink);color:#fff;cursor:pointer;}
+  button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);}
+  button:disabled{opacity:.45;cursor:default;}
+  .acts{display:flex;gap:.6rem;align-items:center;margin-top:1.5rem;}
+  .acts .sp{flex:1;}
+  .msg{margin-top:1rem;padding:.7rem .85rem;border-radius:10px;font-size:.9rem;
+    white-space:pre-wrap;}
+  .msg.ok{background:var(--good-bg);color:var(--good);border:1px solid var(--good);}
+  .msg.no{background:#fff1ee;color:#b3261e;border:1px solid var(--coral);}
+  @media (prefers-color-scheme:dark){ .msg.no{background:#2a1512;color:#ffb4a8;} }
+  a{color:var(--accent-ink);}
+
+                      .spin{font-family:var(--mono);font-size:.8rem;color:var(--faint);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Set up your secretary</h1>
+  <p class="lede">Two questions, a key, and your number. It writes its own configuration from your answers —
+    you are not filling in a form for it.</p>
+
+  <div class="steps">
+    <div id="s1" class="on">1 · a model</div>
+    <div id="s2">2 · about you</div>
+    <div id="s3">3 · your number</div>
+  </div>
+
+  <!-- ---------------- 1 · MODEL ---------------- -->
+  <section class="card on" id="c1">
+    <h2>Attach a model</h2>
+    <p class="hint">Your key is checked against the provider before it is saved, so a wrong paste
+      fails here rather than silently later. It is stored only on this machine.</p>
+    <div class="row">
+      <label>Model
+        <span class="sm">Any of these works.</span>
+        <select id="model">
+          <option value="gemini-2.5-flash">gemini-2.5-flash — Google AI Studio</option>
+          <option value="claude-sonnet-5">claude-sonnet-5 — Anthropic console</option>
+          <option value="qwen3.6-flash">qwen3.6-flash — Alibaba Model Studio</option>
+        </select>
+      </label>
+    </div>
+    <label>API key
+      <span class="sm" id="keyhint">Paste it here. There is no sign-in flow for any of the
+        three — the key comes from the provider's console.</span>
+      <input id="key" type="password" autocomplete="off" placeholder="…">
+    </label>
+    <div class="acts">
+      <button id="b1">Check and save</button>
+      <span class="sp"></span>
+      <span class="spin" id="sp1"></span>
+    </div>
+    <div id="m1"></div>
+  </section>
+
+  <!-- ---------------- 2 · INTERVIEW ---------------- -->
+  <section class="card" id="c2">
+    <h2>About you</h2>
+    <p class="hint">Only what the agent cannot work out for itself. It writes the files from
+      these answers, phrasing facts the way someone asking would.</p>
+    <div id="qs"></div>
+    <div class="acts">
+      <button id="b2">Write it</button>
+      <span class="sp"></span>
+      <span class="spin" id="sp2"></span>
+    </div>
+    <div id="m2"></div>
+  </section>
+
+  <!-- ---------------- 3 · CONNECTOR ---------------- -->
+  <section class="card" id="c3">
+    <h2>Your B3 connector</h2>
+    <p class="hint">This gives it a phone number and a message channel — how people reach you.
+      Skip it if you do not have one yet; everything else works without it, and you can add it
+      later in settings.</p>
+    <label>API key
+      <span class="sm">Checked by connecting once before it is saved.</span>
+      <input id="cKey" type="password" autocomplete="off" placeholder="AGENTDUET_API_KEY">
+    </label>
+    <label>Connector uuid
+      <input id="cUuid" autocomplete="off" placeholder="00000000-0000-0000-0000-000000000000">
+    </label>
+    <div class="acts">
+      <button class="ghost" id="b3skip">Skip for now</button>
+      <span class="sp"></span>
+      <button id="b3">Check and finish</button>
+      <span class="spin" id="sp3"></span>
+    </div>
+    <div id="m3"></div>
+  </section>
+
+</div>
+
+<script>
+  const T = new URLSearchParams(location.search).get('t') || '';
+  const $ = id => document.getElementById(id);
+  const esc = s => (s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+
+  function show(n){
+    [1,2,3].forEach(i => {
+      $('c' + i).classList.toggle('on', i === n);
+      $('s' + i).classList.toggle('on', i === n);
+      $('s' + i).classList.toggle('done', i < n);
+    });
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  }
+  function say(el, ok, text){
+    $(el).innerHTML = `<div class="msg ${ok ? 'ok' : 'no'}">${esc(text)}</div>`;
+  }
+  async function post(path, body){
+    const r = await fetch(`${path}?t=${T}`, {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    return r.json();
+  }
+
+  // ---- 1 · model -----------------------------------------------------------
+  $('b1').onclick = async () => {
+    const key = $('key').value.trim();
+    if (!key) { say('m1', false, 'Paste a key first.'); return; }
+    $('b1').disabled = true; $('sp1').textContent = 'checking with the provider…';
+    const d = await post('/api/setup/model', {model: $('model').value, key});
+    $('b1').disabled = false; $('sp1').textContent = '';
+    say('m1', d.ok, d.message);
+    if (d.ok) setTimeout(() => { loadQuestions(); show(2); }, 700);
+  };
+
+  // ---- 2 · interview -------------------------------------------------------
+  async function loadQuestions(){
+    // Prefilled with what is recorded NOW, so a re-run is an edit rather than a blank retype.
+    const [qr, cr] = await Promise.all([
+      fetch(`/api/setup/questions?t=${T}`), fetch(`/api/setup/current?t=${T}`)]);
+    const d = await qr.json();
+    const cur = cr.ok ? await cr.json() : {};
+    $('qs').innerHTML = (d.questions || []).map(q => {
+      const v = cur[q.key] || '';
+      return `
+      <label>${esc(q.prompt)}${q.optional ? ' <span class="sm">optional</span>' : ''}
+        ${q.long ? `<textarea data-k="${esc(q.key)}">${esc(v)}</textarea>`
+                 : `<input data-k="${esc(q.key)}" value="${esc(v)}">`}
+      </label>`;}).join('');
+    if (cur.configured) {
+      $('b2').textContent = 'Update it';
+      $('c2').querySelector('.hint').textContent =
+        'These are your current settings. Change what you want changed — clearing a line '
+        + 'removes that fact. Anything you leave alone stays as it is.';
+    }
+  }
+  $('b2').onclick = async () => {
+    const answers = {};
+    document.querySelectorAll('#qs [data-k]').forEach(el => answers[el.dataset.k] = el.value.trim());
+    if (!answers.name || !answers.does) { say('m2', false, 'Your name and what you do are needed.'); return; }
+    $('b2').disabled = true;
+    // This is a model call that makes several writes, so it is not instant. Saying so beats a
+    // frozen button.
+    $('sp2').textContent = 'writing your settings and knowledge…';
+    const d = await post('/api/setup/interview', {answers});
+    $('b2').disabled = false; $('sp2').textContent = '';
+    say('m2', d.ok, d.message);
+    if (d.ok) setTimeout(() => show(3), 900);
+  };
+
+  // ---- 3 · the connector ---------------------------------------------------
+  $('b3skip').onclick = () => { location.href = '/?t=' + T; };
+  $('b3').onclick = async () => {
+    const key = $('cKey').value.trim(), uuid = $('cUuid').value.trim();
+    if (!key || !uuid) { say('m3', false, 'Both fields are needed — or skip for now.'); return; }
+    $('b3').disabled = true; $('sp3').textContent = 'connecting to check…';
+    const d = await post('/api/setup/connector', {key, uuid});
+    $('b3').disabled = false; $('sp3').textContent = '';
+    say('m3', d.ok, d.message);
+    if (d.ok) setTimeout(() => { location.href = '/?t=' + T; }, 1500);
+  };
+
+  // A re-run: a model is already attached, so open on the questions rather than asking again.
+  // Changing things later is the SETTINGS page; this is the wizard.
+  (async () => {
+    const r = await fetch(`/api/setup/current?t=${T}`);
+    if (!r.ok) return;
+    const cur = await r.json();
+    if (cur.configured) {
+      // Already set up: skip straight to the questions rather than asking for a key again.
+      loadQuestions(); show(2);
+      $('s1').classList.add('done');
+    }
+  })();
+</script>
+</body>
+</html>

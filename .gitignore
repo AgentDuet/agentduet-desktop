@@ -1,0 +1,22 @@
+# Build output — the binary is 44 MB and is rebuilt from source; it belongs on a Release,
+# never in git history.
+/dist/
+/dist-bin/
+/build/
+*.spec.bak
+
+# Environments
+/.venv*/
+/venv/
+__pycache__/
+*.py[cod]
+
+# Instance data must NEVER be committed: it holds the owner's knowledge, their people, and
+# $DDUET_HOME/.env with a model key and a connector credential.
+/.dduet/
+.env
+*.env
+!.env.example
+
+# setuptools build metadata, regenerated on every build
+*.egg-info/
