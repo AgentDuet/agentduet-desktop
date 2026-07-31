@@ -1,0 +1,148 @@
+"""The one entry point, so the package works the same on every platform.
+
+The shell scripts it replaces (`start.sh`, `stop.sh`) used `pkill`, `pgrep` and `ss` — fine on
+Linux, absent on Windows. Everything they did that mattered is here in Python instead: find the
+running daemon, stop it and confirm it actually stopped, refuse to start a second one.
+
+SIGTERM is caught somewhere in the async stack and does not always exit, so `stop` verifies and
+escalates rather than reporting success on a signal it merely sent. A stop that lies leaves two
+daemons sharing one connector, and the survivor may be running the older code.
+"""
+
+import argparse
+import os
+import signal
+import sys
+import time
+
+from . import paths
+
+PIDFILE = paths.RUN / "secretary.pid"
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except (OSError, ProcessLookupError):
+        return False
+    return True
+
+
+def _running_pid() -> int | None:
+    try:
+        pid = int(PIDFILE.read_text().strip())
+    except (OSError, ValueError):
+        return None
+    return pid if _alive(pid) else None
+
+
+def cmd_init(args) -> int:
+    from . import init
+    return init.main(interactive=not args.non_interactive)
+
+
+def cmd_run(args) -> int:
+    if (pid := _running_pid()) and not args.force:
+        # Launching it again almost always means the person lost the tab or window, not that
+        # they want a second daemon. Show them the one that IS running rather than refusing —
+        # a refusal, from a double-clicked icon with no terminal, looks like nothing happened.
+        from . import shell
+        url = shell.site_url(timeout=2)
+        if url and not args.headless:
+            shell.open_in_browser(url)
+            print(f"  already running (pid {pid}) — opened {url}")
+        else:
+            print(f"  already running (pid {pid}). Use `dduet-desktop stop` to stop it.")
+        return 0
+    if args.no_channel:
+        os.environ["SECRETARY_CHANNEL"] = "0"
+    paths.migrate()
+    PIDFILE.parent.mkdir(parents=True, exist_ok=True)
+    PIDFILE.write_text(str(os.getpid()))
+    from . import secretary_agent, shell
+    try:
+        if args.headless:
+            # No surface opened at all: for a machine nobody is sitting at.
+            return secretary_agent.run() or 0
+        # The owner's view is the primary surface, so it is opened for them rather than
+        # printed as a URL they have to notice, copy and paste with a token attached.
+        return shell.run_with_window(secretary_agent.run, want_window=not args.no_window)
+    finally:
+        PIDFILE.unlink(missing_ok=True)
+
+
+def cmd_stop(args) -> int:
+    pid = _running_pid()
+    if pid is None:
+        print("  not running")
+        PIDFILE.unlink(missing_ok=True)
+        return 0
+    os.kill(pid, signal.SIGTERM)
+    for _ in range(20):
+        if not _alive(pid):
+            break
+        time.sleep(0.5)
+    if _alive(pid):
+        # Verified, not assumed: SIGTERM is caught and can hang.
+        print(f"  pid {pid} ignored SIGTERM — sending SIGKILL")
+        os.kill(pid, signal.SIGKILL)
+        time.sleep(1)
+    if _alive(pid):
+        print(f"  STILL RUNNING: pid {pid}", file=sys.stderr)
+        return 1
+    PIDFILE.unlink(missing_ok=True)
+    print("  stopped")
+    return 0
+
+
+def cmd_status(args) -> int:
+    from . import llm
+    pid = _running_pid()
+    print(f"  instance : {paths.HOME}")
+    print(f"  daemon   : {'running, pid ' + str(pid) if pid else 'stopped'}")
+    print(f"  model    : {llm.describe()}")
+    caps = paths.CAPABILITIES
+    print(f"  config   : settings{'' if paths.SETTINGS.is_file() else ' MISSING'}, "
+          f"knowledge {len(list(paths.KNOWLEDGE.glob('*.md'))) if paths.KNOWLEDGE.is_dir() else 0} doc(s), "
+          f"capabilities{'' if caps.is_file() else ' MISSING'}")
+    print(f"  examples : {paths.EXAMPLES}")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="dduet-desktop", description=__doc__.split("\n")[0])
+    sub = p.add_subparsers(dest="cmd", required=False)
+
+    i = sub.add_parser("init", help="set up this machine (interview)")
+    i.add_argument("--non-interactive", action="store_true",
+                   help="create the instance only; ask nothing")
+    i.set_defaults(fn=cmd_init)
+
+    r = sub.add_parser("run", help="start the daemon in the foreground")
+    r.add_argument("--no-channel", action="store_true",
+                   help="owner site only; do not connect to DDUET (one client per connector)")
+    r.add_argument("--force", action="store_true", help="start even if one appears to be running")
+    r.add_argument("--no-window", action="store_true",
+                   help="open the owner view in your browser instead of an app window")
+    r.add_argument("--headless", action="store_true",
+                   help="open nothing; just run (for a server or a machine nobody is at)")
+    r.set_defaults(fn=cmd_run)
+
+    s = sub.add_parser("stop", help="stop the daemon, and verify it stopped")
+    s.set_defaults(fn=cmd_stop)
+
+    st = sub.add_parser("status", help="what is installed, attached and running")
+    st.set_defaults(fn=cmd_status)
+
+    # Double-clicked from a file manager there are no arguments and often no terminal, so a
+    # usage message would be a window that flashes and vanishes. No arguments therefore means
+    # the thing a person wants: start, and open the owner's view.
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv:
+        argv = ["run"]
+    args = p.parse_args(argv)
+    return args.fn(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

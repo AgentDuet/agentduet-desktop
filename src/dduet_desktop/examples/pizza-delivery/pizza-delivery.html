@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order — Forno Tanjong</title>
+<style>
+  :root{
+    --ink:#141210; --muted:#6a615a; --faint:#9b918a;
+    --paper:#faf7f2; --surface:#fff; --line:#e8e0d6; --line2:#f2ece3;
+    --accent:#c2410c; --accent-ink:#9a3412; --good:#15803d; --good-bg:#e9f6ee;
+    --sans:"SF Pro Display",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--ink:#f4efe8;--muted:#a9a09a;--faint:#7d746e;--paper:#15120f;--surface:#1e1a16;
+      --line:#2f2822;--line2:#241f1a;--good:#4ade9e;--good-bg:#14301f;--accent:#fb923c;
+      --accent-ink:#fdba74;}
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:var(--sans);background:var(--paper);color:var(--ink);
+    -webkit-font-smoothing:antialiased;min-height:100vh;}
+  .wrap{max-width:760px;margin:0 auto;padding:1.4rem 1.1rem 6rem;}
+  header{display:flex;align-items:baseline;gap:.6rem;margin-bottom:.2rem;}
+  h1{font-size:1.25rem;font-weight:750;letter-spacing:-.02em;}
+  .hours{font-family:var(--mono);font-size:.7rem;color:var(--muted);}
+  .lede{font-size:.86rem;color:var(--muted);margin:.5rem 0 1.3rem;line-height:1.5;}
+  h2{font-family:var(--mono);font-size:.65rem;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);font-weight:700;margin:1.5rem 0 .6rem;}
+
+  .item{display:flex;align-items:center;gap:.8rem;background:var(--surface);
+    border:1px solid var(--line);border-radius:12px;padding:.7rem .85rem;margin-bottom:.5rem;}
+  .item .txt{flex:1;min-width:0;}
+  .item .nm{font-size:.92rem;font-weight:650;}
+  .item .note{font-size:.76rem;color:var(--muted);margin-top:.1rem;}
+  .sizes{display:flex;gap:.4rem;flex:none;}
+  .size{display:flex;flex-direction:column;align-items:center;gap:.25rem;}
+  .size .lbl{font-family:var(--mono);font-size:.6rem;color:var(--faint);}
+  .stepper{display:flex;align-items:center;gap:.3rem;}
+  .stepper button{width:26px;height:26px;border:1px solid var(--line);border-radius:7px;
+    background:var(--paper);color:var(--muted);font:inherit;font-size:.9rem;line-height:1;
+    cursor:pointer;}
+  .stepper button:hover{border-color:var(--accent);color:var(--accent);}
+  .stepper .n{min-width:1.4rem;text-align:center;font-family:var(--mono);font-size:.8rem;
+    font-weight:700;}
+  .stepper .n.zero{color:var(--faint);font-weight:400;}
+  .extras{font-size:.78rem;color:var(--muted);line-height:1.6;}
+
+  .slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:.4rem;}
+  .slot{font:inherit;font-size:.8rem;padding:.45rem .3rem;border:1px solid var(--line);
+    border-radius:9px;background:var(--surface);color:var(--ink);cursor:pointer;}
+  .slot:hover:not(:disabled){border-color:var(--accent);}
+  .slot.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:650;}
+  /* Taken slots are shown, not hidden — "why can't I have 7pm?" is answered here rather
+     than becoming a chat message. */
+  .slot:disabled{opacity:.4;cursor:not-allowed;text-decoration:line-through;}
+  .daylabel{font-family:var(--mono);font-size:.62rem;color:var(--faint);margin:.7rem 0 .3rem;
+    letter-spacing:.08em;text-transform:uppercase;}
+
+  .bar{position:fixed;left:0;right:0;bottom:0;background:var(--surface);
+    border-top:1px solid var(--line);padding:.7rem 1.1rem;}
+  .bar .inner{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:.9rem;}
+  .bar .sum{flex:1;font-size:.84rem;line-height:1.4;}
+  .bar .sum b{font-weight:750;}
+  .bar .sum .none{color:var(--faint);}
+  button.go{font:inherit;font-size:.9rem;font-weight:700;padding:.62rem 1.3rem;border:0;
+    border-radius:10px;background:var(--accent);color:#fff;cursor:pointer;flex:none;}
+  button.go:disabled{opacity:.4;cursor:not-allowed;}
+  .result{margin-top:1rem;padding:.8rem .9rem;border-radius:11px;font-size:.87rem;
+    line-height:1.5;}
+  .result.ok{background:var(--good-bg);color:var(--good);border:1px solid var(--good);}
+  .result.no{background:#fff1ee;color:#b3261e;border:1px solid #f0523d;}
+  @media (prefers-color-scheme:dark){ .result.no{background:#2a1512;color:#ffb4a8;} }
+  .chatnote{font-size:.8rem;color:var(--muted);margin-top:1.4rem;line-height:1.5;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>Forno Tanjong</h1><span class="hours" id="hours"></span></header>
+  <p class="lede">Pick what you want and a delivery time. You can also just message us — this
+    page is here to save you typing, not to replace the conversation.</p>
+
+  <h2>Pizzas</h2>
+  <div id="items"></div>
+  <div class="extras" id="extras"></div>
+
+  <h2>Delivery time</h2>
+  <div id="slots"></div>
+
+  <div id="result"></div>
+
+  <p class="chatnote" id="chatnote"></p>
+</div>
+
+<div class="bar"><div class="inner">
+  <div class="sum" id="sum"><span class="none">Nothing selected</span></div>
+  <button class="go" id="go" disabled>Order</button>
+</div></div>
+
+<script>
+  const token = location.pathname.split('/').pop();
+  const $ = id => document.getElementById(id);
+  const esc = s => (s||'').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+
+  let MENU = {items: []}, cart = {}, chosen = '', maxQty = null;
+
+  const qty = (name, size) => cart[`${name}|${size}`] || 0;
+  const lines = () => Object.entries(cart)
+    .filter(([, n]) => n > 0)
+    .map(([k, n]) => { const [name, size] = k.split('|'); return {name, size, qty: n}; });
+  const total = () => lines().reduce((s, l) => {
+    const it = MENU.items.find(i => i.name === l.name) || {sizes: {}};
+    return s + (it.sizes[l.size] || 0) * l.qty;
+  }, 0);
+  const count = () => lines().reduce((s, l) => s + l.qty, 0);
+
+  function bump(name, size, d){
+    const k = `${name}|${size}`;
+    const next = Math.max(0, (cart[k] || 0) + d);
+    // Enforced again on the server by capabilities.check_bounds — this only spares the
+    // asker a rejection they can see coming.
+    if (d > 0 && maxQty && count() + 1 > maxQty) {
+      show(false, `Maximum ${maxQty} pizzas per order. Larger orders need a person — just message us.`);
+      return;
+    }
+    cart[k] = next;
+    render();
+  }
+
+  function render(){
+    $('items').innerHTML = MENU.items.map(i => `
+      <div class="item">
+        <div class="txt">
+          <div class="nm">${esc(i.name)}</div>
+          ${i.note ? `<div class="note">${esc(i.note)}</div>` : ''}
+        </div>
+        <div class="sizes">
+          ${Object.entries(i.sizes).map(([size, price]) => `
+            <div class="size">
+              <span class="lbl">${esc(size)} · $${price}</span>
+              <span class="stepper">
+                <button data-n="${esc(i.name)}" data-s="${esc(size)}" data-d="-1">−</button>
+                <span class="n ${qty(i.name, size) ? '' : 'zero'}">${qty(i.name, size)}</span>
+                <button data-n="${esc(i.name)}" data-s="${esc(size)}" data-d="1">+</button>
+              </span>
+            </div>`).join('')}
+        </div>
+      </div>`).join('');
+    document.querySelectorAll('.stepper button').forEach(b => b.onclick =
+      () => bump(b.dataset.n, b.dataset.s, Number(b.dataset.d)));
+
+    const n = count();
+    $('sum').innerHTML = n
+      ? `<b>${n} pizza${n > 1 ? 's' : ''} · $${total().toFixed(2)}</b>`
+        + (chosen ? ` — ${esc(chosen.slice(0,10))} at ${esc(chosen.slice(11,16))}` : ' — pick a time')
+      : '<span class="none">Nothing selected</span>';
+    $('go').disabled = !(n && chosen);
+  }
+
+  function renderSlots(all){
+    let html = '', day = '';
+    all.forEach(s => {
+      if (s.day !== day){ day = s.day; html += `<div class="daylabel">${esc(day)}</div><div class="slots">`; }
+      html += `<button class="slot${chosen === s.at ? ' on' : ''}" data-at="${esc(s.at)}"
+                 ${s.free ? '' : 'disabled title="already booked"'}>${esc(s.time)}</button>`;
+    });
+    $('slots').innerHTML = html + '</div>';
+    document.querySelectorAll('.slot').forEach(b => b.onclick = () => {
+      chosen = b.dataset.at; renderSlots(all); render();
+    });
+  }
+
+  function show(ok, msg){
+    $('result').innerHTML = `<div class="result ${ok ? 'ok' : 'no'}">${esc(msg)}</div>`;
+    $('result').scrollIntoView({block: 'nearest'});
+  }
+
+  async function load(){
+    const r = await fetch(`/api/canvas/menu?c=${token}`);
+    if (!r.ok){ show(false, 'This ordering link is not valid.'); return; }
+    const d = await r.json();
+    MENU = d.menu; maxQty = d.menu.max_quantity;
+    $('hours').textContent = d.menu.hours ? `open ${d.menu.hours}` : '';
+    $('extras').innerHTML = (d.menu.extras || []).map(esc).join('<br>');
+    $('chatnote').textContent = d.for
+      ? `Ordering as ${d.for}. Prices and hours come from the same menu the assistant answers from.`
+      : '';
+    renderSlots(d.slots);
+    render();
+  }
+
+  $('go').onclick = async () => {
+    $('go').disabled = true;
+    const r = await fetch(`/api/canvas/order?c=${token}`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({lines: lines(), at: chosen})});
+    const d = await r.json();
+    show(d.ok, d.message);
+    // Tell the embedding conversation what happened. Without this the page is a dead end:
+    // the asker orders here and the chat carries on as though nothing did.
+    if (d.ok && window.parent !== window)
+      window.parent.postMessage({type: 'canvas-order', message: d.message}, location.origin);
+    if (d.ok){ cart = {}; chosen = ''; }
+    await load();                       // refresh availability either way
+  };
+
+  load();
+</script>
+</body>
+</html>

@@ -1,0 +1,316 @@
+"""Desktop secretary — POC.
+
+Runs on the OWNER's machine. Receives queries from verified external parties over the
+AgentDuet DDUET channel, answers from `knowledge.md`, escalates anything the policy
+won't let it answer, and logs every query for the daily digest.
+
+    ./start.sh          # run it      ./stop.sh
+    python digest.py    # today's report
+
+DDUET is PASSIVE: we can only reply to a `dduet_session_uid` seen on inbound — we can
+never start a conversation. That's why escalation goes to the owner as a DESKTOP
+notification, not as a message: there is no outbound channel to the owner.
+"""
+
+import asyncio
+import json
+import logging
+import os
+import sys
+import pathlib
+from datetime import datetime
+
+from dotenv import load_dotenv
+
+from agentduet import (
+    CallAudioConfig,
+    IncomingMessage,
+    InboundCallMode,
+    TriggerConditionsBuilder,
+    Network,
+    SendDduetMessage,
+    Session,
+    SessionManager,
+    SessionManagerConfig,
+    new_session_id,
+)
+
+from . import brain
+from . import people
+
+from . import paths
+from . import status
+
+HERE = pathlib.Path(__file__).parent
+RUN = paths.RUN
+LOG = RUN / "queries.jsonl"
+SESSIONS = RUN / "sessions.json"   # asker -> live dduet session (read by secretary_mcp)
+OUTBOX = RUN / "outbox.jsonl"      # owner replies queued by secretary_mcp.reply_to
+
+# Explicitly the INSTANCE file. A bare load_dotenv() searches the CWD and found the
+# install-dir .env left behind by the migration — and since load_dotenv never overrides an
+# already-set variable, that stale copy won every race against the real config. The daemon
+# then ran a model the owner had already replaced, reporting nothing wrong.
+load_dotenv(paths.ENV_FILE)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+logger = logging.getLogger("secretary")
+# The SDK's connect/inbound logs are DEBUG; without this a silent channel looks
+# identical to a working one with no traffic.
+logging.getLogger("agentduet.session_manager").setLevel(logging.DEBUG)
+logging.getLogger("agentduet.session_manager_connection").setLevel(logging.INFO)
+
+OWNER = os.getenv("OWNER_NAME", "the owner")
+
+#: How often to look for a connector the owner may have just added on the settings page. Short
+#: enough that saving one feels immediate; it is two os.getenv calls, so the cost is nothing.
+CONNECTOR_POLL_SECONDS = 3
+
+
+def _first_text(payload: dict) -> str:
+    """Pull the first text part out of a Nexus MessageContent (proto3-JSON)."""
+    for part in payload.get("parts", []):
+        if part.get("type") == "text":
+            return part.get("text", {}).get("body", "")
+    return ""
+
+
+def remember_session(asker: str, subscriber: str, uid: str) -> None:
+    """DDUET is passive — a reply needs a session_uid we saw on inbound. Persist it so
+    the owner can reply later via the MCP tool."""
+    RUN.mkdir(exist_ok=True)
+    data = json.loads(SESSIONS.read_text()) if SESSIONS.exists() else {}
+    data[asker] = {
+        "dduet_session_uid": uid,
+        "subscriber": subscriber,
+        "last_seen": datetime.now().isoformat(timespec="seconds"),
+    }
+    SESSIONS.write_text(json.dumps(data, indent=2))
+
+
+
+
+async def run_channel() -> None:
+    """One attempt at the DDUET channel. Raises if it cannot connect, so main() can retry."""
+    # Bound ONCE here, at the top. Kept a lazy import (it reaches the adapters), but it must be
+    # bound before first use: a `from . import voice` further down made `voice` local to this
+    # whole function, so the CallAudioConfig line above it raised UnboundLocalError.
+    from . import voice
+    # 24 kHz, NOT the SDK's 16 kHz default. The Qwen adapter declares
+    # output_audio_format="pcm24" and emits 24 kHz mono; negotiating 16 kHz meant every sample
+    # was played 1.5x too slowly with the pitch dropped about a fifth. Symptom on a real call:
+    # an agent that "speaks verrrry slowly" and sounds male even though the voice is female.
+    # If the voice model is ever changed, this has to match ITS output rate.
+    config = SessionManagerConfig.create(
+        api_key=os.getenv("AGENTDUET_API_KEY"),
+        connector_uuid=os.getenv("AGENTDUET_CONNECTOR_UUID"),
+        call_audio=CallAudioConfig(sample_rate=voice.CALL_SAMPLE_RATE),
+    )
+
+    async with SessionManager(config) as sm:
+        sessions: dict[str, Session] = {}
+
+        async def session_for(subscriber: str) -> Session:
+            if subscriber not in sessions:
+                sessions[subscriber] = await sm.open_session(new_session_id(), subscriber)
+            return sessions[subscriber]
+
+        @sm.on_incoming_message
+        async def on_message(msg: IncomingMessage):
+            if msg.network is not Network.DDUET:
+                return
+
+            asker = msg.participant.value          # verified identity (email)
+            question = _first_text(msg.payload)
+            logger.info("← %s: %s", asker, question)
+            remember_session(asker, msg.subscriber, msg.dduet_session_uid)
+            # NOT status.set_number(): on DDUET the subscriber is the CONNECTOR UUID, not a
+            # phone number (see the SDK's dduet_echo_bot — "open an ephemeral session for our
+            # subscriber (the connectorUuid)"). Storing it would have displayed
+            # bb27e3d4-… in the header as though it were the owner's number. A number exists
+            # only on an inbound CALL, where subscriber is the line the call runs on.
+
+            # OPEN QUESTION (asked in #AI-Product, 2026-07-28): DDUET makes the
+            # visitor's email mandatory, but it is not yet confirmed whether Nexus
+            # AUTHENTICATES it or merely collects it. Mandatory != verified, so we
+            # treat DDUET as unverified until that comes back. Flip this to the real
+            # per-message signal once the field is known.
+            network = msg.network.value if hasattr(msg.network, "value") else str(msg.network)
+            verified = people.default_verified(network)
+            result = await brain.handle_query(asker, question, network, verified=verified,
+                                              conversation=msg.dduet_session_uid or None)
+            reply, outcome = result["reply"], result["outcome"]
+            logger.info("→ [%s%s] %s", outcome,
+                        f" {result['reason']}" if result["reason"] else "", reply)
+
+            send = await (await session_for(msg.subscriber)).send_message(
+                SendDduetMessage.text(
+                    reply,
+                    dduet_session_uid=msg.dduet_session_uid,
+                    user_email=asker,
+                )
+            )
+            if not send.success:
+                logger.error("reply failed: %s (%s)", send.error_code, send.error_content)
+
+        async def drain_outbox() -> None:
+            """Send replies the owner queued through the MCP tool."""
+            while True:
+                await asyncio.sleep(3)
+                if not OUTBOX.exists() or OUTBOX.stat().st_size == 0:
+                    continue
+                lines = [l for l in OUTBOX.read_text().splitlines() if l.strip()]
+                OUTBOX.write_text("")          # claim the batch
+                stored = json.loads(SESSIONS.read_text()) if SESSIONS.exists() else {}
+                for line in lines:
+                    item = json.loads(line)
+                    s = stored.get(item["asker"])
+                    if not s:
+                        logger.error("owner reply dropped — no session for %s", item["asker"])
+                        continue
+                    result = await (await session_for(s["subscriber"])).send_message(
+                        SendDduetMessage.text(
+                            item["text"],
+                            dduet_session_uid=s["dduet_session_uid"],
+                            user_email=item["asker"],
+                        )
+                    )
+                    if result.success:
+                        logger.info("→ (from owner) %s: %s", item["asker"], item["text"])
+                        brain.record(item["asker"], "(owner reply)", "owner", "", item["text"])
+                    else:
+                        # Most likely the Nexus session expired — passivity means we
+                        # cannot re-open it. Surface it rather than failing silently.
+                        logger.error("owner reply failed for %s: %s (%s)",
+                                     item["asker"], result.error_code, result.error_content)
+
+        # DDUET inbound is gated by the connector's trigger conditions — the wss-edge
+        # plan notes it "reuses the existing inboundMessage/outboundMessage gates
+        # (channel-agnostic)". These persist server-side, and the bank demo's VoiceAgent
+        # sets inbound_call=ALL on the same connector, which can clear them. So set
+        # them here every start rather than assuming an earlier run left them on.
+        # Voice registers a call handler on THIS client. VoiceAgent.serve() would open a
+        # second SessionManager on the same connector — the race the comment above describes,
+        # from the other side. One client, both handlers, one trigger config.
+        voice_on = voice.register(sm, OWNER)
+        status.set_voice(voice_on)
+
+        builder = (TriggerConditionsBuilder()
+                   .inbound_message(True)
+                   .outbound_message(True))
+        if voice_on:
+            builder = builder.inbound_call(InboundCallMode.ALL)
+        await sm.setup_trigger_conditions(builder.build())
+        logger.info("trigger conditions set: inbound_message=True, outbound_message=True, "
+                    "inbound_call=%s", "ALL" if voice_on else "off")
+
+        asyncio.create_task(drain_outbox())
+
+        logger.info("DDUET channel connected — inbound is live")
+        status.set_channel("live")
+        try:
+            # install_signal_handlers=False is REQUIRED, not a preference: shell.py runs this
+            # coroutine on a worker thread so pywebview can own the main one, and the SDK's
+            # handler install calls set_wakeup_fd, which raises RuntimeError off the main
+            # thread. The SDK means to degrade gracefully there but only catches
+            # (NotImplementedError, AttributeError, ValueError), so the RuntimeError escaped
+            # and killed the channel one line after "inbound is live" — a connector that
+            # connected, set its triggers, then dropped every 5s forever.
+            # We do not want them regardless: `cli stop` owns shutdown and escalates to
+            # SIGKILL itself.
+            await sm.run_forever(install_signal_handlers=False)
+        finally:
+            # run_forever returning is a disconnect, not a shutdown: main() reconnects.
+            status.set_channel("retrying", "disconnected")
+
+
+def connector_ready() -> bool:
+    """Read the ENVIRONMENT every time, not a value captured at startup — the settings page
+    writes the credential into this process as well as to .env."""
+    return bool(os.getenv("AGENTDUET_API_KEY") and os.getenv("AGENTDUET_CONNECTOR_UUID"))
+
+
+async def main() -> None:
+    """Owner site first, channel second — and never let the channel take the site down.
+
+    Everything used to live inside `async with SessionManager(...)`, so an unreachable
+    endpoint killed the whole process. After a laptop restart with the SD-WAN not yet up,
+    that meant the owner could not see their OWN queue because a network they were not on
+    was down. The queue, the history and the escalations are all local; none of them need
+    the channel. Only inbound and outbound messages do.
+
+    So the site binds unconditionally, and the channel is retried behind it with backoff.
+    Reconnecting when the VPN returns then costs nothing.
+    """
+    # Localhost-only + token; see web.py.
+    try:
+        from . import web
+        logger.info("Owner site: %s", await web.start())
+    except Exception as exc:
+        # Fatal: the site is the owner's primary surface. Continuing would report a healthy
+        # daemon with no way for the owner to see anything.
+        logger.error("Owner site FAILED to start: %s", exc)
+        logger.error("This is the owner's primary surface — stopping. "
+                     "Nothing else can be reached without it.")
+        raise SystemExit(1)
+
+    logger.info("Secretary up for %s", OWNER)
+
+    # SECRETARY_CHANNEL=0 runs the owner site WITHOUT connecting to DDUET. One client per
+    # connector is a hard constraint — a second one makes call.answer() race — so anything that
+    # needs the local decision path but not real inbound traffic (the behaviour suite, offline
+    # work on the site) must be able to skip the channel rather than fight the live daemon.
+    if os.getenv("SECRETARY_CHANNEL", "1") == "0":
+        logger.info("DDUET channel disabled (SECRETARY_CHANNEL=0) — site only")
+        status.set_channel("off", "SECRETARY_CHANNEL=0")
+        while True:
+            await asyncio.sleep(3600)
+
+    # No connector configured — the ordinary state on a machine that has just installed this.
+    # Entering the retry loop would fill the log with connection failures for a channel the
+    # owner has not been given yet, which reads as broken rather than as not-yet-set-up.
+    # No connector yet — the ordinary state of a fresh install. Entering the retry loop would
+    # fill the log with failures for a channel the owner has not been given yet, which reads as
+    # broken rather than as not-yet-set-up.
+    #
+    # But WAIT for one rather than sleeping forever. The owner adds a connector on the settings
+    # page minutes after first launch, and `save_connector` puts it in os.environ of THIS
+    # process — so the only thing that made a restart necessary was this branch never looking
+    # again. The symptom was a chip reading "not connected" while the credential sat there
+    # correct, advising the owner to check a network that was fine.
+    if not connector_ready():
+        logger.info("No DDUET connector configured (AGENTDUET_API_KEY / "
+                    "AGENTDUET_CONNECTOR_UUID) — running the owner's view only. "
+                    "Everything local works; inbound messages need a connector. "
+                    "Waiting for one to be added.")
+        status.set_channel("unset")
+        while not connector_ready():
+            await asyncio.sleep(CONNECTOR_POLL_SECONDS)
+        logger.info("A connector was added — connecting without a restart.")
+
+    status.load_number(SESSIONS)      # so a restart shows the number before new traffic
+    delay = 5
+    while True:
+        try:
+            status.set_channel("connecting")
+            await run_channel()
+        except Exception as exc:
+            logger.warning("DDUET channel unavailable (%s: %s) — owner site stays up, "
+                           "retrying in %ds", type(exc).__name__, exc, delay)
+            status.set_channel("retrying", f"{type(exc).__name__}: {str(exc)[:120]}")
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 120)      # back off, but keep trying: the VPN may return
+        else:
+            delay = 5                        # a clean exit from run_forever: reconnect promptly
+
+
+def run() -> int:
+    """Synchronous entry point, for `dduet-desktop run`."""
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("stopped")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(run())

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings</title>
+<style>
+  :root{
+    --ink:#101418; --paper:#f6f7f8; --surface:#fff; --line:#e2e6ea; --line2:#eef1f4;
+    --muted:#5b6675; --faint:#8b96a3;
+    --accent:#00b2ff; --accent-ink:#0077b0; --coral:#f0523d;
+    --good:#1a7f5a; --good-bg:#e8f5ef;
+    --sans:"SF Pro Display",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--ink:#eef3f7;--paper:#0f1419;--surface:#161d24;--line:#242e38;--line2:#1c242c;
+      --muted:#93a6b5;--faint:#6b7c8a;--accent-ink:#4cc7ff;--good:#4ade9e;--good-bg:#13322a;}
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:var(--sans);background:var(--paper);color:var(--ink);
+    -webkit-font-smoothing:antialiased;line-height:1.5;}
+  .wrap{max-width:44rem;margin:0 auto;padding:2rem 1.3rem 5rem;}
+  header{display:flex;align-items:baseline;gap:.8rem;margin-bottom:.3rem;}
+  h1{font-size:1.5rem;font-weight:780;letter-spacing:-.02em;}
+  a.back{margin-left:auto;font-family:var(--mono);font-size:.68rem;color:var(--accent-ink);
+    text-decoration:none;border-bottom:1px solid var(--accent);}
+  .lede{color:var(--muted);margin-bottom:1.6rem;}
+
+  section{background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    padding:1.2rem 1.3rem 1.35rem;margin-bottom:1rem;}
+  h2{font-size:1.05rem;font-weight:720;}
+  .hint{color:var(--muted);font-size:.88rem;margin-top:.35rem;}
+  label{display:block;margin-top:1rem;font-size:.87rem;font-weight:650;}
+  label .sm{display:block;font-weight:400;color:var(--muted);font-size:.82rem;margin-top:.15rem;}
+  input,textarea{width:100%;font:inherit;font-size:.93rem;margin-top:.35rem;padding:.5rem .65rem;
+    border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink);}
+  textarea{min-height:3.4rem;resize:vertical;}
+  .row{display:flex;gap:.6rem;} .row>*{flex:1;}
+  button{font:inherit;font-size:.9rem;font-weight:700;padding:.55rem 1.05rem;border:0;
+    border-radius:9px;background:var(--accent-ink);color:#fff;cursor:pointer;margin-top:1.1rem;}
+  button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);}
+  button:disabled{opacity:.45;cursor:default;}
+  .msg{margin-top:.9rem;padding:.6rem .8rem;border-radius:9px;font-size:.88rem;
+    white-space:pre-wrap;}
+  .msg.ok{background:var(--good-bg);color:var(--good);border:1px solid var(--good);}
+  .msg.no{background:#fff1ee;color:#b3261e;border:1px solid var(--coral);}
+  @media (prefers-color-scheme:dark){ .msg.no{background:#2a1512;color:#ffb4a8;} }
+  .state{font-family:var(--mono);font-size:.72rem;color:var(--faint);margin-top:.5rem;}
+  .spin{font-family:var(--mono);font-size:.76rem;color:var(--faint);margin-left:.7rem;}
+  .note{font-size:.84rem;color:var(--muted);margin-top:.9rem;}
+  .switch{display:flex;align-items:flex-start;gap:.65rem;margin-top:.9rem;cursor:pointer;}
+  .switch input{width:auto;flex:none;margin-top:.25rem;}
+  .switch span{font-size:.87rem;font-weight:650;}
+  .switch span .sm{display:block;font-weight:400;color:var(--muted);font-size:.82rem;
+    margin-top:.15rem;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Settings</h1>
+    <a class="back" id="back">&larr; back to the dashboard</a>
+  </header>
+  <p class="lede">Changed here, not by asking your assistant — it cannot take keys in chat.</p>
+
+  <!-- ---------------- who you are ---------------- -->
+  <section>
+    <h2>You</h2>
+    <p class="hint">The name it signs off with, and how it refers to you when writing to
+      someone else.</p>
+    <div class="row">
+      <label>Name<input id="name" autocomplete="off"></label>
+      <label>Pronoun
+        <span class="sm">blank = your name, never a guess</span>
+        <input id="pronoun" placeholder="she/her" autocomplete="off">
+      </label>
+    </div>
+    <label>Never discuss
+      <span class="sm">One per line. It refuses these however readable the source.</span>
+      <textarea id="never" placeholder="my fees&#10;my home address"></textarea>
+    </label>
+    <button id="saveYou">Save</button>
+    <div id="mYou"></div>
+  </section>
+
+  <!-- ---------------- the model ---------------- -->
+  <section>
+    <h2>Model</h2>
+    <p class="hint">The key is checked with the provider before it is saved, and stored only on
+      this machine.</p>
+    <div class="state" id="modelState">…</div>
+    <div class="row">
+      <label>Model<input id="model" placeholder="qwen3.6-flash" autocomplete="off"></label>
+      <label>API key<input id="key" type="password" placeholder="paste to replace" autocomplete="off"></label>
+    </div>
+    <button id="saveModel">Check and save</button><span class="spin" id="spModel"></span>
+    <div id="mModel"></div>
+  </section>
+
+  <!-- ---------------- the B3 connector ---------------- -->
+  <section id="connector">
+    <h2>B3 connector</h2>
+    <p class="hint">Gives this install its phone number and message channel. Without it
+      everything local still works — it just never hears from anyone.</p>
+    <div class="state" id="connState">…</div>
+    <label>API key<input id="cKey" type="password" placeholder="AGENTDUET_API_KEY" autocomplete="off"></label>
+    <label>Connector uuid<input id="cUuid" placeholder="00000000-0000-0000-0000-000000000000" autocomplete="off"></label>
+    <button id="saveConn">Check and save</button><span class="spin" id="spConn"></span>
+    <div id="mConn"></div>
+    <p class="note">One client per connector: if another copy of this is running against the same
+      connector, they will fight over inbound routing.</p>
+  </section>
+
+  <!-- ---------------- the interview ---------------- -->
+  <section>
+    <h2>What you do</h2>
+    <p class="hint">Written as prose the agent answers from, so it is edited by conversation
+      rather than in a box here.</p>
+    <div class="state" id="doesState">…</div>
+    <button class="ghost" id="rerun">Go through the questions again</button>
+    <p class="note">It reconciles rather than duplicating — it corrects what changed and leaves
+      the rest, including anything learned since.</p>
+  </section>
+
+  <!-- ---------------- diagnostics ---------------- -->
+  <section>
+    <h2>Diagnostics</h2>
+    <p class="hint">Off by default. The dashboard is meant to show what was asked, what was said
+      and what needs you — reason codes and ids are ours, not yours.</p>
+    <label class="switch">
+      <input type="checkbox" id="debug">
+      <span>Show the workings
+        <span class="sm">Reason codes, identity ids, source filenames, search traces, the tools
+          each answer used, and the instructions sent on your behalf during setup.</span>
+      </span>
+    </label>
+    <p class="note">Kept in this browser only, not in your instance — it changes nothing about
+      how the agent behaves.</p>
+  </section>
+</div>
+
+<script>
+  const T = new URLSearchParams(location.search).get('t') || '';
+  const $ = id => document.getElementById(id);
+  const esc = s => (s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+  const say = (el, ok, text) =>
+    $(el).innerHTML = `<div class="msg ${ok ? 'ok' : 'no'}">${esc(text)}</div>`;
+  async function post(path, body){
+    const r = await fetch(`${path}?t=${T}`, {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    return r.json();
+  }
+
+  $('back').href = '/?t=' + T;
+
+  // Same localStorage key the dashboard reads on load, so returning to it applies the change.
+  $('debug').checked = localStorage.getItem('secretary.debug') === '1';
+  $('debug').onchange = () =>
+    localStorage.setItem('secretary.debug', $('debug').checked ? '1' : '0');
+  $('rerun').onclick = () => { location.href = '/setup?t=' + T; };
+
+  (async () => {
+    const [cr, sr] = await Promise.all([
+      fetch(`/api/setup/current?t=${T}`), fetch(`/api/state?t=${T}`)]);
+    const cur = cr.ok ? await cr.json() : {};
+    $('name').value = cur.name || '';
+    $('pronoun').value = cur.pronoun || '';
+    $('never').value = cur.never || '';
+    $('doesState').textContent = cur.does
+      ? cur.does.split('\n').length + ' fact(s) recorded: ' + cur.does.split('\n')[0]
+      : 'nothing recorded yet';
+    $('modelState').textContent = cur.model || 'unknown';
+    $('model').placeholder = cur.model_name || 'qwen3.6-flash';
+    $('connState').textContent = cur.connector || 'unknown';
+    if (cur.connector_uuid) $('cUuid').value = cur.connector_uuid;
+  })();
+
+  $('saveYou').onclick = async () => {
+    $('saveYou').disabled = true;
+    const out = [];
+    for (const [field, el] of [['name','name'], ['pronoun','pronoun'], ['never_say','never']]) {
+      const d = await post('/api/setup/setting', {field, value: $(el).value});
+      out.push(d.message);
+    }
+    $('saveYou').disabled = false;
+    say('mYou', true, out.join('\n'));
+  };
+
+  $('saveModel').onclick = async () => {
+    const key = $('key').value.trim();
+    if (!key) { say('mModel', false, 'Paste a key to change the model.'); return; }
+    $('saveModel').disabled = true; $('spModel').textContent = 'checking with the provider…';
+    const d = await post('/api/setup/model', {model: $('model').value.trim(), key});
+    $('saveModel').disabled = false; $('spModel').textContent = '';
+    say('mModel', d.ok, d.message);
+    if (d.ok) { $('key').value = ''; $('modelState').textContent = 'just changed'; }
+  };
+
+  $('saveConn').onclick = async () => {
+    const key = $('cKey').value.trim(), uuid = $('cUuid').value.trim();
+    if (!key || !uuid) { say('mConn', false, 'Both the API key and the uuid are needed.'); return; }
+    $('saveConn').disabled = true; $('spConn').textContent = 'connecting to check…';
+    const d = await post('/api/setup/connector', {key, uuid});
+    $('saveConn').disabled = false; $('spConn').textContent = '';
+    say('mConn', d.ok, d.message);
+    if (d.ok) $('cKey').value = '';
+  };
+</script>
+</body>
+</html>

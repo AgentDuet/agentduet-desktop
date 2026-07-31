@@ -1,0 +1,65 @@
+# Build the desktop binaries on the OS they run on. PyInstaller cannot cross-compile, so a Mac
+# build needs a Mac — that is the whole reason this workflow exists rather than a local script.
+#
+# Triggered by hand (or by a tag) rather than on every push: a build takes minutes and produces
+# a 40 MB+ artifact nobody needs per commit.
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false          # a Windows failure must not hide a working Mac build
+      matrix:
+        include:
+          - os: macos-14        # Apple silicon
+            name: macos-arm64
+          - os: macos-13        # Intel — a colleague on an older Mac cannot run an arm64 build
+            name: macos-x86_64
+          - os: ubuntu-latest
+            name: linux-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"      # the floor the SDK requires
+
+      # The SDK is not on PyPI, so it cannot be a normal dependency. It is checked out from the
+      # branch that has DDUET support and built here. Replace this with a plain `pip install
+      # agentduet` the day it is published — that is the open release blocker.
+      - name: Build the SDK from source
+        env:
+          GH_TOKEN: ${{ secrets.SDK_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          git clone --depth 1 --branch feature/dduet-channel \
+            https://x-access-token:${GH_TOKEN}@github.com/B3Networks/wss-sdk-python.git sdk
+          pip install build
+          python -m build --wheel --outdir wheels sdk
+
+      - name: Install
+        run: |
+          pip install wheels/*.whl
+          pip install . pyinstaller
+
+      - name: Build the binary
+        run: pyinstaller --noconfirm --distpath dist-bin packaging/dduet-desktop.spec
+
+      # Proves the binary RUNS, not merely that it linked. PyInstaller happily produces a
+      # binary that dies at first import because a lazy import was never collected — that has
+      # bitten this project, so a build that cannot answer `status` is a failed build.
+      - name: Smoke test
+        env:
+          DDUET_HOME: ${{ runner.temp }}/dduet-smoke
+        run: ./dist-bin/dduet-desktop status
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dduet-desktop-${{ matrix.name }}
+          path: dist-bin/dduet-desktop
+          if-no-files-found: error
