@@ -32,23 +32,15 @@ jobs:
         with:
           python-version: "3.12"      # the floor the SDK requires
 
-      # The SDK is not on PyPI, so it cannot be a normal dependency. It is built from the
-      # branch that has DDUET support. No PAT is needed: wss-sdk-python is in the SAME org and
-      # its Actions access is set to "accessible from repositories in the organization", so
-      # this repo's own GITHUB_TOKEN can read it. Replace all of this with `pip install
-      # agentduet` the day it is published — that is the open release blocker.
-      - name: Build the SDK from source
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git clone --depth 1 --branch feature/dduet-channel \
-            https://x-access-token:${GH_TOKEN}@github.com/B3Networks/wss-sdk-python.git sdk
-          pip install build
-          python -m build --wheel --outdir wheels sdk
+      # The SDK is not on PyPI and its repo is private. A private repo's Actions "access"
+      # setting only permits using it as a source of ACTIONS and REUSABLE WORKFLOWS — it does
+      # not give GITHUB_TOKEN git-clone rights, which was verified the hard way ("Repository
+      # not found"). Cloning would need a PAT or deploy key, so the wheel is committed under
+      # vendor/ instead: no secret to create, rotate or leak. See vendor/README.md.
 
       - name: Install
         run: |
-          pip install wheels/*.whl
+          pip install vendor/*.whl
           # Voice. A different org (AgentDuet) but PUBLIC, so no credentials. Without this the
           # binary starts fine and silently cannot answer calls: voice.available() catches the
           # ImportError and reports "voice not enabled", which reads as a config problem.
