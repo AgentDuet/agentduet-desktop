@@ -517,6 +517,8 @@
     if ($('perm')) $('perm').innerHTML = h;
     renderChannel(st.channel || {});
     renderQuiet(st);
+    // Server-side, so it is the same in the browser and in the native window.
+    document.body.classList.toggle('debug', !!(st.ui || {}).debug);
   }
 
   // Nothing has EVER come in — not "nothing today". Aged-out threads still count as traffic,
@@ -599,7 +601,6 @@
   // Remembered across reloads: someone debugging stays in debug, and an owner who never
   // turns it on never sees a reason code. The switch itself lives in settings — it is a
   // preference, and it was sitting in the People heading where it read like a filter.
-  if (store.get('secretary.debug') === '1') document.body.classList.add('debug');
   if (store.get('secretary.quiet') === '1') document.body.classList.add('quiet');
 
 
