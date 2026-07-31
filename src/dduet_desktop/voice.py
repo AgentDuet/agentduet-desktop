@@ -303,9 +303,16 @@ def register(sm, owner_name: str) -> bool:
         who = identity.resolve(caller, verified)[0]
         logger.info("incoming call from %s (verified=%s)", who, verified)
 
+        # The pronoun is CONFIGURED, never inferred — same rule as the text side, which shipped
+        # once with no pronoun slot at all and called a "she/her" owner "they".
+        from . import owner as owner_settings
+        pronoun = owner_settings.pronoun()
         instruction = (
             f"You are the personal assistant for {owner_name}, answering their phone.\n"
-            f"Speak briefly — one or two sentences, as a person would on a call.\n"
+            f"Say the name \"{owner_name}\" exactly as written. It is a real name, NOT a "
+            f"placeholder to fill in — never say anything in square brackets.\n"
+            + (f"Refer to {owner_name} as {pronoun}.\n" if pronoun else "")
+            + f"Speak briefly — one or two sentences, as a person would on a call.\n"
             f"Answer ONLY from search_knowledge. If it finds nothing relevant, or the caller "
             f"asks you to agree a price, a discount, a meeting or anything binding, call "
             f"escalate and say what it gives you. Never invent a fact about {owner_name}, "

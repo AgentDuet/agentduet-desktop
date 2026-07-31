@@ -69,7 +69,21 @@ logger = logging.getLogger("secretary")
 logging.getLogger("agentduet.session_manager").setLevel(logging.DEBUG)
 logging.getLogger("agentduet.session_manager_connection").setLevel(logging.INFO)
 
-OWNER = os.getenv("OWNER_NAME", "the owner")
+def owner_name() -> str:
+    """Who the agent says it works for.
+
+    Resolved from settings.md, NOT from a module-level default. It used to be
+    `os.getenv("OWNER_NAME", "the owner")`, and with the variable unset the voice prompt read
+    "You are the personal assistant for the owner" — which the model treated as a TEMPLATE and
+    answered calls with "Hello, this is [Owner's Name]'s assistant." The configured name was
+    sitting in settings.md the whole time, written by the setup interview.
+
+    Called per use rather than captured at import, so a name changed in setup applies to the
+    next call instead of the next restart. The env var still wins, for tests and for overriding
+    an instance without editing it.
+    """
+    from . import owner
+    return os.getenv("OWNER_NAME") or owner.name()
 
 #: How often to look for a connector the owner may have just added on the settings page. Short
 #: enough that saving one feels immediate; it is two os.getenv calls, so the cost is nothing.
@@ -201,7 +215,7 @@ async def run_channel() -> None:
         # Voice registers a call handler on THIS client. VoiceAgent.serve() would open a
         # second SessionManager on the same connector — the race the comment above describes,
         # from the other side. One client, both handlers, one trigger config.
-        voice_on = voice.register(sm, OWNER)
+        voice_on = voice.register(sm, owner_name())
         status.set_voice(voice_on)
 
         builder = (TriggerConditionsBuilder()
@@ -263,7 +277,7 @@ async def main() -> None:
                      "Nothing else can be reached without it.")
         raise SystemExit(1)
 
-    logger.info("Secretary up for %s", OWNER)
+    logger.info("Secretary up for %s", owner_name())
 
     # SECRETARY_CHANNEL=0 runs the owner site WITHOUT connecting to DDUET. One client per
     # connector is a hard constraint — a second one makes call.answer() race — so anything that
