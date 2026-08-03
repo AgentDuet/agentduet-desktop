@@ -333,6 +333,17 @@ def forget() -> None:
     _cached.clear()
 
 
+def configured(model: str = "") -> bool:
+    """Is a credential present for the configured model? NO network call.
+
+    Distinct from verify(), which really calls the model — right for `init`, which must not save
+    a key it has not proven, and wrong for anything asked repeatedly. Status checks run whenever
+    an assistant is curious; spending a token and a round-trip on each one is a cost nobody
+    agreed to.
+    """
+    return client(model or os.getenv("SECRETARY_MODEL") or "gemini-3.1-flash") is not None
+
+
 def verify(model: str = "") -> tuple[bool, str]:
     """Actually call the model once. Returns (ok, a sentence the owner can act on.)
 

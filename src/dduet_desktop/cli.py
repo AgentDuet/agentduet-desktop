@@ -72,27 +72,12 @@ def cmd_run(args) -> int:
 
 
 def cmd_stop(args) -> int:
-    pid = _running_pid()
-    if pid is None:
-        print("  not running")
-        PIDFILE.unlink(missing_ok=True)
-        return 0
-    os.kill(pid, signal.SIGTERM)
-    for _ in range(20):
-        if not _alive(pid):
-            break
-        time.sleep(0.5)
-    if _alive(pid):
-        # Verified, not assumed: SIGTERM is caught and can hang.
-        print(f"  pid {pid} ignored SIGTERM — sending SIGKILL")
-        os.kill(pid, signal.SIGKILL)
-        time.sleep(1)
-    if _alive(pid):
-        print(f"  STILL RUNNING: pid {pid}", file=sys.stderr)
-        return 1
-    PIDFILE.unlink(missing_ok=True)
-    print("  stopped")
-    return 0
+    """Delegates to service.py so the CLI and the mcp cannot disagree about what stopping means
+    — and so the Windows SIGKILL fix lands in both."""
+    from . import service
+    out = service.service_stop()
+    print("  " + out.replace("\n", "\n  "))
+    return 0 if out.startswith(("Stopped", "Not running")) else 1
 
 
 def cmd_status(args) -> int:
