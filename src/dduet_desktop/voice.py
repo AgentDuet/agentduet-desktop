@@ -340,35 +340,14 @@ def register(sm, owner_name: str) -> bool:
         who = identity.resolve(caller, verified)[0]
         logger.info("incoming call from %s (verified=%s)", who, verified)
 
-        # The pronoun is CONFIGURED, never inferred — same rule as the text side, which shipped
-        # once with no pronoun slot at all and called a "she/her" owner "they".
-        from . import owner as owner_settings
-        pronoun = owner_settings.pronoun()
-        instruction = (
-            f"You are the personal assistant for {owner_name}, answering their phone.\n"
-            f"Say the name \"{owner_name}\" exactly as written. It is a real name, NOT a "
-            f"placeholder to fill in — never say anything in square brackets.\n"
-            + (f"Refer to {owner_name} as {pronoun}.\n" if pronoun else "")
-            + f"Speak briefly — one or two sentences, as a person would on a call.\n"
-            f"Answer ONLY from search_knowledge. If it finds nothing relevant, or the caller "
-            f"asks you to agree a price, a discount, a meeting or anything binding, call "
-            f"escalate and say what it gives you. Never invent a fact about {owner_name}, "
-            f"and never agree to anything on their behalf.\n"
-            f"If the caller wants to speak to a person, use request_callback — "
-            f"{owner_name} will ring them back. Only if they insist on being connected right "
-            f"now, try transfer_to_owner. If either comes back unavailable, take a message "
-            f"instead, and never promise a callback you were not given."
-        )
-        # sample_rate is the rate of the CALL, in both directions — the adapter uses it to
-        # decide whether to resample the caller's audio down to Qwen's 16 kHz input. It must
-        # equal what secretary_agent negotiated in CallAudioConfig, or the mismatch breaks
-        # BOTH directions at once: the agent's replies play slow and low, and the caller's
-        # speech is resampled to nonsense so the ASR emits no transcript. The visible effect
-        # of the second one is an agent that says its greeting and then never responds, and a
-        # call that records nothing because a turn needs both sides.
-        model = QwenVoice(instruction=instruction, tools=_tool_declarations(),
-                          voice=VOICE, sample_rate=CALL_SAMPLE_RATE,
-                          **({"model": VOICE_MODEL} if VOICE_MODEL else {}))
+        # The instruction lives in prompts/asker-voice.md, not here. On voice it IS the
+        # disclosure control — nothing inspects a sentence before it is spoken — so it is a
+        # reviewable file, and render() refuses blanks and placeholder-shaped values. That is
+        # the class of bug that answered a real call as "[Owner's Name]'s assistant".
+        from . import owner as owner_settings, prompts
+        instruction = prompts.render("asker-voice", owner_name=owner_name,
+                                     pronoun=owner_settings.pronoun_raw())
+
         # Per call, so the handlers can close over who is calling.
         live: dict = {}
         va_recorder = _make_recorder(who, verified, convo)

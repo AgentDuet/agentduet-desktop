@@ -69,6 +69,33 @@ def eq(name: str, got, want) -> None:
 # --------------------------------------------------------------------------
 # schedule — the booking primitive
 # --------------------------------------------------------------------------
+def test_prompts() -> None:
+    """Prompt templates are checked OFFLINE, because on voice the prompt is the control and a
+    hole in it is only otherwise discovered by a stranger on the phone."""
+    print("\n  -- prompts: templates render, and refuse holes --")
+    from dduet_desktop import prompts
+
+    problems = prompts.check_all()
+    ok("every template declares exactly the parameters it uses", not problems, "; ".join(problems))
+
+    text = prompts.render("asker-voice", owner_name="Stanley", pronoun="he/him")
+    ok("the owner's name reaches the voice instruction", "Stanley" in text)
+    ok("so does the configured pronoun", "he/him" in text)
+
+    # The pronoun line must VANISH rather than render half-written: "Refer to X as ." is worse
+    # than saying nothing, and an unset pronoun is the normal case.
+    bare = prompts.render("asker-voice", owner_name="Stanley", pronoun="")
+    ok("an unset pronoun removes its line entirely", "Refer to" not in bare, bare[:120])
+
+    # The value class that actually shipped: a call answered as "[Owner's Name]'s assistant".
+    for bad in ("", "   ", "[Owner's Name]", "TODO"):
+        try:
+            prompts.render("asker-voice", owner_name=bad)
+            ok(f"refused owner_name={bad!r}", False, "rendered anyway")
+        except prompts.PromptError:
+            ok(f"refused owner_name={bad!r}", True)
+
+
 def test_schedule() -> None:
     print("\n  -- schedule: conflicts and hours --")
     d = lambda s: datetime.fromisoformat(f"2026-08-01T{s}")
@@ -456,6 +483,7 @@ def test_knowledge_writes() -> None:
 
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
+    test_prompts()
     test_schedule()
     test_capabilities()
     test_capability_disclosure()
