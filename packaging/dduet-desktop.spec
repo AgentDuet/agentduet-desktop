@@ -20,7 +20,11 @@ from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
-datas = collect_data_files("dduet_desktop", includes=["*.html", "templates/**/*", "examples/**/*"])
+datas = collect_data_files("dduet_desktop",
+                           includes=["*.html", "templates/**/*", "examples/**/*",
+                                     # Prompts are DATA. Without this the binary builds
+                                     # clean and voice dies at render time on a real call.
+                                     "prompts/**/*"])
 
 hiddenimports = [
     # OUR OWN modules, all of them. Several are imported lazily inside functions (`web` from the

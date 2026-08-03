@@ -31,4 +31,4 @@ where = ["src"]
 
 # Templates, examples and the served pages are DATA, not importable code.
 [tool.setuptools.package-data]
-dduet_desktop = ["*.html", "templates/**/*", "examples/**/*"]
+dduet_desktop = ["*.html", "templates/**/*", "examples/**/*", "prompts/**/*"]
