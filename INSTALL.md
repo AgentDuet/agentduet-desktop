@@ -51,6 +51,18 @@ applications menu and available as `dduet-desktop` in a terminal.
 
 ---
 
+## Did the update arrive?
+
+If you are given a new build, check it took effect before testing anything:
+
+```bash
+dduet-desktop --version
+```
+
+If the code in brackets has not changed, you are still running the old one. On Linux the likely
+cause is that you replaced the downloaded file but the installed copy is what is on your PATH —
+run the new file directly once and let step 1 install it again.
+
 ## Setting it up
 
 Four steps in the browser. Two of them are credentials, which is why they are here and not in a
@@ -74,9 +86,14 @@ you do, what the secretary is allowed to act on. That part is a conversation, no
 ## Check it is working
 
 ```bash
+dduet-desktop --version   # e.g. 0.1.0a2 (82094ff) — binary
 dduet-desktop status      # what is running, and what this build can do
-dduet-desktop --version   # quote this in any bug report
 ```
+
+**Always quote `--version` when reporting anything.** The version alone is not enough — several
+different builds carry the same `0.1.0a2`, so the short code after it is what identifies yours.
+`+dirty` means it was built from an uncommitted tree, which for a build you were given should
+not happen; if you see it, say so.
 
 Or ask your assistant *"is my secretary running?"* — it has tools for starting and stopping it.
 
@@ -105,7 +122,7 @@ Please don't report these — they are on the list.
 
 Send Stanley:
 
-1. `dduet-desktop --version`
+1. `dduet-desktop --version` — **the code in brackets is the part that matters**
 2. `dduet-desktop status`
 3. `~/.dduet/run/daemon.log`
 
