@@ -160,9 +160,26 @@
     <div id="mDone"></div>
   </section>
 
+  <!-- ---------------- LEAVING ---------------- -->
+  <!-- Reachable from every step, on purpose. Until this existed the only way out of this page
+       was to close the browser, which is the worst one: the process keeps running, nothing on
+       screen says so, and the url that reaches it carries a per-machine token — so a closed tab
+       is a lost tab. -->
+  <p class="hint" id="cancelWhat" style="margin-top:1.7rem">…</p>
+  <button class="ghost" id="doCancel">Cancel — stop this now</button>
+  <div id="mCancel"></div>
+
 </div>
 
 <script>
+  // Handlers are assigned as this script runs, so ONE early throw silently unwires every button
+  // below it — the failure that took out the quit button and a form's submit handler in
+  // web.html. There is no console to look at in a webview, so errors are reported to a path
+  // that deliberately does not exist: the 404 lands in the access log, which is daemon.log.
+  window.onerror = function (m, src, line, col) {
+    try { new Image().src = '/__jserr?m=' + encodeURIComponent(m) + '&line=' + line; } catch (e) {}
+  };
+
   const T = new URLSearchParams(location.search).get('t') || '';
   const $ = id => document.getElementById(id);
   const esc = s => (s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
@@ -285,6 +302,48 @@
     const d = await post('/api/handover', {});
     say('mDone', d.ok, d.message);
     if (d.ok) $('hostState').textContent = 'running in the background — you can close this page';
+  };
+
+  // ---- leaving without finishing -------------------------------------------------------
+  // Reuses /api/quit — the same stop the owner's view uses, which answers first and then exits
+  // with os._exit, so the page learns what happened instead of seeing a dropped connection.
+  //
+  // NOTHING IS ROLLED BACK. An installed binary is inert until someone runs it, a registered
+  // assistant points at a path that still works, and a saved credential is what the owner came
+  // to save. Undoing those silently would be the greater surprise, so the text says what stays.
+  //
+  // The same page is reachable on a CONFIGURED instance, where this process IS the secretary and
+  // stopping it takes it off the air. Not hidden there — a page whose only exit is closing the
+  // tab is the defect being fixed — so the consequence is read from the channel state and said
+  // plainly, before and after.
+  let onAir = false;
+  fetch(`/api/state?t=${T}`).then(r => r.json()).then(st => {
+    const c = (st && st.channel) || {};
+    onAir = ['live', 'connecting', 'retrying'].indexOf(c.channel) >= 0;
+    $('cancelWhat').textContent = onAir
+      ? 'This process is your secretary and it is on the air. Cancelling stops it answering '
+        + 'until you start it again.'
+      : 'Nobody can reach you yet — the channel stays closed until setup is finished — so this '
+        + 'only stops the setup, and keeps whatever you have already saved.';
+  }).catch(() => { $('cancelWhat').textContent = ''; });
+
+  $('doCancel').onclick = async () => {
+    const warn = onAir
+      ? 'Stop the secretary?\n\nIt is on the air now. It will stop answering until you start it '
+        + 'again.'
+      : 'Stop setup?\n\nNothing is answering yet, so nothing goes off the air.';
+    if (!confirm(warn + '\n\nWhat you have already done stays done: the install, any key you '
+                 + 'saved, and any assistant you registered.')) return;
+    $('doCancel').disabled = true;
+    try { await post('/api/quit', {}); } catch (e) {}
+    document.body.innerHTML =
+      '<div style="font-family:var(--mono);font-size:.9rem;padding:2.5rem;color:var(--muted);'
+      + 'max-width:44rem;line-height:1.7">Stopped.<br><br>'
+      + (onAir ? 'Nobody outside can reach your secretary until you start it again.<br><br>'
+               : 'Setup was not finished, so nobody outside can reach you yet.<br><br>')
+      + 'Kept: the install, any key you saved, and any assistant you registered.<br>'
+      + 'Start again from the app icon, or <code>dduet-desktop</code> in a terminal '
+      + '(<code>dduet-desktop status</code> shows what is configured).</div>';
   };
 
   $('doConnect').onclick = async () => {
