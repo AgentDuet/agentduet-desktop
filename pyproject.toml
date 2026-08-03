@@ -11,6 +11,7 @@ dependencies = [
   "agentduet>=1.0.0b7",      # the DDUET channel
   "aiohttp>=3.9",            # the local owner site
   "python-dotenv>=1.0",      # reads $DDUET_HOME/.env
+  "pyyaml>=6.0",           # writing Goose's config.yaml — YAML needs a real parser
   "mcp>=1.0",                # the owner surface, for whatever AI app they already use
 ]
 
