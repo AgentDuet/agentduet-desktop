@@ -20,6 +20,7 @@ nothing. And nothing here declares a capability the owner did not ask for: autho
 thing an interview must not be helpful about.
 """
 
+import asyncio
 import os
 import sys
 
@@ -141,6 +142,46 @@ def attach(interactive: bool = True) -> bool:
     return not out.lower().startswith(("could not", "that key"))
 
 
+def connect(interactive: bool = True) -> bool:
+    """Attach the B3 connector. Returns True if one is configured.
+
+    HERE, NOT IN THE MCP, AND NOT IN CHAT. Two secrets go in, and handing a secret to an
+    assistant means typing it into a chat box — which sends it to the model provider and writes
+    it to run/owner_chat.json in plaintext. `save_connector` is deliberately outside
+    OWNER_TOOLS for that reason, so a terminal is the only safe place left.
+
+    Skippable, and saying so matters: everything local works without it. The owner just never
+    hears from anyone, which looks identical to nobody having called.
+    """
+    from . import connector
+    if connector.configured():
+        print(f"  connector: {os.getenv(connector.UUID)}")
+        return True
+    if not interactive:
+        return False
+
+    print("\n  A B3 connector gives this install its phone number and message channel.")
+    print("  Without one everything local still works — it just never hears from anyone.")
+    print("  Ask B3 for your OWN connector: only one machine may hold a connector at a time,")
+    print("  and a second one fights the first for the same number.")
+    uuid_in = input("\n  Connector uuid (blank to skip)\n  > ").strip()
+    if not uuid_in:
+        print("  Skipped. Add one later with `dduet-desktop init` again.")
+        return False
+    key = input("  Connector API key\n  > ").strip()
+
+    print("  checking with B3…")
+    ok, why = asyncio.run(connector.verify(key, uuid_in))
+    if not ok:
+        # Same rule as the model key: a saved-but-wrong credential produces the worst failure —
+        # an install that looks configured and silently answers nothing.
+        print(f"  NOT saved — {why}")
+        return False
+    print(f"  {why}")
+    print("  " + tools.save_connector(key, uuid_in).replace("\n", "\n  "))
+    return True
+
+
 def interview() -> str:
     """Ask the owner the few things only they know, then let the model do the writing."""
     print("\n  A few questions. The agent will write the files itself.")
@@ -172,10 +213,15 @@ def main(interactive: bool = True) -> int:
         return 1
 
     print("\n  " + (interview() or "(no summary returned)").replace("\n", "\n  "))
+
+    # After the interview: the interview needs a model, the connector does not, and asking for
+    # a credential before the owner knows what they are setting up reads as a demand.
+    connected = connect(interactive)
+
     print(f"""
   Next:
-    dduet-desktop run          start it (owner site on 127.0.0.1)
-    examples in {paths.EXAMPLES}
-      — copy a folder to give it something it may DO, then declare the capability
-""")
+    dduet-desktop run          start the daemon — it answers while you are away
+    dduet-desktop status       what is running, and what this build can do
+""" + ("" if connected else
+       "\n  No connector yet, so nobody outside can reach it. Run init again when you have one.\n"))
     return 0
