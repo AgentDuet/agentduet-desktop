@@ -28,6 +28,9 @@ import shutil
 import stat
 import sys
 
+#: LINUX layout. macOS is handled separately in install(): there the .app bundle is the unit and
+#: /Applications is the destination, so neither of these applies.
+#:
 #: XDG user-level binaries. On PATH by default on most desktop Linux; we check rather than
 #: assume, because a PATH that does not include it turns `dduet-desktop` into "command not found"
 #: at exactly the moment the owner is told to type it.
@@ -56,21 +59,47 @@ def on_path() -> bool:
 
 def status() -> dict:
     """Everything the installer page needs to decide what to offer."""
+    mac = sys.platform == "darwin"
+    bundle = _app_bundle() if mac else None
     return {
         "frozen": bool(getattr(sys, "frozen", False)),
-        "running_from": str(running_from()),
-        "target": str(installed_path()),
-        "installed": is_installed(),
+        "running_from": str(bundle or running_from()),
+        "target": "/Applications" if mac else str(installed_path()),
+        "installed": bool(bundle and str(bundle).startswith("/Applications/")) if mac
+                     else is_installed(),
         "on_path": on_path(),
         "platform": sys.platform,
     }
 
 
+def _app_bundle() -> pathlib.Path | None:
+    """The .app this binary lives inside, if any. macOS only."""
+    for parent in running_from().parents:
+        if parent.suffix == ".app":
+            return parent
+    return None
+
+
 def install() -> str:
-    """Copy this binary to ~/.local/bin and add a desktop entry. Idempotent."""
+    """Put this where it belongs. Idempotent."""
     if not getattr(sys, "frozen", False):
         return ("Running from source, so there is nothing to install — the installed layout "
                 "only applies to the downloaded binary.")
+
+    # macOS: the .app IS the unit, and dragging it to Applications is the idiom every Mac user
+    # already knows. We deliberately do NOT copy the bundle ourselves — that is untested code
+    # moving an application directory, and a half-copied bundle is worse than an instruction.
+    if sys.platform == "darwin":
+        bundle = _app_bundle()
+        if bundle is None:
+            return ("This is the bare binary, not the app. Open the DMG and drag "
+                    "DDuet Desktop to your Applications folder.")
+        if str(bundle).startswith("/Applications/"):
+            return f"Installed — running from {bundle}."
+        return (f"Running from {bundle}.\n"
+                f"Drag DDuet Desktop to your Applications folder, then open it from there. "
+                f"Until you do, your AI assistant will be told to launch the secretary from "
+                f"this location — and moving it later would break that link.")
 
     src = running_from()
     dest = installed_path()
