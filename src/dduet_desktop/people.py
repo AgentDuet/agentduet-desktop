@@ -188,7 +188,13 @@ def display_name(identity: str, verified: bool) -> str:
     return re.split(r"\s+[—–-]\s+", first)[0].strip()
 
 
+#: Seeded into people/ on first run to explain the folder. It is documentation, not a person,
+#: and counting it made `list_people` answer "1 profile: README" to an owner asking who had
+#: been in touch.
+NOT_A_PERSON = {"README"}
+
+
 def list_profiles() -> list[str]:
     if not PEOPLE.is_dir():
         return []
-    return sorted(p.stem for p in PEOPLE.glob("*.md"))
+    return sorted(p.stem for p in PEOPLE.glob("*.md") if p.stem not in NOT_A_PERSON)
