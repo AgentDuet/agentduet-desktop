@@ -20,6 +20,21 @@ from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
+# Stamp the build id into the package before collecting it. "0.1.0a2" is true of every binary
+# built today, and the first question about any bug report is which one — so `--version` needs
+# more than the version. Written here rather than committed: it is a build artifact, gitignored.
+import subprocess as _sp
+try:
+    _sha = _sp.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
+                   cwd=str(Path(SPECPATH).parent)).stdout.strip()
+    _dirty = bool(_sp.run(["git", "status", "--porcelain"], capture_output=True, text=True,
+                          cwd=str(Path(SPECPATH).parent)).stdout.strip())
+except Exception:
+    _sha, _dirty = "", False
+if _sha:
+    (Path(SPECPATH).parent / "src" / "dduet_desktop" / "_build.py").write_text(
+        f'COMMIT = "{_sha}{"+dirty" if _dirty else ""}"\n')
+
 datas = collect_data_files("dduet_desktop",
                            includes=["*.html", "templates/**/*", "examples/**/*",
                                      # Prompts are DATA. Without this the binary builds
