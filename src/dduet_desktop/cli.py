@@ -130,7 +130,7 @@ def cmd_mcp(args) -> int:
 
 def cmd_connect(args) -> int:
     from . import hosts
-    print(hosts.connect(apply=not args.show))
+    print(hosts.connect(apply=not args.show, install=args.install))
     return 0
 
 
@@ -165,6 +165,8 @@ def main(argv: list[str] | None = None) -> int:
     c = sub.add_parser("connect", help="register this secretary with the AI assistants you have")
     c.add_argument("--show", action="store_true",
                    help="print what would be done, change nothing")
+    c.add_argument("--install", default="", choices=["", "goose"],
+                   help="install an assistant first (currently: goose)")
     c.set_defaults(fn=cmd_connect)
 
     # Double-clicked from a file manager there are no arguments and often no terminal, so a
