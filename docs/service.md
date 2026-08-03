@@ -60,6 +60,64 @@ And two problems disappear rather than being managed:
   no locking. The outbox exists for the send path for exactly this reason; knowledge and settings
   edits are still exposed. One process, one writer, gone.
 
+## Two faces, because one of them has to work when the service is down
+
+A service that exposes its own status over its own endpoint cannot report being stopped. "Is it
+running?" is unanswerable by the thing whose running-ness is in question — and that is exactly
+the question nobody could ask this morning.
+
+So `secretary_mcp.py` is not superseded by the HTTP endpoint. It keeps a job, and a different
+one:
+
+| | transport | lifetime | job |
+|---|---|---|---|
+| **control plane** | stdio, spawned by the host | per session | `service_status`, `service_start`, `service_stop`, login-item toggle |
+| **data plane** | streamable HTTP, in the daemon | always on | the 33 registry operations |
+
+The stdio face is spawned by the host, so it exists whether or not the service does. That is what
+lets an assistant say *"your secretary is not running — start it?"* rather than failing to
+connect and leaving the owner to work out why.
+
+Keeping them apart is also honest about privilege. The control plane starts and stops a process
+and can make the service persistent. The data plane reads and writes the owner's knowledge and
+can send messages as them. Those are different powers and they should not sit behind one grant.
+
+## Starting at login, without building a persistence primitive
+
+The login item is registered per platform, all user-scope, no admin:
+
+- **macOS** — a plist in `~/Library/LaunchAgents/`, `launchctl bootstrap`
+- **Linux** — a unit in `~/.config/systemd/user/`, `systemctl --user enable --now`
+- **Windows** — a Task Scheduler entry or a Startup shortcut
+
+It registers the **service**, not the app.
+
+**Offering this as a tool needs one rule, and it is not negotiable: the tool takes no
+parameters.**
+
+```
+install_login_item()      # installs THIS binary, at its own resolved path
+remove_login_item()
+login_item_status()
+```
+
+Writing a launch agent is exactly how software makes itself survive a reboot, which is exactly
+what malware does. Exposed to an agent that reads asker-authored text — the crossing point in
+`agents.md` — a parameterised version creates a path from **prompt injection to persistent
+autostart**. With no parameters, a fully-injected agent can only toggle whether dduet itself
+starts. The blast radius is one boolean.
+
+The tempting weaker version accepts a path or arguments "for flexibility". That flexibility IS
+the vulnerability, and there is no legitimate use for it: there is exactly one thing this should
+ever register.
+
+Two supporting rules:
+
+- **Report what was written.** The tool returns the file and its location, so the owner can read
+  it. A persistence change the owner cannot see is bad regardless of who asked for it.
+- **Idempotent.** Installing twice is not two login items, and removing what is not there is not
+  an error.
+
 ## Why in-process rather than beside
 
 The daemon already runs an aiohttp app on `127.0.0.1:8899` with a per-machine token. `mcp` 2.x
@@ -97,8 +155,9 @@ a second secret to store and hand over.
 - **`cli.py`** grows the distinction: `run` (service, foreground), `open` (attach a UI), `stop`
   (end the service, deliberately). `status` already reports the service correctly.
 - **`web.py`** gains the MCP endpoint beside the site, sharing the token check.
-- **`secretary_mcp.py`** keeps stdio for hosts that only speak it, but stops being the primary
-  path. The registry-derived registration stays as it is.
+- **`secretary_mcp.py`** becomes the CONTROL PLANE rather than a lesser copy of the data plane:
+  service lifecycle and the login-item toggle. It keeps the registry-derived registration for
+  hosts that speak only stdio, but the always-on face is the HTTP one.
 - **Packaging** gains the login-start unit per platform, registering the *service*, not the app.
 
 ## Open — decide before building
@@ -119,12 +178,19 @@ a second secret to store and hand over.
 
 ## Sequencing
 
-1. **MCP over HTTP in the daemon, token-protected.** Additive — nothing existing changes
-   behaviour, and it can be tested against both Claude Code and Goose immediately.
-2. **Split the window from the service** in `shell.py` / `cli.py`. This is the fix for the
-   silent stop.
-3. **Decide the presence question** (tray or window), then build it.
-4. **Login-start units**, which only make sense once the service is genuinely independent.
+1. **The stdio control plane** — `service_status` / `service_start` / `service_stop` on the
+   existing `secretary_mcp.py`. Moved to the front, ahead of everything else: it is the piece
+   that lets anyone NOTICE the service is down, which is the fault that started this document.
+   It needs none of the rest to be useful.
+2. **MCP over HTTP in the daemon, token-protected.** Additive — nothing existing changes
+   behaviour, and it can be tested against both Claude Code and Goose immediately. This is what
+   makes "bring your own assistant" real.
+3. **Split the window from the service** in `shell.py` / `cli.py`. The actual fix for the silent
+   stop.
+4. **Decide the presence question** (tray or window), then build it. Not optional — without it,
+   step 3 trades a silent stop for a silent run.
+5. **Login-start units** and the zero-parameter toggle, which only make sense once the service
+   is genuinely independent of any UI.
 
-Step 1 is worth doing on its own even if the rest waits: it is the piece that makes "bring your
-own assistant" testable, and it carries no risk to the current behaviour.
+Steps 1 and 2 are both worth doing on their own even if the rest waits, and neither carries risk
+to current behaviour.
