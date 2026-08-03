@@ -31,6 +31,26 @@ logger = logging.getLogger("dduet.connector")
 API_KEY = "AGENTDUET_API_KEY"
 UUID = "AGENTDUET_CONNECTOR_UUID"
 
+#: Where an OAuth sign-in would begin. UNSET today, on purpose.
+#:
+#: WHY THIS EXISTS BEFORE THE FEATURE DOES
+#:
+#: The connector is the last thing a human still has to issue by hand, and it is what stops a
+#: stranger installing this unaided. OAuth is the fix: sign in, and first authorisation
+#: provisions a connector and hands it back — the uuid becomes an OUTPUT of logging in rather
+#: than a prerequisite someone must be given. That is requested but not built.
+#:
+#: So the installer is shaped for it now and reads this to decide. Unset — today — and step 3 is
+#: exactly the manual form it always was, with no dead button promising a sign-in that cannot
+#: happen. Set it, and sign-in becomes the primary path with "Enter key manually instead" beside
+#: it. No redesign when the backend lands, and nothing misleading before it does.
+OAUTH_URL = "AGENTDUET_OAUTH_URL"
+
+
+def oauth_available() -> bool:
+    """Whether a sign-in path exists to offer. False until the backend provides one."""
+    return bool(os.getenv(OAUTH_URL))
+
 #: Long enough to fail a bad credential, short enough that a page is not left hanging.
 VERIFY_TIMEOUT = 20
 
