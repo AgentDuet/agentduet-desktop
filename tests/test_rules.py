@@ -199,6 +199,21 @@ def test_setup_mode() -> None:
        re.search(r"while owner\.setup_pending\(\):\s*\n\s*await asyncio\.sleep", agent_src)
        is not None)
 
+    # A WAY OUT of the setup page. Closing the browser leaves the process running with nothing on
+    # screen to say so, and the url that reaches it carries a per-machine token — a closed tab is
+    # a lost tab. Checked as text because the page is plain browser JS with no test harness.
+    page = (src / "setup.html").read_text()
+    ok("the setup page has a cancel button", 'id="doCancel"' in page)
+    ok("it stops through the existing /api/quit, not a second path",
+       "post('/api/quit'" in page and "/api/quit" in (src / "web.py").read_text())
+    ok("it reads the channel state, so it can say whether anything goes off the air",
+       "/api/state" in page and "onAir" in page)
+    # Both of these have unwired a whole page before: localStorage is a ReferenceError in
+    # WebKitGTK, and an unwired form submits natively to `/`, dropping the token.
+    ok("the setup page reports JS errors where they can be seen", "window.onerror" in page)
+    ok("it touches no localStorage and has no form to submit natively",
+       "localStorage" not in page and "<form" not in page)
+
     # The two facts, one at a time. llm.configured is patched rather than fed a key: a real
     # credential would need a provider SDK, and this suite must run without one.
     real_configured, real_profile = llm.configured, owner.PROFILE

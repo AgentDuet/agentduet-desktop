@@ -411,6 +411,11 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         to stop it are the CLI or a process manager — neither of which the person who just
         clicked an icon is holding.
 
+        The SETUP page cancels through here too, deliberately not through a second endpoint. On a
+        fresh install the process serving that page holds no channel (see
+        `secretary_agent.setup_pending`), so cancelling costs nothing; on a configured one it is
+        the same stop the owner's view offers, and the page says so before asking.
+
         Exits with os._exit AFTER the response is flushed. SIGTERM is caught somewhere in the
         async stack and does not reliably exit (the reason `stop` escalates to SIGKILL), and
         there is no unsaved state to lose: every store writes synchronously as it changes.
@@ -421,7 +426,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         async def _bye():
             await asyncio.sleep(0.4)          # let the response reach the browser
             (paths.RUN / "secretary.pid").unlink(missing_ok=True)
-            logger.info("stopped from the owner's view")
+            logger.info("stopped from the local site")
             os._exit(0)
 
         asyncio.get_running_loop().create_task(_bye())

@@ -59,7 +59,7 @@ Break one of these and the product is a different product.
 8. **The owner site binds loopback only**, with a per-machine token.
 9. **The asker-facing surface never imports the owner registry** (`canvas.py` must not import `tools`).
 
-`tests/test_rules.py` covers most of these and runs with **no model and no venv** (127 checks).
+`tests/test_rules.py` covers most of these and runs with **no model and no venv** (156 checks).
 
 ## Decisions, and why — do not re-litigate without reading these
 
