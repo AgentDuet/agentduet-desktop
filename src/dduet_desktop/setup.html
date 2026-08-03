@@ -63,9 +63,7 @@
 <body>
 <div class="wrap">
   <h1>Set up your secretary</h1>
-  <p class="lede">Four steps, and two of them are credentials. Everything else — who you
-      are, what it may do — you tell your own AI assistant afterwards, because that is a
-      conversation and this is a form.</p>
+  <p class="lede">Four steps. You tell your AI assistant the rest afterwards.</p>
 
   <div class="steps">
     <div id="s1" class="on">1 · install</div>
@@ -77,24 +75,21 @@
   <!-- ---------------- 1 · INSTALL ---------------- -->
   <section class="card on" id="c1">
     <h2>Install it</h2>
-    <p class="hint">Right now this is running from wherever you downloaded it. Installing puts it
-      somewhere permanent and adds it to your applications menu.</p>
-    <p class="hint">This matters beyond tidiness: your AI assistant is told where to launch the
-      secretary from. Move the file afterwards and that link quietly breaks.</p>
+    <!-- STATUS FIRST, then buttons. The prose that used to be here explained WHY installing
+         matters (the assistant is told this path; moving the file breaks it). True, and nobody
+         reads it at step 1 of 4 — the state line is what they act on. -->
     <div class="state" id="instState">…</div>
     <button id="doInstall">Install</button>
-    <button class="ghost" id="skipInstall">Skip — run it from here</button>
+    <button class="ghost" id="skipInstall">Skip</button>
     <div id="mInst"></div>
   </section>
 
   <!-- ---------------- 2 · MODEL ---------------- -->
   <section class="card" id="c2">
     <h2>Attach a model</h2>
-    <p class="hint">Your key is checked against the provider before it is saved, so a wrong paste
-      fails here rather than silently later. It is stored only on this machine.</p>
+    <p class="hint">Checked before saving. Stored on this machine only.</p>
     <div class="row">
       <label>Model
-        <span class="sm">Any of these works.</span>
         <select id="model">
           <option value="gemini-2.5-flash">gemini-2.5-flash — Google AI Studio</option>
           <option value="claude-sonnet-5">claude-sonnet-5 — Anthropic console</option>
@@ -103,13 +98,12 @@
       </label>
     </div>
     <label>API key
-      <span class="sm" id="keyhint">Paste it here. There is no sign-in flow for any of the
-        three — the key comes from the provider's console.</span>
+      <span class="sm" id="keyhint">From the provider's console.</span>
       <input id="key" type="password" autocomplete="off" placeholder="…">
     </label>
     <div class="acts">
-      <button id="b1">Check and save</button>
-    <button class="ghost" id="b1keep" hidden>Keep the one I have</button>
+      <button id="b1">Save</button>
+    <button class="ghost" id="b1keep" hidden>Keep current key</button>
       <span class="sp"></span>
       <span class="spin" id="sp1"></span>
     </div>
@@ -119,21 +113,18 @@
   <!-- ---------------- 3 · CONNECTOR ---------------- -->
   <section class="card" id="c3">
     <h2>Your B3 connector</h2>
-    <p class="hint">This gives it a phone number and a message channel — how people reach you.
-      Skip it if you do not have one yet; everything else works without it, and you can add it
-      later in settings.</p>
+    <p class="hint">Gives you a phone number and a message channel. Skip if you have none yet.</p>
     <label>API key
-      <span class="sm">Checked by connecting once before it is saved.</span>
       <input id="cKey" type="password" autocomplete="off" placeholder="AGENTDUET_API_KEY">
     </label>
     <label>Connector uuid
       <input id="cUuid" autocomplete="off" placeholder="00000000-0000-0000-0000-000000000000">
     </label>
     <div class="acts">
-      <button class="ghost" id="b3skip">Skip for now</button>
+      <button class="ghost" id="b3skip">Skip</button>
       <span class="sp"></span>
-      <button id="b3">Check and finish</button>
-      <button class="ghost" id="b3keep" hidden>Keep the one I have</button>
+      <button id="b3">Save</button>
+      <button class="ghost" id="b3keep" hidden>Keep current connector</button>
       <span class="spin" id="sp3"></span>
     </div>
     <div id="m3"></div>
@@ -142,16 +133,12 @@
   <!-- ---------------- 4 · YOUR ASSISTANT ---------------- -->
   <section class="card" id="c4">
     <h2>Your AI assistant</h2>
-    <p class="hint">You drive the secretary from an assistant you already use — ask it what is
-      waiting, tell it what you do, have it reply for you. There is no dashboard; this is it.</p>
+    <p class="hint">This is how you use the secretary. There is no dashboard.</p>
     <div class="state" id="hostState">…</div>
     <button id="doConnect">Connect</button>
-    <button class="ghost" id="doGoose">Install Goose instead</button>
+    <button class="ghost" id="doGoose">Install Goose</button>
     <div id="mHost"></div>
-    <p class="note">Goose is open source, works with any model provider including local ones,
-      and has per-tool permission modes. Worth choosing deliberately even if something else was
-      found — set it to <b>Approve</b> mode, not SmartApprove.</p>
-    <p class="note">Restart the assistant afterwards — it starts its tools when it starts.</p>
+    <p class="note">Restart it afterwards — it loads its tools at startup.</p>
     <!-- Appears once an assistant is on disk. Being handed a configured tool with no way to open
          it is not a finished install, especially for someone whose first assistant this is. -->
     <div id="launchWrap" hidden>
@@ -160,10 +147,8 @@
       <div id="mLaunch"></div>
     </div>
     <hr style="border:0;border-top:1px solid var(--line);margin:1.2rem 0">
-    <p class="hint">When you are done here, the secretary moves into the background and keeps
-      answering without this window. The installed copy takes over, so you can delete the file
-      you downloaded.</p>
-    <button id="doDone">Done — run it in the background</button>
+    <p class="hint">It keeps answering after you close this page.</p>
+    <button id="doDone">Done</button>
     <div id="mDone"></div>
   </section>
 
@@ -173,7 +158,7 @@
        screen says so, and the url that reaches it carries a per-machine token — so a closed tab
        is a lost tab. -->
   <p class="hint" id="cancelWhat" style="margin-top:1.7rem">…</p>
-  <button class="ghost" id="doCancel">Cancel — stop this now</button>
+  <button class="ghost" id="doCancel">Cancel</button>
   <div id="mCancel"></div>
 
 </div>
@@ -212,7 +197,7 @@
   $('b1').onclick = async () => {
     const key = $('key').value.trim();
     if (!key) { say('m1', false, 'Paste a key first.'); return; }
-    $('b1').disabled = true; $('sp1').textContent = 'checking with the provider…';
+    $('b1').disabled = true; $('sp1').textContent = 'checking…';
     const d = await post('/api/setup/model', {model: $('model').value, key});
     $('b1').disabled = false; $('sp1').textContent = '';
     say('m1', d.ok, d.message);
@@ -225,7 +210,7 @@
   $('b3').onclick = async () => {
     const key = $('cKey').value.trim(), uuid = $('cUuid').value.trim();
     if (!key || !uuid) { say('m3', false, 'Both fields are needed — or skip for now.'); return; }
-    $('b3').disabled = true; $('sp3').textContent = 'connecting to check…';
+    $('b3').disabled = true; $('sp3').textContent = 'checking…';
     const d = await post('/api/setup/connector', {key, uuid});
     $('b3').disabled = false; $('sp3').textContent = '';
     say('m3', d.ok, d.message);
@@ -268,21 +253,19 @@
   // ---- 1 · install ---------------------------------------------------------------------
   fetch(`/api/install?t=${T}`).then(r => r.json()).then(s => {
     if (!s.frozen) {
-      $('instState').textContent =
-        'running from source — nothing to install; this step is for the downloaded binary';
+      $('instState').textContent = 'Running from source. Nothing to install.';
       $('doInstall').disabled = true;
     } else if (s.current) {
-      $('instState').textContent = 'already installed at ' + s.target;
+      $('instState').textContent = 'Installed and up to date.';
       $('doInstall').disabled = true;
     } else if (s.installed) {
       // Present but a DIFFERENT build. This must stay actionable: treating it as done is how a
       // hand-over came to launch code three commits older than the file just downloaded, with
       // both reporting the same version number.
-      $('instState').textContent =
-        'installed, but an older build (' + s.current_version + ') — replace it with this one ('
-        + s.this_build + ')';
+      $('instState').textContent = 'Old version currently installed.';
+      $('doInstall').textContent = 'Install new';
     } else {
-      $('instState').textContent = s.running_from + '  →  ' + s.target;
+      $('instState').textContent = 'Not installed yet.';
     }
   }).catch(() => {});
 
@@ -301,12 +284,12 @@
   function showLaunch(found) {
     if (!found || !found.length) return;
     $('launchWrap').hidden = false;
-    $('launchNote').textContent = 'opens ' + found[0];
+    $('launchNote').textContent = found[0];
   }
   fetch(`/api/hosts?t=${T}`).then(r => r.json()).then(d => {
     $('hostState').textContent = d.found.length
-      ? 'found: ' + d.found.join(', ')
-      : 'none found — the secretary still answers, but you would have no way to read it';
+      ? d.found.join(', ')
+      : 'None found. You would have no way to read your messages.';
     showLaunch(d.found);
   }).catch(() => {});
 
@@ -326,7 +309,7 @@
     $('doDone').disabled = true;
     const d = await post('/api/handover', {});
     say('mDone', d.ok, d.message);
-    if (d.ok) $('hostState').textContent = 'running in the background — you can close this page';
+    if (d.ok) $('hostState').textContent = 'Running in the background.';
   };
 
   // ---- leaving without finishing -------------------------------------------------------
@@ -346,29 +329,26 @@
     const c = (st && st.channel) || {};
     onAir = ['live', 'connecting', 'retrying'].indexOf(c.channel) >= 0;
     $('cancelWhat').textContent = onAir
-      ? 'This process is your secretary and it is on the air. Cancelling stops it answering '
-        + 'until you start it again.'
-      : 'Nobody can reach you yet — the channel stays closed until setup is finished — so this '
-        + 'only stops the setup, and keeps whatever you have already saved.';
+      ? 'Your secretary is on the air. This stops it answering.'
+      : 'Nothing is on the air yet. Stops setup only; keeps what you saved.';
   }).catch(() => { $('cancelWhat').textContent = ''; });
 
   $('doCancel').onclick = async () => {
     const warn = onAir
-      ? 'Stop the secretary?\n\nIt is on the air now. It will stop answering until you start it '
-        + 'again.'
-      : 'Stop setup?\n\nNothing is answering yet, so nothing goes off the air.';
-    if (!confirm(warn + '\n\nWhat you have already done stays done: the install, any key you '
-                 + 'saved, and any assistant you registered.')) return;
+      ? 'Stop the secretary? It stops answering until you start it again.'
+      : 'Stop setup? Nothing is answering yet.';
+    // The "nothing is undone" promise stays. It is the one thing they cannot check for
+    // themselves, and it is why pressing this is safe.
+    if (!confirm(warn + '\n\nWhat you saved stays saved.')) return;
     $('doCancel').disabled = true;
     try { await post('/api/quit', {}); } catch (e) {}
     document.body.innerHTML =
       '<div style="font-family:var(--mono);font-size:.9rem;padding:2.5rem;color:var(--muted);'
       + 'max-width:44rem;line-height:1.7">Stopped.<br><br>'
-      + (onAir ? 'Nobody outside can reach your secretary until you start it again.<br><br>'
-               : 'Setup was not finished, so nobody outside can reach you yet.<br><br>')
-      + 'Kept: the install, any key you saved, and any assistant you registered.<br>'
-      + 'Start again from the app icon, or <code>dduet-desktop</code> in a terminal '
-      + '(<code>dduet-desktop status</code> shows what is configured).</div>';
+      + (onAir ? 'Nobody can reach your secretary until you start it again.<br><br>'
+               : 'Setup unfinished, so nobody can reach you yet.<br><br>')
+      + 'What you saved stays saved.<br>'
+      + 'Start again from the app icon, or <code>dduet-desktop</code>.</div>';
   };
 
   $('doConnect').onclick = async () => {
@@ -381,7 +361,7 @@
   // Detection is a default, not a decision — finding Claude Code does not mean they want it.
   $('doGoose').onclick = async () => {
     $('doGoose').disabled = true;
-    $('hostState').textContent = 'downloading and installing Goose — this takes a minute…';
+    $('hostState').textContent = 'installing Goose — about a minute…';
     const d = await post('/api/hosts', {install: 'goose'});
     say('mHost', d.ok, d.message);
     $('doGoose').disabled = false;
@@ -389,7 +369,7 @@
     // also where the Open button has to appear — the owner has just installed an assistant and
     // this is the moment they would use it, not after a page reload they have no reason to do.
     fetch(`/api/hosts?t=${T}`).then(r => r.json())
-      .then(x => { $('hostState').textContent = 'found: ' + (x.found.join(', ') || 'none');
+      .then(x => { $('hostState').textContent = x.found.join(', ') || 'none found';
                    showLaunch(x.found); })
       .catch(() => {});
   };
