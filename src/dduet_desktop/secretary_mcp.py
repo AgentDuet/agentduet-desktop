@@ -61,7 +61,20 @@ def _register() -> list[str]:
     return names
 
 
-REGISTERED = _register()
+# SERVICE TOOLS — the process, not the secretary. Registered explicitly, and separately from
+# the derived 33, because they are a different power: starting a process is not the same
+# authority as reading the owner's knowledge and replying as them.
+#
+# They live HERE, on the stdio server the host spawns, rather than anywhere inside the daemon —
+# a service cannot report being stopped over its own endpoint. That distinction costs nothing
+# today (everything is stdio) and becomes load-bearing if the secretary tools ever move to HTTP.
+from . import service
+
+SERVICE_TOOLS = [service.service_status, service.service_start, service.service_stop]
+for _fn in SERVICE_TOOLS:
+    mcp.add_tool(_fn, name=_fn.__name__, description=(_fn.__doc__ or "").strip())
+
+REGISTERED = _register() + [f.__name__ for f in SERVICE_TOOLS]
 
 
 if __name__ == "__main__":

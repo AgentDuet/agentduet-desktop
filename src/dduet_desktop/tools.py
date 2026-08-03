@@ -1123,7 +1123,7 @@ def setup_status() -> str:
     here travels to a model provider.
     """
     from . import connector, llm
-    ok, _ = llm.verify()
+    ok = llm.configured()       # not verify(): that calls the model, and this is asked often
     cur = current_setup()
     caps = capabilities.all_capabilities()
     docs = len(list(paths.KNOWLEDGE.glob("*.md"))) if paths.KNOWLEDGE.is_dir() else 0
