@@ -190,8 +190,10 @@ sanitising can actually be enforced.
   it is not free.
 - **Is the hosted cascade actually too slow?** Unmeasured. Decision 4 is a mitigation; the
   cascade is a fix.
-- **Where does the MCP server run** — in the daemon process, or beside it? In-process is
-  simplest and matches decision 7. Beside it is the upgrade path if the threat model changes.
+- ~~**Where does the MCP server run** — in the daemon process, or beside it?~~ **Answered in
+  `service.md`: in it**, over streamable HTTP, token-protected. A spawned stdio server inherits
+  the host's environment and can open a different instance, and it makes two writers of the
+  same files. In-process removes both.
 
 ## What changes in code
 
