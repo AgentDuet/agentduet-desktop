@@ -152,6 +152,13 @@
       and has per-tool permission modes. Worth choosing deliberately even if something else was
       found — set it to <b>Approve</b> mode, not SmartApprove.</p>
     <p class="note">Restart the assistant afterwards — it starts its tools when it starts.</p>
+    <!-- Appears once an assistant is on disk. Being handed a configured tool with no way to open
+         it is not a finished install, especially for someone whose first assistant this is. -->
+    <div id="launchWrap" hidden>
+      <button id="doLaunch">Open it now</button>
+      <span class="note" id="launchNote"></span>
+      <div id="mLaunch"></div>
+    </div>
     <hr style="border:0;border-top:1px solid var(--line);margin:1.2rem 0">
     <p class="hint">When you are done here, the secretary moves into the background and keeps
       answering without this window. The installed copy takes over, so you can delete the file
@@ -288,11 +295,29 @@
   $('skipInstall').onclick = () => show(2);
 
   // ---- 4 · your assistant --------------------------------------------------------------
+  // Offering to OPEN it is part of this step, not a nicety. Installing an assistant someone has
+  // never used and then leaving them on a web page is where the flow stopped: "now open a
+  // terminal and type goose" is not an instruction a first-time owner acts on.
+  function showLaunch(found) {
+    if (!found || !found.length) return;
+    $('launchWrap').hidden = false;
+    $('launchNote').textContent = 'opens ' + found[0];
+  }
   fetch(`/api/hosts?t=${T}`).then(r => r.json()).then(d => {
     $('hostState').textContent = d.found.length
       ? 'found: ' + d.found.join(', ')
       : 'none found — the secretary still answers, but you would have no way to read it';
+    showLaunch(d.found);
   }).catch(() => {});
+
+  $('doLaunch').onclick = async () => {
+    $('doLaunch').disabled = true;
+    const d = await post('/api/launch', {});
+    say('mLaunch', d.ok, d.message);
+    // Re-enabled either way: a launch that failed is worth retrying, and a window the owner
+    // closed is worth reopening without reloading the page.
+    $('doLaunch').disabled = false;
+  };
 
   // The last act of the installer: start the INSTALLED copy detached and stand this one down.
   // Until this exists, the daemon still running is the file they downloaded — so tidying the
@@ -360,9 +385,12 @@
     const d = await post('/api/hosts', {install: 'goose'});
     say('mHost', d.ok, d.message);
     $('doGoose').disabled = false;
-    // Re-detect: it should now be in the list, and Connect should register with it too.
+    // Re-detect: it should now be in the list, and Connect should register with it too. This is
+    // also where the Open button has to appear — the owner has just installed an assistant and
+    // this is the moment they would use it, not after a page reload they have no reason to do.
     fetch(`/api/hosts?t=${T}`).then(r => r.json())
-      .then(x => { $('hostState').textContent = 'found: ' + (x.found.join(', ') || 'none'); })
+      .then(x => { $('hostState').textContent = 'found: ' + (x.found.join(', ') || 'none');
+                   showLaunch(x.found); })
       .catch(() => {});
   };
 

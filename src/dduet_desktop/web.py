@@ -602,6 +602,20 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         return web.json_response({"ok": True, "found": hosts.detect(),
                                   "message": hosts.connect(apply=apply, install=install)})
 
+    async def api_launch(request):
+        """Open the owner's assistant. The step that makes step 4 finish somewhere usable.
+
+        Takes NO parameters, deliberately. It launches whatever is found on disk, in a fixed
+        order — nothing in the request chooses a program or a path. This endpoint sits behind the
+        site token, but an owner-facing surface that would start an arbitrary command on the
+        strength of a request body is the wrong shape regardless of who can reach it.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import hosts
+        msg = hosts.launch_assistant()
+        return web.json_response({"ok": msg.startswith("Opening"), "message": msg})
+
     async def api_handover(request):
         """Start the installed daemon and stand down. The last act of the installer."""
         if not authed(request):
@@ -916,6 +930,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/install", api_install),
         web.get("/api/hosts", api_hosts),
         web.post("/api/hosts", api_hosts),
+        web.post("/api/launch", api_launch),
         web.get("/api/ui", api_ui),
         web.post("/api/ui", api_ui),
         web.post("/api/chat", api_chat),
