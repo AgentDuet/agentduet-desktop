@@ -166,6 +166,82 @@ def _register_goose(apply: bool) -> str:
             f"    Works in both the Goose CLI and Goose Desktop — they share this file.")
 
 
+#: Defaults applied ONLY to a Goose we installed ourselves. Never to one that was already
+#: there — that really is the owner's assistant and their settings.
+#:
+#: The distinction matters because of who this user is. They came for a secretary, not for an AI
+#: agent, and Goose may be the first one they have ever opened. Whatever it does on their first
+#: turn is something WE chose by installing it, so "they can change it in Goose" is not an
+#: answer for someone who does not yet know what any of it means.
+GOOSE_DEFAULTS = {
+    # Per-tool approval. NOT smart_approve: that asks an LLM whether a call is safe, and the
+    # text this secretary hands that agent was written by strangers. A judge the attacker can
+    # talk to is not a control.
+    #
+    # KNOWN COST, measured not assumed: approve requires an interactive terminal, so `goose run
+    # -t ...` fails with "invalid configuration". Goose Desktop and `goose session` are fine,
+    # and those are what this owner uses — but anyone scripting Goose headlessly must set
+    # GOOSE_MODE=auto for that run, and should understand what they are turning off.
+    "GOOSE_MODE": "approve",
+    # goose doctor itself flags the default as verbose (239 tokens to say hello). Less thinking
+    # out loud is less to be confused by on a first encounter.
+    "GOOSE_THINKING_EFFORT": "low",
+}
+
+#: Shell and file editing, on by default. A secretary's owner does not need it, and it is the
+#: single widest thing an injected escalation could reach for. Disabled rather than removed, so
+#: turning it back on is one setting away for anyone who does want Goose for code.
+GOOSE_DISABLE = ["developer"]
+
+#: Goose's "tom" extension injects this into every turn. A blank prompt tells a first-time user
+#: nothing; this tells them what they have and what to ask for.
+GOOSE_ORIENTATION = (
+    "You are connected to DDuet Desktop, a secretary that answers this person's calls and "
+    "messages while they are away. Use the `dduet` tools. If they seem unsure what to do, "
+    "suggest: \"what is waiting for me?\", \"who has contacted me?\", \"is my secretary "
+    "running?\", or telling you what they do so the secretary can answer for them."
+)
+
+
+def configure_goose_defaults() -> str:
+    """Sensible, safer defaults for a Goose WE installed. Returns what changed."""
+    try:
+        import yaml
+    except ImportError:
+        return "    pyyaml unavailable — left Goose at its own defaults"
+    try:
+        cfg = yaml.safe_load(GOOSE_CONFIG.read_text()) if GOOSE_CONFIG.is_file() else {}
+    except (OSError, yaml.YAMLError) as exc:
+        return f"    could not read Goose's config: {exc}"
+    if not isinstance(cfg, dict):
+        return "    Goose's config is not a mapping — left alone"
+
+    changed = []
+    for key, value in GOOSE_DEFAULTS.items():
+        if cfg.get(key) != value:
+            cfg[key] = value
+            changed.append(f"{key}={value}")
+    for name in GOOSE_DISABLE:
+        ext = (cfg.get("extensions") or {}).get(name)
+        if isinstance(ext, dict) and ext.get("enabled"):
+            ext["enabled"] = False
+            changed.append(f"disabled `{name}` (shell and file editing)")
+    if cfg.get("GOOSE_MOIM_MESSAGE_TEXT") != GOOSE_ORIENTATION:
+        cfg["GOOSE_MOIM_MESSAGE_TEXT"] = GOOSE_ORIENTATION
+        changed.append("added an orientation message for a first-time user")
+
+    if not changed:
+        return "    Goose already had these defaults"
+    try:
+        if GOOSE_CONFIG.is_file():
+            GOOSE_CONFIG.with_suffix(".yaml.dduet-backup").write_text(GOOSE_CONFIG.read_text())
+        GOOSE_CONFIG.parent.mkdir(parents=True, exist_ok=True)
+        GOOSE_CONFIG.write_text(yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True))
+    except (OSError, yaml.YAMLError) as exc:
+        return f"    could not write Goose's config: {exc}"
+    return "    set safer defaults:\n" + "\n".join(f"      {c}" for c in changed)
+
+
 def _manual(label: str, where: str) -> str:
     """For hosts we can detect but will not write to. Print what to paste."""
     entry = json.dumps({SERVER_NAME: {"command": launch_command()[0],
@@ -262,6 +338,7 @@ def install_goose(apply: bool = True) -> str:
            f"    Desktop or with `goose configure` if you want a stronger one.\n"
            if configured else
            f"    Not configured — no DashScope key in this instance. Run `goose configure`.\n")
+        + configure_goose_defaults() + "\n"
         + f"    Registering this secretary with it now.\n"
         f"    Set its permission mode to APPROVE, not SmartApprove: SmartApprove asks an\n"
         f"    LLM whether a tool call is safe, and the text your secretary hands it was\n"
