@@ -207,21 +207,33 @@ def main(interactive: bool = True) -> int:
     made = ensure_instance()
     print(f"  instance: {paths.HOME}" + (f"  (created {len(made)} file(s))" if made else "  (already present)"))
 
+    # THE TWO SECRETS, TOGETHER AND FIRST. This is the part that needs a terminal: a credential
+    # typed into a chat box is sent to the model provider and written to run/owner_chat.json in
+    # plaintext. Everything else in setup is a conversation the owner's own assistant can have
+    # (set_setting, add_knowledge, declare_capability, grant_folder are all in the registry) —
+    # and a conversation is a better interview than a list of prompts.
     if not attach(interactive):
-        print("\n  Setup stopped: the interview needs a working model, because the agent writes "
-              "its own configuration.\n  Run `dduet-desktop init` again once you have a key.")
+        print("\n  Setup stopped: without a model the agent cannot answer anyone."
+              "\n  Run `dduet-desktop init` again once you have a key.")
         return 1
-
-    print("\n  " + (interview() or "(no summary returned)").replace("\n", "\n  "))
-
-    # After the interview: the interview needs a model, the connector does not, and asking for
-    # a credential before the owner knows what they are setting up reads as a demand.
     connected = connect(interactive)
+
+    # Offered, not assumed. An owner with an assistant should do this there; an owner without
+    # one still needs a way through, so it stays.
+    if interactive and owner.name() == owner.DEFAULT_NAME:
+        print("\n  Now the part that is not secret: who you are and what you do.")
+        print("  Your AI assistant can do this over the mcp, which is a better conversation")
+        print("  than these prompts — ask it to run setup_status.")
+        if input("\n  Do it here instead? (y/N)\n  > ").strip().lower().startswith("y"):
+            print("\n  " + (interview() or "(no summary returned)").replace("\n", "\n  "))
 
     print(f"""
   Next:
     dduet-desktop run          start the daemon — it answers while you are away
     dduet-desktop status       what is running, and what this build can do
+
+  Then point your AI assistant at the mcp and ask it "what is my setup status?".
+  It can do the rest: who you are, what you do, and what the agent may act on.
 """ + ("" if connected else
        "\n  No connector yet, so nobody outside can reach it. Run init again when you have one.\n"))
     return 0
