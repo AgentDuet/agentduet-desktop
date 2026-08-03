@@ -171,6 +171,47 @@ def service_start() -> str:
             "\n".join(f"  {l[:150]}" for l in _last_lines(5)))
 
 
+def handover() -> str:
+    """Start the INSTALLED daemon detached, then let this process exit.
+
+    WHY THIS EXISTS
+
+    The process an owner launches IS the daemon — shell.py joins the worker thread and stays in
+    the foreground. So after the installer copies the binary to ~/.local/bin, the secretary still
+    running is the file they downloaded. Tidy up the Downloads folder and it keeps working until
+    the next restart, then vanishes with nothing to explain why.
+
+    WHY THE CHILD WAITS
+
+    Both processes want port 8899 and, worse, the same connector — and one client per connector
+    is a hard constraint. So the replacement waits for THIS pid to disappear before starting,
+    rather than racing it. Passing our pid is deterministic; a sleep is a guess.
+    """
+    from . import install
+    target = install.installed_path()
+    if not (target.is_symlink() and target.resolve().is_file()):
+        return "Not installed yet, so there is nothing to hand over to."
+
+    paths.RUN.mkdir(parents=True, exist_ok=True)
+    log = open(LOGFILE, "a", buffering=1)
+    kwargs = {"start_new_session": True} if hasattr(os, "setsid") else {}
+    try:
+        subprocess.Popen([str(target), "run", "--headless", "--after-pid", str(os.getpid())],
+                         stdout=log, stderr=log, stdin=subprocess.DEVNULL,
+                         close_fds=True, **kwargs)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"Could not start the installed copy: {exc}"
+    return (f"Handing over to {target}. This page will stop responding in a moment — that is "
+            f"the secretary moving into the background.")
+
+
+def wait_for_exit(pid: int, timeout: float = 30.0) -> None:
+    """Block until `pid` is gone. Used by the replacement daemon during a hand-over."""
+    deadline = time.time() + timeout
+    while time.time() < deadline and _alive(pid):
+        time.sleep(0.25)
+
+
 def service_stop() -> str:
     """Stop the daemon. Verified, not assumed.
 

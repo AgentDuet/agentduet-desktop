@@ -152,6 +152,12 @@
       and has per-tool permission modes. Worth choosing deliberately even if something else was
       found — set it to <b>Approve</b> mode, not SmartApprove.</p>
     <p class="note">Restart the assistant afterwards — it starts its tools when it starts.</p>
+    <hr style="border:0;border-top:1px solid var(--line);margin:1.2rem 0">
+    <p class="hint">When you are done here, the secretary moves into the background and keeps
+      answering without this window. The installed copy takes over, so you can delete the file
+      you downloaded.</p>
+    <button id="doDone">Done — run it in the background</button>
+    <div id="mDone"></div>
   </section>
 
 </div>
@@ -263,6 +269,16 @@
       ? 'found: ' + d.found.join(', ')
       : 'none found — the secretary still answers, but you would have no way to read it';
   }).catch(() => {});
+
+  // The last act of the installer: start the INSTALLED copy detached and stand this one down.
+  // Until this exists, the daemon still running is the file they downloaded — so tidying the
+  // Downloads folder leaves a secretary that dies at the next reboot and says nothing.
+  $('doDone').onclick = async () => {
+    $('doDone').disabled = true;
+    const d = await post('/api/handover', {});
+    say('mDone', d.ok, d.message);
+    if (d.ok) $('hostState').textContent = 'running in the background — you can close this page';
+  };
 
   $('doConnect').onclick = async () => {
     $('doConnect').disabled = true;

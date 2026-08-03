@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import os
+import signal
 import pathlib
 import re
 import secrets
@@ -590,6 +591,22 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         return web.json_response({"ok": True, "found": hosts.detect(),
                                   "message": hosts.connect(apply=apply, install=install)})
 
+    async def api_handover(request):
+        """Start the installed daemon and stand down. The last act of the installer."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import service
+        msg = service.handover()
+        ok = msg.startswith("Handing over")
+        if ok:
+            # Answer FIRST, exit after. Exiting inside the handler would drop the response and
+            # the page would report a network error instead of what actually happened.
+            async def _stand_down():
+                await asyncio.sleep(1.5)
+                os.kill(os.getpid(), signal.SIGTERM)
+            asyncio.create_task(_stand_down())
+        return web.json_response({"ok": ok, "message": msg})
+
     async def api_chat(request):
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
@@ -883,6 +900,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/api/setup/examples", api_setup_examples),
         web.post("/api/setup/example", api_setup_example),
         web.get("/api/state", api_state),
+        web.post("/api/handover", api_handover),
         web.get("/api/install", api_install),
         web.post("/api/install", api_install),
         web.get("/api/hosts", api_hosts),
