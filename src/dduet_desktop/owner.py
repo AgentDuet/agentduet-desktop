@@ -83,6 +83,19 @@ def pronoun() -> str:
     return p or f'the name "{name()}" or "my owner" — use NO pronoun for them'
 
 
+def phone() -> str:
+    """The owner's own number, for ringing THEM — never disclosed to anyone.
+
+    Settings, not knowledge, for the same reason the never-say list is: it is read by code and
+    must never be quoted. It gates an action (placing a call), so it is typed and checked rather
+    than left as prose.
+
+    Empty means no callback is possible, and the agent must not offer one. A promise the code
+    cannot keep is worse than saying "I'll take a message".
+    """
+    return (os.getenv("OWNER_PHONE") or _first_line(_sections().get("Phone", ""))).strip()
+
+
 def pronoun_raw() -> str:
     """The configured pronoun, or "" — for prefilling setup.
 

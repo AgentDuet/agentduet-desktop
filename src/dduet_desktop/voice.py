@@ -77,6 +77,10 @@ CALL_SAMPLE_RATE = int(os.getenv("SECRETARY_CALL_SAMPLE_RATE", "24000"))
 #: The greeting normally lands in ~1.5s, so this is generous.
 SILENCE_TIMEOUT = float(os.getenv("SECRETARY_CALL_SILENCE_TIMEOUT", "6"))
 
+#: How long to ring the OWNER when passing on a callback request. Longer than a transfer ring:
+#: nobody is waiting on the line, so a missed ring costs only a retry.
+CALLBACK_RING_SECONDS = 45
+
 
 def available() -> tuple[bool, str]:
     """(usable, why not) — checked before registering a call handler."""
@@ -115,6 +119,13 @@ def _tool_declarations() -> list[dict]:
              "what": {"type": "string", "description": "what is being arranged"},
              "at": {"type": "string", "description": "ISO 8601 start time, e.g. 2026-08-01T19:00"},
              "quantity": {"type": "integer", "description": "how many, if it is countable"}}}},
+        {"name": "request_callback",
+         "description": "Arrange for the owner to call this caller back. Use when you cannot "
+                        "answer and they want a person. Only offer this if it is available — "
+                        "if it returns unavailable, take a message instead.",
+         "input_schema": {"type": "object", "required": ["about"], "properties": {
+             "about": {"type": "string",
+                       "description": "what they want, in one line, for the owner to read"}}}},
         {"name": "transfer_to_owner",
          "description": "Put the caller through to the owner when you cannot answer and they "
                         "want to speak to a person. Ask the caller first. If nobody picks up "
@@ -172,6 +183,32 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
                     f"capability:{cap}:voice", f"Booked for {row['at']}",
                     None, "TELCO", None, verified, convo)
                 return {"ok": True, "at": row["at"], "what": what}
+
+            # A promise the code can keep. `transfer_to_owner` bridges the live caller into a
+            # conference with a destination we cannot see or set (SDK #36), and a real attempt
+            # timed out with the owner's phone never ringing. `session.make_call(dest)` DOES
+            # take a destination — proven — so ringing the owner ourselves is buildable, and it
+            # works whether or not they are at their desk.
+            if name == "request_callback":
+                from . import owner as owner_settings
+                number = owner_settings.phone()
+                if not number:
+                    # No number: do NOT offer a callback. Saying it and not doing it is worse
+                    # than taking a message.
+                    return {"ok": False, "reason": "no owner number configured",
+                            "say": HOLDING_LINE.format(owner=owner_name)}
+                about = str(args.get("about") or "wants to speak to you")
+                live["callback"] = about
+                await asyncio.to_thread(
+                    brain.record, caller, f"[call] callback requested: {about}", "escalated",
+                    "voice:callback_requested", policy.ABSTAIN,
+                    None, "TELCO", None, verified, convo)
+                from .notify import escalate_to_owner
+                await asyncio.to_thread(escalate_to_owner, caller, about, "callback requested")
+                # Placed AFTER this call ends — see the callback runner. Two live calls at once
+                # would need the model to speak on both legs.
+                return {"ok": True,
+                        "say": f"I'll have {owner_name} call you back on this number shortly."}
 
             if name == "transfer_to_owner":
                 call = live.get("call")
@@ -317,8 +354,10 @@ def register(sm, owner_name: str) -> bool:
             f"asks you to agree a price, a discount, a meeting or anything binding, call "
             f"escalate and say what it gives you. Never invent a fact about {owner_name}, "
             f"and never agree to anything on their behalf.\n"
-            f"If the caller wants to speak to a person, offer to put them through and use "
-            f"transfer_to_owner. If it comes back unanswered, take a message instead."
+            f"If the caller wants to speak to a person, use request_callback — "
+            f"{owner_name} will ring them back. Only if they insist on being connected right "
+            f"now, try transfer_to_owner. If either comes back unavailable, take a message "
+            f"instead, and never promise a callback you were not given."
         )
         # sample_rate is the rate of the CALL, in both directions — the adapter uses it to
         # decide whether to resample the caller's audio down to Qwen's 16 kHz input. It must
@@ -379,6 +418,43 @@ def register(sm, owner_name: str) -> bool:
             except Exception as exc:
                 logger.error("could not hang up the silent call %s: %s", call.id, exc)
 
+        async def _ring_owner(number: str, about: str) -> None:
+            """Ring the owner and read out who called and why.
+
+            Placed AFTER the caller's call ends, not during: the model can only speak on one
+            leg. This is what makes the callback promise true — an escalation in the queue and a
+            desktop notification both reach an owner who is AT the machine, which is exactly the
+            owner who did not need a phone call.
+            """
+            from agentduet import Address
+            brief = (
+                f"You are {owner_name}'s assistant, phoning {owner_name} with one message.\n"
+                f"Say this and nothing else: {caller} called and asked for a callback about "
+                f"{about}.\n"
+                f"Then stop talking. Do not ask questions. Do not offer anything.")
+            try:
+                session2 = await sm.open_session(uuid.uuid4().hex, noti.subscriber)
+                out = await session2.make_call(Address.telco(number))
+                if not await out.dial(ring_time_seconds=CALLBACK_RING_SECONDS):
+                    logger.warning("callback to the owner was not answered — it stays in the "
+                                   "escalation queue")
+                    return
+                teller = QwenVoice(instruction=brief, tools=[], voice=VOICE,
+                                   sample_rate=CALL_SAMPLE_RATE,
+                                   **({"model": VOICE_MODEL} if VOICE_MODEL else {}))
+                ms2 = await teller.open()
+                try:
+                    await va._bridge(out, ms2)
+                finally:
+                    try:
+                        await ms2.close()
+                    except Exception:
+                        pass
+            except Exception as exc:
+                # Never let the callback take anything else down: the escalation is already
+                # recorded, so the worst case is the owner reads it on the dashboard instead.
+                logger.error("callback to the owner failed: %s: %s", type(exc).__name__, exc)
+
         dog = asyncio.create_task(_watchdog())
         try:
             await va._bridge(call, ms)
@@ -386,6 +462,13 @@ def register(sm, owner_name: str) -> bool:
             dog.cancel()
             live.pop("call", None)
             await recorder.flush()          # the last question, if it was never answered
+            about = live.pop("callback", "")
+            if about:
+                from . import owner as owner_settings
+                number = owner_settings.phone()
+                if number:
+                    logger.info("caller %s asked for a callback — ringing %s", caller, number)
+                    await _ring_owner(number, about)
             # The SDK closes ms from its on_hangup handler, which covers the normal ending.
             # This covers the ones it does not: a bridge that raises, or a call that ends
             # without a HANGUP. A realtime session left open counts against a DASHSCOPE

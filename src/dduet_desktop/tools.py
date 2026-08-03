@@ -1073,7 +1073,7 @@ def edit_knowledge(file: str, old: str, new: str = "") -> str:
 #: write a section the code never reads — the same silent failure as the heading rename that
 #: emptied the never-say list.
 SETTING_FIELDS = {"name": "Name", "pronoun": "Pronoun", "voice": "Voice",
-                  "never_say": "Never say"}
+                  "never_say": "Never say", "phone": "Phone"}
 
 
 def _section_bullets(doc: pathlib.Path, heading: str) -> list[str]:
@@ -1103,6 +1103,7 @@ def current_setup() -> dict:
         "contacts": "\n".join(_section_bullets(doc, "Contacts")),
         "available": "\n".join(_section_bullets(doc, "Availability")),
         "never": "\n".join(owner.never_say()),
+        "phone": owner.phone(),
         "configured": owner.name() != owner.DEFAULT_NAME,
     }
 
