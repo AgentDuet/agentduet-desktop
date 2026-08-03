@@ -66,6 +66,37 @@ SERVER_NAME = "dduet"
 
 HOME = pathlib.Path.home()
 
+#: Where assistants land when they install per-user, in PATH order. Checked IN ADDITION to PATH
+#: because PATH is not reliable here: a double-clicked app inherits the desktop session's
+#: environment, not the shell's, and `~/.local/bin` is frequently missing from it. That is not
+#: hypothetical — it is the reported bug. Launched from the applications menu, `which("claude")`
+#: returned None and step 4 said "None found" about a Claude Code that was plainly installed.
+#:
+#: It breaks REGISTRATION as well as detection, which is the worse half: `claude mcp add` is run
+#: by name, so the same missing PATH turns a working install into a silent failure. Hence this
+#: resolves to an ABSOLUTE path that both callers use.
+#:
+#: `~/.local/bin` is first because it is where Claude Code's own installer puts its symlink, and
+#: where we put Goose.
+EXTRA_BINS = [
+    HOME / ".local/bin",
+    HOME / ".claude/local",          # older npm-local Claude Code installs
+    pathlib.Path("/usr/local/bin"),
+    pathlib.Path("/opt/homebrew/bin"),
+    pathlib.Path("/opt/local/bin"),
+]
+
+
+def resolve_bin(name: str) -> str | None:
+    """The absolute path of an assistant's binary, PATH or not."""
+    if found := shutil.which(name):
+        return found
+    for d in EXTRA_BINS:
+        candidate = d / name
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
 #: Goose DESKTOP, if the owner has it. We never install this one: on Linux it ships only as
 #: deb/rpm (no AppImage), both of which need root, and nothing else in this product does. macOS
 #: and Windows ship it as a zip, so it is reachable there — hence looking on every OS. Defined
@@ -87,15 +118,15 @@ GOOSE_DESKTOP = [
 #: there. Telling an owner to configure software they do not have is worse than saying nothing:
 #: they cannot act on it, and it makes the rest of the output look untrustworthy.
 KNOWN = [
-    ("Claude Code", lambda: shutil.which("claude") is not None, "~/.claude.json"),
+    ("Claude Code", lambda: resolve_bin("claude") is not None, "~/.claude.json"),
     # Goose is a RUNNABLE, not a config file. It used to count `~/.config/goose/config.yaml`,
     # which was meant to catch a Desktop install that never put `goose` on PATH — but a config
     # outlives an uninstall, so removing the binary left detection reporting an assistant that
     # could not be opened, while `launch_assistant` correctly found nothing. Desktop is now
     # looked for as an APP, which covers the original case honestly and cannot go stale.
-    ("Goose", lambda: shutil.which("goose") is not None
+    ("Goose", lambda: resolve_bin("goose") is not None
      or any(p.exists() for p in GOOSE_DESKTOP), "~/.config/goose/config.yaml"),
-    ("Cursor", lambda: shutil.which("cursor") is not None
+    ("Cursor", lambda: resolve_bin("cursor") is not None
      or (HOME / ".cursor/mcp.json").is_file(), "~/.cursor/mcp.json"),
     ("Claude Desktop",
      lambda: (HOME / ".config/Claude/claude_desktop_config.json").is_file()
@@ -117,7 +148,13 @@ def _safe(check) -> bool:
 
 
 def _register_claude_code(apply: bool) -> str:
-    cmd = ["claude", "mcp", "add", SERVER_NAME, "-s", "user", "--", *launch_command()]
+    # The ABSOLUTE path, not the bare name. Invoking "claude" needs it on PATH, and a
+    # double-clicked app often has a PATH without ~/.local/bin — which turned registration into
+    # "could not run `claude`" on a machine where Claude Code was installed and working.
+    claude = resolve_bin("claude")
+    if claude is None:
+        return "    could not find the `claude` command"
+    cmd = [claude, "mcp", "add", SERVER_NAME, "-s", "user", "--", *launch_command()]
     if not apply:
         return "    would run: " + " ".join(cmd)
     # -s user, not local: the owner's secretary is not a property of whichever directory they
@@ -135,7 +172,7 @@ def _register_claude_code(apply: bool) -> str:
     # leaving it would defeat the reason we register the symlink at all. Replace it.
     if any("already exists" in l for l in err):
         try:
-            subprocess.run(["claude", "mcp", "remove", SERVER_NAME, "-s", "user"],
+            subprocess.run([claude, "mcp", "remove", SERVER_NAME, "-s", "user"],
                            capture_output=True, text=True, timeout=30)
             again = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         except (OSError, subprocess.SubprocessError) as exc:
@@ -408,8 +445,8 @@ def launch_assistant() -> str:
             return f"Could not open {app.name}: {exc}"
         return f"Opening {app.name}. The secretary's tools appear once it has started."
 
-    goose = shutil.which("goose") or str(pathlib.Path.home() / ".local/bin/goose")
-    if not pathlib.Path(goose).exists():
+    goose = resolve_bin("goose")
+    if not goose:
         return ("No assistant found to open. Install one at step 4, or start yours the way you "
                 "normally do — the secretary is registered either way.")
 

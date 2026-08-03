@@ -120,11 +120,15 @@
     <label>Connector uuid
       <input id="cUuid" autocomplete="off" placeholder="00000000-0000-0000-0000-000000000000">
     </label>
+    <!-- Positive action LEFT, like every other step. Skip was on the left with Save pushed to
+         the far right, so the one destructive-ish choice sat where the confirm button is
+         everywhere else. It is also hidden once a connector exists: skipping is for someone who
+         has none, and "Skip" beside "Keep current connector" reads as two ways to do nothing. -->
     <div class="acts">
-      <button class="ghost" id="b3skip">Skip</button>
-      <span class="sp"></span>
       <button id="b3">Save</button>
       <button class="ghost" id="b3keep" hidden>Keep current connector</button>
+      <button class="ghost" id="b3skip">Skip</button>
+      <span class="sp"></span>
       <span class="spin" id="sp3"></span>
     </div>
     <div id="m3"></div>
@@ -235,6 +239,9 @@
       $('m3').innerHTML = `<div class="msg ok">Already configured — ${esc(cur.connector_uuid)}</div>`;
       $('b3keep').hidden = false;
       $('b3keep').onclick = () => show(4);
+      // Skip is for someone who has no connector. With one already saved it is a second button
+      // that does the same nothing as Keep, and the pair only invites a wrong guess.
+      $('b3skip').hidden = true;
       $('cKey').placeholder = 'paste only if you are changing it';
       if (cur.connector_uuid) $('cUuid').value = cur.connector_uuid;
     }
