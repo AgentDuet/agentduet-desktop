@@ -69,6 +69,38 @@ def eq(name: str, got, want) -> None:
 # --------------------------------------------------------------------------
 # schedule — the booking primitive
 # --------------------------------------------------------------------------
+def test_no_undefined_names() -> None:
+    """Every name the package uses is bound. Caught by pyflakes, not by import.
+
+    WHY THIS EARNS ITS PLACE
+
+    A scripted edit deleted `model = QwenVoice(...)` out of the voice call path while replacing
+    the block around it. The file still parsed, every module still imported, and all 140 checks
+    still passed — because nothing here opens a call. It would have failed with NameError on the
+    first real caller, and it survived four commits.
+
+    The same class of accident happened twice in one day. A linter is the systemic answer; a
+    test that only exercises what it remembers to exercise is not.
+    """
+    print("\n  -- lint: no undefined names --")
+    import subprocess
+    src = pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop"
+    try:
+        done = subprocess.run([sys.executable, "-m", "pyflakes", *sorted(map(str, src.glob("*.py")))],
+                              capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError) as exc:
+        ok("pyflakes is available", False, f"{exc} — pip install pyflakes")
+        return
+    if done.returncode not in (0, 1):
+        ok("pyflakes ran", False, done.stderr[:200])
+        return
+    # Only the fatal class. Unused imports and f-string nits are style, and failing the suite on
+    # them would train people to ignore it.
+    fatal = [l for l in done.stdout.splitlines()
+             if "undefined name" in l or "referenced before assignment" in l]
+    ok("no undefined names anywhere in the package", not fatal, "\n        ".join(fatal))
+
+
 def test_prompts() -> None:
     """Prompt templates are checked OFFLINE, because on voice the prompt is the control and a
     hole in it is only otherwise discovered by a stranger on the phone."""
@@ -517,6 +549,7 @@ def test_knowledge_writes() -> None:
 
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
+    test_no_undefined_names()
     test_prompts()
     test_hosts()
     test_schedule()

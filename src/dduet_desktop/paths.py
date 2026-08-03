@@ -78,13 +78,17 @@ _MIGRATE = [
 
 
 def migrate() -> list[str]:
-    """Copy any instance data still sitting in the install directory. Idempotent.
+    """Seed a fresh instance from the shipped templates. Idempotent.
 
-    Only ever copies when the destination is ABSENT — so it can never overwrite newer
-    instance data with a stale copy left behind in the install directory, which is the one
-    way this could destroy something.
+    Named "migrate" from when it moved instance data out of the install directory. `_MIGRATE`
+    now points at TEMPLATES, so what it really does is create a new instance — and saying
+    "moved instance data" to someone installing for the first time describes something that
+    did not happen, on the very first line they ever see.
+
+    Only ever copies when the destination is ABSENT, so it can never overwrite an owner's
+    files with a stale template.
     """
-    moved = []
+    seeded = []
     HOME.mkdir(parents=True, exist_ok=True)
     for dest, legacy in _MIGRATE:
         if dest.exists() or not legacy.exists():
@@ -94,23 +98,29 @@ def migrate() -> list[str]:
         else:
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(legacy, dest)
-        moved.append(f"{legacy.name} → {dest}")
-    return moved
+        seeded.append(f"{legacy.name} → {dest}")
+    return seeded
 
 
 def legacy_leftovers() -> list[pathlib.Path]:
-    """Instance data still present in the install dir after migration — safe to delete.
+    """Always empty now, and deliberately kept as a stub.
 
-    Surfaced rather than deleted automatically: the owner should be the one to remove
-    their own data, and until they do it is a free backup.
+    It used to list install-dir copies of instance data as safe to delete. Since `_MIGRATE`
+    points at TEMPLATES, that is exactly backwards — it named the SHIPPED TEMPLATES as
+    deletable, and following its advice would break every future install on the machine.
+
+    There is no legacy location left to clean up.
     """
-    return [legacy for dest, legacy in _MIGRATE if dest.exists() and legacy.exists()]
+    return []
 
 
 # Run on import. Every module below imports this one, so instance data is in place before
 # anything reads it — and a fresh install simply finds nothing to migrate.
-_migrated = migrate()
-if _migrated and os.getenv("DDUET_QUIET") != "1":
-    print(f"dduet: moved instance data to {HOME}", file=sys.stderr)
-    for line in _migrated:
+#: What THIS process created, so `init` can report the truth. It used to call migrate() again
+#: and get an empty list — because the import above had already done the work — and then tell a
+#: first-time owner their instance was "already present" seconds after creating it.
+SEEDED = migrate()
+if SEEDED and os.getenv("DDUET_QUIET") != "1":
+    print(f"dduet: created your instance at {HOME}", file=sys.stderr)
+    for line in SEEDED:
         print(f"  {line}", file=sys.stderr)
