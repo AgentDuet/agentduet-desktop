@@ -157,19 +157,28 @@ It must report the file it wrote, and be idempotent.
 
 ---
 
-## Configuration: a path, not an interface
+## Configuration: the assistant does the interview, the terminal holds the secrets
 
 **Secrets cannot go through the assistant.** `save_connector` is deliberately outside
 `OWNER_TOOLS`: typing a credential into a chat box sends it to the model provider and writes it
 to `run/owner_chat.json` in plaintext. That reasoning holds and is not overturned by removing
 the UI.
 
-So with no interface, no chat and (today) no CLI path, **the product cannot be set up.** The
-answer is a configuration path at a terminal:
+But that is only true of **secrets**. Everything else the interview asks — name, pronoun, what
+you do, what you may act on — goes through `set_setting`, `add_knowledge`, `declare_capability`
+and `grant_folder`, all of which are in the registry. The assistant can run the whole interview,
+and a conversation is a better interview than a list of CLI prompts ever was.
 
-    dduet-desktop init        # model key, connector, name — secrets never touch the assistant
+So the split is:
 
-Everything after first run goes through the mcp.
+| | where | why |
+|---|---|---|
+| model key, connector credential | `dduet-desktop init`, at a terminal | a secret in a chat box goes to the model provider and lands in `owner_chat.json` |
+| everything else | the assistant, via the mcp | it is a conversation, which is what the interview wanted to be |
+
+`setup_status` is what joins them: it reports what is configured, echoes **no values** — not the
+key, not the connector uuid, not the owner's own number, because anything it returns travels to
+a model provider — and names the one command the assistant cannot run itself.
 
 ---
 

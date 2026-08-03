@@ -1108,6 +1108,52 @@ def current_setup() -> dict:
     }
 
 
+def setup_status() -> str:
+    """What is configured and what is still missing, and what only a terminal can do.
+
+    Purpose-built for the owner's assistant. It can run the whole interview itself — set_setting,
+    add_knowledge, declare_capability and grant_folder are all in this registry, and a
+    conversation is a better interview than a list of CLI prompts ever was. What it CANNOT do is
+    the two secrets: a model key or a connector credential typed into a chat box is sent to the
+    model provider and written to run/owner_chat.json in plaintext.
+
+    So this reports state and names the one command the assistant cannot run for them. It
+    deliberately echoes NO values — not the key, not the connector uuid, not the owner's own
+    number. Whether something is set is all that setup guidance needs, and anything returned
+    here travels to a model provider.
+    """
+    from . import connector, llm
+    ok, _ = llm.verify()
+    cur = current_setup()
+    caps = capabilities.all_capabilities()
+    docs = len(list(paths.KNOWLEDGE.glob("*.md"))) if paths.KNOWLEDGE.is_dir() else 0
+
+    lines = [
+        f"  name          {cur['name'] or 'NOT SET'}",
+        f"  pronoun       {cur['pronoun'] or 'not set (it will use the name)'}",
+        f"  what you do   {len(cur['does'].splitlines()) if cur['does'] else 0} fact(s) recorded",
+        f"  knowledge     {docs} document(s)",
+        f"  capabilities  {len(caps)} declared" + (f": {', '.join(caps)}" if caps else
+                                                   " — it can answer, but may not DO anything"),
+        f"  your number   {'set' if cur.get('phone') else 'not set — no callback can be offered'}",
+        f"  model         {llm.describe() if ok else 'NOT ATTACHED — the agent cannot answer'}",
+        f"  connector     {'configured' if connector.configured() else 'NOT SET — nobody outside can reach it'}",
+    ]
+    missing = []
+    if not ok:
+        missing.append("a model key")
+    if not connector.configured():
+        missing.append("a B3 connector")
+    if missing:
+        lines += ["", f"  {' and '.join(missing)} must be set at a TERMINAL, not here — a",
+                  "  credential typed into chat is sent to the model provider and stored in",
+                  "  plaintext. Tell the owner to run:  dduet-desktop init"]
+    if not cur["name"]:
+        lines += ["", "  No name yet. Ask them, then set it with set_setting — you can do the",
+                  "  whole interview here; only the two credentials need a terminal."]
+    return "\n".join(lines)
+
+
 def set_setting(field: str, value: str) -> str:
     """Set one owner setting: name, pronoun, voice or never_say. Not knowledge — never quoted."""
     key = field.strip().lower().replace(" ", "_").replace("-", "_")
@@ -1577,6 +1623,7 @@ OWNER_TOOLS = {
                 "choose the file that already owns the subject",
         "section": "the '## ' heading to put it under, e.g. Who or Availability. "
                    "Use one the document already has; a new one is created if it does not"}),
+    "setup_status": (setup_status, {}),
     "set_setting": (set_setting, {
         "field": "name, pronoun, voice or never_say",
         "value": "the value; for never_say, one topic per line"}),
