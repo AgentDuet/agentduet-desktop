@@ -144,7 +144,11 @@
       waiting, tell it what you do, have it reply for you. There is no dashboard; this is it.</p>
     <div class="state" id="hostState">…</div>
     <button id="doConnect">Connect</button>
+    <button class="ghost" id="doGoose">Install Goose instead</button>
     <div id="mHost"></div>
+    <p class="note">Goose is open source, works with any model provider including local ones,
+      and has per-tool permission modes. Worth choosing deliberately even if something else was
+      found — set it to <b>Approve</b> mode, not SmartApprove.</p>
     <p class="note">Restart the assistant afterwards — it starts its tools when it starts.</p>
   </section>
 
@@ -240,6 +244,19 @@
     const d = await post('/api/hosts', {});
     say('mHost', d.ok, d.message);
     $('doConnect').disabled = false;
+  };
+
+  // Detection is a default, not a decision — finding Claude Code does not mean they want it.
+  $('doGoose').onclick = async () => {
+    $('doGoose').disabled = true;
+    $('hostState').textContent = 'downloading and installing Goose — this takes a minute…';
+    const d = await post('/api/hosts', {install: 'goose'});
+    say('mHost', d.ok, d.message);
+    $('doGoose').disabled = false;
+    // Re-detect: it should now be in the list, and Connect should register with it too.
+    fetch(`/api/hosts?t=${T}`).then(r => r.json())
+      .then(x => { $('hostState').textContent = 'found: ' + (x.found.join(', ') || 'none'); })
+      .catch(() => {});
   };
 
 </script>
