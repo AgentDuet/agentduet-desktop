@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dduet-desktop"
-version = "0.1.0"
+dynamic = ["version"]
 description = "A personal secretary that answers external parties on your behalf, on your own machine."
 requires-python = ">=3.12"   # the SDK requires 3.12
 dependencies = [
@@ -30,5 +30,9 @@ dduet-desktop = "dduet_desktop.cli:main"
 where = ["src"]
 
 # Templates, examples and the served pages are DATA, not importable code.
+[tool.setuptools.dynamic]
+# One source of truth. Two declarations drift, and the one that drifts is the one nobody reads.
+version = {attr = "dduet_desktop.__version__"}
+
 [tool.setuptools.package-data]
 dduet_desktop = ["*.html", "templates/**/*", "examples/**/*", "prompts/**/*"]

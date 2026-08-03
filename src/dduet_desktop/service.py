@@ -46,11 +46,30 @@ GRACE_SECONDS = 10
 
 
 def _alive(pid: int) -> bool:
+    """Running, and not a corpse waiting to be reaped.
+
+    `os.kill(pid, 0)` succeeds on a ZOMBIE, which is how `service_stop` came to report "it
+    ignored both signals" about a process it had just killed — SIGKILL cannot be ignored. The
+    daemon is spawned by the mcp server and stays its child, so between exiting and the parent
+    reaping it there is a window where the pid still answers.
+    """
     try:
         os.kill(pid, 0)
     except (OSError, ProcessLookupError):
         return False
-    return True
+    # Linux: state is the third field of /proc/<pid>/stat, after a comm that may contain spaces.
+    try:
+        stat = pathlib.Path(f"/proc/{pid}/stat").read_text()
+        return stat[stat.rindex(")") + 2] != "Z"
+    except (OSError, ValueError, IndexError):
+        pass
+    # No procfs (macOS): ask ps. If that is unavailable too, fall back to "it answered".
+    try:
+        out = subprocess.run(["ps", "-o", "state=", "-p", str(pid)],
+                             capture_output=True, text=True, timeout=5)
+        return not out.stdout.strip().startswith("Z")
+    except (OSError, subprocess.SubprocessError):
+        return True
 
 
 def running_pid() -> int | None:
@@ -130,6 +149,13 @@ def service_start() -> str:
         kwargs["start_new_session"] = True          # POSIX: escape the caller's process group
     elif hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+
+    # Reap anything a previous start left behind, so the pid file cannot point at a corpse.
+    try:
+        while os.waitpid(-1, os.WNOHANG)[0]:
+            pass
+    except (ChildProcessError, OSError, AttributeError):
+        pass
 
     subprocess.Popen(
         [sys.executable, "-m", "dduet_desktop.cli", "run", "--headless"],

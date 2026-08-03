@@ -558,6 +558,24 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         out = [tools.set_ui_pref(k, v) for k, v in body.items()]
         return web.json_response({"ok": True, "message": "; ".join(out)})
 
+    async def api_install(request):
+        """Install status, and the install itself. Setup only — not day-to-day operation."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import install
+        if request.method == "GET":
+            return web.json_response(install.status())
+        return web.json_response({"ok": True, "message": install.install()})
+
+    async def api_hosts(request):
+        """Which AI assistants are installed, and register with them."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import hosts
+        apply = request.method == "POST"
+        return web.json_response({"ok": True, "found": hosts.detect(),
+                                  "message": hosts.connect(apply=apply)})
+
     async def api_chat(request):
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
@@ -851,6 +869,10 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/api/setup/examples", api_setup_examples),
         web.post("/api/setup/example", api_setup_example),
         web.get("/api/state", api_state),
+        web.get("/api/install", api_install),
+        web.post("/api/install", api_install),
+        web.get("/api/hosts", api_hosts),
+        web.post("/api/hosts", api_hosts),
         web.get("/api/ui", api_ui),
         web.post("/api/ui", api_ui),
         web.post("/api/chat", api_chat),
