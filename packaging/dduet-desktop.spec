@@ -57,6 +57,7 @@ hiddenimports = [
     # `mcp.cli` calls sys.exit(1) at import time when its optional CLI extras are absent —
     # which aborts the BUILD. Only the server surface is actually used.
     "mcp.server.fastmcp",
+    "yaml",          # writing Goose config.yaml
     # The window shell, optional at runtime — absent, `run` uses the browser.
     "webview",
 ]

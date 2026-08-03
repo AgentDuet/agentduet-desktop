@@ -120,6 +120,52 @@ def _register_claude_code(apply: bool) -> str:
     return "    claude refused: " + (err[0] if err else f"exit {done.returncode}")
 
 
+#: Goose's own documented shape for an external MCP server. Verified against a real installed
+#: config.yaml on this machine and against the published schema — the previous version printed a
+#: JSON blob for the owner to paste into a YAML file, which would have corrupted it.
+GOOSE_CONFIG = pathlib.Path.home() / ".config/goose/config.yaml"
+
+
+def _register_goose(apply: bool) -> str:
+    """Add the dduet extension to Goose's config. Serves the CLI and the Desktop app both —
+    they share this file."""
+    cmd, *args = launch_command()
+    entry = {"name": SERVER_NAME, "cmd": cmd, "args": args, "enabled": True,
+             "envs": {}, "type": "stdio", "timeout": 300}
+    if not apply:
+        return (f"    would add a `{SERVER_NAME}` stdio extension to {GOOSE_CONFIG}\n"
+                f"      cmd: {cmd}  args: {args}")
+    try:
+        import yaml
+    except ImportError:
+        return "    pyyaml is not available, so the config cannot be edited safely"
+    try:
+        cfg = yaml.safe_load(GOOSE_CONFIG.read_text()) if GOOSE_CONFIG.is_file() else {}
+    except (OSError, yaml.YAMLError) as exc:
+        return f"    could not read {GOOSE_CONFIG}: {exc}"
+    if not isinstance(cfg, dict):
+        return f"    {GOOSE_CONFIG} is not a mapping — refusing to overwrite it"
+
+    existing = (cfg.get("extensions") or {}).get(SERVER_NAME)
+    if existing == entry:
+        return f"    already registered in {GOOSE_CONFIG.name}"
+
+    cfg.setdefault("extensions", {})[SERVER_NAME] = entry
+    try:
+        # Back up first. This is someone's working assistant config, and we are the second
+        # program to write it.
+        GOOSE_CONFIG.with_suffix(".yaml.dduet-backup").write_text(GOOSE_CONFIG.read_text()
+                                                                 if GOOSE_CONFIG.is_file() else "")
+        GOOSE_CONFIG.parent.mkdir(parents=True, exist_ok=True)
+        GOOSE_CONFIG.write_text(yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True))
+    except (OSError, yaml.YAMLError) as exc:
+        return f"    could not write {GOOSE_CONFIG}: {exc}"
+    verb = "updated" if existing else "added"
+    return (f"    {verb} the `{SERVER_NAME}` extension in {GOOSE_CONFIG.name} "
+            f"(backup alongside it)\n"
+            f"    Works in both the Goose CLI and Goose Desktop — they share this file.")
+
+
 def _manual(label: str, where: str) -> str:
     """For hosts we can detect but will not write to. Print what to paste."""
     entry = json.dumps({SERVER_NAME: {"command": launch_command()[0],
@@ -155,18 +201,33 @@ def install_goose(apply: bool = True) -> str:
     their binary either way.
     """
     bin_dir = pathlib.Path.home() / ".local/bin"
-    env = {**os.environ,
-           "GOOSE_BIN_DIR": str(bin_dir),
-           # Their interactive provider setup would block an installer that may have no TTY.
-           # The owner runs `goose configure` themselves afterwards and chooses a model.
-           "CONFIGURE": "false"}
+    env = {**os.environ, "GOOSE_BIN_DIR": str(bin_dir)}
     if GOOSE_VERSION:
         env["GOOSE_VERSION"] = GOOSE_VERSION
 
+    # USE THE KEY THE OWNER ALREADY GAVE US. Goose's installer takes GOOSE_PROVIDER, GOOSE_MODEL
+    # and the provider's own key variable, and configures itself when they are present — so a
+    # DashScope owner does not have to run `goose configure` and paste the same key a second
+    # time. Its provider name for DashScope is `alibaba`, read off a real installed config.
+    #
+    # Without a key there is nothing to configure with, so CONFIGURE stays false rather than
+    # risking an interactive prompt in an installer that may have no TTY.
+    key = os.getenv("DASHSCOPE_API_KEY", "")
+    model = os.getenv("SECRETARY_MODEL", "")
+    if key:
+        env["GOOSE_PROVIDER"] = "alibaba"
+        env["DASHSCOPE_API_KEY"] = key
+        if model:
+            env["GOOSE_MODEL"] = model
+    else:
+        env["CONFIGURE"] = "false"
+
     if not apply:
+        shown = " ".join(f"{k}={'<redacted>' if 'KEY' in k else v}"
+                         for k, v in sorted(env.items())
+                         if k.startswith(("GOOSE_", "CONFIGURE", "DASHSCOPE")))
         return ("    would download " + GOOSE_SCRIPT + "\n"
-                f"    and run it with GOOSE_BIN_DIR={bin_dir} CONFIGURE=false"
-                + (f" GOOSE_VERSION={GOOSE_VERSION}" if GOOSE_VERSION else ""))
+                f"    and run it with {shown}")
 
     import tempfile
     import urllib.request
@@ -191,11 +252,15 @@ def install_goose(apply: bool = True) -> str:
     where = bin_dir / "goose"
     if not where.exists():
         return f"    the installer reported success but {where} is not there."
+    configured = "GOOSE_PROVIDER" in env
     return (
         f"    installed Goose at {where}\n"
-        f"    Next, YOU should run:\n"
-        f"      goose configure        # choose a model provider\n"
-        f"      dduet-desktop connect  # register this secretary with it\n"
+        + (f"    Configured it for alibaba/{model or 'default'} with the key you already gave —\n"
+           f"    no need to run `goose configure`. If Goose says it has no credential, run it\n"
+           f"    once and it will store the key itself.\n"
+           if configured else
+           f"    Not configured — no DashScope key in this instance. Run `goose configure`.\n")
+        + f"    Registering this secretary with it now.\n"
         f"    Set its permission mode to APPROVE, not SmartApprove: SmartApprove asks an\n"
         f"    LLM whether a tool call is safe, and the text your secretary hands it was\n"
         f"    written by strangers. A judge the attacker can talk to is not a control.")
@@ -233,6 +298,8 @@ def connect(apply: bool = True, install: str = "") -> str:
         lines.append(f"  {label}")
         if label == "Claude Code":
             lines.append(_register_claude_code(apply))
+        elif label == "Goose":
+            lines.append(_register_goose(apply))
         else:
             where = next(w for l, _, w in KNOWN if l == label)
             lines.append(_manual(label, where))
