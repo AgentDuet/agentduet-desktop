@@ -1243,11 +1243,23 @@ def who_is(asker: str) -> str:
 
 
 def list_people() -> str:
-    """Everyone the secretary has a profile for."""
-    names = people.list_profiles()
-    if not names:
-        return "No profiles yet."
-    return f"{len(names)} profiles:\n" + "\n".join(f"- {n}" for n in names)
+    """Everyone who has been in touch, and whether the secretary has a profile for them.
+
+    It used to list PROFILE FILES only. That answers a question nobody asks: an owner saying
+    "who has contacted me?" wants the two people who called, not the subset someone happened to
+    write notes about — and with no profiles yet, the honest answer looked like "none". The
+    site's people list was already derived from traffic, so the two faces disagreed about who
+    existed.
+    """
+    seen = {row["asker"] for row in rows() if row.get("asker")}
+    profiled = set(people.list_profiles())
+    if not seen and not profiled:
+        return "Nobody has been in touch yet."
+    lines = []
+    for who in sorted(seen | profiled):
+        mark = "" if who in profiled else "   (no profile yet)"
+        lines.append(f"- {who}{mark}")
+    return f"{len(lines)} in touch:\n" + "\n".join(lines)
 
 
 def add_person(asker: str, who: str = "", comms: str = "") -> str:
