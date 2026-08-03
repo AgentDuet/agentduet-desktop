@@ -602,8 +602,12 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                 install = (await request.json()).get("install", "")
             except Exception:
                 install = ""
-        return web.json_response({"ok": True, "found": hosts.detect(),
-                                  "message": hosts.connect(apply=apply, install=install)})
+        # OFF THE EVENT LOOP. connect() downloads an installer and waits on a subprocess — up to
+        # ~200 MB for Goose Desktop. Run inline, it blocks every other request for the duration:
+        # the page's own status polling stalls, and on a configured instance the DDUET channel
+        # stalls with it, so an install could make the secretary miss a call.
+        msg = await asyncio.to_thread(hosts.connect, apply, install)
+        return web.json_response({"ok": True, "found": hosts.detect(), "message": msg})
 
     async def api_connector_signin(request):
         """Begin an OAuth sign-in for the connector. NOT IMPLEMENTED — the seam, not the flow.
