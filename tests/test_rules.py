@@ -133,6 +133,33 @@ def test_hosts() -> None:
     print("\n  -- hosts: what an assistant is told to launch --")
     from dduet_desktop import hosts
 
+    # PATH-INDEPENDENCE. A double-clicked app inherits the desktop session's environment, not the
+    # shell's, and ~/.local/bin is often missing from it — so `shutil.which` found nothing and
+    # step 4 reported "None found" about an installed Claude Code, while registration failed with
+    # "could not run `claude`". Invisible from a terminal, which is why it is pinned here.
+    import os
+    real_path = os.environ.get("PATH", "")
+    tmpbin = TMP / "fakebin"
+    tmpbin.mkdir(parents=True, exist_ok=True)
+    fake = tmpbin / "claude"
+    fake.write_text("#!/bin/sh\n")
+    fake.chmod(0o755)
+    real_extra = hosts.EXTRA_BINS
+    try:
+        os.environ["PATH"] = "/nonexistent"
+        hosts.EXTRA_BINS = [tmpbin]
+        ok("an assistant is found off PATH, where a GUI launch cannot see it",
+           hosts.resolve_bin("claude") == str(fake), hosts.resolve_bin("claude"))
+        ok("and something genuinely absent is still absent",
+           hosts.resolve_bin("no-such-assistant") is None)
+        # The registration path must use the resolved absolute path, not the bare name.
+        src = (pathlib.Path(hosts.__file__)).read_text()
+        ok("registration invokes the resolved path, not the bare command name",
+           '[claude, "mcp", "add"' in src and '["claude", "mcp"' not in src)
+    finally:
+        os.environ["PATH"] = real_path
+        hosts.EXTRA_BINS = real_extra
+
     cmd = hosts.launch_command()
     # The dev incantation cannot be registered on an installed machine — no python, no module
     # path — so a frozen build must register ITSELF. Getting this wrong produces a config that
