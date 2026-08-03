@@ -76,6 +76,11 @@
         <input id="pronoun" placeholder="she/her" autocomplete="off">
       </label>
     </div>
+    <label>Your own number
+      <span class="sm">E.164, e.g. +6591234567. For the agent to RING YOU when a caller wants
+        a person — never given out. Leave empty and it will not offer a callback.</span>
+      <input id="phone" placeholder="+6591234567" autocomplete="off">
+    </label>
     <label>Never discuss
       <span class="sm">One per line. It refuses these however readable the source.</span>
       <textarea id="never" placeholder="my fees&#10;my home address"></textarea>
@@ -170,6 +175,7 @@
     $('name').value = cur.name || '';
     $('pronoun').value = cur.pronoun || '';
     $('never').value = cur.never || '';
+    $('phone').value = cur.phone || '';
     $('doesState').textContent = cur.does
       ? cur.does.split('\n').length + ' fact(s) recorded: ' + cur.does.split('\n')[0]
       : 'nothing recorded yet';
@@ -182,7 +188,8 @@
   $('saveYou').onclick = async () => {
     $('saveYou').disabled = true;
     const out = [];
-    for (const [field, el] of [['name','name'], ['pronoun','pronoun'], ['never_say','never']]) {
+    for (const [field, el] of [['name','name'], ['pronoun','pronoun'], ['phone','phone'],
+                               ['never_say','never']]) {
       const d = await post('/api/setup/setting', {field, value: $(el).value});
       out.push(d.message);
     }
