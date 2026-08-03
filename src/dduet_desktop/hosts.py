@@ -212,13 +212,15 @@ def install_goose(apply: bool = True) -> str:
     #
     # Without a key there is nothing to configure with, so CONFIGURE stays false rather than
     # risking an interactive prompt in an installer that may have no TTY.
+    # We pass the provider and the key, NOT a model. SECRETARY_MODEL is the secretary's text
+    # model — a small fast one is right for answering a stranger and wrong for driving an agent
+    # over the owner's machine. Goose knows a sensible default per provider, has a model picker
+    # in `configure` and in Desktop, and its list changes; guessing a name here would be worse
+    # than letting it choose and telling the owner where to change it.
     key = os.getenv("DASHSCOPE_API_KEY", "")
-    model = os.getenv("SECRETARY_MODEL", "")
     if key:
         env["GOOSE_PROVIDER"] = "alibaba"
         env["DASHSCOPE_API_KEY"] = key
-        if model:
-            env["GOOSE_MODEL"] = model
     else:
         env["CONFIGURE"] = "false"
 
@@ -255,9 +257,9 @@ def install_goose(apply: bool = True) -> str:
     configured = "GOOSE_PROVIDER" in env
     return (
         f"    installed Goose at {where}\n"
-        + (f"    Configured it for alibaba/{model or 'default'} with the key you already gave —\n"
-           f"    no need to run `goose configure`. If Goose says it has no credential, run it\n"
-           f"    once and it will store the key itself.\n"
+        + (f"    Configured for the alibaba provider with the key you already gave — no need to\n"
+           f"    run `goose configure`. It picks its own default model; change that in Goose\n"
+           f"    Desktop or with `goose configure` if you want a stronger one.\n"
            if configured else
            f"    Not configured — no DashScope key in this instance. Run `goose configure`.\n")
         + f"    Registering this secretary with it now.\n"

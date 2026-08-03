@@ -34,6 +34,11 @@ def cmd_init(args) -> int:
 
 
 def cmd_run(args) -> int:
+    # A hand-over: the outgoing process still holds port 8899 and the connector, and one client
+    # per connector is a hard constraint. Wait for it rather than racing it.
+    if getattr(args, "after_pid", 0):
+        from . import service
+        service.wait_for_exit(args.after_pid)
     if (pid := _running_pid()) and not args.force:
         # Launching it again almost always means the person lost the tab or window, not that
         # they want a second daemon. Show them the one that IS running rather than refusing —
@@ -158,6 +163,8 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--force", action="store_true", help="start even if one appears to be running")
     r.add_argument("--no-window", action="store_true",
                    help="open the owner view in your browser instead of an app window")
+    r.add_argument("--after-pid", type=int, default=0,
+                   help="wait for this pid to exit first (used when handing over after install)")
     r.add_argument("--headless", action="store_true",
                    help="open nothing; just run (for a server or a machine nobody is at)")
     r.set_defaults(fn=cmd_run)
