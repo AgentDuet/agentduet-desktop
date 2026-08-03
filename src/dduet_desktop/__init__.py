@@ -18,5 +18,7 @@ except ImportError:
 def version_string() -> str:
     """What to print, and what a bug report should quote."""
     import sys
-    where = "installed" if getattr(sys, "frozen", False) else "from source"
+    # "binary", not "installed": frozen says how it was built, not where it lives. Whether it
+    # is installed in the right place is a different question, and `status` is what answers it.
+    where = "binary" if getattr(sys, "frozen", False) else "from source"
     return f"{__version__}" + (f" ({__commit__})" if __commit__ else "") + f" — {where}"
