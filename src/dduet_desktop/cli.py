@@ -20,20 +20,12 @@ from . import paths
 PIDFILE = paths.RUN / "secretary.pid"
 
 
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except (OSError, ProcessLookupError):
-        return False
-    return True
-
-
+# ONE implementation, in service.py. There were two, and only one learned that a zombie
+# answers os.kill(pid, 0) — so `run` refused to start against a corpse in the pid file while
+# `stop` correctly reported it dead. A duplicated predicate is a predicate that will disagree.
 def _running_pid() -> int | None:
-    try:
-        pid = int(PIDFILE.read_text().strip())
-    except (OSError, ValueError):
-        return None
-    return pid if _alive(pid) else None
+    from . import service
+    return service.running_pid()
 
 
 def cmd_init(args) -> int:
