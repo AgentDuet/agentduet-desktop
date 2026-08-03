@@ -109,7 +109,79 @@ def _manual(label: str, where: str) -> str:
             + "\n".join(f"      {l}" for l in entry.splitlines()))
 
 
-def connect(apply: bool = True) -> str:
+#: Goose's own installer. Pinned so an install is reproducible and we can say what we put on
+#: someone's machine; `stable` would be whatever it resolved to that day.
+#:
+#: block/goose 301-redirects to aaif-goose/goose — an org rename, verified: same repo, same
+#: star count, same push date. The script's own REPO variable says aaif-goose, which looks
+#: alarming next to a block/... URL and is not.
+GOOSE_SCRIPT = "https://github.com/aaif-goose/goose/releases/download/stable/download_cli.sh"
+GOOSE_VERSION = ""          # empty = stable; set to pin, e.g. "v1.0.25"
+
+
+def install_goose(apply: bool = True) -> str:
+    """Install Goose using its OWN installer, driven by its documented env vars.
+
+    WHY THE SCRIPT AND NOT A HAND-ROLLED DOWNLOAD
+
+    The usual objections to `curl | bash` are that you cannot pin a version, you do not learn
+    where it put things, and it may want a TTY. Reading the script answers all three:
+    GOOSE_BIN_DIR, GOOSE_VERSION and CONFIGURE=false. It is `set -eu` and checks its
+    dependencies first. Re-implementing it would be more code, worse tested, and would drift
+    from their release process.
+
+    We DOWNLOAD then RUN, rather than piping, only so the exact bytes we executed are on disk
+    if something goes wrong. That is an audit trail, not a security boundary — we are running
+    their binary either way.
+    """
+    bin_dir = pathlib.Path.home() / ".local/bin"
+    env = {**os.environ,
+           "GOOSE_BIN_DIR": str(bin_dir),
+           # Their interactive provider setup would block an installer that may have no TTY.
+           # The owner runs `goose configure` themselves afterwards and chooses a model.
+           "CONFIGURE": "false"}
+    if GOOSE_VERSION:
+        env["GOOSE_VERSION"] = GOOSE_VERSION
+
+    if not apply:
+        return ("    would download " + GOOSE_SCRIPT + "\n"
+                f"    and run it with GOOSE_BIN_DIR={bin_dir} CONFIGURE=false"
+                + (f" GOOSE_VERSION={GOOSE_VERSION}" if GOOSE_VERSION else ""))
+
+    import tempfile
+    import urllib.request
+    try:
+        with urllib.request.urlopen(GOOSE_SCRIPT, timeout=60) as r:
+            script = r.read()
+    except Exception as exc:
+        return f"    could not download the Goose installer: {exc}"
+    tmp = pathlib.Path(tempfile.gettempdir()) / "goose-install.sh"
+    tmp.write_bytes(script)
+    try:
+        done = subprocess.run(["bash", str(tmp)], env=env, capture_output=True,
+                              text=True, timeout=600)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"    the Goose installer failed to run: {exc}"
+    if done.returncode != 0:
+        tail = (done.stderr or done.stdout or "").strip().splitlines()[-3:]
+        detail = "\n".join(f"      {l}" for l in tail)
+        return (f"    the Goose installer exited {done.returncode}:\n{detail}\n"
+                f"      (the script it ran is at {tmp})")
+
+    where = bin_dir / "goose"
+    if not where.exists():
+        return f"    the installer reported success but {where} is not there."
+    return (
+        f"    installed Goose at {where}\n"
+        f"    Next, YOU should run:\n"
+        f"      goose configure        # choose a model provider\n"
+        f"      dduet-desktop connect  # register this secretary with it\n"
+        f"    Set its permission mode to APPROVE, not SmartApprove: SmartApprove asks an\n"
+        f"    LLM whether a tool call is safe, and the text your secretary hands it was\n"
+        f"    written by strangers. A judge the attacker can talk to is not a control.")
+
+
+def connect(apply: bool = True, install: str = "") -> str:
     """Register with every assistant found. `apply=False` shows without changing anything."""
     found = detect()
     head = ["  This secretary is driven from an AI assistant.",
@@ -117,9 +189,17 @@ def connect(apply: bool = True) -> str:
     if not getattr(sys, "frozen", False):
         head.insert(2, "  (running from source — an installed build registers its own binary)")
 
+    if install == "goose":
+        return "\n".join(head + ["  Installing Goose (its own installer, non-interactive)", "",
+                                 install_goose(apply)])
+
     if not found:
         return "\n".join(head + [
             "  No AI assistant found.",
+            "",
+            "  `dduet-desktop connect --install goose` will install one. Goose is the option we",
+            "  suggest: it works with any model provider including local ones, the software is",
+            "  free, and it has real per-tool permission modes.",
             "",
             "  DDuet works without one — the daemon still answers calls and messages, and",
             "  `dduet-desktop status` shows what is happening. But there is no way to read",
