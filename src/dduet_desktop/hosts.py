@@ -490,6 +490,97 @@ def _manual(label: str, where: str) -> str:
 GOOSE_SCRIPT = "https://github.com/aaif-goose/goose/releases/download/stable/download_cli.sh"
 GOOSE_VERSION = ""          # empty = stable; set to pin, e.g. "v1.0.25"
 
+#: Goose DESKTOP release assets, by machine. Verified against the real release: the zip contains
+#: `Goose.app` at the top level and is code-signed (`Contents/_CodeSignature`).
+GOOSE_DESKTOP_ASSET = {
+    "arm64": "Goose.zip",              # Apple Silicon
+    "x86_64": "Goose_intel_mac.zip",   # Intel
+}
+GOOSE_DESKTOP_URL = "https://github.com/block/goose/releases/latest/download/"
+
+
+def _mac_apps_dir() -> pathlib.Path:
+    """Where an app can be written without a password.
+
+    /Applications is group-writable by admin, which the default macOS user is — so no sudo. A
+    non-admin account falls back to ~/Applications, which macOS treats as a real applications
+    folder and which `open -a` and our own detection both already look in.
+    """
+    system = pathlib.Path("/Applications")
+    if os.access(system, os.W_OK):
+        return system
+    user = HOME / "Applications"
+    user.mkdir(parents=True, exist_ok=True)
+    return user
+
+
+def install_goose_desktop(apply: bool = True) -> str:
+    """Install Goose DESKTOP on macOS: a GUI, and no root.
+
+    WHY DESKTOP HERE AND THE CLI ON LINUX
+
+    A terminal is not a deliverable for someone who came for a secretary and has never used an AI
+    assistant. On macOS Desktop is a zip into /Applications — no password, no package manager —
+    so there is no reason to hand them a CLI. On Linux the same app ships only as deb/rpm, both
+    of which need root, and nothing else in this product does; desktop-Linux users are also the
+    ones for whom a terminal is fine.
+
+    WHY `ditto` AND NOT zipfile
+
+    Python's zipfile drops the executable bit and turns symlinks into regular files. Both are
+    fatal to an .app: `Contents/MacOS/Goose` must stay executable, and the framework layout is
+    symlinks. `ditto -x -k` is Apple's own tool for this, present on every Mac.
+
+    WHY THIS AVOIDS THE GATEKEEPER PROMPT
+
+    `com.apple.quarantine` is applied by the application that DOWNLOADS a file — a browser. A
+    programmatic fetch does not set it, so the extracted app opens without the "unidentified
+    developer" refusal and without teaching the owner to right-click past a security warning.
+    That is a side effect worth having deliberately, not a trick: the app is signed either way.
+    """
+    import platform
+    machine = platform.machine()
+    asset = GOOSE_DESKTOP_ASSET.get("arm64" if machine in ("arm64", "aarch64") else "x86_64")
+    url = GOOSE_DESKTOP_URL + asset
+    dest = _mac_apps_dir()
+    app = dest / "Goose.app"
+
+    if apply and app.exists():
+        # Not an error, and not a reinstall: an app they already have is theirs. Configure it and
+        # move on, which is what the owner actually wants from this button.
+        return (f"    Goose Desktop is already at {app}\n" + configure_goose_defaults())
+
+    if not apply:
+        return (f"    would download {url}\n"
+                f"    and extract Goose.app into {dest} with `ditto`")
+
+    import tempfile
+    import urllib.request
+    tmp = pathlib.Path(tempfile.gettempdir()) / asset
+    try:
+        # Streamed, not read() — this is ~200 MB and holding it in memory is pointless.
+        with urllib.request.urlopen(url, timeout=120) as r, open(tmp, "wb") as f:
+            shutil.copyfileobj(r, f, length=1024 * 256)
+    except Exception as exc:
+        return f"    could not download Goose Desktop: {exc}"
+
+    try:
+        done = subprocess.run(["ditto", "-x", "-k", str(tmp), str(dest)],
+                              capture_output=True, text=True, timeout=600)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"    could not extract Goose Desktop: {exc}"
+    finally:
+        tmp.unlink(missing_ok=True)
+    if done.returncode != 0:
+        tail = (done.stderr or done.stdout or "").strip().splitlines()[-2:]
+        return "    ditto failed:\n" + "\n".join(f"      {l}" for l in tail)
+    if not app.exists():
+        return f"    extracted, but {app} is not there."
+
+    return (f"    installed Goose Desktop at {app}\n"
+            + configure_goose_defaults() + "\n"
+            + "    Registering this secretary with it now.")
+
 
 def install_goose(apply: bool = True) -> str:
     """Install Goose using its OWN installer, driven by its documented env vars.
@@ -506,6 +597,10 @@ def install_goose(apply: bool = True) -> str:
     if something goes wrong. That is an audit trail, not a security boundary — we are running
     their binary either way.
     """
+    # macOS gets the GUI. See install_goose_desktop for why the platforms differ.
+    if sys.platform == "darwin":
+        return install_goose_desktop(apply)
+
     bin_dir = pathlib.Path.home() / ".local/bin"
     # CONFIGURE=false ALWAYS. Its configure step is interactive and its own TTY check is not
     # enough to stop it — see _set_goose_provider for what that cost. We configure it afterwards
