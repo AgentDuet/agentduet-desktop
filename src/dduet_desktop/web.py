@@ -341,13 +341,16 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
     def needs_setup() -> bool:
         """True until the owner has both a working model and a name.
 
-        Those two are what everything else depends on: without a model the agent cannot answer
-        or write its own configuration, and without a name it cannot sign anything. Checked on
-        every load rather than a flag file, so a half-finished setup resumes instead of
-        stranding the owner on a dashboard that cannot work.
+        Checked on every load rather than from a flag file, so a half-finished setup resumes
+        instead of stranding the owner on a dashboard that cannot work.
+
+        `owner.setup_pending`, not a check written out here: the DAEMON asks the same question to
+        decide whether to open the DDUET channel, and a page that says "finish setting up" while
+        the same process holds the connector is the confusion the two modes exist to remove.
+        `deep=True` because a page load can afford one real call to the model, and a key that is
+        present but rejected must not be shown a dashboard.
         """
-        ok, _ = llm.verify()
-        return not ok or owner.name() == owner.DEFAULT_NAME
+        return bool(owner.setup_pending(deep=True))
 
     async def index(request):
         if not authed(request):

@@ -38,6 +38,8 @@ from . import paths
 NUMBER_FILE = paths.RUN / "channel-number"
 
 #: unset → no connector credentials at all (the ordinary state of a fresh install)
+#: setup → setup is not finished, so this process is the installer and must not take the
+#:         connector (secretary_agent.main); `detail` says what is missing
 #: off → deliberately disabled with SECRETARY_CHANNEL=0
 #: connecting → credentials present, first attempt in flight
 #: live → connected; inbound is being served

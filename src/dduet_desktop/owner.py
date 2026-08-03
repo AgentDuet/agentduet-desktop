@@ -69,6 +69,39 @@ def name() -> str:
     return os.getenv("OWNER_NAME") or _first_line(_sections().get("Name", "")) or DEFAULT_NAME
 
 
+def setup_pending(deep: bool = False) -> str:
+    """Why first-run setup is not finished yet, or "" once it is.
+
+    ONE DEFINITION, TWO CONSUMERS. The site asks it to decide whether a browser gets setup.html
+    or the owner's view (`web.needs_setup`); the daemon asks it to decide whether to open the
+    DDUET channel at all (`secretary_agent.main`). Those two must never disagree — a process
+    showing a setup page while holding the connector is exactly the state the split is meant to
+    remove — so they read the same function rather than each spelling out the same two checks.
+
+    It lives here because half the answer is the sentinel above, and because both callers can
+    import this module while neither can import the other: `web` pulls in the model client and
+    `secretary_agent` pulls in the SDK.
+
+    The two facts are the ones everything else depends on: without a model the agent cannot
+    answer or write its own configuration, and without a name it cannot sign anything — it
+    greets strangers as "the owner", which the model has been seen to read as a template.
+
+    `deep` really calls the model (llm.verify) instead of only looking for a credential. Right
+    for a page load, which happens once and should not show a dashboard behind a key that is
+    present but rejected; wrong for anything polled, which would spend a token per poll.
+    """
+    from . import llm
+    if deep:
+        ok, why = llm.verify()
+        if not ok:
+            return why
+    elif not llm.configured():
+        return "no model is attached"
+    if name() == DEFAULT_NAME:
+        return "the owner has not said who they are"
+    return ""
+
+
 def pronoun() -> str:
     """How to refer to the owner when writing to OUTSIDE parties.
 
