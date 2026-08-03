@@ -60,7 +60,7 @@ And two problems disappear rather than being managed:
   no locking. The outbox exists for the send path for exactly this reason; knowledge and settings
   edits are still exposed. One process, one writer, gone.
 
-## Two faces, because one of them has to work when the service is down
+## Two faces: one to USE the secretary, one to MANAGE it
 
 A service that exposes its own status over its own endpoint cannot report being stopped. "Is it
 running?" is unanswerable by the thing whose running-ness is in question — and that is exactly
@@ -71,16 +71,16 @@ one:
 
 | | transport | lifetime | job |
 |---|---|---|---|
-| **control plane** | stdio, spawned by the host | per session | `service_status`, `service_start`, `service_stop`, login-item toggle |
-| **data plane** | streamable HTTP, in the daemon | always on | the 33 registry operations |
+| **service tools** | stdio, spawned by the host | per session | `service_status`, `service_start`, `service_stop`, login-item toggle |
+| **secretary tools** | streamable HTTP, in the daemon | always on | the 33 registry operations |
 
 The stdio face is spawned by the host, so it exists whether or not the service does. That is what
 lets an assistant say *"your secretary is not running — start it?"* rather than failing to
 connect and leaving the owner to work out why.
 
-Keeping them apart is also honest about privilege. The control plane starts and stops a process
-and can make the service persistent. The data plane reads and writes the owner's knowledge and
-can send messages as them. Those are different powers and they should not sit behind one grant.
+Keeping them apart is also honest about privilege. The service tools start and stop a process
+and can make it persistent. The secretary tools read and write the owner's knowledge and can
+send messages as them. Those are different powers and they should not sit behind one grant.
 
 ## Starting at login, without building a persistence primitive
 
@@ -155,8 +155,8 @@ a second secret to store and hand over.
 - **`cli.py`** grows the distinction: `run` (service, foreground), `open` (attach a UI), `stop`
   (end the service, deliberately). `status` already reports the service correctly.
 - **`web.py`** gains the MCP endpoint beside the site, sharing the token check.
-- **`secretary_mcp.py`** becomes the CONTROL PLANE rather than a lesser copy of the data plane:
-  service lifecycle and the login-item toggle. It keeps the registry-derived registration for
+- **`secretary_mcp.py`** carries the SERVICE TOOLS rather than a lesser copy of the secretary
+  tools: lifecycle and the login-item toggle. It keeps the registry-derived registration for
   hosts that speak only stdio, but the always-on face is the HTTP one.
 - **Packaging** gains the login-start unit per platform, registering the *service*, not the app.
 
@@ -178,7 +178,7 @@ a second secret to store and hand over.
 
 ## Sequencing
 
-1. **The stdio control plane** — `service_status` / `service_start` / `service_stop` on the
+1. **The stdio service tools** — `service_status` / `service_start` / `service_stop` on the
    existing `secretary_mcp.py`. Moved to the front, ahead of everything else: it is the piece
    that lets anyone NOTICE the service is down, which is the fault that started this document.
    It needs none of the rest to be useful.
