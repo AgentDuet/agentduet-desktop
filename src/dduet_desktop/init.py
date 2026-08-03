@@ -204,8 +204,13 @@ def interview() -> str:
 
 def main(interactive: bool = True) -> int:
     print("\n  DDuet Desktop — setup")
-    made = ensure_instance()
-    print(f"  instance: {paths.HOME}" + (f"  (created {len(made)} file(s))" if made else "  (already present)"))
+    ensure_instance()
+    # paths.SEEDED, not a second migrate() call: the import already did the work, so calling it
+    # again always returns nothing and reported "already present" on an instance created a
+    # second earlier.
+    made = paths.SEEDED
+    print(f"  instance: {paths.HOME}" +
+          (f"  (created {len(made)} item(s))" if made else "  (already present)"))
 
     # THE TWO SECRETS, TOGETHER AND FIRST. This is the part that needs a terminal: a credential
     # typed into a chat box is sent to the model provider and written to run/owner_chat.json in

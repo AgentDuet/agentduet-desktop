@@ -92,11 +92,14 @@ def available() -> tuple[bool, str]:
         from agentduet_adapters.qwen import QwenVoice  # noqa: F401
     except ImportError as exc:
         return False, f"the Qwen voice adapter is not installed ({exc})"
-    # The adapter reads DASHSCOPE_API_KEY, falling back to the raw key in ~/.qwen. The daemon
-    # loads $DDUET_HOME/.env into the environment at startup, so a key attached at setup is
-    # already visible here. ~/.qwen is the USER's home, not the instance directory.
-    if not (os.getenv("DASHSCOPE_API_KEY") or (pathlib.Path.home() / ".qwen").is_file()):
-        return False, "no DashScope key (DASHSCOPE_API_KEY, or the raw key in ~/.qwen)"
+    # The instance's key, and only that. The daemon loads $DDUET_HOME/.env into the
+    # environment at startup, so a key attached at setup is visible here.
+    #
+    # We used to accept ~/.qwen as well. That is the USER's home, not the instance, so a
+    # throwaway instance holding no credentials at all still reported "voice: available" —
+    # which made a first-run test on a developer machine prove nothing about anyone else's.
+    if not os.getenv("DASHSCOPE_API_KEY"):
+        return False, "no DashScope key for this instance — run `dduet-desktop init`"
     return True, ""
 
 
@@ -348,6 +351,14 @@ def register(sm, owner_name: str) -> bool:
         instruction = prompts.render("asker-voice", owner_name=owner_name,
                                      pronoun=owner_settings.pronoun_raw())
 
+        # api_key passed EXPLICITLY: the adapter falls back to ~/.qwen on its own, so without
+        # it our availability check could report "no key" while a call still connected using a
+        # file in the user's home. One source of truth, or the check is theatre.
+        model = QwenVoice(instruction=instruction, tools=_tool_declarations(),
+                          voice=VOICE, sample_rate=CALL_SAMPLE_RATE,
+                          api_key=os.environ["DASHSCOPE_API_KEY"],
+                          **({"model": VOICE_MODEL} if VOICE_MODEL else {}))
+
         # Per call, so the handlers can close over who is calling.
         live: dict = {}
         va_recorder = _make_recorder(who, verified, convo)
@@ -420,6 +431,7 @@ def register(sm, owner_name: str) -> bool:
                     return
                 teller = QwenVoice(instruction=brief, tools=[], voice=VOICE,
                                    sample_rate=CALL_SAMPLE_RATE,
+                                   api_key=os.environ["DASHSCOPE_API_KEY"],
                                    **({"model": VOICE_MODEL} if VOICE_MODEL else {}))
                 ms2 = await teller.open()
                 try:

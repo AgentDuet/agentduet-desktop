@@ -186,10 +186,13 @@ class _DashScope:
 
     KEY = "DASHSCOPE_API_KEY"
 
-    #: Stanley's machine keeps the raw key here, matching the ~/.gemini convention. Read as
-    #: a fallback so an already-credentialed machine needs no re-entry — the same reasoning
-    #: as reading an existing `ant` OAuth profile rather than demanding a fresh key.
-    KEY_FILE = pathlib.Path(os.getenv("DASHSCOPE_KEY_FILE", pathlib.Path.home() / ".qwen"))
+    #: OPT-IN ONLY. This used to default to ~/.qwen, so a key sitting in the developer's home
+    #: silently credentialed every instance on the machine — including throwaway ones created
+    #: to test a first run, which reported themselves configured while holding nothing. A
+    #: credential belongs to the INSTANCE, in $DDUET_HOME/.env, or the install cannot be
+    #: reasoned about and a dev machine stops resembling a new one.
+    KEY_FILE = pathlib.Path(os.environ["DASHSCOPE_KEY_FILE"]) \
+        if os.getenv("DASHSCOPE_KEY_FILE") else None
 
     @classmethod
     def credential(cls) -> str | None:
