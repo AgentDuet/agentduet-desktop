@@ -6,13 +6,21 @@ With no owner interface, the assistant IS the owner's surface. So the step betwe
 and "usable" is one line of MCP configuration — and it is exactly the step that loses people,
 because it is a path, a module name and a flag they have no way to guess.
 
-WHY NOT INSTALL AN ASSISTANT FOR THEM
+WHY WE DO OFFER TO INSTALL ONE (reversed 2026-08-03)
 
-Considered and rejected. Bundling one contradicts being assistant-agnostic (it picks a winner),
-makes us a distributor of someone else's updates and CVEs, and roughly doubles the download —
-Goose is a Rust binary, Claude Code needs Node. If it is ever done it must come from their
-PREBUILT RELEASES, never from git: Goose from source means shipping a toolchain and minutes of
-compilation on the owner's machine.
+This said "considered and rejected", and the product shipped the opposite. The objection was
+that it picks a winner, makes us a distributor of someone else's CVEs, and doubles the download.
+What changed is the weight, not the objection: with no owner interface the assistant IS the only
+way to drive this product, so "bring your own" is a dead end for anyone who has never installed
+one. Detection still wins by default; Goose is offered only as an alternative the owner picks.
+Nothing is bundled, so the download is unchanged. It comes from their PREBUILT RELEASE, never
+from git — Goose from source means a Rust toolchain and minutes of compilation.
+
+AND WHY WE OFFER TO LAUNCH IT
+
+Installing an assistant the owner has never used and then leaving them at a browser page is
+where the flow stopped. They came for a secretary; being handed a configured tool with no way
+to open it is not a finished install. See `launch_assistant`.
 
 WHY THE COMMAND IS `<binary> mcp`
 
@@ -58,6 +66,19 @@ SERVER_NAME = "dduet"
 
 HOME = pathlib.Path.home()
 
+#: Goose DESKTOP, if the owner has it. We never install this one: on Linux it ships only as
+#: deb/rpm (no AppImage), both of which need root, and nothing else in this product does. macOS
+#: and Windows ship it as a zip, so it is reachable there — hence looking on every OS. Defined
+#: before KNOWN because detection reads it; a lambda would defer that, but relying on definition
+#: order being irrelevant is how a later edit breaks it.
+GOOSE_DESKTOP = [
+    pathlib.Path("/Applications/Goose.app"),
+    pathlib.Path.home() / "Applications/Goose.app",
+    pathlib.Path("/usr/share/applications/goose.desktop"),
+    pathlib.Path("/opt/goose/goose"),
+    pathlib.Path.home() / ".local/share/applications/goose.desktop",
+]
+
 #: (label, how to detect it, where its config lives — for the message only)
 #:
 #: Detection needs REAL evidence: a binary on PATH, or a config file the host actually writes.
@@ -67,8 +88,13 @@ HOME = pathlib.Path.home()
 #: they cannot act on it, and it makes the rest of the output look untrustworthy.
 KNOWN = [
     ("Claude Code", lambda: shutil.which("claude") is not None, "~/.claude.json"),
+    # Goose is a RUNNABLE, not a config file. It used to count `~/.config/goose/config.yaml`,
+    # which was meant to catch a Desktop install that never put `goose` on PATH — but a config
+    # outlives an uninstall, so removing the binary left detection reporting an assistant that
+    # could not be opened, while `launch_assistant` correctly found nothing. Desktop is now
+    # looked for as an APP, which covers the original case honestly and cannot go stale.
     ("Goose", lambda: shutil.which("goose") is not None
-     or (HOME / ".config/goose/config.yaml").is_file(), "~/.config/goose/config.yaml"),
+     or any(p.exists() for p in GOOSE_DESKTOP), "~/.config/goose/config.yaml"),
     ("Cursor", lambda: shutil.which("cursor") is not None
      or (HOME / ".cursor/mcp.json").is_file(), "~/.cursor/mcp.json"),
     ("Claude Desktop",
@@ -330,6 +356,83 @@ def configure_goose_defaults() -> str:
     except (OSError, yaml.YAMLError) as exc:
         return f"    could not write Goose's config: {exc}"
     return "    set safer defaults:\n" + "\n".join(f"      {c}" for c in changed)
+
+
+#: Terminal emulators and how each takes a command. `x-terminal-emulator` is the Debian
+#: alternatives symlink and points at whatever the owner actually uses, so it goes first.
+TERMINALS = [
+    ("x-terminal-emulator", ["-e"]),
+    ("gnome-terminal", ["--"]),
+    ("konsole", ["-e"]),
+    ("xfce4-terminal", ["-x"]),
+    ("kitty", []),
+    ("alacritty", ["-e"]),
+    ("foot", []),
+    ("tilix", ["-e"]),
+    ("xterm", ["-e"]),
+]
+
+
+def launch_assistant() -> str:
+    """Open the owner's assistant, so the install ends somewhere usable.
+
+    WHY THIS EXISTS
+
+    Step 4 installed Goose, configured it, and registered the secretary — then left the owner on
+    a web page with nothing to click. For someone whose first AI assistant this is, "now open a
+    terminal and type goose" is where the install ends in practice.
+
+    ORDER MATTERS: Desktop before the CLI. A graphical app is the right thing to hand someone
+    who did not come here for a terminal. We only ever install the CLI, so Desktop turns up only
+    if they already had it — but when it is there it is the better answer.
+
+    WHY THE TERMINAL IS SPAWNED WITH A SHELL AFTER IT
+
+    `goose session` in a bare `-e` window vanishes the instant anything goes wrong, taking the
+    error with it. Keeping a shell alive afterwards means a failure is readable instead of a
+    window that blinked.
+    """
+    for app in GOOSE_DESKTOP:
+        if not app.exists():
+            continue
+        try:
+            if app.suffix == ".app":
+                subprocess.Popen(["open", "-a", str(app)], start_new_session=True)
+            elif app.suffix == ".desktop":
+                subprocess.Popen(["gtk-launch", app.stem], start_new_session=True,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                subprocess.Popen([str(app)], start_new_session=True,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return f"Could not open {app.name}: {exc}"
+        return f"Opening {app.name}. The secretary's tools appear once it has started."
+
+    goose = shutil.which("goose") or str(pathlib.Path.home() / ".local/bin/goose")
+    if not pathlib.Path(goose).exists():
+        return ("No assistant found to open. Install one at step 4, or start yours the way you "
+                "normally do — the secretary is registered either way.")
+
+    if sys.platform == "darwin":
+        # Terminal.app takes a script, not argv, so this is the one place a string is right.
+        try:
+            subprocess.Popen(["open", "-a", "Terminal", goose], start_new_session=True)
+            return "Opening Goose in Terminal."
+        except (OSError, subprocess.SubprocessError) as exc:
+            return f"Could not open Terminal: {exc}"
+
+    inner = f"{goose} session; echo; echo '[goose exited — press enter to close]'; read"
+    for name, flag in TERMINALS:
+        if not shutil.which(name):
+            continue
+        try:
+            subprocess.Popen([name, *flag, "bash", "-lc", inner], start_new_session=True,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        return (f"Opening Goose in {name}. Say hello, then ask it "
+                f'"what is waiting for me?"')
+    return (f"No terminal program found to open it in. Run this yourself:\n    {goose} session")
 
 
 def _manual(label: str, where: str) -> str:
