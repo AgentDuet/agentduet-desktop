@@ -344,9 +344,12 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         Checked on every load rather than from a flag file, so a half-finished setup resumes
         instead of stranding the owner on a dashboard that cannot work.
 
-        `owner.setup_pending`, not a check written out here: the DAEMON asks the same question to
-        decide whether to open the DDUET channel, and a page that says "finish setting up" while
-        the same process holds the connector is the confusion the two modes exist to remove.
+        `setup_pending`, which is deliberately a WIDER test than the daemon's `cannot_answer`:
+        showing a setup page to someone who did not need it costs a click, whereas closing the
+        channel costs every call, so only the daemon's narrower question may do that. They were
+        one function until a blank name took a live secretary off the air — see
+        `owner.cannot_answer`.
+
         `deep=True` because a page load can afford one real call to the model, and a key that is
         present but rejected must not be shown a dashboard.
         """
@@ -412,9 +415,9 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         clicked an icon is holding.
 
         The SETUP page cancels through here too, deliberately not through a second endpoint. On a
-        fresh install the process serving that page holds no channel (see
-        `secretary_agent.setup_pending`), so cancelling costs nothing; on a configured one it is
-        the same stop the owner's view offers, and the page says so before asking.
+        fresh install the process serving that page holds no channel (the daemon gates that on
+        `owner.cannot_answer`), so cancelling costs nothing; on a configured one it is the same
+        stop the owner's view offers, and the page says so before asking.
 
         Exits with os._exit AFTER the response is flushed. SIGTERM is caught somewhere in the
         async stack and does not reliably exit (the reason `stop` escalates to SIGKILL), and

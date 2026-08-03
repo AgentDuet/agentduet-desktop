@@ -312,14 +312,19 @@ async def main() -> None:
     # model and recording a name both happen in THIS process (the setup pages write os.environ as
     # well as .env), so the channel can open the moment setup finishes — pressing Done and
     # handing over to the installed copy is how the owner tidies up, not how they get a channel.
+    # cannot_answer, NOT setup_pending: only "answering is impossible" may close the channel.
+    # setup_pending is a superset that also covers a blank name, and gating on it took a LIVE
+    # secretary off the air — this machine's instance had a working key, a claimed connector and
+    # inbound calls being answered, with no name ever filled in. See owner.cannot_answer.
     from . import owner
-    if why := owner.setup_pending():
-        logger.info("Setup is not finished (%s) — serving the setup pages only. The DDUET channel "
-                    "stays closed and the connector is not claimed until setup is done.", why)
+    if why := owner.cannot_answer():
+        logger.info("Cannot answer anyone yet (%s) — serving the setup pages only. The DDUET "
+                    "channel stays closed and the connector is not claimed until this is fixed.",
+                    why)
         status.set_channel("setup", why)
-        while owner.setup_pending():
+        while owner.cannot_answer():
             await asyncio.sleep(CONNECTOR_POLL_SECONDS)
-        logger.info("Setup finished — opening the channel, no restart needed.")
+        logger.info("A model is attached — opening the channel, no restart needed.")
 
     # No connector configured — the ordinary state on a machine that has just installed this.
     # Entering the retry loop would fill the log with connection failures for a channel the
