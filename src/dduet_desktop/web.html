@@ -551,6 +551,11 @@
       note.innerHTML = `Nothing has come in. The channel was switched off at startup `
         + `(<code>SECRETARY_CHANNEL=0</code>), so nothing will arrive until it is restarted `
         + `without that.`;
+    // Unfinished setup, so the connector is deliberately not claimed. Same rule as `off`: do not
+    // send them to the connector page, the connector is not what is missing.
+    else if (c.channel === 'setup')
+      note.innerHTML = `Nothing has come in. Setup is not finished`
+        + (c.detail ? ` — ${esc(c.detail)}` : '') + `, so the channel is still closed.`;
     else
       note.innerHTML = `Nothing has come in. The channel is not connected right now, so nothing `
         + `can arrive until it is — ${conn} to check the details.`;
@@ -584,6 +589,13 @@
         ? `Calls to ${num} reach your secretary, and DDUET messages arrive here too.`
         : 'Connected — DDUET messages will arrive here. DDUET carries no phone number; one '
           + 'appears only when a call comes in on a number B3 has attached to this connector.';
+    } else if (c.channel === 'setup') {
+      // Not an error and not a network problem: the daemon deliberately leaves the channel shut
+      // while setup is unfinished, so that the process serving the setup pages is not also
+      // holding the one client the connector allows. Seen here only in the seconds between
+      // finishing setup and the channel loop noticing.
+      cls = ''; label = 'finishing setup';
+      tip = 'The channel opens once setup is finished' + (c.detail ? ` — ${c.detail}` : '') + '.';
     } else if (c.channel === 'connecting') {
       cls = ''; label = 'connecting…'; tip = 'Opening the DDUET channel.';
     } else {

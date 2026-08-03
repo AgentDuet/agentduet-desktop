@@ -169,6 +169,65 @@ def test_hosts() -> None:
         ok("a stale ~/.cursor alone does not count as Cursor", "Cursor" not in hosts.detect())
 
 
+def test_setup_mode() -> None:
+    """Setup mode: while setup is unfinished the process is the installer, not the daemon.
+
+    The defect this pins is not a wrong answer, it is TWO answers. The site decides which page a
+    browser gets and the daemon decides whether to take the connector; when those were separate
+    checks a process could serve "finish setting up" while holding the one client the connector
+    allows — which is what forces a hand-over to wait on a pid before anyone can be answered.
+    """
+    print("\n  -- setup mode: the installer must not hold the channel --")
+    import os
+    import re
+    from dduet_desktop import llm, owner
+
+    src = pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop"
+
+    # ONE definition. Checked in the source because the alternative is importing both modules,
+    # and this suite must run with no venv: `web` pulls in aiohttp, `secretary_agent` the SDK.
+    web_src = (src / "web.py").read_text()
+    ok("the site's page choice comes from owner.setup_pending",
+       re.search(r"def needs_setup.*?owner\.setup_pending\(", web_src, re.S) is not None)
+    agent_src = (src / "secretary_agent.py").read_text()
+    ok("the daemon's channel decision comes from the same function",
+       "owner.setup_pending()" in agent_src)
+    # ORDER is the invariant: the gate has to be reached before anything opens the channel.
+    ok("and it is reached before the channel is opened",
+       agent_src.index("owner.setup_pending()") < agent_src.index("await run_channel()"))
+    ok("it waits rather than exiting, so finishing setup needs no restart",
+       re.search(r"while owner\.setup_pending\(\):\s*\n\s*await asyncio\.sleep", agent_src)
+       is not None)
+
+    # The two facts, one at a time. llm.configured is patched rather than fed a key: a real
+    # credential would need a provider SDK, and this suite must run without one.
+    real_configured, real_profile = llm.configured, owner.PROFILE
+    real_name = os.environ.pop("OWNER_NAME", None)
+    owner.PROFILE = TMP / "no-settings.md"          # no name recorded anywhere
+    try:
+        llm.configured = lambda *a, **k: False
+        why = owner.setup_pending()
+        ok("no model attached means setup is unfinished", bool(why), why)
+        ok("and it says which of the two is missing", "model" in why, why)
+
+        llm.configured = lambda *a, **k: True
+        why = owner.setup_pending()
+        # Without this the agent greets strangers as "the owner", which the model has been seen
+        # to read as a template and speak aloud.
+        ok("a model alone does not finish setup — a name is needed too", bool(why), why)
+        ok("and it says so", "owner" in why, why)
+
+        os.environ["OWNER_NAME"] = "Tan"
+        ok("model plus name finishes setup", owner.setup_pending() == "",
+           owner.setup_pending())
+    finally:
+        llm.configured = real_configured
+        owner.PROFILE = real_profile
+        os.environ.pop("OWNER_NAME", None)
+        if real_name is not None:
+            os.environ["OWNER_NAME"] = real_name
+
+
 def test_schedule() -> None:
     print("\n  -- schedule: conflicts and hours --")
     d = lambda s: datetime.fromisoformat(f"2026-08-01T{s}")
@@ -559,6 +618,7 @@ def main() -> None:
     test_no_undefined_names()
     test_prompts()
     test_hosts()
+    test_setup_mode()
     test_schedule()
     test_capabilities()
     test_capability_disclosure()

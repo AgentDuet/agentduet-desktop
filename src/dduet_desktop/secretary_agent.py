@@ -85,8 +85,10 @@ def owner_name() -> str:
     from . import owner
     return os.getenv("OWNER_NAME") or owner.name()
 
-#: How often to look for a connector the owner may have just added on the settings page. Short
-#: enough that saving one feels immediate; it is two os.getenv calls, so the cost is nothing.
+#: How often to look for a connector the owner may have just added on the settings page — and,
+#: with it, for a setup they may have just finished. Short enough that saving one feels immediate;
+#: both checks are environment and file reads, so the cost is nothing. One constant because it is
+#: one behaviour: waiting for the owner to supply something, in the same process.
 CONNECTOR_POLL_SECONDS = 3
 
 
@@ -289,6 +291,35 @@ async def main() -> None:
         status.set_channel("off", "SECRETARY_CHANNEL=0")
         while True:
             await asyncio.sleep(3600)
+
+    # SETUP MODE — the same site-only state as above, entered from the instance's own state
+    # instead of from an env var.
+    #
+    # WHY THIS IS A MODE AND NOT A DETAIL. The process an owner double-clicks is BOTH the
+    # installer and the daemon: it serves setup.html and, until now, also took the connector
+    # while doing it. One client per connector is a hard constraint, so that is what forces
+    # `service.handover` to start the installed copy and have it WAIT on this pid — the installer
+    # is holding the one client the connector allows. Nothing in an unfinished setup needs the
+    # channel: the only thing anyone can do with this process is fill in the pages.
+    #
+    # DERIVED FROM STATE, NOT FROM A FLAG. Whoever double-clicks a downloaded binary passes no
+    # arguments at all — cli.main() turns an empty argv into `run` — so a `--setup` flag would
+    # have to be supplied by the one person who is not there to supply it. State also answers
+    # correctly for the case a flag cannot see: an install whose model key was removed stops
+    # answering strangers with no brain, instead of holding the channel open.
+    #
+    # A POLL, NOT ONE CHECK, for the same reason the connector wait below is one: attaching a
+    # model and recording a name both happen in THIS process (the setup pages write os.environ as
+    # well as .env), so the channel can open the moment setup finishes — pressing Done and
+    # handing over to the installed copy is how the owner tidies up, not how they get a channel.
+    from . import owner
+    if why := owner.setup_pending():
+        logger.info("Setup is not finished (%s) — serving the setup pages only. The DDUET channel "
+                    "stays closed and the connector is not claimed until setup is done.", why)
+        status.set_channel("setup", why)
+        while owner.setup_pending():
+            await asyncio.sleep(CONNECTOR_POLL_SECONDS)
+        logger.info("Setup finished — opening the channel, no restart needed.")
 
     # No connector configured — the ordinary state on a machine that has just installed this.
     # Entering the retry loop would fill the log with connection failures for a channel the
