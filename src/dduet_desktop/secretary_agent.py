@@ -265,17 +265,18 @@ async def main() -> None:
     So the site binds unconditionally, and the channel is retried behind it with backoff.
     Reconnecting when the VPN returns then costs nothing.
     """
-    # Localhost-only + token; see web.py.
+    # Localhost-only + token; see web.py. NOT fatal any more: the site is a transitional
+    # surface, and the owner reaches this daemon through the mcp (docs/design.md). Answering
+    # a stranger's call must not depend on a UI having bound a port — the daemon IS the
+    # product. This used to raise SystemExit(1), which meant a port clash took the phone off
+    # the air.
     try:
         from . import web
         logger.info("Owner site: %s", await web.start())
     except Exception as exc:
-        # Fatal: the site is the owner's primary surface. Continuing would report a healthy
-        # daemon with no way for the owner to see anything.
-        logger.error("Owner site FAILED to start: %s", exc)
-        logger.error("This is the owner's primary surface — stopping. "
-                     "Nothing else can be reached without it.")
-        raise SystemExit(1)
+        logger.warning("Owner site did not start (%s: %s) — carrying on. Inbound is unaffected; "
+                       "reach this daemon through the mcp, or `dduet-desktop status`.",
+                       type(exc).__name__, exc)
 
     logger.info("Secretary up for %s", owner_name())
 
