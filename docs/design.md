@@ -176,6 +176,24 @@ So the split is:
 | model key, connector credential | `dduet-desktop init`, at a terminal | a secret in a chat box goes to the model provider and lands in `owner_chat.json` |
 | everything else | the assistant, via the mcp | it is a conversation, which is what the interview wanted to be |
 
+### A UI for the secrets is fine — the rule is narrower than "no interface"
+
+The rule is: **a secret must never enter a model's context.** A chat box violates it — the text
+becomes prompt, goes to the provider, and is written to `owner_chat.json`. A browser form does
+not: the value goes browser → daemon → `.env`, and no model is involved.
+
+So the decision is not "no UI ever". It is **no full owner UI in three engines**. A
+single-purpose secrets form is a different thing, and the site already implements it correctly
+(`/api/setup/model`, `/api/setup/connector` are direct POSTs, no model in the path).
+
+**Planned: a transient secrets-only page.** `init` opens the browser to one form, takes the two
+credentials, done. No window, no pywebview, no third engine — and it beats a terminal for the
+actual task, which is pasting two 40-character keys where a no-echo prompt hides typos.
+
+Not relied on: `mcp` 2.x has an `elicitation` module through which a server can request input
+from the user via the host. The model does not generate the value, but whether it lands in the
+model's context is the host's implementation detail. Too uncertain for a credential.
+
 `setup_status` is what joins them: it reports what is configured, echoes **no values** — not the
 key, not the connector uuid, not the owner's own number, because anything it returns travels to
 a model provider — and names the one command the assistant cannot run itself.
@@ -250,7 +268,9 @@ Notarization needs an Apple Developer ID. Acceptable for a colleague, not past t
 6. **Service tools are separate from secretary tools**, because one must work when the daemon
    does not.
 7. **The login-item tool takes no parameters.**
-8. **Secrets are configured at a terminal, never through the assistant.**
+8. **Secrets never enter a model's context.** A terminal (`init`) or a single-purpose browser
+   form are both fine; a chat box is not. This is narrower than "no interface" and replaces the
+   earlier wording.
 9. **The site is transitional, not primary.** It stays until `init` covers first-run
    configuration and the mcp path is proven — Cen is testing with it now and has no assistant.
    It stops being load-bearing immediately: the daemon must no longer exit when it fails.
@@ -268,6 +288,7 @@ Notarization needs an Apple Developer ID. Acceptable for a colleague, not past t
    that is currently harmful.
 2. **Service tools** — `service_status` / `service_start` / `service_stop`. Includes fixing
    `signal.SIGKILL`, which does not exist on Windows.
-3. **`init` takes the connector**, so the product can be set up without the site.
+3. ~~**`init` takes the connector**~~ — done. Next: the transient secrets-only page, so an
+   owner pastes two keys into a form rather than a no-echo prompt.
 4. **Tag asker-authored content as untrusted** in whatever the mcp returns.
 5. **Login-start units**, then the Windows installer.
