@@ -144,6 +144,13 @@ def test_hosts() -> None:
     try:
         ok("frozen, it launches ITSELF with `mcp`", hosts.launch_command()[1:] == ["mcp"],
            hosts.launch_command())
+        # The registered path must be the SYMLINK when one exists, never the versioned file —
+        # otherwise every update silently breaks the owner's assistant.
+        from dduet_desktop import install
+        link = install.installed_path()
+        if link.is_symlink() and link.resolve().is_file():
+            ok("it registers the stable symlink, not the versioned payload",
+               hosts.launch_command()[0] == str(link), hosts.launch_command()[0])
     finally:
         del sys.frozen
 

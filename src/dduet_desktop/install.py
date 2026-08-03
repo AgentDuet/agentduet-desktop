@@ -38,6 +38,41 @@ BIN_DIR = pathlib.Path.home() / ".local/bin"
 DESKTOP_DIR = pathlib.Path.home() / ".local/share/applications"
 APP_ID = "dduet-desktop"
 
+#: VERSIONED PAYLOAD + SYMLINK, copied from how Claude Code installs itself:
+#:
+#:     ~/.local/bin/dduet-desktop  ->  ~/.local/share/dduet-desktop/versions/0.1.0a2
+#:
+#: Three reasons, and the third is the one that matters most here:
+#:
+#:  1. Atomic. Write the new version beside the old, then flip one symlink. There is no window
+#:     in which the binary on PATH is half-written.
+#:  2. Rollback is a symlink flip. For an alpha that ships weekly and will occasionally break,
+#:     that is worth more than the disk it costs.
+#:  3. The path registered with the owner's assistant STAYS VALID. `hosts.connect` records a
+#:     launch command; if that pointed at the versioned file it would go stale on every update
+#:     and the assistant would quietly lose the secretary. It points at the symlink instead.
+VERSIONS_DIR = pathlib.Path.home() / ".local/share" / APP_ID / "versions"
+
+
+def version_path(version: str) -> pathlib.Path:
+    return VERSIONS_DIR / version
+
+
+def installed_versions() -> list[str]:
+    try:
+        return sorted(p.name for p in VERSIONS_DIR.iterdir() if p.is_file())
+    except OSError:
+        return []
+
+
+def current_version() -> str:
+    """What the symlink points at, or "" if there is no install."""
+    link = installed_path()
+    try:
+        return pathlib.Path(os.readlink(link)).name if link.is_symlink() else ""
+    except OSError:
+        return ""
+
 
 def running_from() -> pathlib.Path:
     """The binary (frozen) or the interpreter (source)."""
@@ -49,8 +84,9 @@ def installed_path() -> pathlib.Path:
 
 
 def is_installed() -> bool:
-    p = installed_path()
-    return p.is_file() and (not getattr(sys, "frozen", False) or p == running_from())
+    """Installed means: the symlink exists and points at a version we have."""
+    link = installed_path()
+    return link.is_symlink() and link.resolve().is_file()
 
 
 def on_path() -> bool:
@@ -67,6 +103,8 @@ def status() -> dict:
         "target": "/Applications" if mac else str(installed_path()),
         "installed": bool(bundle and str(bundle).startswith("/Applications/")) if mac
                      else is_installed(),
+        "current_version": current_version(),
+        "versions": installed_versions(),
         "on_path": on_path(),
         "platform": sys.platform,
     }
@@ -101,24 +139,40 @@ def install() -> str:
                 f"Until you do, your AI assistant will be told to launch the secretary from "
                 f"this location — and moving it later would break that link.")
 
+    from . import __version__
     src = running_from()
-    dest = installed_path()
-    if src == dest:
-        return f"Already installed at {dest}."
+    payload = version_path(__version__)
+    link = installed_path()
+
+    if src == payload:
+        return f"Already running the installed copy ({__version__})."
 
     try:
+        VERSIONS_DIR.mkdir(parents=True, exist_ok=True)
         BIN_DIR.mkdir(parents=True, exist_ok=True)
-        # Copy to a temp name and replace, so a running copy is never truncated mid-write and
-        # an interrupted install cannot leave a half-file that looks installed.
-        tmp = dest.with_suffix(".new")
+        # Write beside, then move into place: an interrupted copy must never leave a truncated
+        # file that the symlink would happily point at.
+        tmp = payload.with_suffix(".partial")
         shutil.copy2(src, tmp)
         tmp.chmod(tmp.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-        tmp.replace(dest)
-    except OSError as exc:
-        return f"Could not install to {dest}: {exc}"
+        tmp.replace(payload)
 
-    notes = [f"Installed to {dest}"]
-    notes.append(_desktop_entry(dest))
+        # Flip the symlink atomically — os.replace on a temp link, not unlink-then-link, so
+        # there is no instant where the command on PATH does not exist.
+        tmp_link = link.with_suffix(".partial")
+        if tmp_link.exists() or tmp_link.is_symlink():
+            tmp_link.unlink()
+        tmp_link.symlink_to(payload)
+        os.replace(tmp_link, link)
+    except OSError as exc:
+        return f"Could not install: {exc}"
+
+    notes = [f"Installed {__version__} to {payload}",
+             f"  {link} → {payload.name}"]
+    others = [v for v in installed_versions() if v != __version__]
+    if others:
+        notes.append(f"  kept for rollback: {', '.join(others)}")
+    notes.append(_desktop_entry(link))
     if not on_path():
         # Stated conditionally, not as a warning. We can only see the PATH of THIS process — a
         # double-clicked app inherits the desktop session's, not the shell's — so asserting it
@@ -129,6 +183,23 @@ def install() -> str:
             f"~/.profile and log in again:\n"
             f'      export PATH="$HOME/.local/bin:$PATH"')
     return "\n".join(notes)
+
+
+def rollback(version: str) -> str:
+    """Point the symlink at an older version. The whole reason for keeping them."""
+    payload = version_path(version)
+    if not payload.is_file():
+        return f"No installed version {version!r}. Have: {', '.join(installed_versions()) or 'none'}"
+    link = installed_path()
+    try:
+        tmp = link.with_suffix(".partial")
+        if tmp.exists() or tmp.is_symlink():
+            tmp.unlink()
+        tmp.symlink_to(payload)
+        os.replace(tmp, link)
+    except OSError as exc:
+        return f"Could not roll back: {exc}"
+    return f"Rolled back to {version}. Restart the daemon for it to take effect."
 
 
 def _desktop_entry(target: pathlib.Path) -> str:
