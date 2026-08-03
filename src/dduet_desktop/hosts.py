@@ -188,6 +188,28 @@ GOOSE_DEFAULTS = {
     "GOOSE_THINKING_EFFORT": "low",
 }
 
+#: OUR model provider name -> (Goose's provider name, its key variable, a model to start on).
+#:
+#: WHY A MODEL NAME IS PINNED HERE, having previously argued it should not be
+#:
+#: The earlier reasoning was that Goose "knows a sensible default per provider" and guessing
+#: would be worse. That was simply wrong, and measured: with a provider set and no model, Goose
+#: 1.45 refuses with `No model configured. Run 'goose configure' first.` There is no default to
+#: fall back on, so declining to choose does not leave the owner with Goose's choice — it leaves
+#: them at an error, which is exactly the dead end this install step exists to remove.
+#:
+#: These are the OWNER-facing agent's models, so they are the capable ones, not SECRETARY_MODEL.
+#: An owner who wants a different one has a picker in Goose Desktop and in `goose configure`.
+GOOSE_PROVIDERS = {
+    "dashscope": ("alibaba", "DASHSCOPE_API_KEY", "qwen3.7-max"),
+    "anthropic": ("anthropic", "ANTHROPIC_API_KEY", "claude-sonnet-4-5"),
+    "gemini": ("google", "GEMINI_API_KEY", "gemini-3.1-pro"),
+}
+
+#: Where Goose keeps provider keys when the system keyring is not used. Same directory as the
+#: config, and shared with Desktop.
+GOOSE_SECRETS = pathlib.Path.home() / ".config/goose/secrets.yaml"
+
 #: Shell and file editing, on by default. A secretary's owner does not need it, and it is the
 #: single widest thing an injected escalation could reach for. Disabled rather than removed, so
 #: turning it back on is one setting away for anyone who does want Goose for code.
@@ -203,6 +225,74 @@ GOOSE_ORIENTATION = (
 )
 
 
+def _set_goose_provider(cfg: dict) -> list[str]:
+    """Point a freshly installed Goose at the model the owner already configured here.
+
+    WHY WE WRITE THE CONFIG RATHER THAN LET THE INSTALLER DO IT
+
+    Goose's install script offers a `configure` step, and we used to feed it GOOSE_PROVIDER and
+    the key. Two things were wrong with that, both found by running it:
+
+     1. Those variables are INERT in Goose 1.45. It records the choice as `active_provider` plus
+        a `providers.<name>` block — not as GOOSE_PROVIDER/GOOSE_MODEL — so the install appeared
+        to succeed and left the owner needing `goose configure` anyway.
+     2. The script's configure step is INTERACTIVE, and its TTY detection does not save us. It
+        tests `[ -t 0 ]`, and failing that falls back to `configure < /dev/tty` — which is
+        readable from a daemon that inherited a controlling terminal it does not own. Goose then
+        tried to drive that terminal and died with `Error: not connected`
+        (Rust's ErrorKind::NotConnected), exiting 1 and taking the whole install with it.
+
+    So the installer is now always run with CONFIGURE=false, and the configuration is ours.
+
+    WHY THE KEY GOES IN A FILE RATHER THAN THE KEYRING
+
+    Goose's default is the system secret service, which is the better place — but it does not
+    exist on every machine (headless, WSL, some desktops), and a keyring write that fails is how
+    this whole step broke the first time. File storage is Goose's own documented alternative and
+    behaves the same everywhere. It is 0600, and the same key is already on disk at that mode in
+    $DDUET_HOME/.env, so this adds no new exposure — but it IS weaker than a keyring, and the
+    installer says so rather than quietly downgrading them.
+    """
+    from . import llm
+    ours = llm.provider(os.getenv("SECRETARY_MODEL", ""))
+    mapped = GOOSE_PROVIDERS.get(ours)
+    if mapped is None:
+        return []
+    name, key_var, model = mapped
+    key = os.getenv(key_var, "")
+    if not key:
+        return []
+
+    changed = []
+    if cfg.get("active_provider") != name:
+        cfg["active_provider"] = name
+        changed.append(f"provider={name}, model={model}")
+    providers = cfg.setdefault("providers", {})
+    if isinstance(providers, dict):
+        providers[name] = {"enabled": True, "model": model, "configured": True}
+    # Must be set for Goose to read secrets.yaml at all; otherwise it looks in the keyring only.
+    if cfg.get("GOOSE_DISABLE_KEYRING") is not True:
+        cfg["GOOSE_DISABLE_KEYRING"] = True
+        changed.append("stored the key in a 0600 file, not the system keyring")
+
+    try:
+        import yaml
+        GOOSE_SECRETS.parent.mkdir(parents=True, exist_ok=True)
+        # Merge: another provider's key may already be in here.
+        existing = {}
+        if GOOSE_SECRETS.is_file():
+            loaded = yaml.safe_load(GOOSE_SECRETS.read_text())
+            existing = loaded if isinstance(loaded, dict) else {}
+        if existing.get(key_var) != key:
+            existing[key_var] = key
+            GOOSE_SECRETS.write_text(yaml.safe_dump(existing, sort_keys=False))
+            changed.append(f"gave it your {key_var} — no need to paste it again")
+        GOOSE_SECRETS.chmod(0o600)
+    except (OSError, ImportError, Exception) as exc:      # yaml errors included
+        changed.append(f"could NOT store the key ({exc}) — run `goose configure`")
+    return changed
+
+
 def configure_goose_defaults() -> str:
     """Sensible, safer defaults for a Goose WE installed. Returns what changed."""
     try:
@@ -216,7 +306,7 @@ def configure_goose_defaults() -> str:
     if not isinstance(cfg, dict):
         return "    Goose's config is not a mapping — left alone"
 
-    changed = []
+    changed = _set_goose_provider(cfg)
     for key, value in GOOSE_DEFAULTS.items():
         if cfg.get(key) != value:
             cfg[key] = value
@@ -277,33 +367,21 @@ def install_goose(apply: bool = True) -> str:
     their binary either way.
     """
     bin_dir = pathlib.Path.home() / ".local/bin"
-    env = {**os.environ, "GOOSE_BIN_DIR": str(bin_dir)}
+    # CONFIGURE=false ALWAYS. Its configure step is interactive and its own TTY check is not
+    # enough to stop it — see _set_goose_provider for what that cost. We configure it afterwards
+    # ourselves, which we have to do regardless because the env vars it accepts are inert in
+    # current Goose.
+    #
+    # Not passing the key also means the owner's credential never enters the environment of a
+    # script we downloaded minutes earlier. That was never the reason for the change, but it is
+    # a real improvement and worth keeping deliberate.
+    env = {**os.environ, "GOOSE_BIN_DIR": str(bin_dir), "CONFIGURE": "false"}
     if GOOSE_VERSION:
         env["GOOSE_VERSION"] = GOOSE_VERSION
 
-    # USE THE KEY THE OWNER ALREADY GAVE US. Goose's installer takes GOOSE_PROVIDER, GOOSE_MODEL
-    # and the provider's own key variable, and configures itself when they are present — so a
-    # DashScope owner does not have to run `goose configure` and paste the same key a second
-    # time. Its provider name for DashScope is `alibaba`, read off a real installed config.
-    #
-    # Without a key there is nothing to configure with, so CONFIGURE stays false rather than
-    # risking an interactive prompt in an installer that may have no TTY.
-    # We pass the provider and the key, NOT a model. SECRETARY_MODEL is the secretary's text
-    # model — a small fast one is right for answering a stranger and wrong for driving an agent
-    # over the owner's machine. Goose knows a sensible default per provider, has a model picker
-    # in `configure` and in Desktop, and its list changes; guessing a name here would be worse
-    # than letting it choose and telling the owner where to change it.
-    key = os.getenv("DASHSCOPE_API_KEY", "")
-    if key:
-        env["GOOSE_PROVIDER"] = "alibaba"
-        env["DASHSCOPE_API_KEY"] = key
-    else:
-        env["CONFIGURE"] = "false"
-
     if not apply:
-        shown = " ".join(f"{k}={'<redacted>' if 'KEY' in k else v}"
-                         for k, v in sorted(env.items())
-                         if k.startswith(("GOOSE_", "CONFIGURE", "DASHSCOPE")))
+        shown = " ".join(f"{k}={v}" for k, v in sorted(env.items())
+                         if k.startswith(("GOOSE_", "CONFIGURE")))
         return ("    would download " + GOOSE_SCRIPT + "\n"
                 f"    and run it with {shown}")
 
@@ -330,14 +408,8 @@ def install_goose(apply: bool = True) -> str:
     where = bin_dir / "goose"
     if not where.exists():
         return f"    the installer reported success but {where} is not there."
-    configured = "GOOSE_PROVIDER" in env
     return (
         f"    installed Goose at {where}\n"
-        + (f"    Configured for the alibaba provider with the key you already gave — no need to\n"
-           f"    run `goose configure`. It picks its own default model; change that in Goose\n"
-           f"    Desktop or with `goose configure` if you want a stronger one.\n"
-           if configured else
-           f"    Not configured — no DashScope key in this instance. Run `goose configure`.\n")
         + configure_goose_defaults() + "\n"
         + f"    Registering this secretary with it now.\n"
         f"    Set its permission mode to APPROVE, not SmartApprove: SmartApprove asks an\n"
