@@ -247,9 +247,16 @@
       $('instState').textContent =
         'running from source — nothing to install; this step is for the downloaded binary';
       $('doInstall').disabled = true;
-    } else if (s.installed) {
+    } else if (s.current) {
       $('instState').textContent = 'already installed at ' + s.target;
       $('doInstall').disabled = true;
+    } else if (s.installed) {
+      // Present but a DIFFERENT build. This must stay actionable: treating it as done is how a
+      // hand-over came to launch code three commits older than the file just downloaded, with
+      // both reporting the same version number.
+      $('instState').textContent =
+        'installed, but an older build (' + s.current_version + ') — replace it with this one ('
+        + s.this_build + ')';
     } else {
       $('instState').textContent = s.running_from + '  →  ' + s.target;
     }

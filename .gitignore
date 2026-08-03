@@ -26,4 +26,8 @@ __pycache__/
 
 # setuptools build metadata, regenerated on every build
 *.egg-info/
-/_build.py
+# The build stamp the PyInstaller spec writes. It was TRACKED until 2026-08-03 while this
+# pattern only matched the repo root, so every build left a tracked file modified and every
+# build therefore stamped itself `+dirty` — including builds from a clean commit. That made the
+# dirty flag mean nothing, while INSTALL.md tells testers it should never appear.
+_build.py

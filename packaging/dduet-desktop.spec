@@ -31,9 +31,19 @@ try:
                           cwd=str(Path(SPECPATH).parent)).stdout.strip())
 except Exception:
     _sha, _dirty = "", False
+#: A UTC build timestamp, ALWAYS, not only for dirty trees. Two reasons a commit id alone is
+#: not enough:
+#:
+#:  1. It cannot separate two builds of the same dirty tree, which during an alpha is the normal
+#:     case — one `+dirty` id can name a dozen different binaries built minutes apart.
+#:  2. It has no ORDER. Given two builds, a sha cannot say which is newer, and "is the one I
+#:     installed older than the one I am running?" is exactly what the installer must answer.
+import datetime as _dt
+_built = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 if _sha:
     (Path(SPECPATH).parent / "src" / "dduet_desktop" / "_build.py").write_text(
-        f'COMMIT = "{_sha}{"+dirty" if _dirty else ""}"\n')
+        f'COMMIT = "{_sha}{"+dirty" if _dirty else ""}"\n'
+        f'BUILT = "{_built}"\n')
 
 datas = collect_data_files("dduet_desktop",
                            includes=["*.html", "templates/**/*", "examples/**/*",

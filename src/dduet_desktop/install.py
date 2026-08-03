@@ -28,6 +28,8 @@ import shutil
 import stat
 import sys
 
+from . import build_id
+
 #: LINUX layout. macOS is handled separately in install(): there the .app bundle is the unit and
 #: /Applications is the destination, so neither of these applies.
 #:
@@ -54,15 +56,34 @@ APP_ID = "dduet-desktop"
 VERSIONS_DIR = pathlib.Path.home() / ".local/share" / APP_ID / "versions"
 
 
+#: How many old builds to keep. Rollback is the point of keeping any, and one step back covers
+#: the realistic case (this build is broken, put yesterday's back). Unbounded would accumulate
+#: ~57 MB per build on a package that ships several times a day during an alpha.
+KEEP_VERSIONS = 3
+
+
 def version_path(version: str) -> pathlib.Path:
     return VERSIONS_DIR / version
 
 
+def _built_at(name: str) -> str:
+    """The build timestamp out of a directory name, or "" for a name without one.
+
+    Sorting the WHOLE name looks like it orders by time and does not: the sha sits in front of
+    the timestamp, so `0.1.0a2+aaa.<late>` sorts before `0.1.0a2+zzz.<early>`. That would make
+    _prune delete newer builds and keep older ones — the opposite of its job.
+    """
+    tail = name.rsplit(".", 1)[-1]
+    return tail if tail.endswith("Z") and tail[:8].isdigit() else ""
+
+
 def installed_versions() -> list[str]:
+    """Newest build first, by build time. Names with no timestamp sort last."""
     try:
-        return sorted(p.name for p in VERSIONS_DIR.iterdir() if p.is_file())
+        names = [p.name for p in VERSIONS_DIR.iterdir() if p.is_file()]
     except OSError:
         return []
+    return sorted(names, key=lambda n: (_built_at(n), n), reverse=True)
 
 
 def current_version() -> str:
@@ -72,6 +93,32 @@ def current_version() -> str:
         return pathlib.Path(os.readlink(link)).name if link.is_symlink() else ""
     except OSError:
         return ""
+
+
+def is_current() -> bool:
+    """Is the INSTALLED build the one this process is running?
+
+    Distinct from is_installed(), and the distinction is the whole point: an install can be
+    present, resolvable, and three commits out of date. Answering only "installed: yes" is how
+    the installer came to report its own step complete while the owner's assistant kept
+    launching stale code.
+    """
+    return is_installed() and current_version() == build_id()
+
+
+def _prune() -> list[str]:
+    """Drop builds beyond KEEP_VERSIONS, never the one the symlink points at."""
+    keep = set(installed_versions()[:KEEP_VERSIONS]) | {current_version()}
+    dropped = []
+    for name in installed_versions():
+        if name in keep:
+            continue
+        try:
+            version_path(name).unlink()
+            dropped.append(name)
+        except OSError:
+            pass
+    return dropped
 
 
 def running_from() -> pathlib.Path:
@@ -103,7 +150,11 @@ def status() -> dict:
         "target": "/Applications" if mac else str(installed_path()),
         "installed": bool(bundle and str(bundle).startswith("/Applications/")) if mac
                      else is_installed(),
+        # An install that is present but STALE must not read as done, or the page marks its own
+        # step complete and the hand-over launches older code than the owner just downloaded.
+        "current": True if mac else is_current(),
         "current_version": current_version(),
+        "this_build": build_id(),
         "versions": installed_versions(),
         "on_path": on_path(),
         "platform": sys.platform,
@@ -139,13 +190,12 @@ def install() -> str:
                 f"Until you do, your AI assistant will be told to launch the secretary from "
                 f"this location — and moving it later would break that link.")
 
-    from . import __version__
     src = running_from()
-    payload = version_path(__version__)
+    payload = version_path(build_id())
     link = installed_path()
 
     if src == payload:
-        return f"Already running the installed copy ({__version__})."
+        return f"Already running the installed copy ({build_id()})."
 
     try:
         VERSIONS_DIR.mkdir(parents=True, exist_ok=True)
@@ -167,9 +217,11 @@ def install() -> str:
     except OSError as exc:
         return f"Could not install: {exc}"
 
-    notes = [f"Installed {__version__} to {payload}",
+    notes = [f"Installed {build_id()} to {payload}",
              f"  {link} → {payload.name}"]
-    others = [v for v in installed_versions() if v != __version__]
+    for name in _prune():
+        notes.append(f"  removed an old build: {name}")
+    others = [v for v in installed_versions() if v != build_id()]
     if others:
         notes.append(f"  kept for rollback: {', '.join(others)}")
     notes.append(_desktop_entry(link))
