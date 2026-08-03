@@ -291,4 +291,14 @@ Notarization needs an Apple Developer ID. Acceptable for a colleague, not past t
 3. ~~**`init` takes the connector**~~ — done. Next: the transient secrets-only page, so an
    owner pastes two keys into a form rather than a no-echo prompt.
 4. **Tag asker-authored content as untrusted** in whatever the mcp returns.
-5. **Login-start units**, then the Windows installer.
+5. ~~**`dduet-desktop connect`**~~ — done. Detects installed assistants and registers with
+   Claude Code via its own CLI; for hosts whose config format we have not exercised it prints
+   what to paste rather than writing blind. Needed `dduet-desktop mcp` first: the dev command
+   `python -m dduet_desktop.secretary_mcp` cannot be registered on an installed machine.
+6. **Login-start units**, then the Windows installer.
+
+**Not doing: installing an AI assistant for the owner.** It contradicts being
+assistant-agnostic, makes us a distributor of someone else's updates and CVEs, and roughly
+doubles the download. If it is ever revisited it must come from their prebuilt releases, never
+from git — Goose from source means a Rust toolchain and minutes of compilation on the owner's
+machine.

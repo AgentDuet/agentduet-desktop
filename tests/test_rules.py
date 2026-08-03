@@ -96,6 +96,40 @@ def test_prompts() -> None:
             ok(f"refused owner_name={bad!r}", True)
 
 
+def test_hosts() -> None:
+    """Assistant detection and registration. Model-free: it is paths and process calls."""
+    print("\n  -- hosts: what an assistant is told to launch --")
+    from dduet_desktop import hosts
+
+    cmd = hosts.launch_command()
+    # The dev incantation cannot be registered on an installed machine — no python, no module
+    # path — so a frozen build must register ITSELF. Getting this wrong produces a config that
+    # works on the developer's laptop and nowhere else.
+    ok("from source it launches the module", cmd[1:] == ["-m", "dduet_desktop.secretary_mcp"], cmd)
+
+    import sys
+    sys.frozen = True                       # pretend to be a PyInstaller build
+    try:
+        ok("frozen, it launches ITSELF with `mcp`", hosts.launch_command()[1:] == ["mcp"],
+           hosts.launch_command())
+    finally:
+        del sys.frozen
+
+    # A dry run that changed something would be the worst possible bug in an installer.
+    before = (pathlib.Path.home() / ".claude.json")
+    stamp = before.stat().st_mtime if before.exists() else None
+    text = hosts.connect(apply=False)
+    after = before.stat().st_mtime if before.exists() else None
+    ok("--show changes nothing", stamp == after)
+    ok("--show says what it WOULD do", "would run" in text or "No AI assistant" in text, text[:90])
+
+    # Real evidence, not a leftover directory: ~/.cursor survived here for months with no
+    # cursor binary, and directory-existence reported an assistant that was not installed.
+    import shutil
+    if shutil.which("cursor") is None and not (hosts.HOME / ".cursor/mcp.json").is_file():
+        ok("a stale ~/.cursor alone does not count as Cursor", "Cursor" not in hosts.detect())
+
+
 def test_schedule() -> None:
     print("\n  -- schedule: conflicts and hours --")
     d = lambda s: datetime.fromisoformat(f"2026-08-01T{s}")
@@ -484,6 +518,7 @@ def test_knowledge_writes() -> None:
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_prompts()
+    test_hosts()
     test_schedule()
     test_capabilities()
     test_capability_disclosure()
