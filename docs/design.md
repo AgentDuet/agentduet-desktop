@@ -284,12 +284,12 @@ Notarization needs an Apple Developer ID. Acceptable for a colleague, not past t
 
 ## Next
 
-1. **Stop the daemon dying with the site.** One line, and it is the only thing in this document
-   that is currently harmful.
-2. **Service tools** — `service_status` / `service_start` / `service_stop`. Includes fixing
-   `signal.SIGKILL`, which does not exist on Windows.
-3. ~~**`init` takes the connector**~~ — done. Next: the transient secrets-only page, so an
-   owner pastes two keys into a form rather than a no-echo prompt.
+1. ~~**Stop the daemon dying with the site**~~ — done. The site's failure to bind is logged and
+   carried past; answering a stranger does not depend on a UI having bound a port.
+2. ~~**Service tools**~~ — done. `service_status` / `service_start` / `service_stop` on the
+   stdio mcp, with `FORCE = getattr(signal, "SIGKILL", signal.SIGTERM)` for Windows.
+3. ~~**`init` takes the connector**~~, and ~~the secrets-only page~~ — both done. `setup.html`
+   takes both credentials in a browser form, which keeps them out of a model's context.
 4. **Tag asker-authored content as untrusted** in whatever the mcp returns.
 5. ~~**`dduet-desktop connect`**~~ — done. Detects installed assistants and registers with
    Claude Code via its own CLI; for hosts whose config format we have not exercised it prints
@@ -297,8 +297,25 @@ Notarization needs an Apple Developer ID. Acceptable for a colleague, not past t
    `python -m dduet_desktop.secretary_mcp` cannot be registered on an installed machine.
 6. **Login-start units**, then the Windows installer.
 
-**Not doing: installing an AI assistant for the owner.** It contradicts being
-assistant-agnostic, makes us a distributor of someone else's updates and CVEs, and roughly
-doubles the download. If it is ever revisited it must come from their prebuilt releases, never
-from git — Goose from source means a Rust toolchain and minutes of compilation on the owner's
-machine.
+**Reversed 2026-08-03: we DO offer to install an AI assistant.** This said "not doing", and the
+product shipped the opposite, so the reasoning is recorded here rather than left contradicted.
+
+What changed is not the objection but its weight. With no owner interface, an assistant is the
+*only* way to drive this product — so "bring your own" is not a neutral default, it is a dead
+end for anyone who has never installed one. `setup.html` step 4 detects what is already there
+and offers Goose only as an alternative the owner picks; detection still wins by default, so
+assistant-agnostic holds where it can be exercised.
+
+The original conditions were kept, and one was strengthened:
+
+- **From their prebuilt releases, never from git.** Goose from source means a Rust toolchain and
+  minutes of compilation. We run their own `download_cli.sh`, fetched to disk first so the exact
+  bytes are auditable, with `GOOSE_BIN_DIR` and `CONFIGURE=false`.
+- **We are a distributor of someone else's updates and CVEs.** Still true, and unmitigated. The
+  install is opt-in and Goose updates itself.
+- **It roughly doubles the download.** Avoided: nothing is bundled, so the binary is unchanged
+  and the 89 MB is fetched only if the owner asks for it.
+
+**Still not doing: installing Goose Desktop on Linux.** Desktop ships only as deb/rpm there
+(no AppImage), both of which need root — and nothing else in this product does. macOS and
+Windows ship it as a zip, so Desktop-first is open on those platforms and closed on this one.

@@ -190,13 +190,16 @@ def test_setup_mode() -> None:
     ok("the site's page choice comes from owner.setup_pending",
        re.search(r"def needs_setup.*?owner\.setup_pending\(", web_src, re.S) is not None)
     agent_src = (src / "secretary_agent.py").read_text()
-    ok("the daemon's channel decision comes from the same function",
-       "owner.setup_pending()" in agent_src)
+    # DELIBERATELY A DIFFERENT FUNCTION from the site's. Sharing one definition read well and
+    # silently disabled a live secretary: a blank name in settings.md closed the channel on an
+    # instance that was answering calls. Only "cannot answer at all" may do that.
+    ok("the daemon gates the channel on cannot_answer, not on setup_pending",
+       "owner.cannot_answer()" in agent_src and "owner.setup_pending()" not in agent_src)
     # ORDER is the invariant: the gate has to be reached before anything opens the channel.
     ok("and it is reached before the channel is opened",
-       agent_src.index("owner.setup_pending()") < agent_src.index("await run_channel()"))
+       agent_src.index("owner.cannot_answer()") < agent_src.index("await run_channel()"))
     ok("it waits rather than exiting, so finishing setup needs no restart",
-       re.search(r"while owner\.setup_pending\(\):\s*\n\s*await asyncio\.sleep", agent_src)
+       re.search(r"while owner\.cannot_answer\(\):\s*\n\s*await asyncio\.sleep", agent_src)
        is not None)
 
     # A WAY OUT of the setup page. Closing the browser leaves the process running with nothing on
@@ -225,12 +228,21 @@ def test_setup_mode() -> None:
         ok("no model attached means setup is unfinished", bool(why), why)
         ok("and it says which of the two is missing", "model" in why, why)
 
+        ok("and no model also means it cannot answer anyone", bool(owner.cannot_answer()),
+           owner.cannot_answer())
+
         llm.configured = lambda *a, **k: True
         why = owner.setup_pending()
         # Without this the agent greets strangers as "the owner", which the model has been seen
         # to read as a template and speak aloud.
         ok("a model alone does not finish setup — a name is needed too", bool(why), why)
         ok("and it says so", "owner" in why, why)
+
+        # THE REGRESSION THIS PINS: on 2026-08-03 the daemon gated on setup_pending, so this
+        # exact state — a working model, a connector, and a blank name — stopped a secretary
+        # that was answering calls. A missing name costs a greeting, not the phone.
+        ok("but a model with NO name can still answer, so the channel stays open",
+           owner.cannot_answer() == "", owner.cannot_answer())
 
         os.environ["OWNER_NAME"] = "Tan"
         ok("model plus name finishes setup", owner.setup_pending() == "",
