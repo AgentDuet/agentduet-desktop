@@ -140,10 +140,6 @@ existed only because of the owner interface were removed — see the Cleared not
 
 **Release blockers**
 
-- [ ] **The daemon still dies with the site.** `secretary_agent.py` raises `SystemExit(1)` when
-      the owner site fails to bind. Under the two-part design the asker daemon is the product;
-      nothing about an owner surface should end it. One line, and the only actively harmful
-      thing on this list.
 - [ ] **`init` cannot take a connector**, and secrets deliberately cannot go through the
       assistant (`save_connector` is outside `OWNER_TOOLS` — a credential typed into chat goes
       to the model provider and lands in `owner_chat.json`). With no interface that leaves no
@@ -210,3 +206,11 @@ The native window and its third rendering engine, the tray-icon/presence questio
 quit, the macOS window bundle, generic capability UX, owner sight of unverified askers, and
 `sim.html`'s unguarded `localStorage`. The site remains as a transitional surface; none of these
 are worth building for it.
+
+**Cleared 2026-08-03 — already done, listed as open by mistake**
+
+"The daemon still dies with the site" was the first release blocker and described as the only
+actively harmful item. It was already fixed: `main()` catches the failure and carries on with a
+warning (`secretary_agent.py`, "This used to raise SystemExit(1)"). `docs/design.md` still lists
+the same thing as Next 1, and its Next 2 (service tools) is also done — that document has not
+been re-read since the work landed.
