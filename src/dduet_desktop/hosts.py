@@ -39,7 +39,15 @@ import sys
 #: binary itself and there is no module to name; from source it is the interpreter plus -m.
 def launch_command() -> list[str]:
     if getattr(sys, "frozen", False):
-        return [sys.executable, "mcp"]
+        # THE SYMLINK, not sys.executable. An installed build lives at a versioned path
+        # (~/.local/share/dduet-desktop/versions/0.1.0a2) and sys.executable resolves to it —
+        # so registering that would go stale on the next update and the owner's assistant would
+        # quietly lose the secretary. ~/.local/bin/dduet-desktop always points at current.
+        from . import install
+        link = install.installed_path()
+        if link.is_symlink() and link.resolve().is_file():
+            return [str(link), "mcp"]
+        return [sys.executable, "mcp"]          # not installed yet: register where it is
     return [sys.executable, "-m", "dduet_desktop.secretary_mcp"]
 
 
@@ -95,8 +103,20 @@ def _register_claude_code(apply: bool) -> str:
     if done.returncode == 0:
         return f"    registered as `{SERVER_NAME}` (user scope)"
     err = (done.stderr or done.stdout or "").strip().splitlines()
+
+    # "Already registered" is not the same as "registered correctly". An entry made before the
+    # install points at wherever the binary was then — a download folder, or a dev venv — and
+    # leaving it would defeat the reason we register the symlink at all. Replace it.
     if any("already exists" in l for l in err):
-        return f"    already registered as `{SERVER_NAME}`"
+        try:
+            subprocess.run(["claude", "mcp", "remove", SERVER_NAME, "-s", "user"],
+                           capture_output=True, text=True, timeout=30)
+            again = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return f"    already registered, and could not be updated: {exc}"
+        if again.returncode == 0:
+            return f"    updated `{SERVER_NAME}` to point at {launch_command()[0]}"
+        return f"    already registered as `{SERVER_NAME}`, and re-registering failed"
     return "    claude refused: " + (err[0] if err else f"exit {done.returncode}")
 
 

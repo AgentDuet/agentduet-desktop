@@ -115,6 +115,21 @@ def cmd_status(args) -> int:
     return 0
 
 
+def cmd_install(args) -> int:
+    """The setup page is the normal way in; this is for headless machines and for testing."""
+    from . import install
+    if args.rollback:
+        print("  " + install.rollback(args.rollback).replace("\n", "\n  "))
+        return 0
+    if args.list:
+        cur = install.current_version()
+        for v in install.installed_versions():
+            print(f"  {'*' if v == cur else ' '} {v}")
+        return 0
+    print("  " + install.install().replace("\n", "\n  "))
+    return 0
+
+
 def cmd_mcp(args) -> int:
     """BE the MCP server, on stdin/stdout.
 
@@ -135,7 +150,9 @@ def cmd_connect(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from . import version_string
     p = argparse.ArgumentParser(prog="dduet-desktop", description=__doc__.split("\n")[0])
+    p.add_argument("--version", action="version", version=version_string())
     sub = p.add_subparsers(dest="cmd", required=False)
 
     i = sub.add_parser("init", help="set up this machine (interview)")
@@ -158,6 +175,12 @@ def main(argv: list[str] | None = None) -> int:
 
     st = sub.add_parser("status", help="what is installed, attached and running")
     st.set_defaults(fn=cmd_status)
+
+    ins = sub.add_parser("install", help="install this binary, or roll back to an older one")
+    ins.add_argument("--list", action="store_true", help="show installed versions")
+    ins.add_argument("--rollback", metavar="VERSION", default="",
+                     help="point the command back at an older installed version")
+    ins.set_defaults(fn=cmd_install)
 
     m = sub.add_parser("mcp", help="run as an MCP server on stdio (what an assistant launches)")
     m.set_defaults(fn=cmd_mcp)
