@@ -77,5 +77,31 @@ for _fn in SERVICE_TOOLS:
 REGISTERED = _register() + [f.__name__ for f in SERVICE_TOOLS]
 
 
+# A PROMPT, not a tool — the difference is who starts it.
+#
+# Tools are model-initiated: nothing happens until the host's model decides to call one. A prompt
+# is OWNER-initiated, and hosts surface it as a named thing to click or type. That makes it the
+# only surface here that answers "I installed this, now what?" — which was otherwise a question
+# the owner had to already know the answer to.
+#
+# WHY AN MCP PROMPT AND NOT A GOOSE RECIPE
+#
+# Goose has recipes and they are richer. But a recipe is one vendor's config format, and this
+# product is deliberately assistant-agnostic — the same prompt appears in Goose Desktop, Claude
+# Desktop, and anything else speaking MCP, with nothing installed per host.
+#
+# The text lives in prompts/ with the others rather than inline, so the suite's template checks
+# cover it too.
+@mcp.prompt(name="get-started-with-dduet",
+            title="Get started with DDuet",
+            description="Set up your secretary, then call it yourself to see it answer.")
+def get_started() -> str:
+    from . import prompts
+    return prompts.render("owner-getting-started")
+
+
+PROMPTS = ["get-started-with-dduet"]
+
+
 if __name__ == "__main__":
     mcp.run()

@@ -127,6 +127,17 @@ def test_prompts() -> None:
         except prompts.PromptError:
             ok(f"refused owner_name={bad!r}", True)
 
+    # THE OWNER-FACING PROMPT. Exposed over MCP so a host shows "Get started with DDuet" as
+    # something to click — the only surface that answers "installed it, now what?".
+    started = prompts.render("owner-getting-started")
+    ok("the getting-started prompt renders with no parameters", len(started) > 400)
+    # Two refusals it must carry. Both are invariants elsewhere in the product, and this text is
+    # read by a model with shell access on the owner's machine, so a hole here is not cosmetic.
+    ok("it refuses to accept a credential in chat",
+       "API key" in started and "refuse" in started.lower(), started[-200:])
+    ok("and it must not declare a capability",
+       "Do not declare a capability" in started)
+
 
 def test_hosts() -> None:
     """Assistant detection and registration. Model-free: it is paths and process calls."""

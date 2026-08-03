@@ -117,6 +117,21 @@ def service_status() -> str:
     out.append(f"  model      {'attached' if llm.configured() else 'NOT ATTACHED'}")
     out.append(f"  connector  {'configured' if connector.configured() else 'NOT SET'}")
 
+    # THE REACHABLE ADDRESS, because "try it yourself" is the only convincing first step and
+    # nothing else reported it. An owner who has just installed this wants to ring their own
+    # secretary and hear it answer; until then they have configured software and seen nothing.
+    #
+    # Deliberately does NOT include the owner-site url: that carries the site token, and a token
+    # echoed into an assistant's context is stored in that conversation's history. Same rule as
+    # the credentials.
+    from . import status
+    try:
+        number = status.NUMBER_FILE.read_text().strip()
+    except OSError:
+        number = ""
+    out.append(f"  reachable  {number + ' — call or message this to try it' if number else
+                              'no number reported by the channel yet'}")
+
     tail = _last_lines()
     if tail:
         out.append("  last from the log:")
