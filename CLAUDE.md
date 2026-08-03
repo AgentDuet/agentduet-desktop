@@ -63,9 +63,12 @@ Break one of these and the product is a different product.
 
 ## Decisions, and why — do not re-litigate without reading these
 
-- **The site is the PRIMARY owner surface; MCP is secondary** (reversed 2026-07-30). MCP needs
-  the owner to already have an AI app *and* configure it; the site needs nothing and is up
-  whenever the daemon is. A dead site is therefore **fatal**, not a warning.
+- **The product is TWO PARTS: the asker daemon and the owner mcp. There is no owner interface**
+  (2026-08-03 — see `docs/design.md`, which is the single source of direction). This reverses
+  the 2026-07-30 decision that made the site primary; that reasoning was not wrong, the
+  assumption about who the owner is changed. The site is **transitional** and stays until `init`
+  covers first-run configuration — but it is no longer load-bearing, and the daemon must not
+  exit when it fails to bind.
 - **`knowledge/` is one flat, public folder.** `public/` vs `partners/` is gone. A fact only one
   person may hear belongs in `people/<identity>.md`. Consequence: verified and unverified read
   the same documents — curate accordingly.
@@ -132,99 +135,78 @@ Break one of these and the product is a different product.
 
 ## Open — the checklist
 
-Last reviewed 2026-07-31, after the first CI Mac build and the first real voice calls.
+Last reviewed 2026-08-03, after consolidating the plans into `docs/design.md`. Items that
+existed only because of the owner interface were removed — see the Cleared note at the end.
 
 **Release blockers**
 
-- [ ] **Publish the SDK.** `agentduet` is not on PyPI. It is ONE repo on two branches —
-      `B3Networks/wss-sdk-python`, `feature/dduet-channel` (has DDUET, `1.0.1b1`) and
-      `feat/adapters-extra` — not two repos, whatever the local folder names suggest. CI works
-      around it with a committed wheel in `vendor/`, which **goes stale silently**: nothing
-      checks it against the branch. Publishing deletes `vendor/` and makes `pyproject.toml`
-      able to declare a real dependency.
-- [x] **macOS binary** — CI builds a `.app` in a DMG on `macos-14`, smoke-tested for providers
-      and voice. Actions had to be enabled for the repo first (org default disables it on NEW
-      repos; the tell is a run stuck `queued` with an EMPTY job list).
-- [ ] **Notarization.** The `.app` is unsigned, so first launch needs right-click → Open.
-      Acceptable for a colleague, not past that. Needs an Apple Developer ID.
+- [ ] **The daemon still dies with the site.** `secretary_agent.py` raises `SystemExit(1)` when
+      the owner site fails to bind. Under the two-part design the asker daemon is the product;
+      nothing about an owner surface should end it. One line, and the only actively harmful
+      thing on this list.
+- [ ] **`init` cannot take a connector**, and secrets deliberately cannot go through the
+      assistant (`save_connector` is outside `OWNER_TOOLS` — a credential typed into chat goes
+      to the model provider and lands in `owner_chat.json`). With no interface that leaves no
+      way to configure the product. `init` is the answer.
+- [ ] **Connector provisioning.** Every install needs its OWN `AGENTDUET_CONNECTOR_UUID` — one
+      client per connector, and a second races `call.answer()`. A new user installs cleanly and
+      then stops dead waiting on a human. Still the biggest get-started gap.
+- [ ] **Service tools** — `service_status` / `service_start` / `service_stop` on the stdio mcp.
+      With no UI they are the only way to know the daemon is alive; it sat dead for twelve
+      minutes on 2026-08-03 and was found by accident. Includes fixing `signal.SIGKILL`, which
+      **does not exist on Windows** so the current stop path raises there.
+- [ ] **Nothing starts at login.** Needs launchd / systemd-user / Task Scheduler, registering
+      the daemon. The login-item tool takes NO parameters — see `design.md`.
+- [ ] **Publish the SDK.** `agentduet` is not on PyPI with DDUET support; `1.0.0b10` there has
+      `VoiceAgent` but no DDUET at all. It is ONE repo on two branches —
+      `B3Networks/wss-sdk-python`, `feature/dduet-channel` (`1.0.1b1`, also on testpypi) and
+      `feat/adapters-extra`. CI works around it with a committed wheel in `vendor/`, which
+      **goes stale silently**.
 - [ ] **Windows binary**, and **Intel Mac**: the `macos-13` job never starts — that label is on
       GitHub's retirement track. Decide whether Intel is supported before promising it.
-- [ ] **Connector provisioning.** Every install needs its OWN `AGENTDUET_CONNECTOR_UUID` — one
-      client per connector, and a second one races `call.answer()`. `init` should obtain one.
-      **This is the biggest get-started gap**: a new user installs cleanly and then stops dead,
-      waiting on a human to hand-provision one.
-- [ ] **Notifications are Linux-only** (`notify.py` → `notify-send`, falls back to stdout). No
-      escalation alert on macOS or Windows, which for this product reads as broken.
-- [ ] **Nothing starts at login**, and **closing the window stops the agent entirely**
-      (`shell.py` returns when `webview.start()` does). Both contradict "answers while you
-      sleep". Needs launchd / Task Scheduler / systemd-user, plus a decision on close: tray
-      icon, close-means-hide, or ask. Today the most natural gesture takes it off the air
-      silently.
+- [ ] **Notarization.** The `.app` is unsigned, so first launch needs right-click → Open.
 - [ ] **Credential storage on Windows** — use the OS credential store, or say plainly that the
       key is plaintext protected only by file mode.
 
-**Backend, not this package** (one handoff document, four items)
+**Backend, not this package**
 
 - [ ] Identity: does DDUET issue a stable identity, and carry the verified property?
-- [ ] **Directory/discovery — how does someone find an owner to write to?** Sharpened by the
-      first calls: DDUET carries NO phone number (the subscriber is the connector uuid; the
-      visitor is an email), so there is currently no address an owner can hand out. The channel
-      is live and unreachable.
-- [ ] Outbound initiate: DDUET is passive, so an agent cannot start a conversation. Held replies
-      are delivered only when the person next writes.
-- [ ] Unverified askers: with `knowledge/` flat and public, an unverified visitor reads
-      everything. Decide the disclosure tier before strangers are in scope.
+- [ ] **Directory/discovery.** DDUET carries no phone number — the subscriber is the connector
+      uuid, the visitor is an email. A per-agent URL exists (`stg.dduet.com/<slug>/chat`) but
+      only on staging; prod DDUET needs `AGENTDUET_BASE_URL=ws://wss-dev...` today, which
+      conflicts with voice arriving on prod. One client, one base URL.
+- [ ] Outbound initiate: DDUET is passive, so held replies are delivered only when the person
+      next writes.
+- [ ] Unverified askers: `knowledge/` is flat and public. Decide the disclosure tier before
+      strangers are in scope.
+- [ ] **DashScope caps concurrent realtime connections per ACCOUNT** ("max_connections 100").
+      It presents as SILENCE on the call. Raised with luk 2026-08-03.
 
-**Voice — answering real calls as of 2026-07-31**
+**Voice**
 
-- [x] Adapter wired on the daemon's ONE client; transcripts land via `memory.append` +
-      `brain.record`; the tool bridge (`search_knowledge`, `book` → `check_bounds`,
-      `transfer_to_owner`, `escalate`) is in place. `SECRETARY_VOICE_MODEL`, `SECRETARY_VOICE`
-      and `SECRETARY_CALL_SAMPLE_RATE` exist.
-- [ ] **Decide what an escalation SOUNDS like.** "Stanley has it and will come back to you" is
-      fine in chat and unacceptable with someone on the line: a holding phrase while it checks,
-      then an answer or a callback promise. Also decide what happens when the owner IS at the
-      machine and could take the call. This is the real design work, and it is larger than
-      picking a model.
-- [ ] **Post-hoc grounding check** on the transcript — flag claims not supported by what
-      `search_knowledge` returned. The honest limit of speech-to-speech.
-- [ ] **DashScope caps concurrent realtime connections per ACCOUNT** ("connections too much
-      max_connections 100"). It presents as SILENCE on the call, not an error, and the account
-      is shared with the other agents in this workspace. Needs a health signal at least.
-
-**Product**
-
-- [ ] **Generic UX for managing capabilities and their forms/canvases** (deferred 2026-07-30 —
-      the reason step 3 was cut from setup). `tools.list_examples` / `install_example` and the
-      `/api/setup/example*` endpoints are what it should call.
-- [ ] Owner sight of unverified askers — currently filtered out of the people list by default.
-- [ ] Broaden the canvas offer: it fires only on the incomplete-capability path, so a bounds
-      refusal never mentions the page.
+- [ ] **The tool contract** — `search_knowledge` should return the sentence to say, not
+      documents to paraphrase. This is the per-turn half of the fence that a prompt cannot do.
+- [ ] **Post-hoc grounding check** on the transcript. Nearly free once the tool contract lands.
+- [ ] **Measure a hosted cascade.** Rejected 2026-07-31, but the recorded reason rejects a LOCAL
+      cascade. It is the only option that restores every invariant.
+- [ ] `_ring_owner` (the callback that rings the owner) has **never executed** — every other
+      part of the callback is tested.
 
 **Engineering**
 
-- [ ] **`sim.html` uses `localStorage` unguarded, 9 times** (conversation id, canvases, active
-      tab). Browser-only today so it works, but the pywebview window has NO `localStorage` —
-      referencing it raises `ReferenceError` — and unlike the owner page's preferences, these
-      carry real state: losing them loses the conversation and its canvases. `web.html` routes
-      through a `store` wrapper and the debug flag moved server-side (`run/ui.json`); do the
-      same here before this page is ever opened in a webview.
-- [ ] **A native window is a THIRD engine and needs its own pass.** Browser testing cannot find
-      its failures — one missing global silently unwired the settings link, the quit button and
-      the chat form, and the unwired form navigated away and dropped the access token. The page
-      keeps a `window.onerror` reporter (a 404 to `/__jserr` that lands in the access log)
-      because a window has no console.
-- [ ] **macOS window not bundled.** The `.app` opens the owner site in the default browser.
-      pyobjc is pip-installable so it plausibly bundles, unlike GTK on Linux.
-- [ ] **MCP face has drifted: 16 of 34 registry operations exposed.** Register from
-      `tools.OWNER_TOOLS` instead of listing by hand. (Parked — MCP is low priority.)
-      Also needs `mcp.server.fastmcp`, absent from the installed `mcp`.
-- [ ] `dduet-desktop tool <name> [--arg=value]` — one generic verb dispatching into the registry,
-      so every operation is scriptable without a second implementation.
+- [ ] **Tag asker-authored content as untrusted** in whatever the mcp returns. Escalations and
+      transcripts are written by strangers and read by an agent with shell access.
+- [ ] **The asker allow-list should be data**, not hardcoded in `_tool_declarations()`.
+- [ ] `dduet-desktop tool <name> [--arg=value]` — one generic verb dispatching into the registry.
 - [ ] `test_behaviour.py` is **flaky** (~2 in 5 on "bare revision keeps the negotiation
-      classification"): the capability extractor and the policy gate compete for the message. A
-      single red line there is a signal to replay, not a verdict.
-- [ ] No behaviour test asserts the configured **pronoun** reaches an answer — the bug that
-      shipped, where `SYSTEM_PROMPT` had no pronoun slot at all.
-- [ ] `paths.legacy_leftovers()` now misreports the shipped templates as deletable leftovers.
+      classification"). A single red line there is a signal to replay, not a verdict.
+- [ ] No behaviour test asserts the configured **pronoun** reaches an answer.
+- [ ] `paths.legacy_leftovers()` misreports the shipped templates as deletable leftovers.
 - [ ] `README.md` still describes `secretary-sample`, not this package.
+
+**Cleared 2026-08-03 — orphaned by the no-interface decision**
+
+The native window and its third rendering engine, the tray-icon/presence question, close-means-
+quit, the macOS window bundle, generic capability UX, owner sight of unverified askers, and
+`sim.html`'s unguarded `localStorage`. The site remains as a transitional surface; none of these
+are worth building for it.
