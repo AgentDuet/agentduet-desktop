@@ -114,17 +114,26 @@
   <section class="card" id="c3">
     <h2>Your B3 connector</h2>
     <p class="hint">Gives you a phone number and a message channel. Skip if you have none yet.</p>
-    <label>API key
-      <input id="cKey" type="password" autocomplete="off" placeholder="AGENTDUET_API_KEY">
-    </label>
-    <label>Connector uuid
-      <input id="cUuid" autocomplete="off" placeholder="00000000-0000-0000-0000-000000000000">
-    </label>
+    <!-- SIGN IN, when there is somewhere to sign in to. Hidden unless the backend advertises an
+         OAuth endpoint, so no build ever shows a button that cannot work. -->
+    <div id="cOauth" hidden>
+      <button id="cSignIn">Sign in</button>
+      <button class="ghost" id="cManual">Enter key manually instead</button>
+      <div id="mOauth"></div>
+    </div>
+    <div id="cFields">
+      <label>API key
+        <input id="cKey" type="password" autocomplete="off" placeholder="AGENTDUET_API_KEY">
+      </label>
+      <label>Connector uuid
+        <input id="cUuid" autocomplete="off" placeholder="00000000-0000-0000-0000-000000000000">
+      </label>
+    </div>
     <!-- Positive action LEFT, like every other step. Skip was on the left with Save pushed to
          the far right, so the one destructive-ish choice sat where the confirm button is
          everywhere else. It is also hidden once a connector exists: skipping is for someone who
          has none, and "Skip" beside "Keep current connector" reads as two ways to do nothing. -->
-    <div class="acts">
+    <div class="acts" id="c3acts">
       <button id="b3">Save</button>
       <button class="ghost" id="b3keep" hidden>Keep current connector</button>
       <button class="ghost" id="b3skip">Skip</button>
@@ -234,6 +243,27 @@
       $('b1keep').onclick = () => show(3);
       $('key').placeholder = 'paste only if you are changing it';
       if (cur.model_name) $('model').value = cur.model_name;
+    }
+    // SIGN-IN FIRST, when the backend has one. Until then step 3 is the manual form it always
+    // was — the alternative is shipping a Sign in button that fails, which teaches an owner that
+    // this installer's buttons do not work. `oauth_available` is false in every build today.
+    if (cur.oauth_available && !cur.connector_configured) {
+      $('cOauth').hidden = false;
+      $('cFields').hidden = true;
+      $('c3acts').hidden = true;
+      $('cManual').onclick = () => {
+        // One way only: revealing the fields also retires the sign-in offer, so there are never
+        // two live paths to the same credential on screen at once.
+        $('cFields').hidden = false;
+        $('c3acts').hidden = false;
+        $('cOauth').hidden = true;
+      };
+      $('cSignIn').onclick = async () => {
+        $('cSignIn').disabled = true;
+        const d = await post('/api/connector/signin', {});
+        say('mOauth', d.ok, d.message);
+        $('cSignIn').disabled = false;
+      };
     }
     if (cur.connector_configured) {
       $('m3').innerHTML = `<div class="msg ok">Already configured — ${esc(cur.connector_uuid)}</div>`;

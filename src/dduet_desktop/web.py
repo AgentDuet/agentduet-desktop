@@ -450,6 +450,9 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         # saved connector connects within seconds.
         cur["connector"] = "configured" if connector.configured() else "not configured"
         cur["connector_uuid"] = os.getenv(connector.UUID, "")
+        # False until the backend has a sign-in endpoint. The page uses it to decide whether to
+        # lead with "Sign in" or with the manual fields — see connector.OAUTH_URL.
+        cur["oauth_available"] = connector.oauth_available()
         return web.json_response(cur)
 
     async def api_setup_questions(request):
@@ -601,6 +604,29 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                 install = ""
         return web.json_response({"ok": True, "found": hosts.detect(),
                                   "message": hosts.connect(apply=apply, install=install)})
+
+    async def api_connector_signin(request):
+        """Begin an OAuth sign-in for the connector. NOT IMPLEMENTED — the seam, not the flow.
+
+        Deliberately a stub. The flow is Authorization Code + PKCE with a loopback redirect back
+        to this very server, which is the right shape for a distributed desktop app — but its
+        details (authorize url, scopes, whether the channel takes a token at all) are the subject
+        of an open request to the backend, and guessing them would mean writing code against an
+        endpoint shape that does not exist yet.
+
+        What is real is the decision this encodes: the button is only reachable when
+        `connector.oauth_available()` is true, which requires AGENTDUET_OAUTH_URL to be set. No
+        shipped build offers it, so nobody meets this message.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import connector
+        if not connector.oauth_available():
+            return web.json_response(
+                {"ok": False, "message": "Sign-in is not available yet. Enter the key manually."})
+        return web.json_response(
+            {"ok": False, "message": "Sign-in is configured but not implemented in this build. "
+                                     "Use 'Enter key manually instead'."})
 
     async def api_launch(request):
         """Open the owner's assistant. The step that makes step 4 finish somewhere usable.
@@ -931,6 +957,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/api/hosts", api_hosts),
         web.post("/api/hosts", api_hosts),
         web.post("/api/launch", api_launch),
+        web.post("/api/connector/signin", api_connector_signin),
         web.get("/api/ui", api_ui),
         web.post("/api/ui", api_ui),
         web.post("/api/chat", api_chat),
