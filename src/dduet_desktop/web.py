@@ -573,8 +573,17 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response({"error": "unauthorised"}, status=401)
         from . import hosts
         apply = request.method == "POST"
+        # `install` lets the owner override the detection. Finding Claude Code does not mean
+        # they want to use it — they may be evaluating Goose, or want the one with per-tool
+        # permission modes. Detection is a default, not a decision.
+        install = ""
+        if apply:
+            try:
+                install = (await request.json()).get("install", "")
+            except Exception:
+                install = ""
         return web.json_response({"ok": True, "found": hosts.detect(),
-                                  "message": hosts.connect(apply=apply)})
+                                  "message": hosts.connect(apply=apply, install=install)})
 
     async def api_chat(request):
         if not authed(request):
