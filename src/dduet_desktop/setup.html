@@ -109,6 +109,7 @@
     </label>
     <div class="acts">
       <button id="b1">Check and save</button>
+    <button class="ghost" id="b1keep" hidden>Keep the one I have</button>
       <span class="sp"></span>
       <span class="spin" id="sp1"></span>
     </div>
@@ -132,6 +133,7 @@
       <button class="ghost" id="b3skip">Skip for now</button>
       <span class="sp"></span>
       <button id="b3">Check and finish</button>
+      <button class="ghost" id="b3keep" hidden>Keep the one I have</button>
       <span class="spin" id="sp3"></span>
     </div>
     <div id="m3"></div>
@@ -199,6 +201,29 @@
     say('m3', d.ok, d.message);
     if (d.ok) setTimeout(() => show(4), 900);
   };
+
+  // EXISTING CREDENTIALS. Re-running setup should not demand a key the owner already gave —
+  // they usually came back for one other thing, and re-pasting is where they go and find it.
+  // The step still allows an override; it just stops insisting on one.
+  (async () => {
+    const r = await fetch(`/api/setup/current?t=${T}`);
+    if (!r.ok) return;
+    const cur = await r.json();
+    if (cur.model_configured) {
+      $('m1').innerHTML = `<div class="msg ok">Already attached: ${esc(cur.model)}</div>`;
+      $('b1keep').hidden = false;
+      $('b1keep').onclick = () => show(3);
+      $('key').placeholder = 'paste only if you are changing it';
+      if (cur.model_name) $('model').value = cur.model_name;
+    }
+    if (cur.connector_configured) {
+      $('m3').innerHTML = `<div class="msg ok">Already configured — ${esc(cur.connector_uuid)}</div>`;
+      $('b3keep').hidden = false;
+      $('b3keep').onclick = () => show(4);
+      $('cKey').placeholder = 'paste only if you are changing it';
+      if (cur.connector_uuid) $('cUuid').value = cur.connector_uuid;
+    }
+  })();
 
   // A re-run: a model is already attached, so skip the steps that are already done. Who you
   // are and what you do is no longer asked here — that moved to the assistant, where it is a

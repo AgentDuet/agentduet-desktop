@@ -430,8 +430,13 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         cur = tools.current_setup()
         cur["model"] = llm.describe()
         cur["model_name"] = os.getenv("SECRETARY_MODEL", "")
-        cur["connector"] = ("configured — the channel is live on the next restart"
-                            if connector.configured() else "not configured")
+        # Explicit booleans. The pages used to infer "configured" from describe()'s prose, which
+        # is a sentence written for a human and not a contract.
+        cur["model_configured"] = llm.configured()
+        cur["connector_configured"] = connector.configured()
+        # No longer "live on the next restart" — the channel loop polls the environment, so a
+        # saved connector connects within seconds.
+        cur["connector"] = "configured" if connector.configured() else "not configured"
         cur["connector_uuid"] = os.getenv(connector.UUID, "")
         return web.json_response(cur)
 
