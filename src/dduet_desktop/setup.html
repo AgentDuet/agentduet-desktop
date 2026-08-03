@@ -63,17 +63,32 @@
 <body>
 <div class="wrap">
   <h1>Set up your secretary</h1>
-  <p class="lede">Two questions, a key, and your number. It writes its own configuration from your answers —
-    you are not filling in a form for it.</p>
+  <p class="lede">Four steps, and two of them are credentials. Everything else — who you
+      are, what it may do — you tell your own AI assistant afterwards, because that is a
+      conversation and this is a form.</p>
 
   <div class="steps">
-    <div id="s1" class="on">1 · a model</div>
-    <div id="s2">2 · about you</div>
+    <div id="s1" class="on">1 · install</div>
+    <div id="s2">2 · a model</div>
     <div id="s3">3 · your number</div>
+      <div id="s4">4 · your assistant</div>
   </div>
 
-  <!-- ---------------- 1 · MODEL ---------------- -->
+  <!-- ---------------- 1 · INSTALL ---------------- -->
   <section class="card on" id="c1">
+    <h2>Install it</h2>
+    <p class="hint">Right now this is running from wherever you downloaded it. Installing puts it
+      somewhere permanent and adds it to your applications menu.</p>
+    <p class="hint">This matters beyond tidiness: your AI assistant is told where to launch the
+      secretary from. Move the file afterwards and that link quietly breaks.</p>
+    <div class="state" id="instState">…</div>
+    <button id="doInstall">Install</button>
+    <button class="ghost" id="skipInstall">Skip — run it from here</button>
+    <div id="mInst"></div>
+  </section>
+
+  <!-- ---------------- 2 · MODEL ---------------- -->
+  <section class="card" id="c2">
     <h2>Attach a model</h2>
     <p class="hint">Your key is checked against the provider before it is saved, so a wrong paste
       fails here rather than silently later. It is stored only on this machine.</p>
@@ -100,20 +115,6 @@
     <div id="m1"></div>
   </section>
 
-  <!-- ---------------- 2 · INTERVIEW ---------------- -->
-  <section class="card" id="c2">
-    <h2>About you</h2>
-    <p class="hint">Only what the agent cannot work out for itself. It writes the files from
-      these answers, phrasing facts the way someone asking would.</p>
-    <div id="qs"></div>
-    <div class="acts">
-      <button id="b2">Write it</button>
-      <span class="sp"></span>
-      <span class="spin" id="sp2"></span>
-    </div>
-    <div id="m2"></div>
-  </section>
-
   <!-- ---------------- 3 · CONNECTOR ---------------- -->
   <section class="card" id="c3">
     <h2>Your B3 connector</h2>
@@ -136,6 +137,17 @@
     <div id="m3"></div>
   </section>
 
+  <!-- ---------------- 4 · YOUR ASSISTANT ---------------- -->
+  <section class="card" id="c4">
+    <h2>Your AI assistant</h2>
+    <p class="hint">You drive the secretary from an assistant you already use — ask it what is
+      waiting, tell it what you do, have it reply for you. There is no dashboard; this is it.</p>
+    <div class="state" id="hostState">…</div>
+    <button id="doConnect">Connect</button>
+    <div id="mHost"></div>
+    <p class="note">Restart the assistant afterwards — it starts its tools when it starts.</p>
+  </section>
+
 </div>
 
 <script>
@@ -144,7 +156,7 @@
   const esc = s => (s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 
   function show(n){
-    [1,2,3].forEach(i => {
+    [1,2,3,4].forEach(i => {
       $('c' + i).classList.toggle('on', i === n);
       $('s' + i).classList.toggle('on', i === n);
       $('s' + i).classList.toggle('done', i < n);
@@ -168,46 +180,12 @@
     const d = await post('/api/setup/model', {model: $('model').value, key});
     $('b1').disabled = false; $('sp1').textContent = '';
     say('m1', d.ok, d.message);
-    if (d.ok) setTimeout(() => { loadQuestions(); show(2); }, 700);
+    if (d.ok) setTimeout(() => show(3), 700);   // model done -> the connector
   };
 
-  // ---- 2 · interview -------------------------------------------------------
-  async function loadQuestions(){
-    // Prefilled with what is recorded NOW, so a re-run is an edit rather than a blank retype.
-    const [qr, cr] = await Promise.all([
-      fetch(`/api/setup/questions?t=${T}`), fetch(`/api/setup/current?t=${T}`)]);
-    const d = await qr.json();
-    const cur = cr.ok ? await cr.json() : {};
-    $('qs').innerHTML = (d.questions || []).map(q => {
-      const v = cur[q.key] || '';
-      return `
-      <label>${esc(q.prompt)}${q.optional ? ' <span class="sm">optional</span>' : ''}
-        ${q.long ? `<textarea data-k="${esc(q.key)}">${esc(v)}</textarea>`
-                 : `<input data-k="${esc(q.key)}" value="${esc(v)}">`}
-      </label>`;}).join('');
-    if (cur.configured) {
-      $('b2').textContent = 'Update it';
-      $('c2').querySelector('.hint').textContent =
-        'These are your current settings. Change what you want changed — clearing a line '
-        + 'removes that fact. Anything you leave alone stays as it is.';
-    }
-  }
-  $('b2').onclick = async () => {
-    const answers = {};
-    document.querySelectorAll('#qs [data-k]').forEach(el => answers[el.dataset.k] = el.value.trim());
-    if (!answers.name || !answers.does) { say('m2', false, 'Your name and what you do are needed.'); return; }
-    $('b2').disabled = true;
-    // This is a model call that makes several writes, so it is not instant. Saying so beats a
-    // frozen button.
-    $('sp2').textContent = 'writing your settings and knowledge…';
-    const d = await post('/api/setup/interview', {answers});
-    $('b2').disabled = false; $('sp2').textContent = '';
-    say('m2', d.ok, d.message);
-    if (d.ok) setTimeout(() => show(3), 900);
-  };
 
-  // ---- 3 · the connector ---------------------------------------------------
-  $('b3skip').onclick = () => { location.href = '/?t=' + T; };
+  // ---- 3 · the connector ---------------------------------------------------------------
+  $('b3skip').onclick = () => show(4);          // skipping is fine; the assistant step is not
   $('b3').onclick = async () => {
     const key = $('cKey').value.trim(), uuid = $('cUuid').value.trim();
     if (!key || !uuid) { say('m3', false, 'Both fields are needed — or skip for now.'); return; }
@@ -215,21 +193,55 @@
     const d = await post('/api/setup/connector', {key, uuid});
     $('b3').disabled = false; $('sp3').textContent = '';
     say('m3', d.ok, d.message);
-    if (d.ok) setTimeout(() => { location.href = '/?t=' + T; }, 1500);
+    if (d.ok) setTimeout(() => show(4), 900);
   };
 
-  // A re-run: a model is already attached, so open on the questions rather than asking again.
-  // Changing things later is the SETTINGS page; this is the wizard.
+  // A re-run: a model is already attached, so skip the steps that are already done. Who you
+  // are and what you do is no longer asked here — that moved to the assistant, where it is a
+  // conversation rather than a form.
   (async () => {
     const r = await fetch(`/api/setup/current?t=${T}`);
     if (!r.ok) return;
     const cur = await r.json();
-    if (cur.configured) {
-      // Already set up: skip straight to the questions rather than asking for a key again.
-      loadQuestions(); show(2);
-      $('s1').classList.add('done');
-    }
+    if (cur.configured) { show(3); $('s1').classList.add('done'); $('s2').classList.add('done'); }
   })();
+
+  // ---- 1 · install ---------------------------------------------------------------------
+  fetch(`/api/install?t=${T}`).then(r => r.json()).then(s => {
+    if (!s.frozen) {
+      $('instState').textContent =
+        'running from source — nothing to install; this step is for the downloaded binary';
+      $('doInstall').disabled = true;
+    } else if (s.installed) {
+      $('instState').textContent = 'already installed at ' + s.target;
+      $('doInstall').disabled = true;
+    } else {
+      $('instState').textContent = s.running_from + '  →  ' + s.target;
+    }
+  }).catch(() => {});
+
+  $('doInstall').onclick = async () => {
+    $('doInstall').disabled = true;
+    const d = await post('/api/install', {});
+    say('mInst', d.ok, d.message);
+    setTimeout(() => show(2), 1200);
+  };
+  $('skipInstall').onclick = () => show(2);
+
+  // ---- 4 · your assistant --------------------------------------------------------------
+  fetch(`/api/hosts?t=${T}`).then(r => r.json()).then(d => {
+    $('hostState').textContent = d.found.length
+      ? 'found: ' + d.found.join(', ')
+      : 'none found — the secretary still answers, but you would have no way to read it';
+  }).catch(() => {});
+
+  $('doConnect').onclick = async () => {
+    $('doConnect').disabled = true;
+    const d = await post('/api/hosts', {});
+    say('mHost', d.ok, d.message);
+    $('doConnect').disabled = false;
+  };
+
 </script>
 </body>
 </html>

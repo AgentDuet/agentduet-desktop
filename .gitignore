@@ -26,3 +26,4 @@ __pycache__/
 
 # setuptools build metadata, regenerated on every build
 *.egg-info/
+/_build.py
