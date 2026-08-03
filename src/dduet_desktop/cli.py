@@ -115,6 +115,25 @@ def cmd_status(args) -> int:
     return 0
 
 
+def cmd_mcp(args) -> int:
+    """BE the MCP server, on stdin/stdout.
+
+    Exists so the command an assistant is configured with is stable: `<binary> mcp`. The dev
+    incantation `python -m dduet_desktop.secretary_mcp` cannot be registered on an installed
+    machine — there is no python and no module path, and in a frozen binary sys.executable IS
+    the binary. Anything registered without this points at a venv that only exists here.
+    """
+    from . import secretary_mcp
+    secretary_mcp.mcp.run()
+    return 0
+
+
+def cmd_connect(args) -> int:
+    from . import hosts
+    print(hosts.connect(apply=not args.show))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="dduet-desktop", description=__doc__.split("\n")[0])
     sub = p.add_subparsers(dest="cmd", required=False)
@@ -139,6 +158,14 @@ def main(argv: list[str] | None = None) -> int:
 
     st = sub.add_parser("status", help="what is installed, attached and running")
     st.set_defaults(fn=cmd_status)
+
+    m = sub.add_parser("mcp", help="run as an MCP server on stdio (what an assistant launches)")
+    m.set_defaults(fn=cmd_mcp)
+
+    c = sub.add_parser("connect", help="register this secretary with the AI assistants you have")
+    c.add_argument("--show", action="store_true",
+                   help="print what would be done, change nothing")
+    c.set_defaults(fn=cmd_connect)
 
     # Double-clicked from a file manager there are no arguments and often no terminal, so a
     # usage message would be a window that flashes and vanishes. No arguments therefore means
