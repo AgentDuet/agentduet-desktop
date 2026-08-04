@@ -18,8 +18,19 @@ jobs:
         include:
           - os: macos-14        # Apple silicon
             name: macos-arm64
-          - os: macos-13        # Intel — a colleague on an older Mac cannot run an arm64 build
-            name: macos-x86_64
+          # NO INTEL MAC BUILD — removed 2026-08-04, deliberately.
+          #
+          # It was `macos-13`, which GitHub has retired, so the job never STARTED. A queued job
+          # keeps its whole run open, so every build read as "still running" while the arm64 and
+          # Linux binaries had been finished for ages — three runs were held open that way, and
+          # the artifacts sat there looking unavailable.
+          #
+          # `timeout-minutes` cannot fix it: that limits execution, and this never executes. Only
+          # a label that exists would, and rather than swap in `macos-15-intel` untested and risk
+          # the same silent hang, Intel is dropped until someone actually needs it.
+          #
+          # Consequence to be honest about: a colleague on a pre-2020 Mac cannot run our build.
+          # Check the chip before sending them anything.
           - os: ubuntu-latest
             name: linux-x86_64
     runs-on: ${{ matrix.os }}
