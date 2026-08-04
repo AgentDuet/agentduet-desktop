@@ -143,6 +143,17 @@ async def run_channel() -> None:
         @sm.on_incoming_message
         async def on_message(msg: IncomingMessage):
             if msg.network is not Network.DDUET:
+                # SAY SO. This used to `return` in silence, which meant a WhatsApp message
+                # arriving would leave no trace at all — indistinguishable from the channel
+                # being dead, and impossible to test against. The SDK supports TELCO and WA
+                # besides DDUET; we answer only DDUET today.
+                #
+                # It logs the SUBSCRIBER deliberately: for WhatsApp that is the Business
+                # Account's phone_number_id, which nothing else exposes and which any outbound
+                # WA reply needs. One inbound message is how we would learn it.
+                logger.info("ignored a %s message from %s (subscriber %s) — only DDUET is "
+                            "answered on this channel", msg.network, msg.participant.value,
+                            msg.subscriber)
                 return
 
             asker = msg.participant.value          # verified identity (email)
