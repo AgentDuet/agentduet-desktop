@@ -140,6 +140,58 @@ def detect() -> list[str]:
     return [label for label, present, _ in KNOWN if _safe(present)]
 
 
+def registration() -> list[tuple[str, str]]:
+    """(assistant, state) for each one installed. State is what to DO, not just what is.
+
+    WHY THIS EXISTS
+
+    An assistant installed but not registered is invisible. `status` listed the model, the
+    knowledge, the providers and the voice adapter, and said nothing about whether any assistant
+    could actually reach the secretary — so a Goose Desktop with no `dduet` extension looked
+    identical to a working one until the owner opened Goose and found no tools. That is the whole
+    product silently unreachable, reported as healthy.
+
+    It also checks the PATH the assistant recorded, not just that an entry exists. A registration
+    pointing at a binary that has since moved — a download folder, an old versioned payload — is
+    worse than none: the host tries, fails, and blames whatever it was told to launch.
+    """
+    # The INSTALLED command when one exists, not this process's own launch_command(). Run from
+    # source, launch_command() returns the dev incantation (`python -m ...`), so comparing
+    # against it flagged a correctly-registered assistant as pointing somewhere wrong. The
+    # question is "can the host reach the secretary", not "did this particular process register
+    # it" — a false alarm here sends the owner to re-run `connect` against nothing.
+    from . import install
+    link = install.installed_path()
+    want = ([str(link), "mcp"] if link.is_symlink() and link.resolve().is_file()
+            else launch_command())
+    out = []
+    for label in detect():
+        try:
+            if label == "Claude Code":
+                cfg = json.loads((HOME / ".claude.json").read_text())
+                entry = (cfg.get("mcpServers") or {}).get(SERVER_NAME)
+                got = [entry["command"], *entry.get("args", [])] if entry else None
+            elif label == "Goose":
+                import yaml
+                cfg = yaml.safe_load(GOOSE_CONFIG.read_text()) or {}
+                entry = (cfg.get("extensions") or {}).get(SERVER_NAME)
+                got = [entry["cmd"], *entry.get("args", [])] if entry else None
+            else:
+                # We never write these, so we cannot claim anything about them.
+                out.append((label, "not configured automatically — see `connect`"))
+                continue
+        except (OSError, ValueError, KeyError, ImportError, Exception):
+            out.append((label, "could not read its config"))
+            continue
+        if got is None:
+            out.append((label, "NOT registered — run `dduet-desktop connect`"))
+        elif got != want:
+            out.append((label, f"registered, but pointing at {got[0]} — run `connect` to fix"))
+        else:
+            out.append((label, "registered"))
+    return out
+
+
 def _safe(check) -> bool:
     try:
         return bool(check())
