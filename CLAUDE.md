@@ -61,6 +61,17 @@ Break one of these and the product is a different product.
 
 `tests/test_rules.py` covers most of these and runs with **no model and no venv** (156 checks).
 
+## The three documents
+
+- **`docs/design.md`** — the architecture, and what would reverse each decision. Single source of
+  direction. Records live decisions only; done work belongs in `git log`.
+- **`docs/tool-surface-risk.md`** — the attack class the two-part split exists to prevent, with a
+  worked example. Written to be shared outside the team.
+- **`docs/thesis.md`** — why an agent is a UI and its tools are APIs, where that analogy stops
+  holding, and the conclusion that follows: lower the barrier to building a backend and you must
+  raise the floor of its security by the same amount. For a white paper, a customer explanation,
+  or settling a hard decision.
+
 ## Decisions, and why — do not re-litigate without reading these
 
 - **The product is TWO PARTS: the asker daemon and the owner mcp. There is no owner interface**

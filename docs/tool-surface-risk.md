@@ -170,3 +170,9 @@ Anything that reads text from strangers gets the smallest possible set of tools,
 time, with every action checked by code against limits declared in advance.
 
 Everything else the owner needs lives in a different process that strangers cannot reach.
+
+## Why this framing
+
+Tools are APIs and the agent is the UI. That analogy is developed in `docs/thesis.md`, along with
+the three places it stops holding — every tool is internet-facing on day one, no schema validates
+persuasion, and a breach here acts and speaks rather than only leaking.

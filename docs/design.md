@@ -313,6 +313,8 @@ here, which is how this document grew a second copy of itself.
 - Push or pull for escalations?
 - Is the hosted cascade actually too slow? Unmeasured.
 - Sandbox or webhook for customer-authored tools?
+- Map our controls to the OWASP API Security Top 10 item by item? The thesis shows every issue we
+  found lands on a named category; a formal mapping is what an audit tier would be sold on.
 
 ## Next
 
