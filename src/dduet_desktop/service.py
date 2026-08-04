@@ -22,6 +22,7 @@ its own session, with its output going to a file — not inherited pipes, which 
 to the parent.
 """
 
+import logging
 import os
 import pathlib
 import signal
@@ -31,6 +32,8 @@ import time
 from datetime import datetime
 
 from . import paths
+
+logger = logging.getLogger("dduet.service")
 
 PIDFILE = paths.RUN / "secretary.pid"
 LOGFILE = paths.RUN / "daemon.log"
@@ -72,12 +75,58 @@ def _alive(pid: int) -> bool:
         return True
 
 
+def _is_ours(pid: int) -> bool:
+    """Is this pid our daemon, or a REUSED number now owned by something else?
+
+    Found on 2026-08-04: the pid file held 11802, that pid had been recycled by the OS to a
+    Claude Code process, and `status` reported "RUNNING — pid 11802" while nothing was serving and
+    nobody outside could reach the secretary. Worse than the twelve-minute outage this module was
+    written for, because it reported healthy.
+
+    Worse still, `service_stop` would have sent SIGTERM — then SIGKILL — to an unrelated program.
+    A stale pid file is ordinary; killing someone else's process because of one is not.
+
+    Matched on ARGV, not on a substring of the whole command line. "dduet" anywhere in the line is
+    far too loose: a shell, an editor or a grep run inside the source directory has the project
+    path in its arguments, and the first version of this check duly identified a bash process as
+    the daemon. Same self-match that makes `pkill -f` dangerous.
+
+    So: the executable is named dduet-desktop (frozen), or argv names our module (from source).
+    """
+    def _matches(argv: list[str]) -> bool:
+        if not argv:
+            return False
+        if os.path.basename(argv[0]).startswith("dduet-desktop"):
+            return True
+        return any(a == "dduet_desktop.cli" or a.endswith("/dduet_desktop/cli.py") for a in argv)
+
+    try:
+        raw = pathlib.Path(f"/proc/{pid}/cmdline").read_bytes().decode("utf-8", "replace")
+        return _matches([a for a in raw.split("\0") if a])
+    except OSError:
+        pass
+    # No procfs (macOS): ask ps. Unavailable too — do not claim it is ours.
+    try:
+        out = subprocess.run(["ps", "-o", "command=", "-p", str(pid)],
+                             capture_output=True, text=True, timeout=5)
+        return _matches(out.stdout.split())
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def running_pid() -> int | None:
     try:
         pid = int(PIDFILE.read_text().strip())
     except (OSError, ValueError):
         return None
-    return pid if _alive(pid) else None
+    if not _alive(pid):
+        return None
+    if not _is_ours(pid):
+        # Do not report it, and do not offer it to the stop path.
+        logger.warning("pid file holds %d, which is alive but is not this daemon — treating it as "
+                       "stopped. A recycled pid, from a daemon that died without cleaning up.", pid)
+        return None
+    return pid
 
 
 def _last_lines(n: int = 3) -> list[str]:
