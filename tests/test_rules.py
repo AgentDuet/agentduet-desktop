@@ -177,6 +177,21 @@ def test_asker_tool_surface() -> None:
     ok("the registry is not loaded from $DDUET_HOME",
        not re.search(r"ASKER_TOOLS\s*=\s*.*(json\.load|read_text|paths\.)", src))
 
+    # RETURN VALUES ARE CALLER-VISIBLE. A tool result enters the context of a model that is
+    # speaking to a stranger, and `say` is only a convention the prompt asks it to respect. So
+    # internals must not be in a return at all. Each of these was actually there.
+    # Comments stripped: the fix's own comment SAYS `str(exc)` was returned here, and matching
+    # prose instead of code is how a check starts failing for being well documented.
+    code_only = "\n".join(l for l in src.splitlines() if not l.lstrip().startswith("#"))
+    ok("no exception text is returned to the model", "str(exc)" not in code_only,
+       "str(exc) is reachable in a return")
+    ok("no other system's error code is returned",
+       '"reason": code' not in src)
+    ok("knowledge filenames are not returned",
+       '"sources": sources' not in src)
+    ok("an unknown tool name is not echoed back",
+       'f"no such tool: {name}"' not in src)
+
 
 def test_hosts() -> None:
     """Assistant detection and registration. Model-free: it is paths and process calls."""

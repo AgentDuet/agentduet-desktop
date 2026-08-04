@@ -107,6 +107,15 @@ def available() -> tuple[bool, str]:
 # NOT the owner registry: those grant folders and reply as the owner. A caller-facing model gets
 # exactly enough to answer, book within bounds, and hand over.
 
+#: What a tool says when it cannot say more.
+#:
+#: A TOOL'S RETURN VALUE IS CALLER-VISIBLE OUTPUT. It enters the context of a model that is
+#: speaking to a stranger, and the model narrates freely — `say` is a convention the prompt asks it
+#: to respect, and prompts are not a boundary (docs/tool-surface-risk.md). So a return may contain
+#: ONLY strings we wrote for a caller to hear. Never an exception, an error code from another
+#: system, a path, or the caller's own input reflected back.
+UNAVAILABLE = "unavailable"
+
 #: THE ASKER AGENT'S ENTIRE AUTHORITY, and the single place it is written down.
 #:
 #: WHY A REGISTRY, AND WHY IT IS NOT MCP
@@ -195,7 +204,12 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
             permissions.context_for, caller, verified, q)
         # Same grant that governs text. A caller cannot reach a folder the owner did
         # not share, whatever they ask for.
-        return {"found": bool(text.strip()), "sources": sources, "content": text[:4000]}
+        #
+        # The FILENAMES are logged, not returned. They are the owner's private layout, and a model
+        # handed them will cite them — "according to owner.md" — to a stranger. A count is all the
+        # model needs to know whether it has anything to work from.
+        logger.info("search_knowledge %r → %s", q[:80], sources)
+        return {"found": bool(text.strip()), "matches": len(sources), "content": text[:4000]}
 
     @tool
     @tool
@@ -235,8 +249,10 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
         number = owner_settings.phone()
         if not number:
             # No number: do NOT offer a callback. Saying it and not doing it is worse than
-            # taking a message.
-            return {"ok": False, "reason": "no owner number configured",
+            # taking a message. The reason is neutral rather than "no owner number configured" —
+            # that described the owner's setup to whoever happened to ring.
+            logger.info("callback requested but no owner number is configured")
+            return {"ok": False, "reason": UNAVAILABLE,
                     "say": HOLDING_LINE.format(owner=owner_name)}
         about = str(args.get("about") or "wants to speak to you")
         live["callback"] = about
@@ -268,6 +284,8 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
             # close on — not built.
             return {"ok": True, "say": "Putting you through now.",
                     "then": "stop talking; the call is now between them"}
+        # The code is logged, not returned: it is another system's diagnostic string and the model
+        # would be free to read it out to the caller.
         code = getattr(result, "error_code", "") or "unknown"
         logger.info("transfer failed (%s) — falling back to a message", code)
         await asyncio.to_thread(
@@ -278,7 +296,7 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
         await asyncio.to_thread(
             escalate_to_owner, caller, "wanted to speak to you — transfer unanswered",
             "on a call")
-        return {"ok": False, "reason": code,
+        return {"ok": False, "reason": UNAVAILABLE,
                 "say": HOLDING_LINE.format(owner=owner_name)}
 
     @tool
@@ -305,15 +323,22 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
         # handler that exists but was never declared can never be reached — drift can only remove
         # capability, never grant it.
         if name not in ASKER_TOOL_NAMES:
-            return {"error": f"no such tool: {name}"}
+            # NOT the name they sent. Echoing an unknown tool name puts the caller's own string
+            # into the context of a model that is speaking to them.
+            return {"error": UNAVAILABLE}
         fn = handlers.get(name)
         if fn is None:
-            return {"error": f"{name} is declared but not implemented"}
+            return {"error": UNAVAILABLE}
         try:
             return await fn(args)
         except Exception as exc:                       # never let a tool kill the call
+            # THE DETAIL GOES TO THE LOG, NOT THE MODEL. `str(exc)` was returned here, and a
+            # tool return is read by a model that then talks to a stranger — so an exception
+            # carrying a filesystem path, a key fragment or an internal hostname was one
+            # paraphrase away from being spoken aloud. The owner needs the detail; the caller
+            # needs to know only that it did not work.
             logger.exception("voice tool %s failed", name)
-            return {"error": str(exc)}
+            return {"error": UNAVAILABLE}
 
     return _dispatch
 
