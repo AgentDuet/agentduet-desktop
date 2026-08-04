@@ -100,7 +100,31 @@ def get_started() -> str:
     return prompts.render("owner-getting-started")
 
 
-PROMPTS = ["get-started-with-dduet"]
+@mcp.prompt(name="audit-my-tools",
+            title="Audit my tools",
+            description="Review what your secretary exposes to strangers, as an API security review.")
+def audit_tools() -> str:
+    """Static review of the owner's declared capabilities.
+
+    WHY THIS SHIPS IN THE PRODUCT
+
+    Tools are endpoints and the caller's words steer the client, so a customer adding capabilities
+    is writing an API for an attacker-steered client — usually without API-security experience. The
+    review discipline exists and is well understood; what is missing is a customer who knows to
+    apply it. Shipping it as a prompt makes the guide an artifact they can run, not advice.
+
+    STATIC ONLY, and the prompt says so twice. A live probe of a secretary rings a real phone and
+    writes real records. Sandboxed testing is not built.
+
+    It also disclaims the part it cannot judge: the five built-in asker tools are the product's own
+    boundary, reviewed by its authors and pinned by tests. An owner's audit covers what the OWNER
+    declared.
+    """
+    from . import prompts
+    return prompts.render("owner-audit-tools")
+
+
+PROMPTS = ["get-started-with-dduet", "audit-my-tools"]
 
 
 if __name__ == "__main__":
