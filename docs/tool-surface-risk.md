@@ -73,17 +73,58 @@ If you think of these tools as an API behind a UI, most of the discipline carrie
 - Check authorisation per call, not once at login.
 - Put limits on everything.
 
-One difference makes this harder than a normal API.
+The analogy is tighter than it first looks, and it is worth being precise about why.
 
-With a UI, the client is a program you wrote. The user drives it through the screens you built.
-With an agent, the "client" is a model whose behaviour is shaped by the attacker's text.
+A UI is not a security boundary. It is served to the client and can be edited, so a penetration
+tester ignores it and calls the API directly with arguments of their choosing. Everyone who has
+had a web app tested knows this.
 
-So the correct assumption is stronger than "don't expose an exploitable API". It is:
+An agent is the same situation. The prompt is not a security boundary either. The attacker's text
+steers the model, and the model makes the calls. In both cases the layer in the middle — the UI,
+or the prompt — constrains nothing. Only checks in the layer that actually holds count.
+
+So the assumption to work from is:
 
 > **Assume the attacker calls every tool you expose, directly, with any arguments they like.**
 
-That is why a booking cannot simply be trusted to the model. Every action is checked in code
-against limits the owner declared before anything happens. The model proposes; code decides.
+That is why a booking cannot be trusted to the model. Every action is checked in code against
+limits the owner declared before anything happens. The model proposes; code decides.
+
+### The one place an agent is different
+
+With a web API you mostly protect the input. With an agent you must also assume that **every
+tool's output is read aloud to the attacker**.
+
+A tool result goes into the model's context, and the model narrates. So a read-only tool that
+returns something the caller should not see becomes a way to extract it — spoken by your own
+agent, with no injection needed beyond asking a good question.
+
+That is why `search_knowledge` goes through the same permission grant that governs text, rather
+than reading the knowledge folder directly. The tool must not *return* what the caller may not
+hear, because "do not say this" is a prompt instruction, and prompts do not hold.
+
+Reviewing a tool therefore has two sides:
+
+- **Arguments:** assume the attacker chose them.
+- **Return value:** assume the attacker will hear it.
+
+We applied that second test to our own five tools on 2026-08-04 and it found four leaks. All are
+fixed; they are listed because they show the shape of the mistake rather than anything exotic.
+
+| what was returned | what a caller could have been told |
+|---|---|
+| `str(exception)` | a Python error, possibly including a file path |
+| another system's error code | an internal diagnostic string |
+| the matching knowledge filenames | the owner's private file layout |
+| the unknown tool name they sent | their own input, reflected into the model's context |
+
+The rule now: a return may contain **only strings we wrote for a caller to hear**. Everything else
+goes to the log, where the owner can read it and the caller cannot. Six checks in the test suite
+enforce this, and we confirmed they fail when a leak is reintroduced.
+
+One is not fixed. `search_knowledge` still returns up to 4,000 characters of the owner's documents
+for the model to paraphrase. On a knowledge question that *is* the answer, so the fix is not to
+withhold it — it is for the tool to do the answering and return a sentence. That is open work.
 
 ## The barrier that actually protects us
 
