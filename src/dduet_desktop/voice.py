@@ -107,9 +107,26 @@ def available() -> tuple[bool, str]:
 # NOT the owner registry: those grant folders and reply as the owner. A caller-facing model gets
 # exactly enough to answer, book within bounds, and hand over.
 
-def _tool_declarations() -> list[dict]:
-    """Neutral declarations; the adapter maps them to the provider's function-tool shape."""
-    return [
+#: THE ASKER AGENT'S ENTIRE AUTHORITY, and the single place it is written down.
+#:
+#: WHY A REGISTRY, AND WHY IT IS NOT MCP
+#:
+#: The declarations and the dispatch used to be two hand-maintained lists — a schema literal and a
+#: five-branch `if name == ...`. This codebase has already paid for that shape once: the owner's
+#: MCP face listed its tools by hand and drifted to 16 of 33, so an owner could ask for something
+#: the secretary plainly did and be told it could not. Here the same drift is worse, because a
+#: drifted asker tool is one a CALLER can reach.
+#:
+#: MCP would also solve the drift, and is the wrong instrument. Its value is letting a host you do
+#: not control attach tools across a process boundary, discovered at runtime. The asker harness and
+#: these tools are the same program, so there is no boundary and nothing to discover — and the
+#: realtime model takes a plain schema list anyway, so an MCP server would be translated straight
+#: back into this. The cost is the part that matters: MCP turns "which tools exist" from a
+#: compile-time fact into a runtime lookup, and this list being slow and visible to change is the
+#: asker side's main protection. See docs/tool-surface-risk.md.
+#:
+#: So: one definition, compiled in, with both the schema and the dispatch derived from it.
+ASKER_TOOLS: list[dict] = [
         {"name": "search_knowledge",
          "description": "Look up what the owner has made available. Answer ONLY from what this "
                         "returns. If it returns nothing relevant, do not guess — escalate.",
@@ -140,7 +157,19 @@ def _tool_declarations() -> list[dict]:
                         "commitment. Records it for the owner and tells you what to say.",
          "input_schema": {"type": "object", "required": ["question"], "properties": {
              "question": {"type": "string", "description": "what the caller wants, in one line"}}}},
-    ]
+]
+
+#: The authority itself, as a set. `_dispatch` checks against THIS, so a handler that exists but
+#: was never declared can never be called — drift can only ever remove capability, not add it.
+ASKER_TOOL_NAMES = frozenset(t["name"] for t in ASKER_TOOLS)
+
+
+def _tool_declarations() -> list[dict]:
+    """Neutral declarations; the adapter maps them to the provider's function-tool shape.
+
+    Copies, so a provider adapter that mutates what it is handed cannot edit the registry.
+    """
+    return [dict(t) for t in ASKER_TOOLS]
 
 
 def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: dict):
@@ -151,107 +180,137 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
     call — needs the object reaching it some other way.
     """
 
-    async def _dispatch(name: str, args: dict) -> dict:
+    # Handlers register under their OWN function name, so the name in the registry and the name
+    # that dispatches cannot drift apart by editing one and forgetting the other.
+    handlers: dict = {}
+
+    def tool(fn):
+        handlers[fn.__name__] = fn
+        return fn
+
+    @tool
+    async def search_knowledge(args: dict) -> dict:
+        q = str(args.get("query") or "")
+        text, sources = await asyncio.to_thread(
+            permissions.context_for, caller, verified, q)
+        # Same grant that governs text. A caller cannot reach a folder the owner did
+        # not share, whatever they ask for.
+        return {"found": bool(text.strip()), "sources": sources, "content": text[:4000]}
+
+    @tool
+    @tool
+    async def book(args: dict) -> dict:
+        cap = _only_capability()
+        if cap is None:
+            return {"ok": False, "reason": "the owner has not authorised any bookings"}
+        at = str(args.get("at") or "")
+        minutes = capabilities.block_minutes(cap)
+        ok, why = await asyncio.to_thread(
+            capabilities.check_bounds, cap, verified,
+            args.get("quantity"), at, minutes)
+        if not ok:
+            return {"ok": False, "reason": why}
+        what = str(args.get("what") or "a booking")[:120]
         try:
-            if name == "search_knowledge":
-                q = str(args.get("query") or "")
-                text, sources = await asyncio.to_thread(
-                    permissions.context_for, caller, verified, q)
-                # Same grant that governs text. A caller cannot reach a folder the owner did
-                # not share, whatever they ask for.
-                return {"found": bool(text.strip()), "sources": sources, "content": text[:4000]}
+            row = await asyncio.to_thread(schedule.book, at, minutes, what, caller)
+        except schedule.Conflict:
+            nxt = await asyncio.to_thread(
+                schedule.next_free, at, minutes,
+                str((capabilities.get(cap) or {}).get("bounds", {}).get("hours", "")))
+            return {"ok": False, "reason": "that time is taken",
+                    "next_free": nxt or "nothing nearby"}
+        await asyncio.to_thread(
+            brain.record, caller, f"[call] {what}", "acted",
+            f"capability:{cap}:voice", f"Booked for {row['at']}",
+            None, "TELCO", None, verified, convo)
+        return {"ok": True, "at": row["at"], "what": what}
 
-            if name == "book":
-                cap = _only_capability()
-                if cap is None:
-                    return {"ok": False, "reason": "the owner has not authorised any bookings"}
-                at = str(args.get("at") or "")
-                minutes = capabilities.block_minutes(cap)
-                ok, why = await asyncio.to_thread(
-                    capabilities.check_bounds, cap, verified,
-                    args.get("quantity"), at, minutes)
-                if not ok:
-                    return {"ok": False, "reason": why}
-                what = str(args.get("what") or "a booking")[:120]
-                try:
-                    row = await asyncio.to_thread(schedule.book, at, minutes, what, caller)
-                except schedule.Conflict:
-                    nxt = await asyncio.to_thread(
-                        schedule.next_free, at, minutes,
-                        str((capabilities.get(cap) or {}).get("bounds", {}).get("hours", "")))
-                    return {"ok": False, "reason": "that time is taken",
-                            "next_free": nxt or "nothing nearby"}
-                await asyncio.to_thread(
-                    brain.record, caller, f"[call] {what}", "acted",
-                    f"capability:{cap}:voice", f"Booked for {row['at']}",
-                    None, "TELCO", None, verified, convo)
-                return {"ok": True, "at": row["at"], "what": what}
+    # A promise the code can keep. `transfer_to_owner` bridges the live caller into a conference
+    # with a destination we cannot see or set (SDK #36), and a real attempt timed out with the
+    # owner's phone never ringing. `session.make_call(dest)` DOES take a destination — proven — so
+    # ringing the owner ourselves is buildable, and it works whether or not they are at their desk.
+    @tool
+    async def request_callback(args: dict) -> dict:
+        from . import owner as owner_settings
+        number = owner_settings.phone()
+        if not number:
+            # No number: do NOT offer a callback. Saying it and not doing it is worse than
+            # taking a message.
+            return {"ok": False, "reason": "no owner number configured",
+                    "say": HOLDING_LINE.format(owner=owner_name)}
+        about = str(args.get("about") or "wants to speak to you")
+        live["callback"] = about
+        await asyncio.to_thread(
+            brain.record, caller, f"[call] callback requested: {about}", "escalated",
+            "voice:callback_requested", policy.ABSTAIN,
+            None, "TELCO", None, verified, convo)
+        from .notify import escalate_to_owner
+        await asyncio.to_thread(escalate_to_owner, caller, about, "callback requested")
+        # Placed AFTER this call ends — see the callback runner. Two live calls at once would
+        # need the model to speak on both legs.
+        return {"ok": True,
+                "say": f"I'll have {owner_name} call you back on this number shortly."}
 
-            # A promise the code can keep. `transfer_to_owner` bridges the live caller into a
-            # conference with a destination we cannot see or set (SDK #36), and a real attempt
-            # timed out with the owner's phone never ringing. `session.make_call(dest)` DOES
-            # take a destination — proven — so ringing the owner ourselves is buildable, and it
-            # works whether or not they are at their desk.
-            if name == "request_callback":
-                from . import owner as owner_settings
-                number = owner_settings.phone()
-                if not number:
-                    # No number: do NOT offer a callback. Saying it and not doing it is worse
-                    # than taking a message.
-                    return {"ok": False, "reason": "no owner number configured",
-                            "say": HOLDING_LINE.format(owner=owner_name)}
-                about = str(args.get("about") or "wants to speak to you")
-                live["callback"] = about
-                await asyncio.to_thread(
-                    brain.record, caller, f"[call] callback requested: {about}", "escalated",
-                    "voice:callback_requested", policy.ABSTAIN,
-                    None, "TELCO", None, verified, convo)
-                from .notify import escalate_to_owner
-                await asyncio.to_thread(escalate_to_owner, caller, about, "callback requested")
-                # Placed AFTER this call ends — see the callback runner. Two live calls at once
-                # would need the model to speak on both legs.
-                return {"ok": True,
-                        "say": f"I'll have {owner_name} call you back on this number shortly."}
+    @tool
+    async def transfer_to_owner(args: dict) -> dict:
+        call = live.get("call")
+        if call is None:
+            return {"ok": False, "say": HOLDING_LINE.format(owner=owner_name)}
+        result = await call.connect(ring_time_seconds=TRANSFER_RING_SECONDS)
+        if result:
+            await asyncio.to_thread(
+                brain.record, caller, "[call] asked to speak to a person", "acted",
+                "voice:transferred", f"Put through to {owner_name}",
+                None, "TELCO", None, verified, convo)
+            # A 3-way conference: the agent is still on the line. It is told to stop talking
+            # rather than dropped, because closing here would cut off whatever it is mid-way
+            # through saying. Leaving cleanly after the handoff needs an event to hang the
+            # close on — not built.
+            return {"ok": True, "say": "Putting you through now.",
+                    "then": "stop talking; the call is now between them"}
+        code = getattr(result, "error_code", "") or "unknown"
+        logger.info("transfer failed (%s) — falling back to a message", code)
+        await asyncio.to_thread(
+            brain.record, caller, "[call] wanted to speak to a person", "escalated",
+            f"voice:transfer_failed:{code}", policy.ABSTAIN,
+            None, "TELCO", None, verified, convo)
+        from .notify import escalate_to_owner
+        await asyncio.to_thread(
+            escalate_to_owner, caller, "wanted to speak to you — transfer unanswered",
+            "on a call")
+        return {"ok": False, "reason": code,
+                "say": HOLDING_LINE.format(owner=owner_name)}
 
-            if name == "transfer_to_owner":
-                call = live.get("call")
-                if call is None:
-                    return {"ok": False, "say": HOLDING_LINE.format(owner=owner_name)}
-                result = await call.connect(ring_time_seconds=TRANSFER_RING_SECONDS)
-                if result:
-                    await asyncio.to_thread(
-                        brain.record, caller, "[call] asked to speak to a person", "acted",
-                        "voice:transferred", f"Put through to {owner_name}",
-                        None, "TELCO", None, verified, convo)
-                    # A 3-way conference: the agent is still on the line. It is told to stop
-                    # talking rather than dropped, because closing here would cut off whatever
-                    # it is mid-way through saying. Leaving cleanly after the handoff needs an
-                    # event to hang the close on — not built.
-                    return {"ok": True, "say": "Putting you through now.",
-                            "then": "stop talking; the call is now between them"}
-                code = getattr(result, "error_code", "") or "unknown"
-                logger.info("transfer failed (%s) — falling back to a message", code)
-                await asyncio.to_thread(
-                    brain.record, caller, "[call] wanted to speak to a person", "escalated",
-                    f"voice:transfer_failed:{code}", policy.ABSTAIN,
-                    None, "TELCO", None, verified, convo)
-                from .notify import escalate_to_owner
-                await asyncio.to_thread(
-                    escalate_to_owner, caller, "wanted to speak to you — transfer unanswered",
-                    "on a call")
-                return {"ok": False, "reason": code,
-                        "say": HOLDING_LINE.format(owner=owner_name)}
+    @tool
+    async def escalate(args: dict) -> dict:
+        q = str(args.get("question") or "")[:400]
+        await asyncio.to_thread(
+            brain.record, caller, f"[call] {q}", "escalated",
+            "voice:cannot_answer", policy.ABSTAIN, None, "TELCO", None, verified, convo)
+        from .notify import escalate_to_owner
+        await asyncio.to_thread(escalate_to_owner, caller, q, "on a call")
+        return {"ok": True, "say": HOLDING_LINE.format(owner=owner_name)}
 
-            if name == "escalate":
-                q = str(args.get("question") or "")[:400]
-                await asyncio.to_thread(
-                    brain.record, caller, f"[call] {q}", "escalated",
-                    "voice:cannot_answer", policy.ABSTAIN, None, "TELCO", None, verified, convo)
-                from .notify import escalate_to_owner
-                await asyncio.to_thread(escalate_to_owner, caller, q, "on a call")
-                return {"ok": True, "say": HOLDING_LINE.format(owner=owner_name)}
+    # DRIFT IS A LOGGED ERROR, not a silent gap. A declared tool with no handler means the model
+    # was offered something that cannot run; a handler with no declaration is dead code that the
+    # authority check below will refuse anyway.
+    undeclared = set(handlers) - ASKER_TOOL_NAMES
+    unimplemented = ASKER_TOOL_NAMES - set(handlers)
+    if undeclared or unimplemented:
+        logger.error("asker tool registry drift — undeclared=%s unimplemented=%s",
+                     sorted(undeclared), sorted(unimplemented))
 
+    async def _dispatch(name: str, args: dict) -> dict:
+        # AGAINST THE REGISTRY, not against `handlers`. The declared list is the authority, so a
+        # handler that exists but was never declared can never be reached — drift can only remove
+        # capability, never grant it.
+        if name not in ASKER_TOOL_NAMES:
             return {"error": f"no such tool: {name}"}
+        fn = handlers.get(name)
+        if fn is None:
+            return {"error": f"{name} is declared but not implemented"}
+        try:
+            return await fn(args)
         except Exception as exc:                       # never let a tool kill the call
             logger.exception("voice tool %s failed", name)
             return {"error": str(exc)}

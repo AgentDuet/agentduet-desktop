@@ -139,6 +139,45 @@ def test_prompts() -> None:
        "Do not declare a capability" in started)
 
 
+def test_asker_tool_surface() -> None:
+    """The asker agent's authority. Read from SOURCE, so this runs with no SDK and no venv.
+
+    This is the fence the whole product rests on: the agent that reads text written by strangers
+    can only do these things. A tool that appears here without someone deciding to put it here is
+    the failure in docs/tool-surface-risk.md.
+    """
+    print("\n  -- asker: the five tools, and nothing else --")
+    import re
+    src = (pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop" / "voice.py").read_text()
+
+    declared = set(re.findall(r'\{"name": "(\w+)",', src))
+    handlers = set(re.findall(r"@tool\s*\n\s*async def (\w+)\(", src))
+
+    # THE CANARY. Spelled out, so widening the asker's authority means editing a test that says
+    # what this list is for — not just appending a dict and having every check still pass.
+    expected = {"search_knowledge", "escalate", "request_callback", "transfer_to_owner", "book"}
+    ok("the asker agent declares exactly the five agreed tools", declared == expected,
+       f"declared={sorted(declared)}")
+    ok("and no tool is offered without a handler", declared - handlers == set(),
+       f"unimplemented={sorted(declared - handlers)}")
+    ok("and no handler exists that was never declared", handlers - declared == set(),
+       f"undeclared={sorted(handlers - declared)}")
+
+    # Nothing that reaches the filesystem, the shell, or the network by name. Not a substitute for
+    # reading the list — a tripwire for the specific thing an injected caller asks for.
+    forbidden = ("read_file", "write_file", "shell", "exec", "run_command", "http", "fetch")
+    ok("none of them can reach the machine",
+       not [d for d in declared for f in forbidden if f in d], sorted(declared))
+
+    # The declared list must be the authority. Dispatching off `handlers` would let a handler that
+    # was never declared be called, which is how a debugging helper becomes reachable by a caller.
+    ok("dispatch checks the declared registry, not the handler table",
+       "if name not in ASKER_TOOL_NAMES" in src)
+    # Compiled in, never read from the instance directory — see the withdrawn checklist item.
+    ok("the registry is not loaded from $DDUET_HOME",
+       not re.search(r"ASKER_TOOLS\s*=\s*.*(json\.load|read_text|paths\.)", src))
+
+
 def test_hosts() -> None:
     """Assistant detection and registration. Model-free: it is paths and process calls."""
     print("\n  -- hosts: what an assistant is told to launch --")
@@ -682,6 +721,7 @@ def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
     test_prompts()
+    test_asker_tool_surface()
     test_hosts()
     test_setup_mode()
     test_schedule()
