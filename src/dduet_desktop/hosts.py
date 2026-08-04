@@ -214,6 +214,19 @@ def _register_goose(apply: bool) -> str:
         return f"    already registered in {GOOSE_CONFIG.name}"
 
     cfg.setdefault("extensions", {})[SERVER_NAME] = entry
+    # THE ORIENTATION BELONGS HERE, not with the other defaults.
+    #
+    # It tells the model to "use the `dduet` tools", and it was written by
+    # configure_goose_defaults — a separate step that runs BEFORE this one. Get an install where
+    # defaults are applied and registration is not, and Goose opens instructing its model to use
+    # tools that do not exist. That happened on this machine: 16 extensions, no `dduet`, and an
+    # orientation confidently naming it. A missing extension is a gap; one the model has been
+    # told to use is a lie it will act on.
+    #
+    # Written in the same write as the extension, so the claim and the thing it claims cannot
+    # come apart.
+    if cfg.get("GOOSE_MOIM_MESSAGE_TEXT") != GOOSE_ORIENTATION:
+        cfg["GOOSE_MOIM_MESSAGE_TEXT"] = GOOSE_ORIENTATION
     try:
         # Back up first. This is someone's working assistant config, and we are the second
         # program to write it.
@@ -379,9 +392,8 @@ def configure_goose_defaults() -> str:
         if isinstance(ext, dict) and ext.get("enabled"):
             ext["enabled"] = False
             changed.append(f"disabled `{name}` (shell and file editing)")
-    if cfg.get("GOOSE_MOIM_MESSAGE_TEXT") != GOOSE_ORIENTATION:
-        cfg["GOOSE_MOIM_MESSAGE_TEXT"] = GOOSE_ORIENTATION
-        changed.append("added an orientation message for a first-time user")
+    # NOT the orientation. It names the `dduet` tools, so it is written by _register_goose in the
+    # same write that registers them — see the comment there.
 
     if not changed:
         return "    Goose already had these defaults"
