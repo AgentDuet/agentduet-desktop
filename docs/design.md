@@ -32,18 +32,13 @@ unwired form destroyed the session token on the first keypress.
 
 The owner already has an assistant. Riding on it costs one MCP server.
 
-### The reversal, recorded honestly
+### The reversal, and what would reverse it again
 
-This is the **second** reversal on this point.
+This has flipped twice. It was MCP-first, then site-first on 2026-07-30 (*"MCP needs the owner to
+already have an AI app; the site needs nothing"*), then MCP-first again on 2026-08-03.
 
-- MCP was originally primary.
-- **2026-07-30** it was reversed: the site became primary, because *"MCP needs the owner to
-  already have an AI app and configure it; the site needs nothing."* A dead site was made fatal.
-- **2026-08-03** it is reversed back, on a different premise: that the owner **is** someone with
-  an assistant, and that maintaining three UI surfaces for one product is not affordable.
-
-The 2026-07-30 reasoning was not wrong; the assumption about who the owner is changed. If that
-assumption changes again, this decision is the one to revisit — not the plumbing under it.
+Neither reasoning was wrong. What changed was the **assumption about who the owner is**. If that
+assumption changes, revisit this decision — not the plumbing under it.
 
 ---
 
@@ -61,6 +56,39 @@ for no boundary. An allow-list filtered in code gives the identical guarantee.
 
 The principle underneath does not change: **the model reads, code decides.** Every judgement the
 model makes is checked mechanically before anything happens.
+
+### Customers will bring their own tools — and that inverts the fence
+
+Recorded 2026-08-04, having been absent from this document while every decision in it assumed the
+opposite.
+
+Today a customer **declares**: an action from a closed `ACTIONS` set, with bounds from a closed
+vocabulary. They parameterise our verbs and cannot supply behaviour. That is why the fence holds
+with five tools — there is no path from a declaration to the machine.
+
+The product intent is that customers author tools. Two things follow, and both are new classes:
+
+**Their code must not run in our process.** Sandboxed with no filesystem, network or environment,
+or a webhook on their side. Not in the daemon.
+
+**Tool returns become untrusted input.** This is the one that is easy to miss. We currently trust
+returns absolutely because we wrote them. A customer tool that reads their CRM returns whatever is
+in that CRM, including text a stranger put there — arriving as a *tool result*, which a model
+weights heavily. Same injection class as an asker message, through the channel we guard least.
+
+So a customer's tool gets the treatment an asker's message gets, plus:
+
+- **Handlers return a status from a closed set; the framework renders the sentence.** A key
+  whitelist is not enough — it stops extra fields, not a leaked value in an expected one. If the
+  handler cannot author caller-visible text, it cannot leak into it.
+- **Authority stays ours.** Anything that commits goes through `check_bounds`, whatever the tool
+  claims to have decided.
+- **No egress by parameter.** A customer-supplied URL is an SSRF. Egress means an owner-approved
+  allowlisted host.
+- **Default deny.** A tool that declares no shape gets nothing.
+
+The customer is writing an API without API-security experience, for a client that is an
+attacker-steered model. Assume they will get it wrong and make that survivable.
 
 ### Voice is weaker than text, and says so
 
@@ -248,74 +276,56 @@ Per-platform, and the delivery concern now that there is no UI to carry the firs
 | | state |
 |---|---|
 | macOS arm64 | CI builds a `.app` in a DMG, smoke-tested for providers and voice. Unsigned — first launch needs right-click → Open |
-| macOS Intel | the `macos-13` job has never started; that label is on GitHub's retirement track. Decide whether Intel is supported |
+| macOS Intel | **dropped 2026-08-04.** `macos-13` is retired, so the job never started — and a queued job holds its whole run open, making finished builds look unfinished |
 | Linux x86_64 | CI builds it |
 | Windows | not started |
 
 Notarization needs an Apple Developer ID. Acceptable for a colleague, not past that.
 
+**We install an assistant for the owner**, having said "not doing" while shipping the opposite.
+The objection stands — it picks a winner and makes us a distributor of someone else's CVEs — but
+with no owner interface the assistant is the *only* way to drive the product, so "bring your own"
+is a dead end for anyone who has never installed one. Detection wins by default; Goose is the
+alternative an owner picks. Their prebuilt release, never from git. Nothing bundled. **Not Goose
+Desktop on Linux** — deb/rpm only, both need root, and nothing else here does.
+
 ---
 
 ## Decisions
 
-1. **Two parts: the asker daemon and the owner mcp. No owner interface.**
-2. **The asker fence is a code-level allow-list in the daemon** — five operations. Not MCP;
-   there is no external host on that side. A separate OS process is the documented upgrade path
-   if the threat model ever includes local code execution, which today it does not.
-3. **Prompts are versioned templates with declared parameters and value checks.**
-4. **Voice grounding moves into the tool contract**; prompts carry standing rules only.
-5. **The owner mcp is derived from `tools.OWNER_TOOLS`**, never enumerated.
-6. **Service tools are separate from secretary tools**, because one must work when the daemon
+Only the ones without a section of their own — the rest are argued above and were being restated
+here, which is how this document grew a second copy of itself.
+
+1. **Prompts are versioned templates** with declared parameters and value checks.
+2. **Voice grounding moves into the tool contract**; prompts carry standing rules only.
+3. **The owner mcp is derived from `tools.OWNER_TOOLS`**, never enumerated.
+4. **Service tools are separate from secretary tools**, because one must work when the daemon
    does not.
-7. **The login-item tool takes no parameters.**
-8. **Secrets never enter a model's context.** A terminal (`init`) or a single-purpose browser
-   form are both fine; a chat box is not. This is narrower than "no interface" and replaces the
-   earlier wording.
-9. **The site is transitional, not primary.** It stays until `init` covers first-run
-   configuration and the mcp path is proven — Cen is testing with it now and has no assistant.
-   It stops being load-bearing immediately: the daemon must no longer exit when it fails.
+5. **The login-item tool takes no parameters.**
+6. **Secrets never enter a model's context.** A terminal (`init`) or a single-purpose browser form
+   are both fine; a chat box is not.
+7. **The site is transitional.** It stays until `init` covers first-run configuration, and it is
+   already not load-bearing — the daemon does not exit when it fails to bind.
 
 ## Open
 
 - Does the secretary tools face need HTTP, or is per-session stdio enough?
 - Push or pull for escalations?
-- Is Intel Mac supported?
 - Is the hosted cascade actually too slow? Unmeasured.
+- Sandbox or webhook for customer-authored tools?
 
 ## Next
 
-1. ~~**Stop the daemon dying with the site**~~ — done. The site's failure to bind is logged and
-   carried past; answering a stranger does not depend on a UI having bound a port.
-2. ~~**Service tools**~~ — done. `service_status` / `service_start` / `service_stop` on the
-   stdio mcp, with `FORCE = getattr(signal, "SIGKILL", signal.SIGTERM)` for Windows.
-3. ~~**`init` takes the connector**~~, and ~~the secrets-only page~~ — both done. `setup.html`
-   takes both credentials in a browser form, which keeps them out of a model's context.
-4. **Tag asker-authored content as untrusted** in whatever the mcp returns.
-5. ~~**`dduet-desktop connect`**~~ — done. Detects installed assistants and registers with
-   Claude Code via its own CLI; for hosts whose config format we have not exercised it prints
-   what to paste rather than writing blind. Needed `dduet-desktop mcp` first: the dev command
-   `python -m dduet_desktop.secretary_mcp` cannot be registered on an installed machine.
-6. **Login-start units**, then the Windows installer.
+1. **Tag asker-authored content as untrusted** in whatever the mcp returns.
+2. **Status-and-render for tool returns** — handlers return a status, the framework writes the
+   sentence. Prerequisite for customer-authored tools, and cheapest to do while one action exists.
+3. **Login-start units**, then the Windows installer.
 
-**Reversed 2026-08-03: we DO offer to install an AI assistant.** This said "not doing", and the
-product shipped the opposite, so the reasoning is recorded here rather than left contradicted.
+Done items are not listed here. `git log` has them, and a "Next" list that keeps its own history
+stops being read.
 
-What changed is not the objection but its weight. With no owner interface, an assistant is the
-*only* way to drive this product — so "bring your own" is not a neutral default, it is a dead
-end for anyone who has never installed one. `setup.html` step 4 detects what is already there
-and offers Goose only as an alternative the owner picks; detection still wins by default, so
-assistant-agnostic holds where it can be exercised.
+---
 
-The original conditions were kept, and one was strengthened:
-
-- **From their prebuilt releases, never from git.** Goose from source means a Rust toolchain and
-  minutes of compilation. We run their own `download_cli.sh`, fetched to disk first so the exact
-  bytes are auditable, with `GOOSE_BIN_DIR` and `CONFIGURE=false`.
-- **We are a distributor of someone else's updates and CVEs.** Still true, and unmitigated. The
-  install is opt-in and Goose updates itself.
-- **It roughly doubles the download.** Avoided: nothing is bundled, so the binary is unchanged
-  and the 89 MB is fetched only if the owner asks for it.
-
-**Still not doing: installing Goose Desktop on Linux.** Desktop ships only as deb/rpm there
-(no AppImage), both of which need root — and nothing else in this product does. macOS and
-Windows ship it as a zip, so Desktop-first is open on those platforms and closed on this one.
+**Editing this document.** It records live decisions and the reasoning that would reverse them.
+Not history, not completed work, and not a summary of its own sections — every one of those grew
+back at least once and had to be cut again on 2026-08-04.
