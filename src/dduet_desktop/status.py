@@ -85,6 +85,17 @@ def set_number(number: str) -> None:
             NUMBER_FILE.write_text(number)
         except OSError as exc:
             logger.debug("could not persist the number: %s", exc)
+    elif number and not _state["number"]:
+        # SAY WHAT WAS REJECTED. The guard is right — a uuid displayed as "your number" is worse
+        # than nothing — but it dropped the value in silence, so after months of real calls we
+        # still could not say what a call reports as its subscriber. Absence of a number looked
+        # like absence of calls.
+        #
+        # This is the ONLY way to learn the shape: there is no lookup in the SDK, and only a call
+        # carries a line at all (a DDUET message's subscriber is the connector uuid). One logged
+        # rejection tells us whether a number is derivable here or has to come from the backend.
+        logger.info("call reported subscriber %r, which is not a phone number — not displaying "
+                    "it as one. This is what we would need the backend to give us.", number)
 
 
 def load_number(sessions_file) -> None:
