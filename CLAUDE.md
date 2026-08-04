@@ -187,12 +187,25 @@ existed only because of the owner interface were removed — see the Cleared not
       cascade. It is the only option that restores every invariant.
 - [ ] `_ring_owner` (the callback that rings the owner) has **never executed** — every other
       part of the callback is tested.
+- [ ] **No rate limit on the tools that ring the owner** (`request_callback`, `transfer_to_owner`)
+      — confirmed absent 2026-08-04. This is the cheapest real abuse of the asker's five tools and
+      the only one needing no injection at all: a caller just asks to be put through, repeatedly.
+      Cannot steal anything; can make the owner's phone unusable. Limit per caller AND in total,
+      since the caller identity is whatever the channel reports.
 
 **Engineering**
 
 - [ ] **Tag asker-authored content as untrusted** in whatever the mcp returns. Escalations and
       transcripts are written by strangers and read by an agent with shell access.
-- [ ] **The asker allow-list should be data**, not hardcoded in `_tool_declarations()`.
+- [x] ~~**The asker allow-list should be data**, not hardcoded in `_tool_declarations()`.~~
+      **WITHDRAWN 2026-08-04 — this was a bad idea and the reasoning was backwards.** It was
+      proposed for tidiness. But the hardcoded list is the asker side's main protection, and it
+      protects by being SLOW to change: adding a tool means editing code, passing tests and
+      shipping a build — visible, reviewable, human. As data it becomes a file write. Anything the
+      agent can reach that can write that file can grant the agent tools, and the asker agent
+      reads text written by strangers. That is the OpenClaw failure shape (see `docs/tool-surface-
+      risk.md`), reintroduced as a refactor. If it is ever revisited, the list must be BUILD-TIME
+      data compiled into the binary, never read from `$DDUET_HOME`.
 - [ ] `dduet-desktop tool <name> [--arg=value]` — one generic verb dispatching into the registry.
 - [ ] `test_behaviour.py` is **flaky** (~2 in 5 on "bare revision keeps the negotiation
       classification"). A single red line there is a signal to replay, not a verdict.
