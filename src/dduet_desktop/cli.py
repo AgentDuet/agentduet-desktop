@@ -109,6 +109,16 @@ def cmd_status(args) -> int:
     from . import voice
     ok, why = voice.available()
     print(f"  voice    : {'available' if ok else 'NOT available — ' + why}")
+
+    # WHETHER ANYONE CAN ACTUALLY DRIVE IT. With no owner interface the assistant IS the only
+    # surface, so an unregistered assistant means the product is unreachable — and this command
+    # used to report a perfectly healthy secretary in exactly that state.
+    from . import hosts
+    reg = hosts.registration()
+    if not reg:
+        print("  assistant: NONE found — nothing can drive this secretary")
+    for label, state in reg:
+        print(f"  assistant: {label} — {state}")
     return 0
 
 
