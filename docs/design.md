@@ -90,6 +90,33 @@ So a customer's tool gets the treatment an asker's message gets, plus:
 The customer is writing an API without API-security experience, for a client that is an
 attacker-steered model. Assume they will get it wrong and make that survivable.
 
+### Tools are a granted resource, per caller
+
+KC's proposal, 2026-08-04, accepted: *"Folder A can have tools XYZ. Folder B can only have tool
+Z."* Disclosure already follows a per-caller grant. Authority follows the same grant.
+
+`permissions.json` is already per-asker with a default, so this is `"tools"` beside `"folders"`.
+
+Enforced at dispatch, as **two** checks that mean different things:
+
+```python
+if name not in ASKER_TOOL_NAMES:                    # does the product offer this at all
+if name not in permissions.tools_for(caller, ...):  # may THIS caller use it
+```
+
+The registry is the fence and is fixed at build time. The grant is per caller and the owner sets
+it. Neither substitutes for the other.
+
+Three decisions inside it:
+
+- **The default is `search_knowledge` and `escalate`.** Every stranger starts here, so it is the
+  only setting that matters at scale. Never `book`, never `transfer_to_owner` by default.
+- **It composes with `verified_only`, and does not replace it.** The grant says this caller may
+  call `book`; `check_bounds` still says within these hours, this quantity, verified only.
+- **`escalate` is not revocable.** Remove it and an agent facing a question it cannot answer has
+  no legitimate move left — which is exactly when a model invents one. The safety valve must sit
+  outside the system that can withdraw it.
+
 ### Voice is weaker than text, and says so
 
 In text, `brain.handle_query` runs retrieval, the disclosure gate and `check_bounds` **before**
@@ -321,7 +348,8 @@ here, which is how this document grew a second copy of itself.
 1. **Tag asker-authored content as untrusted** in whatever the mcp returns.
 2. **Status-and-render for tool returns** — handlers return a status, the framework writes the
    sentence. Prerequisite for customer-authored tools, and cheapest to do while one action exists.
-3. **Login-start units**, then the Windows installer.
+3. **Per-caller tool grants** — `"tools"` in `permissions.json`, checked at dispatch.
+4. **Login-start units**, then the Windows installer.
 
 Done items are not listed here. `git log` has them, and a "Next" list that keeps its own history
 stops being read.
