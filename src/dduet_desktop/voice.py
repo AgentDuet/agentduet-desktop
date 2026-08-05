@@ -81,6 +81,43 @@ SILENCE_TIMEOUT = float(os.getenv("SECRETARY_CALL_SILENCE_TIMEOUT", "6"))
 #: nobody is waiting on the line, so a missed ring costs only a retry.
 CALLBACK_RING_SECONDS = 45
 
+#: HOW OFTEN A CALLER MAY MAKE THE OWNER'S PHONE RING.
+#:
+#: `request_callback` and `transfer_to_owner` are the cheapest real abuse of the asker's five
+#: tools, and the only one needing no injection at all: a caller simply asks to be put through,
+#: repeatedly. Nothing is stolen. The owner's phone becomes unusable, which for a product whose
+#: promise is "it answers so you do not have to" is the whole product failing.
+#:
+#: TWO limits, and the second is the one that matters. The caller identity is whatever the channel
+#: reports, so anyone willing to vary it defeats a per-caller cap on its own. The total is the
+#: real ceiling; the per-caller limit only stops one persistent person being the whole budget.
+#:
+#: In memory, deliberately. A restart resets it, which is a real weakness and the right trade: a
+#: store would have to be written on the call path, and the alternative to an imperfect limit here
+#: was no limit at all.
+RING_WINDOW_SECONDS = 3600
+RING_PER_CALLER = int(os.getenv("SECRETARY_RING_PER_CALLER", "2"))
+RING_TOTAL = int(os.getenv("SECRETARY_RING_TOTAL", "6"))
+
+_rings: list[tuple[float, str]] = []
+
+
+def _may_ring(caller: str) -> bool:
+    """Record and allow, or refuse. Refusing does NOT drop the caller — see the handlers."""
+    import time
+    now = time.time()
+    _rings[:] = [(t, c) for t, c in _rings if now - t < RING_WINDOW_SECONDS]
+    if sum(1 for _, c in _rings if c == caller) >= RING_PER_CALLER:
+        logger.warning("caller %s has already made the owner's phone ring %d times this hour",
+                       caller, RING_PER_CALLER)
+        return False
+    if len(_rings) >= RING_TOTAL:
+        logger.warning("the owner's phone has rung %d times this hour across all callers — "
+                       "refusing more", RING_TOTAL)
+        return False
+    _rings.append((now, caller))
+    return True
+
 
 def available() -> tuple[bool, str]:
     """(usable, why not) — checked before registering a call handler."""
@@ -318,7 +355,14 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
             logger.info("callback requested but no owner number is configured")
             return {"status": "callback_unavailable"}
         about = str(args.get("about") or "wants to speak to you")
-        live["callback"] = about
+        # REFUSING TO RING IS NOT REFUSING THE CALLER. The escalation below is recorded either
+        # way, so a rate-limited caller still reaches the owner — just not by making their phone
+        # ring again. Dropping them would turn an abuse control into a way to silence people.
+        if not _may_ring(caller):
+            ringing = False
+        else:
+            ringing = True
+            live["callback"] = about
         await asyncio.to_thread(
             brain.record, caller, f"[call] callback requested: {about}", "escalated",
             "voice:callback_requested", policy.ABSTAIN,
@@ -327,12 +371,15 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
         await asyncio.to_thread(escalate_to_owner, caller, about, "callback requested")
         # Placed AFTER this call ends — see the callback runner. Two live calls at once would
         # need the model to speak on both legs.
-        return {"status": "callback_promised"}
+        return {"status": "callback_promised" if ringing else "escalated"}
 
     @tool
     async def transfer_to_owner(args: dict) -> dict:
         call = live.get("call")
         if call is None:
+            return {"status": "transfer_failed"}
+        # Same budget as a callback: both end in the owner's phone ringing.
+        if not _may_ring(caller):
             return {"status": "transfer_failed"}
         result = await call.connect(ring_time_seconds=TRANSFER_RING_SECONDS)
         if result:
