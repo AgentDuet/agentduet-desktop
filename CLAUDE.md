@@ -180,6 +180,16 @@ existed only because of the owner interface were removed — see the Cleared not
       uuid, the visitor is an email. A per-agent URL exists (`stg.dduet.com/<slug>/chat`) but
       only on staging; prod DDUET needs `AGENTDUET_BASE_URL=ws://wss-dev...` today, which
       conflicts with voice arriving on prod. One client, one base URL.
+- [ ] **Reply over WhatsApp.** Inbound WA now REACHES us (2026-08-05, after Dat added the WA
+      route — the connector predated WhatsApp support). We have what a reply needs: participant
+      `6596918851`, subscriber (the WABA `phone_number_id`) `1151661421362480`, and the payload
+      shape from the SDK's `wa_echo_bot.py`. `on_incoming_message` currently drops any non-DDUET
+      network with a log line. What is NOT known is the INBOUND payload shape — `_first_text`
+      parses Nexus proto3 parts, and Meta's message object is different, so log a raw payload
+      before writing the extractor. Also decide `default_verified("WA")`: WhatsApp proves phone
+      ownership, which is arguably stronger than DDUET's collected-but-maybe-unauthenticated
+      email. **Shared sandbox number** — fine to test, unusable as product until per-owner WABA
+      lands (~September, Cedric's release).
 - [ ] Outbound initiate: DDUET is passive, so held replies are delivered only when the person
       next writes.
 - [ ] Unverified askers: `knowledge/` is flat and public. Decide the disclosure tier before
