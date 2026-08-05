@@ -17,6 +17,7 @@ that quietly passes the real environment through is the realistic mistake. It wo
 owner's credentials to whoever asked a question, and no other check would notice.
 """
 
+import json
 import os
 import pathlib
 import sys
@@ -81,9 +82,36 @@ def main() -> int:
     out = wasm_host.run_source(net_probe, {})
     ok("a tool has no fetch", "function" not in str(out).lower(), str(out)[:160])
 
-    # 4. It must still be USEFUL, or the denials prove nothing.
-    out = wasm_host.run_source("console.log('hi ' + 'Tan');", {"name": "Tan"})
-    ok("a tool that asks for nothing still runs", "hi Tan" in str(out), str(out)[:160])
+    # 4. THE SANDBOX ITSELF, not the engine's surface.
+    #
+    # Every probe above questions the JS environment, and QuickJS exposes almost nothing — so
+    # they ALL PASSED while `inherit_env()` was still in the host. They prove the engine is
+    # minimal, not that we configured the sandbox correctly. A test that passes when the code is
+    # wrong manufactures confidence, so the configuration is asserted directly.
+    host = (pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop" / "wasm_host.py")
+    src = "\n".join(l for l in host.read_text().splitlines() if not l.strip().startswith("#"))
+    # The CALL, not the word. The docstring explains why inherit_env() was removed, and matching
+    # prose instead of code is how a check starts failing for being well documented — the same
+    # slip that tripped the str(exc) check in test_rules.py.
+    ok("the sandbox does not inherit our environment", "cfg.inherit_env()" not in src,
+       "inherit_env() would hand the model key to a stranger's tool")
+    ok("and the environment is emptied explicitly", "cfg.env = []" in src)
+    ok("no directory is preopened", "preopen" not in src)
+    ok("stdin is not wired to the tool", "stdin_file" not in src)
+
+    # 5. It must still be USEFUL, or the denials prove nothing.
+    out = wasm_host.run_source("result({greeting: 'hi ' + INPUT.name});", {"name": "Tan"})
+    ok("a tool receives its input and returns a result", "hi Tan" in str(out), str(out)[:160])
+
+    # Input is compiled in as a literal, so it must not be escapable.
+    out = wasm_host.run_source("result({v: INPUT.name});",
+                               {"name": '"); console.log("ESCAPED"); ("'})
+    # Breaking out would run a SECOND console.log, so the tell is an extra line — not the
+    # presence of the word, which correctly comes back escaped inside the value.
+    lines = [l for l in out.strip().splitlines() if l.strip()]
+    ok("a hostile input value cannot break out of the literal",
+       len(lines) == 1 and json.loads(lines[0])["v"].startswith('"); console.log'),
+       f"{len(lines)} line(s): {out[:120]}")
 
     print(f"\n  {PASS} passed, {FAIL} failed")
     if FAILED:

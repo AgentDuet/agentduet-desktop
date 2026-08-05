@@ -1,9 +1,20 @@
 """Run a customer-authored JavaScript tool inside a WASM sandbox.
 
-FIRST CUT — deliberately built with the mistake in place, so the denial test is seen to fail
-before the shim is written. `inherit_env()` below is the realistic error: it is one method call,
-it looks like helpfulness, and it hands the owner's model key and connector credential to code a
-stranger's question caused to run. Replaced in the next commit.
+THREE LAYERS, AND THE FIRST IS NOT THE SANDBOX
+
+A tool cannot read a file or reach the network for two independent reasons, and it is worth
+knowing which is doing the work:
+
+ 1. **The JS engine has no such functions.** `globalThis` is five names — `console`, `Javy`,
+    `TextEncoder`, `TextDecoder`, and one internal. There is no `require`, no `fetch`, no
+    `process`. Most attempts fail here, before the sandbox is involved at all.
+ 2. **The sandbox would refuse anyway.** The module gets only the capabilities we grant.
+ 3. **Host functions are the only doors**, and each applies the caller's permissions.
+
+Two independent reasons is stronger than one — but it also means a test that probes from JS
+proves layer 1, not layer 2. The environment denial passed while `inherit_env()` was still in
+this file, because QuickJS does not expose the environment to JS whatever WASI holds. That is
+exactly the test that manufactures confidence, so the shim is pinned by a source check as well.
 
 See docs/wasm-host-brief.md and the WASM section of docs/design.md.
 """
@@ -43,19 +54,45 @@ def _plugin() -> Module:
     return _module
 
 
+def _wrap(js: str, input_data: dict) -> str:
+    """The tool's source, with its input compiled in and a way to return a result.
+
+    Input is a LITERAL rather than stdin, because stdin traps the engine (see run_source). It is
+    serialised with `json.dumps`, which cannot be escaped out of: a hostile value arrives as an
+    escaped string, verified with `"); console.log("ESCAPED"); ("` — it came back as data.
+
+    `ensure_ascii` matters and is the default: U+2028 and U+2029 are legal in JSON and terminate
+    a line in JavaScript, so an un-escaped one would break out of the literal.
+    """
+    return (f"const INPUT = {json.dumps(input_data, ensure_ascii=True)};\n"
+            f"function result(o) {{ console.log(JSON.stringify(o)); }}\n"
+            f"{js}")
+
+
 def run_source(js: str, input_data: dict) -> str:
     """Compile and run one tool. A fresh instance every call — never reused across callers."""
+    js = _wrap(js, input_data)
     with tempfile.TemporaryDirectory() as td:
         d = pathlib.Path(td)
-        (d / "in").write_text(json.dumps(input_data))
         (d / "out").touch()
 
         cfg = WasiConfig()
-        cfg.stdin_file = str(d / "in")
+        # NO stdin. Javy reads stdin during `initialize-runtime`, and handing it input the tool
+        # never asked for traps the engine before any JS runs. Input arrives as a literal compiled
+        # into the source instead — see `_wrap`.
         cfg.stdout_file = str(d / "out")
         cfg.stderr_file = str(d / "err")
-        # THE MISTAKE, on purpose and briefly. See the module docstring.
-        cfg.inherit_env()
+
+        # THE ENVIRONMENT IS EMPTY, EXPLICITLY.
+        #
+        # Not `inherit_env()`, which is one method call away and looks like helpfulness — it would
+        # hand our DASHSCOPE_API_KEY and AGENTDUET_API_KEY to code that runs because a stranger
+        # asked a question. It is set to an empty list rather than left at the default so that the
+        # intent is legible and a source check can assert it.
+        #
+        # No preopened directories, so there is no filesystem to reach even if the engine grew an
+        # API for one.
+        cfg.env = []
 
         linker = Linker(_engine)
         linker.define_wasi()
