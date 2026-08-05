@@ -1266,6 +1266,49 @@ def grant_folder(asker: str, folder: str, note: str = "") -> str:
     return out
 
 
+def grant_tool(asker: str, tool: str, note: str = "") -> str:
+    """Let one verified person use one more of the secretary's actions.
+
+    Every caller can already ask questions and be escalated. This is for the rest — letting a
+    named person book, or be put through to you — and it is per person on purpose: booking is
+    reasonable for a client you know and not for whoever dialled.
+    """
+    from . import voice
+    tool = tool.strip()
+    if tool not in voice.ASKER_TOOL_NAMES:
+        return (f"No such action {tool!r}. The secretary has: "
+                + ", ".join(sorted(voice.ASKER_TOOL_NAMES)))
+    if tool in permissions.DEFAULT_TOOLS:
+        return f"{tool} is available to everyone already — nothing to grant."
+    p = permissions.load()
+    entry = p.setdefault("askers", {}).setdefault(asker, {})
+    granted = entry.setdefault("tools", [])
+    if tool in granted:
+        return f"{asker} already has {tool}."
+    granted.append(tool)
+    if note:
+        entry["note"] = note
+    permissions.save(p)
+    # Say the condition, because it is the part that surprises: an unverified caller claiming this
+    # address gets nothing from the grant.
+    return (f"Granted {tool} to {asker}. Applies only when they are verified — an unverified "
+            f"caller using that address still gets the defaults.")
+
+
+def revoke_tool(asker: str, tool: str) -> str:
+    """Take back an action from one person."""
+    if tool in permissions.ALWAYS_TOOLS:
+        return (f"{tool} cannot be revoked. Without it the secretary has no safe way to refuse a "
+                f"question it cannot answer, which is when a model invents one.")
+    p = permissions.load()
+    granted = p.get("askers", {}).get(asker, {}).get("tools", [])
+    if tool not in granted:
+        return f"{asker} does not have {tool}."
+    granted.remove(tool)
+    permissions.save(p)
+    return f"Revoked {tool} from {asker}."
+
+
 def revoke_folder(asker: str, folder: str) -> str:
     """Take back a folder grant."""
     return permissions.revoke(asker, folder)
@@ -1664,6 +1707,10 @@ OWNER_TOOLS = {
     "grant_folder": (grant_folder, {"asker": "their email", "folder": "folder path",
                                     "note": "why (optional)"}),
     "revoke_folder": (revoke_folder, {"asker": "their email", "folder": "folder path"}),
+    "grant_tool": (grant_tool, {"asker": "their email or number",
+                                "tool": "book | transfer_to_owner",
+                                "note": "why (optional)"}),
+    "revoke_tool": (revoke_tool, {"asker": "their email or number", "tool": "which action"}),
     "resolve_all": (resolve_all, {"match": "question/asker substring, or empty for all"}),
     "resolve_escalation": (resolve_escalation, {"escalation_id": "the [id] shown",
                                                 "note": "how it was dealt with (optional)"}),

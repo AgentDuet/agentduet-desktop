@@ -326,6 +326,14 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
             # NOT the name they sent. Echoing an unknown tool name puts the caller's own string
             # into the context of a model that is speaking to them.
             return {"error": UNAVAILABLE}
+        # THE SECOND CHECK, and a different question. The registry above is the fence — what the
+        # product offers at all, fixed at build time. This is the owner's grant for THIS caller.
+        # A stranger gets search and escalate; booking and ringing the owner are granted, not
+        # assumed. Checked here rather than by omitting the declaration, so every caller sees the
+        # same tool list and the refusal is a decision rather than a hidden capability.
+        if name not in permissions.tools_for(caller, verified):
+            logger.info("caller %s is not granted %s", caller, name)
+            return {"error": UNAVAILABLE}
         fn = handlers.get(name)
         if fn is None:
             return {"error": UNAVAILABLE}

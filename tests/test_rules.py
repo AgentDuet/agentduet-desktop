@@ -222,6 +222,44 @@ def test_untrusted_marking() -> None:
        and "untrusted(r['answer'])" not in src)
 
 
+def test_tool_grants() -> None:
+    """Which caller may use which tool. The second half of the fence.
+
+    The registry says what the product offers; this says what THIS caller gets. Both are checked,
+    and the difference matters: every caller sees the same tool list, so a refusal is a decision
+    rather than a capability we hid.
+    """
+    print("\n  -- grants: tools are per caller --")
+    from dduet_desktop import permissions
+
+    eq("a stranger gets exactly the safe two",
+       permissions.tools_for("nobody@x", False), ["search_knowledge", "escalate"])
+    ok("no stranger may book", "book" not in permissions.tools_for("nobody@x", False))
+    ok("nor ring the owner", "transfer_to_owner" not in permissions.tools_for("nobody@x", False))
+
+    ok("granting a tool that does not exist is refused",
+       "No such action" in tools.grant_tool("v@x", "read_file"))
+    ok("granted to a VERIFIED caller", "Granted" in tools.grant_tool("v@x", "book")
+       and "book" in permissions.tools_for("v@x", True))
+    # A grant follows the identity, and an unverified address is only a claim to be that identity.
+    ok("but not to an unverified one claiming the same address",
+       "book" not in permissions.tools_for("v@x", False))
+
+    # THE SAFETY VALVE. Revoking escalate leaves an agent with no legitimate move on a question it
+    # cannot answer — which is when a model invents one.
+    ok("escalate cannot be revoked", "cannot be revoked" in tools.revoke_tool("v@x", "escalate"))
+    ok("and survives even a hand-edited permissions file",
+       "escalate" in permissions.tools_for("v@x", True))
+    ok("an ordinary grant can be revoked", "Revoked" in tools.revoke_tool("v@x", "book")
+       and "book" not in permissions.tools_for("v@x", True))
+
+    # The grant is not the bounds check. Both must run, or a granted caller books without limits.
+    src = (pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop" / "voice.py").read_text()
+    ok("dispatch checks the grant as well as the registry",
+       "permissions.tools_for(caller, verified)" in src)
+    ok("and the bounds check still stands behind it", "capabilities.check_bounds" in src)
+
+
 def test_hosts() -> None:
     """Assistant detection and registration. Model-free: it is paths and process calls."""
     print("\n  -- hosts: what an assistant is told to launch --")
@@ -767,6 +805,7 @@ def main() -> None:
     test_prompts()
     test_asker_tool_surface()
     test_untrusted_marking()
+    test_tool_grants()
     test_hosts()
     test_setup_mode()
     test_schedule()

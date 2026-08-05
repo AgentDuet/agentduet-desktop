@@ -89,6 +89,46 @@ def folders_for(asker: str, verified: bool = False) -> list[str]:
     return folders
 
 
+#: What any caller may do before the owner has said anything about them. Every stranger starts
+#: here, so it is the only setting that matters at scale.
+#:
+#: `search_knowledge` because answering is the product, and `escalate` because refusing safely has
+#: to remain possible. Never `book` — that acts on the owner's behalf — and never
+#: `transfer_to_owner`, which rings their phone.
+DEFAULT_TOOLS = ["search_knowledge", "escalate"]
+
+#: NOT REVOCABLE, by anyone, including the owner.
+#:
+#: Take `escalate` away and an agent facing a question it cannot answer has no legitimate move
+#: left — which is exactly the state in which a model invents one. The safety valve cannot live
+#: inside the system that can withdraw it, so this is enforced here rather than left to the owner
+#: to remember.
+ALWAYS_TOOLS = ["escalate"]
+
+
+def tools_for(asker: str, verified: bool = False) -> list[str]:
+    """Which asker-side tools this caller may invoke.
+
+    The second half of KC's proposal (2026-08-04): disclosure already follows a per-caller grant,
+    so authority follows the same one. Same shape as `folders_for`, and the same rule — a grant
+    reaches an identity only once it is VERIFIED, because an unverified address is a claim.
+
+    This is NOT the fence. The fence is the compiled registry in `voice.py`, which decides what
+    the product offers at all; this decides which of those a given caller gets. Both are checked,
+    and neither substitutes for the other.
+    """
+    p = load()
+    granted = list(p.get("default", {}).get("tools", DEFAULT_TOOLS))
+    if verified:
+        for t in p.get("askers", {}).get(asker, {}).get("tools", []):
+            if t not in granted:
+                granted.append(t)
+    for t in ALWAYS_TOOLS:
+        if t not in granted:
+            granted.append(t)
+    return granted
+
+
 def _root(folder: str) -> pathlib.Path:
     return folder_index.root_of(folder)
 
