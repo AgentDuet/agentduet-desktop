@@ -309,10 +309,15 @@ Per-platform, and the delivery concern now that there is no UI to carry the firs
 
 Notarization needs an Apple Developer ID. Acceptable for a colleague, not past that.
 
-**We install an assistant for the owner**, having said "not doing" while shipping the opposite.
+**DDuet is the product. The assistant is the owner's, and installing one is optional.** Stated as
+a boundary because it is easy to drift across: we detect, we offer, we configure what the owner
+chooses — we do not ship an assistant as part of what DDuet is. If a future change makes Goose
+required, or bundles it, that has crossed this line and needs deciding again.
+
+Within that: **we do offer to install one**, having said "not doing" while shipping the opposite.
 The objection stands — it picks a winner and makes us a distributor of someone else's CVEs — but
-with no owner interface the assistant is the *only* way to drive the product, so "bring your own"
-is a dead end for anyone who has never installed one. Detection wins by default; Goose is the
+with no owner interface an assistant is the *only* way to drive the product, so "bring your own"
+is a dead end for someone who has never installed one. Detection wins by default; Goose is the
 alternative an owner picks. Their prebuilt release, never from git. Nothing bundled. **Not Goose
 Desktop on Linux** — deb/rpm only, both need root, and nothing else here does.
 
@@ -359,3 +364,19 @@ stops being read.
 **Editing this document.** It records live decisions and the reasoning that would reverse them.
 Not history, not completed work, and not a summary of its own sections — every one of those grew
 back at least once and had to be cut again on 2026-08-04.
+
+**Keeping it true.** Sections are not dated, deliberately: a date says when something was written,
+not whether it is still so, and it would not have caught a single one of the staleness bugs found
+on 2026-08-04 — this document claimed we did not install an assistant while the product shipped
+one, and CLAUDE.md listed a fixed bug as the worst open item. Someone still has to notice. Two
+things work better, and both are used here:
+
+- **Date reversals, not sections.** A date earns its place exactly where two statements
+  contradict — "reversed 2026-08-03", "withdrawn 2026-08-04" — because then the order is the
+  information.
+- **Anchor a decision to code that asserts it.** "The fence is five tools" cannot drift silently,
+  because `test_asker_tool_surface` names those five: add a sixth and the suite fails, so both
+  have to be edited. Prefer this wherever a decision is mechanically checkable.
+- **State the boundary, not just the behaviour.** "DDuet is the product, the assistant is
+  optional" is what lets a later reader see that bundling Goose has crossed a line. A description
+  of current behaviour cannot be contradicted; a boundary can.
