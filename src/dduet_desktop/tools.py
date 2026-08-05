@@ -1309,14 +1309,14 @@ def revoke_tool(asker: str, tool: str) -> str:
     return f"Revoked {tool} from {asker}."
 
 
-def propose_tool(name: str, source: str) -> str:
+def propose_tool(name: str, source: str, endpoints: dict | None = None) -> str:
     """Write a JavaScript tool for the owner to review. It does NOT become active.
 
     You may write a tool and show it. Switching it on is a command the owner types themselves —
     see toolstore. Do not tell them it is working; tell them what to type.
     """
     from . import toolstore
-    return toolstore.propose(name, source)
+    return toolstore.propose(name, source, endpoints)
 
 
 def list_tools() -> str:
@@ -1734,8 +1734,11 @@ OWNER_TOOLS = {
     "revoke_tool": (revoke_tool, {"asker": "their email or number", "tool": "which action"}),
     # PROPOSE, never approve. Approving is a CLI command the owner types — a registry entry for
     # it would let anything that talks to the assistant switch on a tool. See toolstore.
-    "propose_tool": (propose_tool, {"name": "short name, lowercase",
-                                    "source": "the JavaScript"}),
+    "propose_tool": (propose_tool, {
+        "name": "short name, lowercase",
+        "source": "the JavaScript",
+        "endpoints": "{label: https url} the tool needs to reach — the owner approves these "
+                     "together with the code, and the tool asks for them by LABEL, never by url"}),
     "list_tools": (list_tools, {}),
     "resolve_all": (resolve_all, {"match": "question/asker substring, or empty for all"}),
     "resolve_escalation": (resolve_escalation, {"escalation_id": "the [id] shown",

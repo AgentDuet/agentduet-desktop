@@ -203,10 +203,15 @@ def run_tool(js: str, input_data: dict, fulfil, max_rounds: int = MAX_ROUNDS) ->
 #: WHAT A TOOL MAY ASK FOR. A closed set, like `capabilities.ACTIONS`, and for the same reason:
 #: a tool cannot invent a capability by naming one. Anything not here is refused, and the tool
 #: sees the refusal as an absent answer.
-KINDS = ("knowledge",)
+KINDS = ("knowledge", "fetch")
+
+#: How long we wait on someone else's server, and how much of its answer we accept. A caller is
+#: on the line, and a slow or enormous response is the same problem as a slow tool.
+FETCH_TIMEOUT = 8.0
+FETCH_MAX_BYTES = 64 * 1024
 
 
-def fulfiller(caller: str, verified: bool):
+def fulfiller(caller: str, verified: bool, tool: str = ""):
     """Build the `fulfil` for ONE caller. The permissions travel with it, not with the tool.
 
     This is where a tool's request meets the owner's grants. The tool names a `kind` and passes
@@ -220,6 +225,8 @@ def fulfiller(caller: str, verified: bool):
         if kind not in KINDS:
             logger.info("tool asked for %r, which is not a kind we fulfil", str(kind)[:40])
             return None
+        if kind == "fetch":
+            return _fetch(tool, req)
         if kind == "knowledge":
             query = str(req.get("query") or "")[:400]
             text, sources = permissions.context_for(caller, verified, query)
@@ -230,3 +237,71 @@ def fulfiller(caller: str, verified: bool):
         return None
 
     return fulfil
+
+
+def resolve_url(tool: str, req: dict) -> str | None:
+    """Which URL a request means — or None if the owner did not approve it.
+
+    THE SECURITY PROPERTY LIVES HERE, and it is kept apart from the network call so it can be
+    tested without one. A suite proving a tool cannot reach 169.254.169.254 should not itself need
+    the internet to run.
+
+    There is NO FIELD A TOOL CAN USE AS A DESTINATION. It passes a label; we look that label up in
+    the manifest the owner approved beside the code. A `url` field, if the tool sends one, is
+    IGNORED — not validated, ignored. Validating a URL supplied by something a stranger can talk to
+    is how SSRF filters get fooled: redirects, encodings, hostnames that resolve internally. A tool
+    cannot express 192.168.1.1 because there is no field in which a URL means anything.
+
+    Params become a query string on the approved URL, so they cannot move the host.
+    """
+    import urllib.parse
+
+    from . import toolstore
+
+    approved = toolstore.endpoints(tool) if tool else {}
+    label = str(req.get("endpoint", ""))
+    url = approved.get(label)
+    if not url:
+        logger.info("tool %r asked for endpoint %r, which the owner did not approve (has: %s)",
+                    tool, label[:40], ", ".join(approved) or "none")
+        return None
+    params = req.get("params")
+    if isinstance(params, dict) and params:
+        sep = "&" if urllib.parse.urlsplit(url).query else "?"
+        url = url + sep + urllib.parse.urlencode({str(k): str(v) for k, v in params.items()})
+    return url
+
+
+def _fetch(tool: str, req: dict):
+    """Reach an endpoint the OWNER approved for THIS tool. By name, never by URL.
+
+    THERE IS NO FIELD A TOOL CAN USE AS A DESTINATION. It passes a label; we look that label up in
+    the manifest the owner approved alongside the code. `url`, if present, is ignored — not
+    validated, ignored, because validating a URL supplied by something a stranger can talk to is
+    how SSRF filters get fooled (redirects, encodings, hostnames that resolve internally). A tool
+    cannot express 192.168.1.1 because it cannot express a URL.
+
+    Which URL a request means is decided by `resolve_url`, deliberately apart from this: the
+    security property is entirely there, and keeping it separate means it can be tested without a
+    network. This function only goes and gets it.
+    """
+    import urllib.request
+
+    label = str(req.get("endpoint", ""))
+    url = resolve_url(tool, req)
+    if url is None:
+        return None
+    try:
+        with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT) as r:
+            body = r.read(FETCH_MAX_BYTES + 1)
+    except Exception as exc:
+        # Someone else's server, so failure is normal. The tool sees no answer and must cope.
+        logger.info("fetch %s failed: %s: %s", label, type(exc).__name__, str(exc)[:90])
+        return None
+    if len(body) > FETCH_MAX_BYTES:
+        logger.info("fetch %s returned more than %d bytes — refused", label, FETCH_MAX_BYTES)
+        return None
+    logger.info("fetch %s for tool %r -> %d bytes", label, tool, len(body))
+    # UNTRUSTED. It is a third party's response, and it reaches a model that talks to a stranger.
+    # Returned as text for the tool to interpret; we make no claim about what is in it.
+    return body.decode("utf-8", "replace")
