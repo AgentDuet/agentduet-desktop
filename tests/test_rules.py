@@ -260,6 +260,45 @@ def test_tool_grants() -> None:
     ok("and the bounds check still stands behind it", "capabilities.check_bounds" in src)
 
 
+def test_status_and_render() -> None:
+    """A handler picks a status; the framework writes the sentence.
+
+    Removing internals from returns fixed the leaks we had. It did not stop the next one, because
+    any field a handler can fill with a string is a field it can fill with the wrong string. This
+    removes the field.
+    """
+    print("\n  -- returns: the handler cannot write what the caller hears --")
+    from dduet_desktop import voice
+
+    # THE WHOLE POINT. A handler smuggling prose, a path and an exception gets none of it through.
+    out = voice._render({"status": "booked", "at": "10:00", "say": "PWNED",
+                         "reason": "/home/stanley/.dduet/.env",
+                         "error": Exception("boom")}, "Tan")
+    ok("a handler cannot write the sentence", out["say"] == "Booked for 10:00.", out["say"])
+    ok("and its extra fields are dropped entirely",
+       set(out) == {"status", "say", "at"}, sorted(out))
+
+    # An unknown status must not become a silent pass-through.
+    ok("an undeclared status falls back to unavailable",
+       voice._render({"status": "made_up"}, "Tan")["status"] == "unavailable")
+    ok("a return with no status at all is also refused",
+       voice._render({}, "Tan")["status"] == "unavailable")
+
+    # The bug this found: `answered` was handed the holding line, so a search that FOUND something
+    # would have had the agent say "I cannot answer that" on top of the answer.
+    found = voice._render({"status": "answered", "found": True, "content": "we open at 9"}, "Tan")
+    ok("a successful search does not carry a refusal sentence", "say" not in found, sorted(found))
+    ok("but it does carry the content for the model to compose from", found["content"])
+
+    # Every status a handler can return must exist in the table, or it renders as unavailable at
+    # runtime — a silent downgrade nobody would notice until a caller was told the wrong thing.
+    import re
+    src = (pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop" / "voice.py").read_text()
+    used = set(re.findall(r'"status": "(\w+)"', src))
+    ok("every status a handler returns is declared", used <= set(voice.SAY),
+       f"undeclared: {sorted(used - set(voice.SAY))}")
+
+
 def test_hosts() -> None:
     """Assistant detection and registration. Model-free: it is paths and process calls."""
     print("\n  -- hosts: what an assistant is told to launch --")
@@ -806,6 +845,7 @@ def main() -> None:
     test_asker_tool_surface()
     test_untrusted_marking()
     test_tool_grants()
+    test_status_and_render()
     test_hosts()
     test_setup_mode()
     test_schedule()
