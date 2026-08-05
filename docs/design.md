@@ -5,15 +5,27 @@ written across a week of pivots and had begun to contradict each other and the c
 
 ---
 
-## The product is two parts
+## The daemon is the product
 
 **The asker daemon.** Always on. Holds the DDUET connection, answers calls and messages from
-external parties, decides nothing it has not been authorised to decide. This is the product.
+external parties, decides nothing it has not been authorised to decide. It ships with a working
+secretary, and it takes **tools** as its extension point. This is the product; everything else
+serves it.
 
-**The owner mcp.** How the owner reads and drives it, from an AI assistant they already use —
-Claude Code, Goose, anything speaking MCP.
+**The owner mcp is secondary.** It is how the owner reads and drives the daemon, from an AI
+assistant they already use. Administration, not the thing being sold. If it were the product, a
+customer without an assistant would have bought nothing — and they have not.
 
-**There is no owner interface**, and that is the decision that shapes everything else.
+**Two consequences of that ordering, both easy to get backwards:**
+
+- **Administration cannot depend solely on the assistant.** "There is no owner interface" means we
+  do not build and maintain one as a product surface — not that the only route in is MCP. The CLI
+  (`init`, `status`, `connect`) and the transitional site both exist because an owner may have no
+  assistant at all, and the product still has to be theirs to run.
+- **The tool extension point is a first-class product concern, not a later nicety.** We ship the
+  ability to add tools, so the security of tools someone else writes is core work: it is the one
+  place where using the product as intended can create the vulnerability. See the fence, the
+  customer-tools section, and `docs/tool-surface-risk.md`.
 
 ```
    stranger ──phone/DDUET──>  ASKER DAEMON  <──MCP──  owner's assistant
@@ -316,8 +328,9 @@ required, or bundles it, that has crossed this line and needs deciding again.
 
 Within that: **we do offer to install one**, having said "not doing" while shipping the opposite.
 The objection stands — it picks a winner and makes us a distributor of someone else's CVEs — but
-with no owner interface an assistant is the *only* way to drive the product, so "bring your own"
-is a dead end for someone who has never installed one. Detection wins by default; Goose is the
+an assistant is the only *comfortable* way to drive the daemon day to day, so "bring your own" is
+a dead end for someone who has never installed one. Not the only way: the CLI exists, and an owner
+with no assistant still has a working product. Detection wins by default; Goose is the
 alternative an owner picks. Their prebuilt release, never from git. Nothing bundled. **Not Goose
 Desktop on Linux** — deb/rpm only, both need root, and nothing else here does.
 
@@ -336,8 +349,10 @@ here, which is how this document grew a second copy of itself.
 5. **The login-item tool takes no parameters.**
 6. **Secrets never enter a model's context.** A terminal (`init`) or a single-purpose browser form
    are both fine; a chat box is not.
-7. **The site is transitional.** It stays until `init` covers first-run configuration, and it is
-   already not load-bearing — the daemon does not exit when it fails to bind.
+7. **The site is transitional, but the CLI is not.** The site stays until `init` covers first-run
+   configuration, and is already not load-bearing — the daemon does not exit when it fails to
+   bind. The CLI is permanent: with the mcp secondary, an owner with no assistant must still be
+   able to run, configure and inspect their own product.
 
 ## Open
 
