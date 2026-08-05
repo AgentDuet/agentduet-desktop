@@ -387,10 +387,8 @@ here, which is how this document grew a second copy of itself.
 
 ## Next
 
-1. **Status-and-render for tool returns** — handlers return a status, the framework writes the
-   sentence. Prerequisite for customer-authored tools, and cheapest to do while one action exists.
-2. **Per-caller tool grants** — `"tools"` in `permissions.json`, checked at dispatch.
-3. **Login-start units**, then the Windows installer.
+1. **The WASM tool host** — the three security prerequisites are done; this is the next build.
+2. **Login-start units**, then the Windows installer.
 
 Done items are not listed here. `git log` has them.
 

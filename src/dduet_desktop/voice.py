@@ -116,6 +116,68 @@ def available() -> tuple[bool, str]:
 #: system, a path, or the caller's own input reflected back.
 UNAVAILABLE = "unavailable"
 
+#: STATUS → THE SENTENCE. A handler picks a status; the framework writes the words.
+#:
+#: WHY THE HANDLER MAY NOT WRITE PROSE
+#:
+#: A tool's return enters the context of a model that is speaking to a stranger, and the model
+#: narrates freely — `say` is a convention the prompt asks it to respect, and prompts are not a
+#: boundary. Removing internals from returns (2026-08-04) fixed the leaks we had; it did not stop
+#: the next one, because any field a handler can fill with a string is a field it can fill with the
+#: wrong string.
+#:
+#: So there is no field to leak into. The handler chooses from this table, and the only free text
+#: it can influence is data WE produced — a time from our own scheduler, the owner's own name.
+#:
+#: This is also the contract a customer-authored tool will meet: it returns a status, and never a
+#: sentence. Deciding it now, with five tools and one action, is far cheaper than retrofitting it
+#: onto a sandbox boundary later (docs/design.md).
+#: Two sentinels, because `None` was doing both jobs and got one of them wrong: search_knowledge
+#: found content and was still handed the holding line, which would have made the agent say "I
+#: cannot answer that" on top of the answer.
+COMPOSE = object()   #: no sentence — the model writes one from the data it was given
+HOLDING = object()   #: the holding line: cannot answer, and it is being passed to the owner
+
+SAY = {
+    "answered":             COMPOSE,
+    "booked":               "Booked for {at}.",
+    "slot_taken":           "That time is taken.",
+    "slot_taken_alt":       "That time is taken. {next_free} is free.",
+    "outside_bounds":       "I can't arrange that one — I'll pass it to {owner}.",
+    "no_capability":        "I'm not able to arrange that myself — I'll pass it to {owner}.",
+    "escalated":            HOLDING,
+    "callback_promised":    "I'll have {owner} call you back on this number shortly.",
+    "callback_unavailable": HOLDING,
+    "transferring":         "Putting you through now.",
+    "transfer_failed":      HOLDING,
+    "unavailable":          HOLDING,
+}
+
+
+def _render(result: dict, owner_name: str) -> dict:
+    """Turn a handler's status into what the model may say.
+
+    The handler's own keys are dropped unless they are named here — so a field added carelessly,
+    or filled with an exception, never reaches the model at all.
+    """
+    status = result.get("status", "unavailable")
+    if status not in SAY:
+        logger.error("voice tool returned an undeclared status %r", status)
+        status = "unavailable"
+    template = SAY[status]
+    out = {"status": status}
+    if template is not COMPOSE:
+        text = HOLDING_LINE if template is HOLDING else template
+        out["say"] = text.format(owner=owner_name, at=result.get("at", ""),
+                                 next_free=result.get("next_free", ""))
+    # DATA the model may reason with — ours, never the handler's prose. `content` is the known
+    # exception: on a knowledge question the documents ARE the answer, and narrowing that to a
+    # sentence is the open tool-contract work.
+    for key in ("found", "matches", "content", "at", "then"):
+        if key in result:
+            out[key] = result[key]
+    return out
+
 #: THE ASKER AGENT'S ENTIRE AUTHORITY, and the single place it is written down.
 #:
 #: WHY A REGISTRY, AND WHY IT IS NOT MCP
@@ -209,21 +271,23 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
         # handed them will cite them — "according to owner.md" — to a stranger. A count is all the
         # model needs to know whether it has anything to work from.
         logger.info("search_knowledge %r → %s", q[:80], sources)
-        return {"found": bool(text.strip()), "matches": len(sources), "content": text[:4000]}
+        return {"status": "answered", "found": bool(text.strip()),
+                "matches": len(sources), "content": text[:4000]}
 
     @tool
     @tool
     async def book(args: dict) -> dict:
         cap = _only_capability()
         if cap is None:
-            return {"ok": False, "reason": "the owner has not authorised any bookings"}
+            return {"status": "no_capability"}
         at = str(args.get("at") or "")
         minutes = capabilities.block_minutes(cap)
         ok, why = await asyncio.to_thread(
             capabilities.check_bounds, cap, verified,
             args.get("quantity"), at, minutes)
         if not ok:
-            return {"ok": False, "reason": why}
+            logger.info("book refused by bounds: %s", why)
+            return {"status": "outside_bounds"}
         what = str(args.get("what") or "a booking")[:120]
         try:
             row = await asyncio.to_thread(schedule.book, at, minutes, what, caller)
@@ -231,13 +295,13 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
             nxt = await asyncio.to_thread(
                 schedule.next_free, at, minutes,
                 str((capabilities.get(cap) or {}).get("bounds", {}).get("hours", "")))
-            return {"ok": False, "reason": "that time is taken",
-                    "next_free": nxt or "nothing nearby"}
+            return ({"status": "slot_taken_alt", "next_free": nxt} if nxt
+                    else {"status": "slot_taken"})
         await asyncio.to_thread(
             brain.record, caller, f"[call] {what}", "acted",
             f"capability:{cap}:voice", f"Booked for {row['at']}",
             None, "TELCO", None, verified, convo)
-        return {"ok": True, "at": row["at"], "what": what}
+        return {"status": "booked", "at": row["at"]}
 
     # A promise the code can keep. `transfer_to_owner` bridges the live caller into a conference
     # with a destination we cannot see or set (SDK #36), and a real attempt timed out with the
@@ -252,8 +316,7 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
             # taking a message. The reason is neutral rather than "no owner number configured" —
             # that described the owner's setup to whoever happened to ring.
             logger.info("callback requested but no owner number is configured")
-            return {"ok": False, "reason": UNAVAILABLE,
-                    "say": HOLDING_LINE.format(owner=owner_name)}
+            return {"status": "callback_unavailable"}
         about = str(args.get("about") or "wants to speak to you")
         live["callback"] = about
         await asyncio.to_thread(
@@ -264,14 +327,13 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
         await asyncio.to_thread(escalate_to_owner, caller, about, "callback requested")
         # Placed AFTER this call ends — see the callback runner. Two live calls at once would
         # need the model to speak on both legs.
-        return {"ok": True,
-                "say": f"I'll have {owner_name} call you back on this number shortly."}
+        return {"status": "callback_promised"}
 
     @tool
     async def transfer_to_owner(args: dict) -> dict:
         call = live.get("call")
         if call is None:
-            return {"ok": False, "say": HOLDING_LINE.format(owner=owner_name)}
+            return {"status": "transfer_failed"}
         result = await call.connect(ring_time_seconds=TRANSFER_RING_SECONDS)
         if result:
             await asyncio.to_thread(
@@ -282,7 +344,7 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
             # rather than dropped, because closing here would cut off whatever it is mid-way
             # through saying. Leaving cleanly after the handoff needs an event to hang the
             # close on — not built.
-            return {"ok": True, "say": "Putting you through now.",
+            return {"status": "transferring",
                     "then": "stop talking; the call is now between them"}
         # The code is logged, not returned: it is another system's diagnostic string and the model
         # would be free to read it out to the caller.
@@ -296,8 +358,7 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
         await asyncio.to_thread(
             escalate_to_owner, caller, "wanted to speak to you — transfer unanswered",
             "on a call")
-        return {"ok": False, "reason": UNAVAILABLE,
-                "say": HOLDING_LINE.format(owner=owner_name)}
+        return {"status": "transfer_failed"}
 
     @tool
     async def escalate(args: dict) -> dict:
@@ -307,7 +368,7 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
             "voice:cannot_answer", policy.ABSTAIN, None, "TELCO", None, verified, convo)
         from .notify import escalate_to_owner
         await asyncio.to_thread(escalate_to_owner, caller, q, "on a call")
-        return {"ok": True, "say": HOLDING_LINE.format(owner=owner_name)}
+        return {"status": "escalated"}
 
     # DRIFT IS A LOGGED ERROR, not a silent gap. A declared tool with no handler means the model
     # was offered something that cannot run; a handler with no declaration is dead code that the
@@ -325,7 +386,7 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
         if name not in ASKER_TOOL_NAMES:
             # NOT the name they sent. Echoing an unknown tool name puts the caller's own string
             # into the context of a model that is speaking to them.
-            return {"error": UNAVAILABLE}
+            return _render({"status": "unavailable"}, owner_name)
         # THE SECOND CHECK, and a different question. The registry above is the fence — what the
         # product offers at all, fixed at build time. This is the owner's grant for THIS caller.
         # A stranger gets search and escalate; booking and ringing the owner are granted, not
@@ -333,12 +394,14 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
         # same tool list and the refusal is a decision rather than a hidden capability.
         if name not in permissions.tools_for(caller, verified):
             logger.info("caller %s is not granted %s", caller, name)
-            return {"error": UNAVAILABLE}
+            return _render({"status": "unavailable"}, owner_name)
         fn = handlers.get(name)
         if fn is None:
-            return {"error": UNAVAILABLE}
+            return _render({"status": "unavailable"}, owner_name)
         try:
-            return await fn(args)
+            # EVERY return goes through _render. A handler cannot reach the model directly, so
+            # "the handler must remember not to leak" stops being a rule anyone has to remember.
+            return _render(await fn(args), owner_name)
         except Exception as exc:                       # never let a tool kill the call
             # THE DETAIL GOES TO THE LOG, NOT THE MODEL. `str(exc)` was returned here, and a
             # tool return is read by a model that then talks to a stranger — so an exception
@@ -346,7 +409,7 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
             # paraphrase away from being spoken aloud. The owner needs the detail; the caller
             # needs to know only that it did not work.
             logger.exception("voice tool %s failed", name)
-            return {"error": UNAVAILABLE}
+            return _render({"status": "unavailable"}, owner_name)
 
     return _dispatch
 
