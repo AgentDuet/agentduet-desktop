@@ -299,13 +299,32 @@ treatment:
 - **Everything else, searched on demand** — with the agent saying "let me check that" first, which
   the section above makes acceptable.
 
-**The constraint that decides the design: the always-loaded core is sent for EVERY caller**,
-including an unverified stranger on their first message. So it may contain only what the default
-grant already permits. A granted folder must never be in the core, or a caller who was never
-granted it receives it in the prompt — a disclosure hole that no tool check would catch, because
-no tool was called.
+**The core is assembled PER ASKER.** Stanley's correction, same day: an earlier draft said the
+core must contain only default-grant content, because it is sent to everyone. That is only true of
+a single shared core. Built per asker, it can carry granted material — because it is built from
+*that caller's* grants, by `folders_for(asker, verified)`, the same function that already gates
+retrieval. The core becomes another consumer of the existing gate rather than a way around it.
 
-And it needs a hard size cap, or it becomes the pile again by accretion.
+Which unifies something that was three separate mechanisms. A caller's world is:
+
+| | per asker, decided by code |
+|---|---|
+| which folders may be read | `permissions.folders_for` |
+| which tools may be invoked | `permissions.tools_for` |
+| **what is in the opening instruction** | **the same two, assembled** |
+
+So a verified partner opens with more context than a stranger, and neither is a special case.
+
+Two things this must not lose:
+
+- **Verification still decides.** A grant applies only to a VERIFIED identity, so an unverified
+  caller claiming a partner's address gets the stranger's core. `folders_for` already enforces
+  this; the core inherits it by construction rather than by remembering to check.
+- **The tool list in the instruction INFORMS; dispatch still enforces.** Telling the model which
+  tools this caller has stops it promising a booking it cannot make. It does not replace the check
+  at dispatch, and every caller still gets a refusal rather than a silently absent capability.
+
+It needs a hard size cap regardless, or it becomes the pile again by accretion.
 
 ### Voice is weaker than text, and says so
 
