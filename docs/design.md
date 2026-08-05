@@ -95,12 +95,48 @@ So a customer's tool gets the treatment an asker's message gets, plus:
   handler cannot author caller-visible text, it cannot leak into it.
 - **Authority stays ours.** Anything that commits goes through `check_bounds`, whatever the tool
   claims to have decided.
-- **No egress by parameter.** A customer-supplied URL is an SSRF. Egress means an owner-approved
-  allowlisted host.
+- **A tool reaches the outside by NAME, never by URL** — see below.
 - **Default deny.** A tool that declares no shape gets nothing.
 
 The customer is writing an API without API-security experience, for a client that is an
 attacker-steered model. Assume they will get it wrong and make that survivable.
+
+### Reaching the outside: the owner names the destination, the tool names the name
+
+Corrected 2026-08-05 after Stanley pushed on it. An earlier draft had US implementing a closed
+set of request kinds — a "weather" kind, a "stock" kind. That is too restrictive to be the
+product: every customer has a different system, and they would all be waiting on us to support
+theirs.
+
+**The security property is narrower than that.** What prevents SSRF is not that we choose the
+destination. It is that **the tool cannot choose it at call time, while a stranger is talking to
+it.** The destination has to be fixed in advance — and the person who should fix it is the owner,
+who is already deciding they want this tool.
+
+So the endpoints are part of the proposal, and approving the tool approves them together:
+
+```
+Proposed 'weather_check'. NOT active.
+It wants to reach:
+    forecast  ->  https://api.open-meteo.com/v1/forecast
+
+Approve with:  dduet-desktop tools approve weather_check
+```
+
+At runtime the tool asks by NAME:
+
+```js
+need({ kind: "fetch", endpoint: "forecast", params: { city: INPUT.city } });
+```
+
+**Why a name and not an allowlisted URL.** If the tool passed a URL and we checked it against a
+list, we would be filtering attacker-influenced input, and URL checking is a classic place to be
+fooled — redirects, encodings, hostnames that resolve to an internal address. Passing a name
+means there is no URL to check: the tool cannot express `192.168.1.1` at all, because it cannot
+express a URL.
+
+It also puts the decision in one place. The owner sees the code AND what it may reach in the same
+act of approval, rather than in a separate config that drifts away from the tool it governs.
 
 ### Tools are a granted resource, per caller
 
@@ -458,10 +494,11 @@ here, which is how this document grew a second copy of itself.
 
 ## Next
 
-1. **Egress for tools.** A tool cannot call out at all today, so the first genuinely useful
-   tool — one that reaches a shop system — is not yet possible. Settled shape: an owner-approved
-   allowlisted host, never a URL the tool supplies. `api.open-meteo.com` is the test target (free,
-   no key). Note this is now a REQUEST the tool makes and WE fulfil, not egress from the sandbox.
+1. **Reaching the outside.** A tool cannot call out at all today, so the first genuinely useful
+   tool — one that reaches a shop system — is not possible yet. The shape is settled (above):
+   endpoints are declared in the proposal, approved with the tool, and asked for by NAME. We make
+   the call. Test target `api.open-meteo.com` — free, no key, ~860 ms, and a plausible customer
+   use case rather than a toy.
 2. **Login-start units**, then the Windows installer.
 
 Done items are not listed here. `git log` has them.
