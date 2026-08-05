@@ -299,6 +299,41 @@ def test_status_and_render() -> None:
        f"undeclared: {sorted(used - set(voice.SAY))}")
 
 
+def test_ring_limit() -> None:
+    """How often a stranger may make the owner's phone ring.
+
+    The cheapest real abuse of the five tools, and the only one needing no injection: a caller
+    asks to be put through, repeatedly. Nothing is stolen; the phone becomes unusable, which for
+    a product whose promise is "it answers so you do not have to" is the product failing.
+    """
+    print("\n  -- ring limit: a caller cannot make the phone unusable --")
+    from dduet_desktop import voice
+
+    voice._rings.clear()
+    allowed = [voice._may_ring("a@x") for _ in range(voice.RING_PER_CALLER + 2)]
+    eq("one caller gets exactly the per-caller allowance",
+       sum(allowed), voice.RING_PER_CALLER)
+
+    # THE ONE THAT MATTERS. Caller identity is whatever the channel reports, so a per-caller cap
+    # alone is defeated by anyone willing to vary it. The total is the real ceiling.
+    voice._rings.clear()
+    spread = [voice._may_ring(f"c{i}@x") for i in range(voice.RING_TOTAL + 3)]
+    eq("and a caller varying their identity still hits the total",
+       sum(spread), voice.RING_TOTAL)
+
+    # The window must actually expire, or the limit is a lifetime ban after a busy hour.
+    voice._rings.clear()
+    voice._rings.append((0.0, "a@x"))          # an ancient ring
+    ok("old rings fall out of the window", voice._may_ring("a@x"))
+
+    src = (pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop" / "voice.py").read_text()
+    ok("both ringing tools are limited", src.count("if not _may_ring(caller):") == 2)
+    # REFUSING TO RING IS NOT REFUSING THE CALLER. The escalation is recorded either way, or an
+    # abuse control becomes a way to silence people.
+    ok("a rate-limited callback still escalates",
+       '"callback_promised" if ringing else "escalated"' in src)
+
+
 def test_hosts() -> None:
     """Assistant detection and registration. Model-free: it is paths and process calls."""
     print("\n  -- hosts: what an assistant is told to launch --")
@@ -846,6 +881,7 @@ def main() -> None:
     test_untrusted_marking()
     test_tool_grants()
     test_status_and_render()
+    test_ring_limit()
     test_hosts()
     test_setup_mode()
     test_schedule()

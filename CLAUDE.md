@@ -198,12 +198,12 @@ existed only because of the owner interface were removed — see the Cleared not
 - [ ] **Measure a hosted cascade.** Rejected 2026-07-31, but the recorded reason rejects a LOCAL
       cascade. It is the only option that restores every invariant.
 - [ ] `_ring_owner` (the callback that rings the owner) has **never executed** — every other
-      part of the callback is tested.
-- [ ] **No rate limit on the tools that ring the owner** (`request_callback`, `transfer_to_owner`)
-      — confirmed absent 2026-08-04. This is the cheapest real abuse of the asker's five tools and
-      the only one needing no injection at all: a caller just asks to be put through, repeatedly.
-      Cannot steal anything; can make the owner's phone unusable. Limit per caller AND in total,
-      since the caller identity is whatever the channel reports.
+      part of the callback is tested, and the ring is now rate-limited. It cannot be unit
+      tested: it is a closure over the live `SessionManager`, and it opens a session, dials,
+      and starts a second realtime model. The only way to exercise it is the real one — call
+      your own number, ask for a callback, hang up, and see whether your phone rings.
+      **Do that before anyone is told the callback works.**
+
 
 **Engineering**
 
