@@ -159,8 +159,7 @@ existed only because of the owner interface were removed — see the Cleared not
       client per connector, and a second races `call.answer()`. A new user installs cleanly and
       then stops dead waiting on a human. Still the biggest get-started gap.
 
-- [ ] **Nothing starts at login.** Needs launchd / systemd-user / Task Scheduler, registering
-      the daemon. The login-item tool takes NO parameters — see `design.md`.
+
 - [ ] **Publish the SDK.** `agentduet` is not on PyPI with DDUET support; `1.0.0b10` there has
       `VoiceAgent` but no DDUET at all. It is ONE repo on two branches —
       `B3Networks/wss-sdk-python`, `feature/dduet-channel` (`1.0.1b1`, also on testpypi) and

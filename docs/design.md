@@ -499,7 +499,7 @@ here, which is how this document grew a second copy of itself.
    endpoints are declared in the proposal, approved with the tool, and asked for by NAME. We make
    the call. Test target `api.open-meteo.com` — free, no key, ~860 ms, and a plausible customer
    use case rather than a toy.
-2. **Login-start units**, then the Windows installer.
+2. **The Windows binary.** Login-start units landed 2026-08-05.
 
 Done items are not listed here. `git log` has them.
 

@@ -373,6 +373,65 @@ def test_tool_installation() -> None:
     ok("approving lives in the CLI, where a person types it", "toolstore.approve(args.name)" in cli)
 
 
+def test_login_item() -> None:
+    """Starting at login, and the reason it takes no arguments.
+
+    Writing a launch agent is how software survives a reboot, and how malware does. These are
+    offered to an agent that reads escalations and transcripts written by strangers, so a version
+    accepting a path is a route from prompt injection to persistent autostart. With no arguments
+    the blast radius is one boolean — and "accept a path so it is flexible" IS the vulnerability.
+    """
+    print("\n  -- login item: no parameters, on purpose --")
+    import inspect
+    import tempfile
+    from dduet_desktop import loginitem
+
+    # THE ASSERTION THAT MATTERS. One added argument would undo the whole reasoning.
+    for fn in (loginitem.install_login_item, loginitem.remove_login_item,
+               loginitem.login_item_status):
+        params = list(inspect.signature(fn).parameters)
+        ok(f"{fn.__name__} takes no arguments", params == [], f"takes {params}")
+
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    real_unit, real_target = loginitem.LINUX_UNIT, loginitem._target
+    loginitem.LINUX_UNIT = tmp / "dduet-desktop.service"
+    exe = tmp / "bin"; exe.write_text("#!/bin/sh\n"); exe.chmod(0o755)
+    link = tmp / "link"; link.symlink_to(exe)
+    loginitem._target = lambda: link
+    try:
+        ok("nothing is registered to begin with",
+           "Does not start at login" in loginitem.login_item_status())
+        out = loginitem.install_login_item()
+        ok("installing writes a unit and says which file", str(loginitem.LINUX_UNIT) in out)
+        ok("it starts the daemon headless", "--headless" in loginitem.LINUX_UNIT.read_text())
+        # A crash loop relaunching every second while answering a phone line is worse than a
+        # daemon that is down and visible in `status`.
+        ok("and does not restart it forever",
+           "Restart=always" not in loginitem.LINUX_UNIT.read_text())
+        ok("installing twice is idempotent",
+           "Already registered" in loginitem.install_login_item())
+
+        # THE SILENT FAILURE: an old path still registered, so every login launches a binary that
+        # has moved or been replaced. Nobody looks at a login item twice.
+        loginitem._target = lambda: tmp / "elsewhere"
+        (tmp / "elsewhere").write_text("x")
+        ok("a stale path is reported", "points somewhere else" in loginitem.login_item_status())
+        loginitem._target = lambda: link
+
+        ok("removing it says which file went",
+           str(loginitem.LINUX_UNIT) in loginitem.remove_login_item())
+        ok("and the file is gone", not loginitem.LINUX_UNIT.exists())
+    finally:
+        loginitem.LINUX_UNIT, loginitem._target = real_unit, real_target
+
+    # It registers the SYMLINK. A versioned path would keep launching the old build after an
+    # update, silently, because the new one is never started.
+    src = (pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop"
+           / "loginitem.py").read_text()
+    ok("it registers the stable symlink, not the versioned payload",
+       "install.installed_path()" in src)
+
+
 def test_hosts() -> None:
     """Assistant detection and registration. Model-free: it is paths and process calls."""
     print("\n  -- hosts: what an assistant is told to launch --")
@@ -921,6 +980,7 @@ def main() -> None:
     test_tool_grants()
     test_status_and_render()
     test_tool_installation()
+    test_login_item()
     test_ring_limit()
     test_hosts()
     test_setup_mode()
