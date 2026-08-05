@@ -158,10 +158,7 @@ existed only because of the owner interface were removed — see the Cleared not
 - [ ] **Connector provisioning.** Every install needs its OWN `AGENTDUET_CONNECTOR_UUID` — one
       client per connector, and a second races `call.answer()`. A new user installs cleanly and
       then stops dead waiting on a human. Still the biggest get-started gap.
-- [ ] **Service tools** — `service_status` / `service_start` / `service_stop` on the stdio mcp.
-      With no UI they are the only way to know the daemon is alive; it sat dead for twelve
-      minutes on 2026-08-03 and was found by accident. Includes fixing `signal.SIGKILL`, which
-      **does not exist on Windows** so the current stop path raises there.
+
 - [ ] **Nothing starts at login.** Needs launchd / systemd-user / Task Scheduler, registering
       the daemon. The login-item tool takes NO parameters — see `design.md`.
 - [ ] **Publish the SDK.** `agentduet` is not on PyPI with DDUET support; `1.0.0b10` there has
@@ -169,8 +166,9 @@ existed only because of the owner interface were removed — see the Cleared not
       `B3Networks/wss-sdk-python`, `feature/dduet-channel` (`1.0.1b1`, also on testpypi) and
       `feat/adapters-extra`. CI works around it with a committed wheel in `vendor/`, which
       **goes stale silently**.
-- [ ] **Windows binary**, and **Intel Mac**: the `macos-13` job never starts — that label is on
-      GitHub's retirement track. Decide whether Intel is supported before promising it.
+- [ ] **Windows binary.** Intel Mac was DROPPED 2026-08-04: `macos-13` is retired so the job
+      never started, and a queued job holds its whole run open — finished builds looked
+      unfinished for hours. A pre-2020 Mac cannot run our build; check the chip before sending.
 - [ ] **Notarization.** The `.app` is unsigned, so first launch needs right-click → Open.
 - [ ] **Credential storage on Windows** — use the OS credential store, or say plainly that the
       key is plaintext protected only by file mode.
@@ -191,8 +189,11 @@ existed only because of the owner interface were removed — see the Cleared not
 
 **Voice**
 
-- [ ] **The tool contract** — `search_knowledge` should return the sentence to say, not
-      documents to paraphrase. This is the per-turn half of the fence that a prompt cannot do.
+- [ ] **The tool contract** — status-and-render landed 2026-08-05, so every OTHER tool now
+      returns a status and the framework writes the sentence. `search_knowledge` is the
+      exception: it still hands over 4,000 characters to paraphrase, because on a knowledge
+      question the documents ARE the answer. Narrowing that to a sentence is the per-turn half
+      of the fence a prompt cannot do, and the last piece of it.
 - [ ] **Post-hoc grounding check** on the transcript. Nearly free once the tool contract lands.
 - [ ] **Measure a hosted cascade.** Rejected 2026-07-31, but the recorded reason rejects a LOCAL
       cascade. It is the only option that restores every invariant.
@@ -206,8 +207,7 @@ existed only because of the owner interface were removed — see the Cleared not
 
 **Engineering**
 
-- [ ] **Tag asker-authored content as untrusted** in whatever the mcp returns. Escalations and
-      transcripts are written by strangers and read by an agent with shell access.
+
 - [x] ~~**The asker allow-list should be data**, not hardcoded in `_tool_declarations()`.~~
       **WITHDRAWN 2026-08-04 — this was a bad idea and the reasoning was backwards.** It was
       proposed for tidiness. But the hardcoded list is the asker side's main protection, and it
@@ -230,6 +230,19 @@ The native window and its third rendering engine, the tray-icon/presence questio
 quit, the macOS window bundle, generic capability UX, owner sight of unverified askers, and
 `sim.html`'s unguarded `localStorage`. The site remains as a transitional surface; none of these
 are worth building for it.
+
+**Cleared 2026-08-05 — done, and the checklist had not caught up**
+
+- **Service tools** — `service_status/start/stop` are registered on the stdio mcp and have been
+  for days; `design.md` already said so while this list still called it a release blocker.
+- **Tag asker-authored content as untrusted** — done: escalations, threads, the `them:` side of a
+  conversation, the digest and keyword search are all delimited, and the mark cannot be forged
+  closed by an asker.
+
+Both were true when written and stayed on the list after they stopped being true. That is the
+third time in three days this file has claimed work was outstanding when it was finished — which
+is worth more attention than either item: a list that lies gets skimmed, and then the real
+blockers on it get skimmed too.
 
 **Cleared 2026-08-03 — already done, listed as open by mistake**
 
