@@ -546,12 +546,17 @@ here, which is how this document grew a second copy of itself.
 - Does the secretary tools face need HTTP, or is per-session stdio enough?
 - Push or pull for escalations?
 - Is the hosted cascade actually too slow? Unmeasured — and the reason it was dismissed no longer
-  holds (see "Latency on a call is a UX problem").
-- How is the answer found in a large `knowledge/`? Today it is word overlap, which fails when the
-  caller's words differ from the document's ("walk-ins" vs "appointments required"). Options:
-  tell the model to search again with different words before escalating (cheapest — it can already
-  call the tool repeatedly, the prompt just tells it to give up); or embeddings, which cost a local
-  model or a hosted call. Measure the misses first.
+  holds (see "Latency on a call is a UX problem"). For scale: `brain.handle_query` itself measured
+  **~2.0s** on an escalation and **~0.6s** when it answered (2026-08-05, DashScope). Too slow to
+  hide in silence; fine once the agent says "let me check". So the speak-first mechanism has to
+  exist BEFORE the second model does, not after.
+- **Retrieval on the TEXT path.** Word overlap fails when the caller's words differ from the
+  document's, and this is observed rather than theorised: a real query about "walk-ins" escalated
+  with `missing_knowledge` while the model's own drafted reply was "We do not accept walk-ins" — it
+  knew, and the search did not find it (2026-08-05). On VOICE this is now mitigated by a prompt
+  line: the model calls `search_knowledge` itself, so it can be told to try different words before
+  escalating. On TEXT it cannot — `brain` runs the search, so a retry means `brain` reformulating
+  the query, which needs a model round trip or embeddings. Open, with evidence.
 - Map our controls to the OWASP API Security Top 10 item by item? The thesis shows every issue we
   found lands on a named category; a formal mapping is what an audit tier would be sold on.
 
