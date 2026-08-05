@@ -70,7 +70,15 @@ def _register() -> list[str]:
 # today (everything is stdio) and becomes load-bearing if the secretary tools ever move to HTTP.
 from . import service
 
-SERVICE_TOOLS = [service.service_status, service.service_start, service.service_stop]
+from . import loginitem
+
+#: THE LOGIN ITEM TAKES NO PARAMETERS. Writing a launch agent is how software survives a reboot,
+#: and how malware does — and these are offered to an agent that reads text written by strangers.
+#: A version accepting a path would be a route from prompt injection to persistent autostart. With
+#: no arguments the blast radius is one boolean. See loginitem.py.
+SERVICE_TOOLS = [service.service_status, service.service_start, service.service_stop,
+                 loginitem.install_login_item, loginitem.remove_login_item,
+                 loginitem.login_item_status]
 for _fn in SERVICE_TOOLS:
     mcp.add_tool(_fn, name=_fn.__name__, description=(_fn.__doc__ or "").strip())
 
