@@ -151,10 +151,31 @@ in WASM is a tenth the size of a Python-in-WASM runtime every install would carr
 daemon → WASM runtime → JS engine → tool: two sandboxes, the engine's inside WASM's, on the same
 assume-the-inner-one-breaks reasoning a browser uses.
 
-**A tool never touches a file.** Not a mounted folder, not a direct write. It calls a host
-function we wrote, running in our Python outside the sandbox, and that function applies the
-caller's permissions before reading anything. Reading knowledge returns *text*; the tool never
-sees a path. Escalating calls a function; the tool never opens the queue.
+**A tool never touches a file** — and, discovered 2026-08-05, it cannot call us either.
+
+Javy's plugin imports **only WASI**. There is no host-function namespace, so the "host functions
+are the only doors" model this document described is not available in this engine: a tool has
+`data in -> compute -> data out` and nothing else.
+
+**So tools are TWO-PHASE.** A tool that needs something it was not given asks for it and is run
+again with the answer:
+
+```js
+if (!ANSWERS.stock) need({ kind: "stock", item: INPUT.item });   // round 1
+else                result({ status: ANSWERS.stock > 0 ? "in_stock" : "out_of_stock" });
+```
+
+We see the request, decide whether to fulfil it, fulfil it ourselves with the caller's permissions
+applied, and run the tool again with the answer added. Each round is a fresh instance.
+
+This is stricter than host functions, not weaker. The tool never initiates anything — it states a
+need and we choose. The `kind` comes from a closed set we implement, exactly like `ACTIONS`, so a
+tool cannot invent a capability by naming one. And rounds are capped: an unbounded ask/answer loop
+is the ring-limit problem in another costume.
+
+The price is that a tool is re-run per round, so it must be a pure function of `INPUT` and
+`ANSWERS`. It cannot hold state between rounds — which it could not anyway, since each round is a
+fresh instance.
 
 This is the part that matters more than the sandbox. A mount would hand over everything in the
 folder for the whole call and make the sandbox responsible for security. Because tools only ever

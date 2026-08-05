@@ -110,8 +110,43 @@ def main() -> int:
     # presence of the word, which correctly comes back escaped inside the value.
     lines = [l for l in out.strip().splitlines() if l.strip()]
     ok("a hostile input value cannot break out of the literal",
-       len(lines) == 1 and json.loads(lines[0])["v"].startswith('"); console.log'),
+       len(lines) == 1
+       and json.loads(lines[0])["result"]["v"].startswith('"); console.log'),
        f"{len(lines)} line(s): {out[:120]}")
+
+    # ---- two-phase: a tool asks, WE decide -------------------------------------------------
+    # Javy's plugin imports only WASI, so a tool cannot call us. It states a need and is run
+    # again with the answer. Stricter than host functions: it never initiates anything.
+    stock = """
+    if (ANSWERS.stock === undefined) { need({ kind: 'stock', item: INPUT.item }); }
+    else if (ANSWERS.stock === null)  { result({ status: 'unknown' }); }
+    else { result({ status: ANSWERS.stock > 0 ? 'in_stock' : 'out_of_stock' }); }"""
+
+    seen = []
+    def grant(kind, req):
+        seen.append((kind, req.get("item")))
+        return 7 if kind == "stock" else None
+
+    out = wasm_host.run_tool(stock, {"item": "SKU-A"}, grant)
+    ok("a tool can ask for something and be answered",
+       out.get("result", {}).get("status") == "in_stock", str(out))
+    ok("and we saw exactly what it asked for", seen == [("stock", "SKU-A")], str(seen))
+
+    # REFUSAL is not an error. The tool must cope with not being given what it wanted.
+    out = wasm_host.run_tool(stock, {"item": "SKU-A"}, lambda k, r: None)
+    ok("a refused request reaches the tool as no answer",
+       out.get("result", {}).get("status") == "unknown", str(out))
+
+    # THE RUNAWAY. An unbounded ask/answer loop would re-run the tool forever while a caller
+    # waits — the ring-limit problem in another costume.
+    rounds = []
+    wasm_host.run_tool("need({kind:'x'});", {}, lambda k, r: rounds.append(1) or 1)
+    ok("a tool that never stops asking is capped",
+       len(rounds) == wasm_host.MAX_ROUNDS, f"{len(rounds)} rounds")
+
+    # A tool cannot invent a capability by naming one — the fulfiller decides what exists.
+    out = wasm_host.run_tool("need({kind:'read_the_disk'});", {}, grant)
+    ok("an unknown request kind is refused", out["status"] == "tool_failed", str(out))
 
     print(f"\n  {PASS} passed, {FAIL} failed")
     if FAILED:
