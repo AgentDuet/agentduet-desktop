@@ -80,8 +80,8 @@ with five tools — there is no path from a declaration to the machine.
 
 The product intent is that customers author tools. Two things follow, and both are new classes:
 
-**Their code must not run in our process.** Sandboxed with no filesystem, network or environment,
-or a webhook on their side. Not in the daemon.
+**Their code runs sandboxed, never with our privileges.** Decided 2026-08-05: a WASM instance
+per call — see below. In-process is fine; unsandboxed is not.
 
 **Tool returns become untrusted input.** This is the one that is easy to miss. We currently trust
 returns absolutely because we wrote them. A customer tool that reads their CRM returns whatever is
@@ -128,6 +128,48 @@ Three decisions inside it:
 - **`escalate` is not revocable.** Remove it and an agent facing a question it cannot answer has
   no legitimate move left — which is exactly when a model invents one. The safety valve must sit
   outside the system that can withdraw it.
+
+### Customer tools run in WASM, one instance per call
+
+Decided 2026-08-05. The alternatives were a sandboxed subprocess and a webhook to the owner's own
+server; both are real isolation, and both were rejected for the same product reason.
+
+**Why WASM.** It fails closed — a WASM module has no syscalls at all, so a capability we forget to
+grant makes the tool break rather than escape. A subprocess is the opposite: it inherits our
+environment, files and network, and every one must be remembered and stripped. For a product whose
+owners have no security engineer, the default matters more than the ceiling. It also costs no
+process spawn on the voice path, where latency is tightest, and it keeps working with no network —
+which a webhook does not, on a product sold as running on your own machine.
+
+**One instance per CALL, not per asker.** These are two layers and conflating them is how a
+sandbox leaks:
+
+- **The grant is per asker** — may this caller invoke this tool at all. `permissions.json`.
+- **The sandbox is per call** — what the code may touch while it runs. A fresh instance, discarded
+  after.
+
+A per-asker instance would persist between calls, so anything the tool caches becomes a channel
+from one caller to the next. Per-call removes that by construction. The per-asker part lives in
+what is passed *in*: the arguments, and host functions scoped to that caller.
+
+**A tool is written in JavaScript.** Decided 2026-08-05. Not because JS is a better language for
+the job, but because the author is not a programmer: an AI writes JS fluently, and a JS engine
+compiled to WASM is around a tenth the size of a Python-in-WASM runtime, which every install would
+carry.
+
+The stack is daemon → WASM runtime → JS engine → the customer's tool. That is **two** sandboxes,
+the engine's inside WASM's — the same defence in depth a browser uses when it runs a sandbox
+inside a per-site process, and for the same reason: assume the inner one is eventually broken.
+
+Two consequences to design around:
+
+- **The tool has no ambient JavaScript environment.** No DOM, no Node, no `fetch`, no `require` —
+  only the host functions we grant. An AI generating a tool will reach for `fetch` by default, so
+  whatever prompt writes tools must enumerate what actually exists. Otherwise every generated tool
+  is broken on first run and the owner cannot tell why.
+- **The WASM runtime is a native extension**, and this codebase has a history of the frozen build
+  passing while a lazily imported dependency fails at runtime. Collect it explicitly in the
+  PyInstaller spec, and smoke-test a tool call in CI, not just an import.
 
 ### Voice is weaker than text, and says so
 
@@ -359,7 +401,6 @@ here, which is how this document grew a second copy of itself.
 - Does the secretary tools face need HTTP, or is per-session stdio enough?
 - Push or pull for escalations?
 - Is the hosted cascade actually too slow? Unmeasured.
-- Sandbox or webhook for customer-authored tools?
 - Map our controls to the OWASP API Security Top 10 item by item? The thesis shows every issue we
   found lands on a named category; a formal mapping is what an audit tier would be sold on.
 
