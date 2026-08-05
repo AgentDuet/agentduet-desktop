@@ -21,6 +21,12 @@ import json
 import os
 import pathlib
 import sys
+import tempfile
+
+# ISOLATION FIRST, BEFORE ANY IMPORT. A fulfiller test reads knowledge through the real
+# permission path, and without this it reads the OWNER'S documents — which is how a "safe" test
+# quietly starts depending on one machine's private data.
+os.environ["DDUET_HOME"] = tempfile.mkdtemp(prefix="wasm-test-")
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "src"))
 
@@ -147,6 +153,31 @@ def main() -> int:
     # A tool cannot invent a capability by naming one — the fulfiller decides what exists.
     out = wasm_host.run_tool("need({kind:'read_the_disk'});", {}, grant)
     ok("an unknown request kind is refused", out["status"] == "tool_failed", str(out))
+
+    # ---- the fulfiller: where a request meets the owner's grants ---------------------------
+    from dduet_desktop import paths
+    (paths.KNOWLEDGE).mkdir(parents=True, exist_ok=True)
+    (paths.KNOWLEDGE / "hours.md").write_text("We open at 9am on weekdays.")
+
+    ask = """
+    if (ANSWERS.knowledge === undefined) { need({kind:'knowledge', query: INPUT.q}); }
+    else { result({ text: ANSWERS.knowledge || 'nothing' }); }"""
+
+    out = wasm_host.run_tool(ask, {"q": "opening hours"}, wasm_host.fulfiller("bob@x", False))
+    ok("a tool's request is answered through the owner's permissions",
+       "9am" in str(out.get("result", {}).get("text", "")), str(out)[:200])
+
+    # THE POINT of routing through permissions: a tool must not be a way around disclosure.
+    host_src = (pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop"
+                / "wasm_host.py").read_text()
+    ok("knowledge is fetched through the same gate as the built-in tool",
+       "permissions.context_for(caller, verified, query)" in host_src)
+    ok("and file paths are not handed to the tool", '"sources"' not in host_src)
+
+    # A closed set, like capabilities.ACTIONS — a tool cannot name a capability into existence.
+    out = wasm_host.run_tool("need({kind:'shell', cmd:'ls'});", {},
+                             wasm_host.fulfiller("bob@x", False))
+    ok("a kind we do not fulfil is refused", out["status"] == "tool_failed", str(out))
 
     print(f"\n  {PASS} passed, {FAIL} failed")
     if FAILED:

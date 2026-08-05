@@ -49,7 +49,28 @@ datas = collect_data_files("dduet_desktop",
                            includes=["*.html", "templates/**/*", "examples/**/*",
                                      # Prompts are DATA. Without this the binary builds
                                      # clean and voice dies at render time on a real call.
-                                     "prompts/**/*"])
+                                     "prompts/**/*",
+                                     # The JS engine a customer tool runs inside. 1.3 MB, one
+                                     # artifact for every platform.
+                                     "wasm/**/*"])
+
+# THE WASM RUNTIME'S NATIVE LIBRARY, ADDED BY HAND.
+#
+# `--collect-all wasmtime` DOES NOT WORK, and fails in the worst way: the build succeeds, the
+# binary is suspiciously small, and it dies at runtime on "Failed to load dynlib
+# _libwasmtime.so". The library is loaded through ctypes from a path computed at import, so
+# PyInstaller never sees it as a dependency. Verified in a frozen onefile build 2026-08-05.
+#
+# The platform directory is part of the destination: wasmtime looks for it under
+# wasmtime/<platform>/, so flattening it into the root does not help.
+_wasm_binaries = []
+try:
+    import wasmtime as _wt
+    _wt_root = Path(_wt.__file__).parent
+    for _lib in _wt_root.rglob("_libwasmtime.*"):
+        _wasm_binaries.append((str(_lib), f"wasmtime/{_lib.parent.name}"))
+except Exception as _exc:
+    print(f"WARNING: wasmtime not collected ({_exc}) — customer tools will fail at runtime")
 
 hiddenimports = [
     # OUR OWN modules, all of them. Several are imported lazily inside functions (`web` from the
@@ -76,6 +97,7 @@ a = Analysis(
     [str(Path(SPECPATH).parent / "entry.py")],
     pathex=[str(Path(SPECPATH).parent / "src")],
     datas=datas,
+    binaries=_wasm_binaries,
     hiddenimports=hiddenimports,
     excludes=["tkinter", "test", "unittest"],   # nothing here draws a GUI
     noarchive=False,

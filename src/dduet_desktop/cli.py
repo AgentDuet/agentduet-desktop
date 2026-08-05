@@ -110,6 +110,18 @@ def cmd_status(args) -> int:
     ok, why = voice.available()
     print(f"  voice    : {'available' if ok else 'NOT available — ' + why}")
 
+    # RUNS A TOOL, does not merely import the runtime. The wasm runtime is a native library
+    # loaded through ctypes from a computed path, and `--collect-all` does not bundle it: the
+    # build succeeds and dies at the first real call. An import check would pass in exactly that
+    # state, so this compiles and executes a one-line tool.
+    from . import wasm_host
+    try:
+        r = wasm_host.run_tool("result({ok: 1 + 1});", {}, lambda k, q: None)
+        good = r.get("result", {}).get("ok") == 2
+        print(f"  tools    : {'available' if good else 'NOT available — ' + str(r)[:60]}")
+    except Exception as exc:
+        print(f"  tools    : NOT available — {type(exc).__name__}: {str(exc)[:70]}")
+
     # WHETHER ANYONE CAN ACTUALLY DRIVE IT. With no owner interface the assistant IS the only
     # surface, so an unregistered assistant means the product is unreachable — and this command
     # used to report a perfectly healthy secretary in exactly that state.

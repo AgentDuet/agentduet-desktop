@@ -198,3 +198,35 @@ def run_tool(js: str, input_data: dict, fulfil, max_rounds: int = MAX_ROUNDS) ->
     # Asked too many times. Not an error on the caller's part, and not something they hear about.
     logger.info("tool still asking after %d rounds — giving up", max_rounds)
     return {"status": "tool_failed"}
+
+
+#: WHAT A TOOL MAY ASK FOR. A closed set, like `capabilities.ACTIONS`, and for the same reason:
+#: a tool cannot invent a capability by naming one. Anything not here is refused, and the tool
+#: sees the refusal as an absent answer.
+KINDS = ("knowledge",)
+
+
+def fulfiller(caller: str, verified: bool):
+    """Build the `fulfil` for ONE caller. The permissions travel with it, not with the tool.
+
+    This is where a tool's request meets the owner's grants. The tool names a `kind` and passes
+    arguments; we decide, and we do the work. A tool asking for knowledge gets exactly what THIS
+    caller is allowed to be told — the same `permissions.context_for` that governs the built-in
+    `search_knowledge`, so a tool cannot become a way around the disclosure rules.
+    """
+    from . import permissions
+
+    def fulfil(kind: str, req: dict):
+        if kind not in KINDS:
+            logger.info("tool asked for %r, which is not a kind we fulfil", str(kind)[:40])
+            return None
+        if kind == "knowledge":
+            query = str(req.get("query") or "")[:400]
+            text, sources = permissions.context_for(caller, verified, query)
+            logger.info("tool looked up %r for %s -> %s", query[:60], caller, sources)
+            # Text, never paths. Same rule as the built-in tool: the owner's file layout is not
+            # the caller's business, and a model handed filenames will cite them.
+            return text[:4000]
+        return None
+
+    return fulfil
