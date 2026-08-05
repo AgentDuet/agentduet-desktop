@@ -30,6 +30,10 @@ os.environ["DDUET_HOME"] = tempfile.mkdtemp(prefix="wasm-test-")
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "src"))
 
+def eq(name, got, want):
+    ok(name, got == want, f"got {got!r}, wanted {want!r}")
+
+
 PASS = FAIL = 0
 FAILED: list[str] = []
 
@@ -178,6 +182,51 @@ def main() -> int:
     out = wasm_host.run_tool("need({kind:'shell', cmd:'ls'});", {},
                              wasm_host.fulfiller("bob@x", False))
     ok("a kind we do not fulfil is refused", out["status"] == "tool_failed", str(out))
+
+    # ---- reaching the outside: the owner names it, the tool asks by name --------------------
+    # A tool that could supply a URL is an SSRF: a caller talks it into fetching an internal
+    # address. So it names a NAME, and there is no URL for it to express.
+    from dduet_desktop import toolstore
+    toolstore.ACTIVE = pathlib.Path(os.environ["DDUET_HOME"]) / "tools"
+    toolstore.PENDING = toolstore.ACTIVE / "pending"
+
+    toolstore.propose("weather", "result({ok:1});",
+                      endpoints={"forecast": "https://api.open-meteo.com/v1/forecast"})
+    toolstore.approve("weather")
+    eq("the approved endpoints are stored with the tool",
+       toolstore.endpoints("weather"), {"forecast": "https://api.open-meteo.com/v1/forecast"})
+
+    # 1. AN UNAPPROVED NAME. The owner approved `forecast` and nothing else.
+    ok("an endpoint the owner did not approve is refused",
+       wasm_host.resolve_url("weather", {"endpoint": "somewhere_else"}) is None)
+
+    # 2. A URL, however it is dressed up. Checked through resolve_url so this needs no network:
+    # the question is which destination a request MEANS, not what that server replies.
+    for attempt in ({"url": "http://169.254.169.254/"},
+                    {"endpoint": "http://192.168.1.1/"},
+                    {"endpoint": "../../etc/passwd"},
+                    {"endpoint": ""}):
+        ok(f"a tool cannot name a destination itself: {str(attempt)[:36]}",
+           wasm_host.resolve_url("weather", attempt) is None)
+
+    # A `url` field alongside a VALID endpoint must be ignored, not honoured — the tool still
+    # reaches only what the owner approved.
+    got = wasm_host.resolve_url("weather", {"endpoint": "forecast",
+                                            "url": "http://127.0.0.1:8899/"})
+    ok("a url field is ignored, not obeyed",
+       got is not None and got.startswith("https://api.open-meteo.com"), str(got))
+
+    # Params cannot move the host.
+    got = wasm_host.resolve_url("weather", {"endpoint": "forecast",
+                                            "params": {"latitude": "1.29", "x": "http://evil/"}})
+    ok("params become a query string and cannot change the host",
+       got.startswith("https://api.open-meteo.com/v1/forecast?"), str(got)[:90])
+
+    # 3. A tool with no approved endpoints at all cannot fetch anything.
+    ok("a tool with no approved endpoints cannot fetch anything",
+       wasm_host.resolve_url("nothing", {"endpoint": "forecast"}) is None)
+    ok("and neither can a request with no tool at all",
+       wasm_host.resolve_url("", {"endpoint": "forecast"}) is None)
 
     print(f"\n  {PASS} passed, {FAIL} failed")
     if FAILED:
