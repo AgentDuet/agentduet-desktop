@@ -387,11 +387,10 @@ here, which is how this document grew a second copy of itself.
 
 ## Next
 
-1. **Tag asker-authored content as untrusted** in whatever the mcp returns.
-2. **Status-and-render for tool returns** — handlers return a status, the framework writes the
+1. **Status-and-render for tool returns** — handlers return a status, the framework writes the
    sentence. Prerequisite for customer-authored tools, and cheapest to do while one action exists.
-3. **Per-caller tool grants** — `"tools"` in `permissions.json`, checked at dispatch.
-4. **Login-start units**, then the Windows installer.
+2. **Per-caller tool grants** — `"tools"` in `permissions.json`, checked at dispatch.
+3. **Login-start units**, then the Windows installer.
 
 Done items are not listed here. `git log` has them.
 
