@@ -458,7 +458,10 @@ here, which is how this document grew a second copy of itself.
 
 ## Next
 
-1. **The WASM tool host** — the three security prerequisites are done; this is the next build.
+1. **Egress for tools.** A tool cannot call out at all today, so the first genuinely useful
+   tool — one that reaches a shop system — is not yet possible. Settled shape: an owner-approved
+   allowlisted host, never a URL the tool supplies. `api.open-meteo.com` is the test target (free,
+   no key). Note this is now a REQUEST the tool makes and WE fulfil, not egress from the sandbox.
 2. **Login-start units**, then the Windows installer.
 
 Done items are not listed here. `git log` has them.
