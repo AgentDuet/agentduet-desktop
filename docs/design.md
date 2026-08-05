@@ -267,6 +267,43 @@ the subprocess variant costs a spawn on the voice path and inherits our environm
 but it means the in-process choice is a bet that we call the API correctly, and it should be
 re-weighed if a panic is ever seen in normal use rather than in deliberate misuse.
 
+### Two models on a call, and why one instruction could not do both jobs
+
+Two models are needed for a call, and they are not two brains. One holds the conversation; the
+other does the looking up.
+
+- **The voice model** — a realtime omni model over a WebSocket. Holds the call.
+- **The knowledge model** — an ordinary completion model. Answers one question at a time.
+
+The text model cannot process audio, so this is not a choice. But the more useful point is that
+their INSTRUCTIONS have almost nothing in common:
+
+| | the voice model's instruction | the knowledge model's instruction |
+|---|---|---|
+| about | **manner** — how to behave on a call | **substance** — what may be said |
+| contains | speak briefly, say the name as written, never invent, never agree, offer a callback | these documents, this caller's permissions, is it answerable or must it escalate |
+| set | **once**, at call start — it cannot be changed mid-call | **rebuilt every request** |
+| so it can hold | standing rules only | this specific question, and this caller's material |
+
+That last row is why they could not be one instruction even if one model could do both jobs. One
+is fixed for the whole call; the other is fresh each time.
+
+**The second model is stateless and does not see the call.** It is the receptionist pausing to look
+something up in a book: the book does not know who is on the phone or what was said a minute ago.
+So the voice model must ask a SELF-CONTAINED question — "do you offer weekend appointments", not
+the caller's "what about the other one?". A tool call already forces exactly that, which is why the
+mechanism needed is the mechanism we have.
+
+**This is the same line as the knowledge split above, drawn once:** the core goes in the voice
+instruction and answers with no round trip; the pile is the knowledge model's job, prefaced with
+"let me check that".
+
+**The objection that survives is not cost or latency.** A text call is fractions of a cent, and
+latency is answerable by speaking first. What remains is the DashScope **per-account** connection
+cap — we hit `max_connections 100` in testing, and it presents as SILENCE on the call rather than
+an error. A second connection per knowledge question doubles what each call consumes against that
+cap, and unlike latency no amount of "one moment" fixes it. Measure that before committing.
+
 ### Latency on a call is a UX problem, not a wall
 
 Recorded 2026-08-05 after Stanley challenged it. "A caller cannot wait" was used across one
