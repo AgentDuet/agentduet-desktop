@@ -267,6 +267,46 @@ the subprocess variant costs a spawn on the voice path and inherits our environm
 but it means the in-process choice is a bet that we call the API correctly, and it should be
 re-weighed if a panic is ever seen in normal use rather than in deliberate misuse.
 
+### Latency on a call is a UX problem, not a wall
+
+Recorded 2026-08-05 after Stanley challenged it. "A caller cannot wait" was used across one
+session to reject a second model call, agentic search, and a hosted cascade. It is wrong as
+stated, and it was doing real damage as a reason.
+
+**What a caller actually cannot tolerate is SILENCE, not delay.** A receptionist saying "one
+moment, let me look that up" is normal, and the caller waits. So the test for "is this too slow"
+is not *does it add time* — it is:
+
+- **Can we say something before it happens?** The realtime model speaks first, then we work.
+- **Can the caller interrupt?** Realtime models support barge-in, so a caller who does not want to
+  wait can say so. Worth confirming behaviourally rather than assuming.
+- **Is the delay bounded?** An unbounded wait is silence eventually, however it began.
+
+This reopens three things that were rejected on the old reasoning: routing voice knowledge through
+`brain.handle_query`, iterative search, and the hosted cascade. None of them are settled; the
+argument against them was weaker than it looked.
+
+What does NOT change: an unbounded ask/answer loop is still capped, because "we will tell them to
+wait" is not a licence for a runaway.
+
+### Knowledge splits into what is always loaded and what is searched
+
+Stanley's proposal, 2026-08-05. Two kinds of thing live in `knowledge/` and they want different
+treatment:
+
+- **A small core, always loaded** into the session instruction: who the owner is, the handful of
+  facts every second caller asks. Zero latency, no search, available in the first sentence.
+- **Everything else, searched on demand** — with the agent saying "let me check that" first, which
+  the section above makes acceptable.
+
+**The constraint that decides the design: the always-loaded core is sent for EVERY caller**,
+including an unverified stranger on their first message. So it may contain only what the default
+grant already permits. A granted folder must never be in the core, or a caller who was never
+granted it receives it in the prompt — a disclosure hole that no tool check would catch, because
+no tool was called.
+
+And it needs a hard size cap, or it becomes the pile again by accretion.
+
 ### Voice is weaker than text, and says so
 
 In text, `brain.handle_query` runs retrieval, the disclosure gate and `check_bounds` **before**
@@ -488,7 +528,13 @@ here, which is how this document grew a second copy of itself.
 
 - Does the secretary tools face need HTTP, or is per-session stdio enough?
 - Push or pull for escalations?
-- Is the hosted cascade actually too slow? Unmeasured.
+- Is the hosted cascade actually too slow? Unmeasured — and the reason it was dismissed no longer
+  holds (see "Latency on a call is a UX problem").
+- How is the answer found in a large `knowledge/`? Today it is word overlap, which fails when the
+  caller's words differ from the document's ("walk-ins" vs "appointments required"). Options:
+  tell the model to search again with different words before escalating (cheapest — it can already
+  call the tool repeatedly, the prompt just tells it to give up); or embeddings, which cost a local
+  model or a hosted call. Measure the misses first.
 - Map our controls to the OWASP API Security Top 10 item by item? The thesis shows every issue we
   found lands on a named category; a formal mapping is what an audit tier would be sold on.
 
