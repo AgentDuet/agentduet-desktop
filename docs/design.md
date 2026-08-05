@@ -494,12 +494,9 @@ here, which is how this document grew a second copy of itself.
 
 ## Next
 
-1. **Reaching the outside.** A tool cannot call out at all today, so the first genuinely useful
-   tool — one that reaches a shop system — is not possible yet. The shape is settled (above):
-   endpoints are declared in the proposal, approved with the tool, and asked for by NAME. We make
-   the call. Test target `api.open-meteo.com` — free, no key, ~860 ms, and a plausible customer
-   use case rather than a toy.
-2. **The Windows binary.** Login-start units landed 2026-08-05.
+1. **The Windows binary.** Reaching the outside landed 2026-08-05: a tool asked
+   `api.open-meteo.com` for a forecast by label and returned a temperature, having never named the
+   destination.
 
 Done items are not listed here. `git log` has them.
 
