@@ -334,6 +334,45 @@ def test_ring_limit() -> None:
        '"callback_promised" if ringing else "escalated"' in src)
 
 
+def test_tool_installation() -> None:
+    """The assistant may WRITE a tool. It may not switch one on.
+
+    The owner drives this product through an AI assistant, so "the owner installed it" and "the
+    assistant installed it" would be the same event — and that assistant reads escalations and
+    transcripts written by strangers. If it could approve a tool, anything able to talk to it
+    could add one, and the two-part split would have a back door.
+
+    A single registry entry would undo this, so its absence is asserted rather than remembered.
+    """
+    print("\n  -- tools: proposed by the assistant, approved by the owner --")
+    from dduet_desktop import toolstore
+
+    toolstore.ACTIVE = TMP / "tools"
+    toolstore.PENDING = toolstore.ACTIVE / "pending"
+
+    out = toolstore.propose("stock_check", "result({ok:1});")
+    ok("a proposed tool is not active", toolstore.active() == [] and
+       toolstore.pending() == ["stock_check"], f"{toolstore.active()} / {toolstore.pending()}")
+    ok("and the reply says what the owner must type", "tools approve stock_check" in out)
+    ok("the daemon cannot read a proposal", toolstore.source("stock_check") == "")
+
+    toolstore.approve("stock_check")
+    ok("approving makes it active and readable",
+       toolstore.active() == ["stock_check"] and "result" in toolstore.source("stock_check"))
+
+    # A name becomes a filename, and is written by a model on a stranger's behalf.
+    for bad in ("../escape", "a/b", "", "Tool With Spaces!", "x" * 60):
+        ok(f"refuses the name {bad[:18]!r}", "must be lowercase" in toolstore.propose(bad, "x;"))
+
+    # THE ASSERTION THAT MATTERS.
+    ok("the owner registry can PROPOSE a tool", "propose_tool" in tools.OWNER_TOOLS)
+    ok("but there is no way to APPROVE one through it",
+       not [k for k in tools.OWNER_TOOLS if "approve" in k],
+       f"found {[k for k in tools.OWNER_TOOLS if 'approve' in k]}")
+    cli = (pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop" / "cli.py").read_text()
+    ok("approving lives in the CLI, where a person types it", "toolstore.approve(args.name)" in cli)
+
+
 def test_hosts() -> None:
     """Assistant detection and registration. Model-free: it is paths and process calls."""
     print("\n  -- hosts: what an assistant is told to launch --")
@@ -881,6 +920,7 @@ def main() -> None:
     test_untrusted_marking()
     test_tool_grants()
     test_status_and_render()
+    test_tool_installation()
     test_ring_limit()
     test_hosts()
     test_setup_mode()

@@ -1309,6 +1309,27 @@ def revoke_tool(asker: str, tool: str) -> str:
     return f"Revoked {tool} from {asker}."
 
 
+def propose_tool(name: str, source: str) -> str:
+    """Write a JavaScript tool for the owner to review. It does NOT become active.
+
+    You may write a tool and show it. Switching it on is a command the owner types themselves —
+    see toolstore. Do not tell them it is working; tell them what to type.
+    """
+    from . import toolstore
+    return toolstore.propose(name, source)
+
+
+def list_tools() -> str:
+    """Which tools are active, and which are waiting for the owner to approve."""
+    from . import toolstore
+    on, waiting = toolstore.active(), toolstore.pending()
+    out = [f"active   : {', '.join(on) if on else 'none'}",
+           f"proposed : {', '.join(waiting) if waiting else 'none'}"]
+    if waiting:
+        out.append(f"\nTo switch one on: dduet-desktop tools approve {waiting[0]}")
+    return "\n".join(out)
+
+
 def revoke_folder(asker: str, folder: str) -> str:
     """Take back a folder grant."""
     return permissions.revoke(asker, folder)
@@ -1711,6 +1732,11 @@ OWNER_TOOLS = {
                                 "tool": "book | transfer_to_owner",
                                 "note": "why (optional)"}),
     "revoke_tool": (revoke_tool, {"asker": "their email or number", "tool": "which action"}),
+    # PROPOSE, never approve. Approving is a CLI command the owner types — a registry entry for
+    # it would let anything that talks to the assistant switch on a tool. See toolstore.
+    "propose_tool": (propose_tool, {"name": "short name, lowercase",
+                                    "source": "the JavaScript"}),
+    "list_tools": (list_tools, {}),
     "resolve_all": (resolve_all, {"match": "question/asker substring, or empty for all"}),
     "resolve_escalation": (resolve_escalation, {"escalation_id": "the [id] shown",
                                                 "note": "how it was dealt with (optional)"}),

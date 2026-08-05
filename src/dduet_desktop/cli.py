@@ -162,6 +162,35 @@ def cmd_mcp(args) -> int:
     return 0
 
 
+def cmd_tools(args) -> int:
+    """Approving a tool is deliberately HERE and not in the mcp registry.
+
+    The owner drives this product through an assistant, so if approval were a registry entry the
+    assistant could switch on a tool — and it reads text written by strangers. This is the one
+    step that must be a command a person types.
+    """
+    from . import toolstore
+    if args.action == "list":
+        on, waiting = toolstore.active(), toolstore.pending()
+        print(f"  active   : {', '.join(on) if on else 'none'}")
+        print(f"  proposed : {', '.join(waiting) if waiting else 'none'}")
+        for n in waiting:
+            print(f"      {toolstore.PENDING / (n + '.js')}")
+        return 0
+    if not args.name:
+        print(f"  which tool? `dduet-desktop tools {args.action} <name>`")
+        return 1
+    if args.action == "approve":
+        print("  " + toolstore.approve(args.name))
+    elif args.action == "show":
+        p = toolstore.PENDING / f"{args.name}.js"
+        p = p if p.is_file() else toolstore.ACTIVE / f"{args.name}.js"
+        print(p.read_text() if p.is_file() else f"  no tool called {args.name!r}")
+    else:
+        print("  " + toolstore.remove(args.name))
+    return 0
+
+
 def cmd_connect(args) -> int:
     from . import hosts
     print(hosts.connect(apply=not args.show, install=args.install))
@@ -205,6 +234,11 @@ def main(argv: list[str] | None = None) -> int:
 
     m = sub.add_parser("mcp", help="run as an MCP server on stdio (what an assistant launches)")
     m.set_defaults(fn=cmd_mcp)
+
+    t = sub.add_parser("tools", help="see and approve the tools your assistant has written")
+    t.add_argument("action", choices=["list", "show", "approve", "remove"])
+    t.add_argument("name", nargs="?", default="")
+    t.set_defaults(fn=cmd_tools)
 
     c = sub.add_parser("connect", help="register this secretary with the AI assistants you have")
     c.add_argument("--show", action="store_true",
