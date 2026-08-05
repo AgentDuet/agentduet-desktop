@@ -151,14 +151,49 @@ in WASM is a tenth the size of a Python-in-WASM runtime every install would carr
 daemon → WASM runtime → JS engine → tool: two sandboxes, the engine's inside WASM's, on the same
 assume-the-inner-one-breaks reasoning a browser uses.
 
+**A tool never touches a file.** Not a mounted folder, not a direct write. It calls a host
+function we wrote, running in our Python outside the sandbox, and that function applies the
+caller's permissions before reading anything. Reading knowledge returns *text*; the tool never
+sees a path. Escalating calls a function; the tool never opens the queue.
+
+This is the part that matters more than the sandbox. A mount would hand over everything in the
+folder for the whole call and make the sandbox responsible for security. Because tools only ever
+get functions, the sandbox is the **second** line — the first is that the dangerous thing was
+never handed over. Which is just as well, given the panic below.
+
 Two things that surface late if not planned for:
 
 - **No ambient JavaScript.** No DOM, Node, `fetch` or `require` — only host functions we grant. An
   AI will reach for `fetch` first, so the tool-writing prompt must enumerate what exists, or every
   generated tool fails with nothing the owner can act on.
-- **The runtime is a native extension**, in a codebase where frozen builds have passed while a
-  lazily imported dependency died at runtime. Collect it in the spec, and smoke-test a tool *call*
-  in CI, not an import.
+- **The runtime is a native extension** — see the spike.
+
+#### What the spike established (2026-08-05)
+
+Run before building, precisely because the two risks below would have been expensive to find late.
+
+- **`wasmtime` is the only option.** `wasmer` refuses to import on this platform ("not available
+  on this system"); `extism` is a 0.1 MB wrapper over a `libextism` we would have to ship.
+- **Deny-by-default is real, and it fails at LOAD.** A module importing a WASI syscall with
+  nothing granted is refused with "expected 1 imports, found 0" — not at call time, when it would
+  already be mid-answer. Granting WASI explicitly instantiates it. A computation-only tool runs
+  with zero capabilities.
+- **PyInstaller: `--collect-all wasmtime` DOES NOT WORK**, and fails in the worst way — the build
+  succeeds, the binary is suspiciously small, and it dies at runtime on
+  `Failed to load dynlib _libwasmtime.so`. The library is loaded through `ctypes` from a computed
+  path, so PyInstaller never sees it. What works is explicit:
+  `--add-binary "<site-packages>/wasmtime/linux-x86_64/_libwasmtime.so:wasmtime/linux-x86_64"`.
+  Verified end to end in a frozen onefile build.
+- **Cost: +9.4 MB** to a onefile binary (7.4 → 16.8 in the probe), better than the 28.5 MB the
+  package occupies on disk.
+- **A wasmtime panic ABORTS THE PROCESS.** Not a Python exception — SIGABRT, exit 134, uncatchable.
+  Triggered accidentally during the spike by misusing the `Store` API. In-process therefore means
+  **a runtime bug takes the daemon down mid-call**, and no `try/except` prevents it.
+
+That last one is the only finding that argues against the decision above. It does not reverse it —
+the subprocess variant costs a spawn on the voice path and inherits our environment by default —
+but it means the in-process choice is a bet that we call the API correctly, and it should be
+re-weighed if a panic is ever seen in normal use rather than in deliberate misuse.
 
 ### Voice is weaker than text, and says so
 
