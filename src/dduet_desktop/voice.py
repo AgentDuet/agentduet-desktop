@@ -188,6 +188,12 @@ SAY = {
     "transferring":         "Putting you through now.",
     "transfer_failed":      HOLDING,
     "unavailable":          HOLDING,
+    # A CUSTOMER TOOL BROKE. Told plainly rather than hidden behind the holding line, because a
+    # caller who is told "I'll pass it on" and then hears nothing more assumes they were fobbed
+    # off — and the owner's tools WILL break, since the owner wrote them. The reason stays in the
+    # log; the caller hears only that it did not work and that the message still travels.
+    "tool_failed":          "I'm having trouble with that just now, but I'll pass your message "
+                            "to {owner}.",
 }
 
 
