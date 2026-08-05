@@ -3,6 +3,19 @@
 Single source of direction, 2026-08-03. Replaces `agents.md` and `service.md`, which were
 written across a week of pivots and had begun to contradict each other and the code.
 
+**Before you change something, read the section that decided it.** Every one records what would
+reverse it, so the fastest way to make a bad change here is to skip that.
+
+| about to touch | read |
+|---|---|
+| the asker's five tools | The fence · The risk this design must not hide |
+| anything a customer's tool can do | Customers will bring their own tools · WASM · Reaching the outside |
+| who may read or do what | Tools are a granted resource · Knowledge splits |
+| how a call answers a question | Two models on a call · Voice is weaker than text |
+| "this will be too slow" | **Latency on a call is a UX problem, not a wall** |
+| secrets, or adding a UI | A UI for the secrets is fine |
+| the mcp, or starting/stopping | Two servers · Starting at login |
+
 ---
 
 ## The daemon is the product
@@ -72,31 +85,25 @@ model makes is checked mechanically before anything happens.
 ### Customers will bring their own tools — and that inverts the fence
 
 Recorded 2026-08-04, having been absent from this document while every decision in it assumed the
-opposite.
+opposite. Today a customer **declares** — an action from a closed `ACTIONS` set, with bounds from a
+closed vocabulary — so there is no path from a declaration to the machine, and that is why a
+five-tool fence holds. If customers author tools, that property is gone.
 
-Today a customer **declares**: an action from a closed `ACTIONS` set, with bounds from a closed
-vocabulary. They parameterise our verbs and cannot supply behaviour. That is why the fence holds
-with five tools — there is no path from a declaration to the machine.
+**The consequence that is easy to miss: tool returns become untrusted input.** We trust returns
+absolutely because we wrote them. A customer tool reading their CRM returns whatever is in that CRM,
+including text a stranger put there — arriving as a *tool result*, which a model weights heavily.
+Same injection class as an asker message, through the channel we guard least.
 
-The product intent is that customers author tools. Two things follow, and both are new classes:
+So a customer's tool gets the treatment an asker's message gets, plus four rules, each detailed in
+its own section below:
 
-**Their code runs sandboxed, never with our privileges.** Decided 2026-08-05: a WASM instance
-per call — see below. In-process is fine; unsandboxed is not.
-
-**Tool returns become untrusted input.** This is the one that is easy to miss. We currently trust
-returns absolutely because we wrote them. A customer tool that reads their CRM returns whatever is
-in that CRM, including text a stranger put there — arriving as a *tool result*, which a model
-weights heavily. Same injection class as an asker message, through the channel we guard least.
-
-So a customer's tool gets the treatment an asker's message gets, plus:
-
-- **Handlers return a status from a closed set; the framework renders the sentence.** A key
-  whitelist is not enough — it stops extra fields, not a leaked value in an expected one. If the
-  handler cannot author caller-visible text, it cannot leak into it.
+- **Sandboxed, never with our privileges** — a WASM instance per call.
+- **A status from a closed set; the framework writes the sentence.** A key whitelist stops extra
+  fields, not a leaked value in an expected one. If a handler cannot author caller-visible text, it
+  cannot leak into it.
 - **Authority stays ours.** Anything that commits goes through `check_bounds`, whatever the tool
   claims to have decided.
-- **A tool reaches the outside by NAME, never by URL** — see below.
-- **Default deny.** A tool that declares no shape gets nothing.
+- **It reaches the outside by NAME, never by URL**, and a tool declaring no shape gets nothing.
 
 The customer is writing an API without API-security experience, for a client that is an
 attacker-steered model. Assume they will get it wrong and make that survivable.
@@ -167,105 +174,61 @@ Three decisions inside it:
 
 ### Customer tools run in WASM, one instance per call, written in JavaScript
 
-Decided 2026-08-05. The alternatives were a sandboxed subprocess and a webhook to the owner's
-server. Both are real isolation; both lose on the same grounds.
+Decided 2026-08-05, built the same day. The alternatives were a sandboxed subprocess and a webhook
+to the owner's server; both are real isolation and both lose on the same grounds.
 
-**WASM fails closed.** A module has no syscalls at all, so a capability we forget to grant makes
-the tool break rather than escape. A subprocess is the reverse — it inherits our environment,
-files and network, each of which must be remembered and stripped. For owners with no security
-engineer the default matters more than the ceiling. It also costs no process spawn on the voice
-path, and works offline, which a webhook does not.
+**WASM fails closed.** A module has no syscalls at all, so a capability we forget to grant makes the
+tool break rather than escape. A subprocess is the reverse — it inherits our environment, files and
+network, each of which must be remembered and stripped. For owners with no security engineer the
+default matters more than the ceiling. It also costs no process spawn on the voice path, and works
+offline, which a webhook does not.
 
 **One instance per CALL, not per asker.** Two layers, and conflating them is how a sandbox leaks:
-the **grant** is per asker (may this caller invoke this tool), the **sandbox** is per call (what
-the code may touch while it runs). A per-asker instance persists between calls, so anything the
-tool caches becomes a channel from one caller to the next. The per-asker part lives in what is
-passed *in* — arguments, and host functions scoped to that caller.
+the **grant** is per asker (may this caller invoke this tool), the **sandbox** is per call (what the
+code may touch while it runs). A per-asker instance persists between calls, so anything the tool
+caches becomes a channel from one caller to the next.
 
-**JavaScript**, because the author is not a programmer: an AI writes JS fluently, and a JS engine
-in WASM is a tenth the size of a Python-in-WASM runtime every install would carry. The stack is
-daemon → WASM runtime → JS engine → tool: two sandboxes, the engine's inside WASM's, on the same
-assume-the-inner-one-breaks reasoning a browser uses.
+**JavaScript**, because the author is not a programmer: an AI writes JS fluently, and Javy's engine
+is 1.3 MB — one artifact for every platform, and it compiles JS source *inside* the sandbox, so no
+compiler ships with the product.
 
-**A tool never touches a file** — and, discovered 2026-08-05, it cannot call us either.
-
-Javy's plugin imports **only WASI**. There is no host-function namespace, so the "host functions
-are the only doors" model this document described is not available in this engine: a tool has
-`data in -> compute -> data out` and nothing else.
-
-**So tools are TWO-PHASE.** A tool that needs something it was not given asks for it and is run
-again with the answer:
+**Tools are TWO-PHASE, because a tool cannot call us.** Javy's plugin imports only WASI: there is no
+host-function namespace, so the "host functions are the only doors" model this document once
+described is not available. A tool that needs something asks for it and is run again with the
+answer:
 
 ```js
-if (!ANSWERS.stock) need({ kind: "stock", item: INPUT.item });   // round 1
+if (!ANSWERS.stock) need({ kind: "stock", item: INPUT.item });
 else                result({ status: ANSWERS.stock > 0 ? "in_stock" : "out_of_stock" });
 ```
 
-We see the request, decide whether to fulfil it, fulfil it ourselves with the caller's permissions
-applied, and run the tool again with the answer added. Each round is a fresh instance.
+Stricter than host functions, not weaker. The tool never initiates anything; the `kind` comes from a
+closed set we implement, so it cannot invent a capability by naming one; a refusal arrives as an
+absent answer it must cope with; and rounds are capped, because an unbounded ask/answer loop is the
+ring-limit problem in another costume. The price is that a tool is re-run per round and must be a
+pure function of `INPUT` and `ANSWERS` — which it could not avoid anyway, each round being a fresh
+instance.
 
-This is stricter than host functions, not weaker. The tool never initiates anything — it states a
-need and we choose. The `kind` comes from a closed set we implement, exactly like `ACTIONS`, so a
-tool cannot invent a capability by naming one. And rounds are capped: an unbounded ask/answer loop
-is the ring-limit problem in another costume.
+**A tool never touches a file.** No mounts. Reading knowledge goes through the same
+`permissions.context_for` that governs the built-in tool, and returns text, never paths.
 
-The price is that a tool is re-run per round, so it must be a pure function of `INPUT` and
-`ANSWERS`. It cannot hold state between rounds — which it could not anyway, since each round is a
-fresh instance.
+#### Three things that will bite whoever touches this next
 
-This is the part that matters more than the sandbox. A mount would hand over everything in the
-folder for the whole call and make the sandbox responsible for security. Because tools only ever
-get functions, the sandbox is the **second** line — the first is that the dangerous thing was
-never handed over. Which is just as well, given the panic below.
+- **The sandbox is only as tight as the WASI shim.** "Grant nothing" is not available: the JS engine
+  *requires* `environ_get`, `clock_time_get`, `random_get` and a set of `fd_*` to load at all. So the
+  guarantee is what sits behind each one — `environ_get` returns EMPTY, and no directory is
+  preopened. `wasmtime`'s default config inherits the parent environment, which holds the model key.
+- **Every JS-level denial test passes with the shim wrong**, because QuickJS exposes no `process`
+  whatever WASI holds. Those probes prove the engine is minimal, not that we configured anything.
+  The shim is pinned by a source check for that reason.
+- **A wasmtime panic ABORTS THE PROCESS** — SIGABRT, uncatchable, not a Python exception. In-process
+  therefore means a runtime bug takes the daemon down mid-call. This is the one finding that argues
+  against the decision above. It does not reverse it, but the in-process choice is a bet that we call
+  the API correctly, and it should be re-weighed if a panic ever appears outside deliberate misuse.
 
-Two things that surface late if not planned for:
-
-- **No ambient JavaScript.** No DOM, Node, `fetch` or `require` — only host functions we grant. An
-  AI will reach for `fetch` first, so the tool-writing prompt must enumerate what exists, or every
-  generated tool fails with nothing the owner can act on.
-- **The runtime is a native extension** — see the spike.
-
-#### What the spike established (2026-08-05)
-
-Run before building, precisely because the two risks below would have been expensive to find late.
-
-- **`wasmtime` is the only option.** `wasmer` refuses to import on this platform ("not available
-  on this system"); `extism` is a 0.1 MB wrapper over a `libextism` we would have to ship.
-- **Deny-by-default is real, and it fails at LOAD.** A module importing a WASI syscall with
-  nothing granted is refused with "expected 1 imports, found 0" — not at call time, when it would
-  already be mid-answer. Granting WASI explicitly instantiates it. A computation-only tool runs
-  with zero capabilities.
-- **PyInstaller: `--collect-all wasmtime` DOES NOT WORK**, and fails in the worst way — the build
-  succeeds, the binary is suspiciously small, and it dies at runtime on
-  `Failed to load dynlib _libwasmtime.so`. The library is loaded through `ctypes` from a computed
-  path, so PyInstaller never sees it. What works is explicit:
-  `--add-binary "<site-packages>/wasmtime/linux-x86_64/_libwasmtime.so:wasmtime/linux-x86_64"`.
-  Verified end to end in a frozen onefile build.
-- **Cost: +9.4 MB** to a onefile binary (7.4 → 16.8 in the probe), better than the 28.5 MB the
-  package occupies on disk.
-- **A wasmtime panic ABORTS THE PROCESS.** Not a Python exception — SIGABRT, exit 134, uncatchable.
-  Triggered accidentally during the spike by misusing the `Store` API. In-process therefore means
-  **a runtime bug takes the daemon down mid-call**, and no `try/except` prevents it.
-
-- **No JS compiler needs shipping.** Javy's `plugin.wasm` is **1.3 MB**, one artifact for every
-  platform, and exports `compile-src` as well as `invoke` — so JS SOURCE can be compiled inside
-  the sandbox at runtime. The alternative was shipping their 13 MB compiler per platform and
-  making tool installation a build step. The JavaScript decision therefore costs 1.3 MB, not 13.
-- **But the engine itself demands WASI**, and this qualifies the deny-by-default claim above.
-  `plugin.wasm` imports `environ_get`, `environ_sizes_get`, `clock_time_get`, `random_get` and a
-  set of `fd_*`. A bare module can be given nothing; a JS ENGINE cannot. So the guarantee is not
-  "we grant nothing" — it is **what we put behind each import**:
-  - `environ_get` must return EMPTY. Our environment holds the model key and the connector
-    credential, and a default `WasiConfig` inherits it. This is the one that would leak silently.
-  - `fd_*` over no preopened directories, so there is no filesystem to reach.
-  - `clock_time_get` and `random_get` are harmless; grant them.
-
-  The sandbox is exactly as tight as that shim. Writing it is the build, not a detail of it.
-
-That last one is the only finding that argues against the decision above. It does not reverse it —
-the subprocess variant costs a spawn on the voice path and inherits our environment by default —
-but it means the in-process choice is a bet that we call the API correctly, and it should be
-re-weighed if a panic is ever seen in normal use rather than in deliberate misuse.
+Packaging is a trap and the remedy is in `packaging/dduet-desktop.spec`: `--collect-all wasmtime`
+does not bundle the native library, and the build succeeds and dies at the first real call. `status`
+therefore runs a real tool rather than importing the runtime.
 
 ### Two models on a call, and why one instruction could not do both jobs
 
@@ -294,9 +257,8 @@ So the voice model must ask a SELF-CONTAINED question — "do you offer weekend 
 the caller's "what about the other one?". A tool call already forces exactly that, which is why the
 mechanism needed is the mechanism we have.
 
-**This is the same line as the knowledge split above, drawn once:** the core goes in the voice
-instruction and answers with no round trip; the pile is the knowledge model's job, prefaced with
-"let me check that".
+**Same line as the knowledge split below, drawn once:** the core goes in the voice instruction and
+answers with no round trip; the pile is the knowledge model's job, prefaced with "let me check".
 
 **The objection that survives is not cost or latency.** A text call is fractions of a cent, and
 latency is answerable by speaking first. What remains is the DashScope **per-account** connection
@@ -332,9 +294,8 @@ Stanley's proposal, 2026-08-05. Two kinds of thing live in `knowledge/` and they
 treatment:
 
 - **A small core, always loaded** into the session instruction: who the owner is, the handful of
-  facts every second caller asks. Zero latency, no search, available in the first sentence.
-- **Everything else, searched on demand** — with the agent saying "let me check that" first, which
-  the section above makes acceptable.
+  facts every second caller asks. No search, available in the first sentence.
+- **Everything else, searched on demand**, prefaced by "let me check".
 
 **The core is assembled PER ASKER.** Stanley's correction, same day: an earlier draft said the
 core must contain only default-grant content, because it is sent to everyone. That is only true of
