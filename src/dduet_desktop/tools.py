@@ -272,6 +272,33 @@ def owner_context(asker: str, messages: int = 8, focus: str = "") -> str:
     return "\n".join(out)
 
 
+#: How asker-authored text is marked when it crosses into the owner agent's context.
+#:
+#: THE CROSSING POINT, AND WHY IT NEEDS A MARK
+#:
+#: The asker daemon is fenced: five tools, no OS reach, so a stranger who writes something shaped
+#: like an instruction gets nowhere. But what they wrote is RECORDED, and later the owner asks
+#: their assistant "what is waiting for me?" — and that assistant is a general agent with shell
+#: access. The injection does not have to beat the fenced agent. It only has to be quoted to a
+#: privileged one.
+#:
+#: So every string a stranger authored is delimited and labelled. Not to make a model obey the
+#: label — that is the same mistake as trusting a prompt — but so that a host, a reviewer, or a
+#: later filter can tell content from instruction. It is the one place where marking is even
+#: possible: by the time text reaches the owner's assistant, nothing else knows who wrote it.
+#:
+#: The delimiter is STRIPPED from the content first. Otherwise an asker closes it themselves and
+#: continues outside the quote — the oldest escape in the book, and the reason naive quoting fails.
+UNTRUSTED_MARK = "⟦asker-said⟧"
+
+
+def untrusted(text: str) -> str:
+    """Mark text a STRANGER wrote. See UNTRUSTED_MARK."""
+    if not text:
+        return ""
+    return f"{UNTRUSTED_MARK} {str(text).replace(UNTRUSTED_MARK, '')} {UNTRUSTED_MARK}"
+
+
 def who_label(asker: str, verified: bool = True) -> str:
     """Name the person first, address second — for every owner-facing string.
 
@@ -301,11 +328,11 @@ def pending_escalations() -> str:
         who = who_label(g["asker"], g["verified"])
         flag = "  [SENDER MARKED URGENT]" if g.get("urgent") else ""
         subj = f"  ({g['topic']})" if g.get("topic") else ""
-        out.append(f"[{g['ids'][0]}] {who} — {g['question']}{subj}{flag}"
+        out.append(f"[{g['ids'][0]}] {who} — {untrusted(g['question'])}{subj}{flag}"
                    f"\n  {g['reason'].removeprefix('policy:')} · {g['at']}")
         if len(g.get("questions", [])) > 1:
             out.append("  thread:")
-            out += [f"    {i+1}. {q}" for i, q in enumerate(g["questions"])]
+            out += [f"    {i+1}. {untrusted(q)}" for i, q in enumerate(g["questions"])]
         b = g.get("briefing") or {}
         if b.get("wants"):
             out.append(f"  wants   : {b['wants']}")
@@ -366,10 +393,11 @@ def digest(day: str = "") -> str:
            f"({len(answered)} answered, {len(escalated)} escalated)"]
     if escalated:
         out.append("\nNEEDS YOU")
-        out += [f"- {who_label(r['asker'], r.get('verified', True))}: {r['question']}" for r in escalated]
+        out += [f"- {who_label(r['asker'], r.get('verified', True))}: {untrusted(r['question'])}"
+                for r in escalated]
     if answered:
         out.append("\nHANDLED FOR YOU")
-        out += [f"- {who_label(r['asker'], r.get('verified', True))}: {r['question']}\n  -> {r['answer']}"
+        out += [f"- {who_label(r['asker'], r.get('verified', True))}: {untrusted(r['question'])}\n  -> {r['answer']}"
                 for r in answered]
 
     reasons = Counter(policy.reclassify(r["question"], r["reason"]).removeprefix("policy:")
@@ -391,7 +419,7 @@ def search_queries(query: str, days: int = 7) -> str:
         return f"No matches for '{query}' in the last {days} days."
     return f"{len(hits)} matches:\n" + "\n".join(
         f"- {r['at']} {who_label(r['asker'], r.get('verified', True))} "
-        f"[{r['outcome']}] — {r['question']}" for r in hits[-25:])
+        f"[{r['outcome']}] — {untrusted(r['question'])}" for r in hits[-25:])
 
 
 def conversation_with(asker: str, limit: int = 20) -> str:
@@ -418,7 +446,7 @@ def conversation_with(asker: str, limit: int = 20) -> str:
             # Your own answer, not something they said — it was rendering under "them:".
             out.append(f"  YOU : {r['answer']}")
         else:
-            out.append(f"  them: {r['question']}")
+            out.append(f"  them: {untrusted(r['question'])}")
             out.append(f"  us  : {r['answer']}")
         if r["outcome"] == "escalated":
             out.append(f"        ^ escalated ({r['reason'].removeprefix('policy:')})")
