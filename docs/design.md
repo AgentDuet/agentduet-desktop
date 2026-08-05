@@ -129,47 +129,36 @@ Three decisions inside it:
   no legitimate move left — which is exactly when a model invents one. The safety valve must sit
   outside the system that can withdraw it.
 
-### Customer tools run in WASM, one instance per call
+### Customer tools run in WASM, one instance per call, written in JavaScript
 
-Decided 2026-08-05. The alternatives were a sandboxed subprocess and a webhook to the owner's own
-server; both are real isolation, and both were rejected for the same product reason.
+Decided 2026-08-05. The alternatives were a sandboxed subprocess and a webhook to the owner's
+server. Both are real isolation; both lose on the same grounds.
 
-**Why WASM.** It fails closed — a WASM module has no syscalls at all, so a capability we forget to
-grant makes the tool break rather than escape. A subprocess is the opposite: it inherits our
-environment, files and network, and every one must be remembered and stripped. For a product whose
-owners have no security engineer, the default matters more than the ceiling. It also costs no
-process spawn on the voice path, where latency is tightest, and it keeps working with no network —
-which a webhook does not, on a product sold as running on your own machine.
+**WASM fails closed.** A module has no syscalls at all, so a capability we forget to grant makes
+the tool break rather than escape. A subprocess is the reverse — it inherits our environment,
+files and network, each of which must be remembered and stripped. For owners with no security
+engineer the default matters more than the ceiling. It also costs no process spawn on the voice
+path, and works offline, which a webhook does not.
 
-**One instance per CALL, not per asker.** These are two layers and conflating them is how a
-sandbox leaks:
+**One instance per CALL, not per asker.** Two layers, and conflating them is how a sandbox leaks:
+the **grant** is per asker (may this caller invoke this tool), the **sandbox** is per call (what
+the code may touch while it runs). A per-asker instance persists between calls, so anything the
+tool caches becomes a channel from one caller to the next. The per-asker part lives in what is
+passed *in* — arguments, and host functions scoped to that caller.
 
-- **The grant is per asker** — may this caller invoke this tool at all. `permissions.json`.
-- **The sandbox is per call** — what the code may touch while it runs. A fresh instance, discarded
-  after.
+**JavaScript**, because the author is not a programmer: an AI writes JS fluently, and a JS engine
+in WASM is a tenth the size of a Python-in-WASM runtime every install would carry. The stack is
+daemon → WASM runtime → JS engine → tool: two sandboxes, the engine's inside WASM's, on the same
+assume-the-inner-one-breaks reasoning a browser uses.
 
-A per-asker instance would persist between calls, so anything the tool caches becomes a channel
-from one caller to the next. Per-call removes that by construction. The per-asker part lives in
-what is passed *in*: the arguments, and host functions scoped to that caller.
+Two things that surface late if not planned for:
 
-**A tool is written in JavaScript.** Decided 2026-08-05. Not because JS is a better language for
-the job, but because the author is not a programmer: an AI writes JS fluently, and a JS engine
-compiled to WASM is around a tenth the size of a Python-in-WASM runtime, which every install would
-carry.
-
-The stack is daemon → WASM runtime → JS engine → the customer's tool. That is **two** sandboxes,
-the engine's inside WASM's — the same defence in depth a browser uses when it runs a sandbox
-inside a per-site process, and for the same reason: assume the inner one is eventually broken.
-
-Two consequences to design around:
-
-- **The tool has no ambient JavaScript environment.** No DOM, no Node, no `fetch`, no `require` —
-  only the host functions we grant. An AI generating a tool will reach for `fetch` by default, so
-  whatever prompt writes tools must enumerate what actually exists. Otherwise every generated tool
-  is broken on first run and the owner cannot tell why.
-- **The WASM runtime is a native extension**, and this codebase has a history of the frozen build
-  passing while a lazily imported dependency fails at runtime. Collect it explicitly in the
-  PyInstaller spec, and smoke-test a tool call in CI, not just an import.
+- **No ambient JavaScript.** No DOM, Node, `fetch` or `require` — only host functions we grant. An
+  AI will reach for `fetch` first, so the tool-writing prompt must enumerate what exists, or every
+  generated tool fails with nothing the owner can act on.
+- **The runtime is a native extension**, in a codebase where frozen builds have passed while a
+  lazily imported dependency died at runtime. Collect it in the spec, and smoke-test a tool *call*
+  in CI, not an import.
 
 ### Voice is weaker than text, and says so
 
@@ -288,24 +277,18 @@ So the split is:
 ### A UI for the secrets is fine — the rule is narrower than "no interface"
 
 The rule is: **a secret must never enter a model's context.** A chat box violates it — the text
-becomes prompt, goes to the provider, and is written to `owner_chat.json`. A browser form does
-not: the value goes browser → daemon → `.env`, and no model is involved.
+becomes prompt, reaches the provider, and is written to `owner_chat.json`. A browser form does
+not: browser → daemon → `.env`, no model in the path.
 
-So the decision is not "no UI ever". It is **no full owner UI in three engines**. A
-single-purpose secrets form is a different thing, and the site already implements it correctly
-(`/api/setup/model`, `/api/setup/connector` are direct POSTs, no model in the path).
+So the decision is not "no UI ever" but **no full owner UI in three engines**. A single-purpose
+secrets form is a different thing, and the site already implements it correctly.
 
-**Planned: a transient secrets-only page.** `init` opens the browser to one form, takes the two
-credentials, done. No window, no pywebview, no third engine — and it beats a terminal for the
-actual task, which is pasting two 40-character keys where a no-echo prompt hides typos.
+Not relied on: `mcp` 2.x can request input from the user via the host (`elicitation`). The model
+does not generate the value, but whether it lands in the model's context is the host's
+implementation detail — too uncertain for a credential.
 
-Not relied on: `mcp` 2.x has an `elicitation` module through which a server can request input
-from the user via the host. The model does not generate the value, but whether it lands in the
-model's context is the host's implementation detail. Too uncertain for a credential.
-
-`setup_status` is what joins them: it reports what is configured, echoes **no values** — not the
-key, not the connector uuid, not the owner's own number, because anything it returns travels to
-a model provider — and names the one command the assistant cannot run itself.
+`setup_status` joins the two: it reports what is configured and echoes **no values**, not the key,
+the connector uuid, or the owner's number, because anything it returns travels to a provider.
 
 ---
 
@@ -363,18 +346,16 @@ Per-platform, and the delivery concern now that there is no UI to carry the firs
 
 Notarization needs an Apple Developer ID. Acceptable for a colleague, not past that.
 
-**DDuet is the product. The assistant is the owner's, and installing one is optional.** Stated as
-a boundary because it is easy to drift across: we detect, we offer, we configure what the owner
-chooses — we do not ship an assistant as part of what DDuet is. If a future change makes Goose
-required, or bundles it, that has crossed this line and needs deciding again.
+**DDuet is the product; installing an assistant is optional.** A boundary, because it is easy to
+drift across: we detect, offer, and configure what the owner chooses. If a change ever makes Goose
+required or bundles it, that has crossed this line and needs deciding again.
 
-Within that: **we do offer to install one**, having said "not doing" while shipping the opposite.
-The objection stands — it picks a winner and makes us a distributor of someone else's CVEs — but
-an assistant is the only *comfortable* way to drive the daemon day to day, so "bring your own" is
-a dead end for someone who has never installed one. Not the only way: the CLI exists, and an owner
-with no assistant still has a working product. Detection wins by default; Goose is the
-alternative an owner picks. Their prebuilt release, never from git. Nothing bundled. **Not Goose
-Desktop on Linux** — deb/rpm only, both need root, and nothing else here does.
+Within that, **we do offer to install one** — having said "not doing" while shipping the opposite.
+The objection stands (it picks a winner, and makes us a distributor of someone else's CVEs), but
+an assistant is the only *comfortable* way to drive the daemon daily, so "bring your own" is a
+dead end for someone who has never installed one. Not the only way: the CLI exists. Detection wins
+by default. Their prebuilt release, never from git, nothing bundled. **Not Goose Desktop on
+Linux** — deb/rpm only, both need root, and nothing else here does.
 
 ---
 
@@ -412,27 +393,20 @@ here, which is how this document grew a second copy of itself.
 3. **Per-caller tool grants** — `"tools"` in `permissions.json`, checked at dispatch.
 4. **Login-start units**, then the Windows installer.
 
-Done items are not listed here. `git log` has them, and a "Next" list that keeps its own history
-stops being read.
+Done items are not listed here. `git log` has them.
 
 ---
 
-**Editing this document.** It records live decisions and the reasoning that would reverse them.
-Not history, not completed work, and not a summary of its own sections — every one of those grew
-back at least once and had to be cut again on 2026-08-04.
+**Editing this document.** It records live decisions and the reasoning that would reverse them —
+not history, not completed work, not a summary of its own sections. Each of those grew back at
+least once.
 
-**Keeping it true.** Sections are not dated, deliberately: a date says when something was written,
-not whether it is still so, and it would not have caught a single one of the staleness bugs found
-on 2026-08-04 — this document claimed we did not install an assistant while the product shipped
-one, and CLAUDE.md listed a fixed bug as the worst open item. Someone still has to notice. Two
-things work better, and both are used here:
+**Sections are not dated, deliberately.** A date says when something was written, not whether it
+is still true, and it would have caught none of the staleness found on 2026-08-04: this document
+claimed we did not install an assistant while the product shipped one. Three things work better:
 
-- **Date reversals, not sections.** A date earns its place exactly where two statements
-  contradict — "reversed 2026-08-03", "withdrawn 2026-08-04" — because then the order is the
-  information.
-- **Anchor a decision to code that asserts it.** "The fence is five tools" cannot drift silently,
-  because `test_asker_tool_surface` names those five: add a sixth and the suite fails, so both
-  have to be edited. Prefer this wherever a decision is mechanically checkable.
-- **State the boundary, not just the behaviour.** "DDuet is the product, the assistant is
-  optional" is what lets a later reader see that bundling Goose has crossed a line. A description
-  of current behaviour cannot be contradicted; a boundary can.
+- **Date reversals, not sections** — where two statements contradict, the order is the information.
+- **Anchor a decision to a test.** "The fence is five tools" cannot drift silently, because
+  `test_asker_tool_surface` names those five.
+- **State the boundary, not the behaviour.** A description of what we do now cannot be
+  contradicted; a boundary can.
