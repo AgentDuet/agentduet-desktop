@@ -190,6 +190,21 @@ Run before building, precisely because the two risks below would have been expen
   Triggered accidentally during the spike by misusing the `Store` API. In-process therefore means
   **a runtime bug takes the daemon down mid-call**, and no `try/except` prevents it.
 
+- **No JS compiler needs shipping.** Javy's `plugin.wasm` is **1.3 MB**, one artifact for every
+  platform, and exports `compile-src` as well as `invoke` — so JS SOURCE can be compiled inside
+  the sandbox at runtime. The alternative was shipping their 13 MB compiler per platform and
+  making tool installation a build step. The JavaScript decision therefore costs 1.3 MB, not 13.
+- **But the engine itself demands WASI**, and this qualifies the deny-by-default claim above.
+  `plugin.wasm` imports `environ_get`, `environ_sizes_get`, `clock_time_get`, `random_get` and a
+  set of `fd_*`. A bare module can be given nothing; a JS ENGINE cannot. So the guarantee is not
+  "we grant nothing" — it is **what we put behind each import**:
+  - `environ_get` must return EMPTY. Our environment holds the model key and the connector
+    credential, and a default `WasiConfig` inherits it. This is the one that would leak silently.
+  - `fd_*` over no preopened directories, so there is no filesystem to reach.
+  - `clock_time_get` and `random_get` are harmless; grant them.
+
+  The sandbox is exactly as tight as that shim. Writing it is the build, not a detail of it.
+
 That last one is the only finding that argues against the decision above. It does not reverse it —
 the subprocess variant costs a spawn on the voice path and inherits our environment by default —
 but it means the in-process choice is a bet that we call the API correctly, and it should be
