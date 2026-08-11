@@ -19,5 +19,17 @@ Never over-promise; if unsure, say the owner will follow up.
      Leave empty and the agent will not offer a callback: it must not promise what the code
      cannot do. -->
 
+## Calls
+<!-- answer  — the agent picks up and speaks for you. This is the default.
+     carry   — the call is bridged onward to your phone system and BOTH SIDES ARE RECORDED
+               to run/recordings/. Nobody is answered by the agent in this mode.
+
+     Only one applies: a call is either answered or carried, never both.
+
+     Before choosing `carry`, know that you are recording two people talking. Whether they
+     have to be told, and by whom, depends on where you and they are. This software does not
+     announce it for you. -->
+answer
+
 ## Never say
 <!-- Topics never to state on your behalf, however readable the source. One per line. -->

@@ -299,6 +299,72 @@ def test_status_and_render() -> None:
        f"undeclared: {sorted(used - set(voice.SAY))}")
 
 
+def test_carry_mode() -> None:
+    """Carrying a call bridges it onward and records BOTH humans. Two things must hold.
+
+    ONE HANDLER. A connector has one `on_incoming_call`, so answering and carrying are
+    exclusive. If both ever registered, the second would win silently and the owner would get
+    whichever module happened to be imported last — with recording as the accident.
+
+    AND CARRYING IS NEVER THE FALLBACK. It is the mode that starts recording two people who did
+    not ask to be recorded, so it has to be chosen. A mistyped heading, an empty file or a
+    missing settings.md must all mean "answer".
+    """
+    print("\n  -- carry mode: recording is chosen, never inherited --")
+    from agentduet_desktop import carry, owner, secretary_agent
+
+    # The DEFAULT and every unreadable value. Parameterised because the failure that matters is
+    # not "the happy path is wrong", it is "something unexpected fell through to recording".
+    import unittest.mock as mock
+    for text, want, why in [
+        ("", owner.CALLS_ANSWER, "an empty settings file"),
+        ("## Calls\nanswer\n", owner.CALLS_ANSWER, "the explicit default"),
+        ("## Calls\ncarry\n", owner.CALLS_CARRY, "the explicit opt-in"),
+        ("## Calls\nCARRY\n", owner.CALLS_CARRY, "case is not a trap"),
+        ("## Calls\ncarrry\n", owner.CALLS_ANSWER, "a typo"),
+        ("## Calls\nrecord everything\n", owner.CALLS_ANSWER, "a plausible-sounding guess"),
+        ("## Cals\ncarry\n", owner.CALLS_ANSWER, "a mistyped HEADING"),
+        ("## Never say\n- pricing\n", owner.CALLS_ANSWER, "no Calls section at all"),
+    ]:
+        with mock.patch.object(owner, "_sections",
+                               lambda t=text: {k.split("\n")[0]: "\n".join(k.split("\n")[1:])
+                                               for k in t.split("## ") if k.strip()}):
+            eq(f"{why} -> {want}", owner.calls(), want)
+
+    # The daemon must CHOOSE. Both registrations reachable from one run of the block would mean
+    # two handlers on one connector, whichever way the setting reads.
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+           / "secretary_agent.py").read_text()
+    block = src[src.index("owner_settings.calls()"):src.index("builder = (TriggerConditions")]
+    ok("the daemon registers carry OR voice, in one if/else",
+       "else:" in block and block.count("carry.register") == 1
+       and block.count("voice.register") == 1, block[:200])
+
+    # No agent speaks on this path, so nothing may claim one does — `status` drives what the
+    # owner is told, and "voice: available" beside a call nobody answered is a lie.
+    ok("carrying does not report voice as available", "status.set_voice(False)" in block)
+
+    # It records to the INSTANCE. The install directory is replaced wholesale on upgrade, so a
+    # recording written there is deleted by the next update, silently.
+    ok("recordings land in the instance, not the install",
+       str(carry.RECORDINGS).startswith(str(paths.RUN)), str(carry.RECORDINGS))
+
+    # The WAV header must match what the SDK sends. A mismatch does not convert anything — it
+    # mislabels the bytes, and the file plays at the wrong speed. Cost hours on the voice path.
+    from agentduet_desktop import voice as _v
+    eq("the WAV rate matches the call audio", carry.SAMPLE_RATE, _v.CALL_SAMPLE_RATE)
+
+    # The SDK rejects a ring time outside 1-120, at call time, on a real call.
+    ok("the ring time is inside the SDK's range", 1 <= carry.RING_SECONDS <= 120,
+       carry.RING_SECONDS)
+
+    # No agent, so no tools: this path must not be able to reach the registry at all.
+    csrc = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+            / "carry.py").read_text()
+    for forbidden in ("brain", "tools", "_tool_declarations", "VoiceAgent"):
+        ok(f"carrying never reaches {forbidden}", forbidden not in csrc)
+
+
 def test_ring_limit() -> None:
     """How often a stranger may make the owner's phone ring.
 
@@ -988,6 +1054,7 @@ def main() -> None:
     test_status_and_render()
     test_tool_installation()
     test_login_item()
+    test_carry_mode()
     test_ring_limit()
     test_hosts()
     test_setup_mode()

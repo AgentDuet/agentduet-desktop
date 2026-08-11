@@ -281,17 +281,28 @@ async def run_channel() -> None:
         # Voice registers a call handler on THIS client. VoiceAgent.serve() would open a
         # second SessionManager on the same connector — the race the comment above describes,
         # from the other side. One client, both handlers, one trigger config.
-        voice_on = voice.register(sm, owner_name())
-        status.set_voice(voice_on)
+        # ONE HANDLER PER CONNECTOR, so this is a choice and not a pair. `## Calls: carry`
+        # bridges the call onward and records both legs; anything else answers it as the
+        # secretary, which is the mode that has been in production. Deciding here rather than
+        # inside either module keeps the exclusivity visible in one place — two modules each
+        # registering "only if the other did not" is how both end up attached.
+        from . import owner as owner_settings
+        if owner_settings.calls() == owner_settings.CALLS_CARRY:
+            from . import carry
+            calls_on = carry.register(sm)
+            status.set_voice(False)        # no agent speaks in this mode; do not claim one does
+        else:
+            calls_on = voice.register(sm, owner_name())
+            status.set_voice(calls_on)
 
         builder = (TriggerConditionsBuilder()
                    .inbound_message(True)
                    .outbound_message(True))
-        if voice_on:
+        if calls_on:
             builder = builder.inbound_call(InboundCallMode.ALL)
         await sm.setup_trigger_conditions(builder.build())
         logger.info("trigger conditions set: inbound_message=True, outbound_message=True, "
-                    "inbound_call=%s", "ALL" if voice_on else "off")
+                    "inbound_call=%s", "ALL" if calls_on else "off")
 
         asyncio.create_task(drain_outbox())
 
