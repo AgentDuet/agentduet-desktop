@@ -152,8 +152,13 @@ Break one of these and the product is a different product.
 
 ## Open — the checklist
 
-Last reviewed 2026-08-03, after consolidating the plans into `docs/design.md`. Items that
-existed only because of the owner interface were removed — see the Cleared note at the end.
+Last reviewed 2026-08-11, after the WhatsApp swap, the rename, and dropping the assistant from
+setup. Items that existed only because of the owner interface were removed on 2026-08-03 — see
+the Cleared note at the end.
+
+**Deck alignment:** the August onboarding flow is tracked per-step in `docs/onboarding-gap.md`,
+which says which side of the line each gap sits on. This list carries only the parts that are
+ours to build.
 
 **Release blockers**
 
@@ -183,6 +188,39 @@ existed only because of the owner interface were removed — see the Cleared not
       never started, and a queued job holds its whole run open — finished builds looked
       unfinished for hours. A pre-2020 Mac cannot run our build; check the chip before sending.
 - [ ] **Notarization.** The `.app` is unsigned, so first launch needs right-click → Open.
+- [ ] **Propose/approve is NOT a fence.** Half done: **written down 2026-08-11** in
+      `docs/design.md`, so the product no longer implies a protection it does not have. What
+      remains is the mechanism — an approval an agent cannot perform. `toolstore.approve()` copies
+      `pending/<name>.js` into `tools/`, so anything that can write `$AGENTDUET_HOME` installs a
+      tool directly — no CLI, no `propose_tool`. Same for `permissions.json` (who gets which
+      tool) and `capabilities.json` (the bounds). The CLI-only approval step therefore holds only
+      against an assistant with neither shell nor file access to that directory: **Claude Code
+      always has Bash; Cowork has folder write; Goose has `developer` one toggle away.** The
+      control that actually matters is whether `$AGENTDUET_HOME` is reachable at all, which is
+      the owner's host configuration and not something we enforce. Two honest fixes: say this
+      plainly in `docs/design.md`, or make approval need something no agent can produce — a code
+      shown on the owner's phone over the product's own channel, typed back. The second converges
+      with outbound, which is unbuilt, and is why this stays open rather than shipping a weaker
+      substitute. NOTE the first framing here was wrong: `design.md` never claimed this was a
+      fence, it OMITTED the limit. Its stated property — the tool cannot choose a destination at
+      call time — is real and enforced in `resolve_url`.
+- [ ] **Pre-public scrub.** Going public leaks `stg.dduet.com` (×3) and
+      `wss-dev.internal.b3networks.com`, and this file names colleagues and vendor limits — it is
+      written for us, not for the world. No secrets are tracked (checked: the only `sk-` match is
+      the deliberate `sk-LEAKED-CANARY` in `test_wasm.py`, and the numbers are placeholders).
+- [ ] **OAuth for BOTH keys** — deck steps 3 and 4. Authorisation creates the AgentDuet key and
+      auto-links the model key, which is the flow's whole claim and the two things it does not
+      have. Ours is the receiving end only: anything read from `.env` is read from the
+      environment at use time, so a key that arrives later needs no restart. See
+      `docs/onboarding-gap.md`.
+- [ ] **A B3-proxied model would DELETE deck step 4.** One credential instead of two: the owner
+      authorises once and there is no model key to link, because we are the provider. Also keeps
+      the knowledge inside B3's boundary, which the current "bring your own key" does not. The
+      cost is that we pay for inference — a pricing decision, not a technical one. Recorded
+      because a free third-party model is the obvious-looking alternative and is not one: the
+      one evaluated (OpenCode's Big Pickle, 2026-08-11) still needs a signup with billing
+      details, is free only "for a limited time", and says collected data may be used to improve
+      the model — which contradicts the whole disclosure pitch, silently, on the owner's behalf.
 - [ ] **Credential storage on Windows** — use the OS credential store, or say plainly that the
       key is plaintext protected only by file mode.
 
@@ -234,6 +272,29 @@ existed only because of the owner interface were removed — see the Cleared not
       **Do that before anyone is told the callback works.**
 
 
+**The trunk use case — a listener, not an agent**
+
+Slide 3 of the August onboarding deck seeds the CPaaS path with "basic call transcription and
+recording out of the box", justified by the AI already sitting between CPaaS and the apps. That
+is a **different product from the secretary**: two humans talk, nobody is answered, nothing is
+decided. None of the fence applies — no knowledge lookup, no disclosure decision, no
+`check_bounds` — which is exactly why it is shippable far sooner, and why the security work is
+not what carries it.
+
+- [ ] **Recording is not built; the transcript is, for the wrong calls.** `voice._make_recorder`
+      writes turns into `memory` and `brain.record`, so a call reads like any conversation — but
+      it is a byproduct of OUR agent talking, from the realtime model's transcript events. We
+      never touch audio: no `.wav`, no frames, nothing. The SDK does support the other shape —
+      `examples/connect_spy_isolated.py`, per-party isolated tracks via `call.caller
+      .audio_stream()` / `call.callee.audio_stream()`. "Spy" there is call-centre vocabulary for
+      supervisor listen-in, not stealth.
+- [ ] **Consent gates this AND outbound campaigns, and neither has an answer.** Recording has
+      jurisdiction-specific rules (PDPA here, two-party-consent regimes elsewhere); an outbound
+      campaign needs to know who is on the list and whether they agreed. Same class of question
+      — capturing or initiating without the other side having agreed — and no amount of the
+      existing architecture addresses it, because every invariant we have governs what the agent
+      may SAY or DO, not whether the other party consented to be in the conversation at all.
+
 **Engineering**
 
 
@@ -250,7 +311,11 @@ existed only because of the owner interface were removed — see the Cleared not
 - [ ] `test_behaviour.py` is **flaky** (~2 in 5 on "bare revision keeps the negotiation
       classification"). A single red line there is a signal to replay, not a verdict.
 - [ ] No behaviour test asserts the configured **pronoun** reaches an answer.
-- [ ] `paths.legacy_leftovers()` misreports the shipped templates as deletable leftovers.
+- [x] ~~`paths.legacy_leftovers()` misreports the shipped templates as deletable leftovers.~~
+      **STALE — it was fixed and this line was not.** It returns `[]` unconditionally and its
+      docstring explains why. Checked 2026-08-11. That makes **four** items in this file that
+      claimed outstanding work already done, which is worth more attention than any of them:
+      the fix is to clear an item in the same commit as the work, not at the next review.
 - [ ] `README.md` still describes `secretary-sample`, not this package.
 
 **Cleared 2026-08-03 — orphaned by the no-interface decision**
