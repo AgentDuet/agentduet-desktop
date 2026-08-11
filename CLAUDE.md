@@ -272,28 +272,59 @@ ours to build.
       **Do that before anyone is told the callback works.**
 
 
-**The trunk use case — a listener, not an agent**
+**The trunk use case — we CARRY the call, we do not listen to it**
 
-Slide 3 of the August onboarding deck seeds the CPaaS path with "basic call transcription and
-recording out of the box", justified by the AI already sitting between CPaaS and the apps. That
-is a **different product from the secretary**: two humans talk, nobody is answered, nothing is
+Slide 3 of the onboarding deck seeds the CPaaS path with "basic call transcription and recording
+out of the box". Slide 4 of `AgentDuet (07 August 2026).pptx` ("Inbound = Ready NOW") gives the
+topology, and it is **not** a forward and not a tap:
+
+```
+Telco ──▶ CPaaS Leg 1 ──▶ AgentDuet WSS ◀──▶ AgentDuet App   (the owner's machine)
+                                │
+                                ▼
+                          CPaaS Leg 2 ──▶ PBX
+```
+
+**Two legs stitched through us — a back-to-back user agent.** Leg 1 terminates ON AgentDuet;
+Leg 2 is ORIGINATED BY AgentDuet toward the PBX. Nothing is attached to somebody else's call,
+because we are the junction. That is why recording is "out of the box": the media is ours by
+construction, not by permission. It also explains the SDK surface — `call.caller` and
+`call.callee` are simply the two legs, so "isolated per-party audio" is the natural shape rather
+than a feature, and `connect()` takes no destination because the destination is Leg 2's
+configured target on the connector.
+
+It is a **different product from the secretary**: two humans talk, nobody is answered, nothing is
 decided. None of the fence applies — no knowledge lookup, no disclosure decision, no
-`check_bounds` — which is exactly why it is shippable far sooner, and why the security work is
-not what carries it.
+`check_bounds` — which is why it is shippable far sooner.
+
+**But the custody question gets BIGGER, not smaller, and that is easy to get backwards.** The
+secretary only ever holds what the owner told it to say. This holds everything anyone says — the
+owner's customers, in conversations we are carrying. The topology answers it, and the answer is
+worth being precise about rather than overclaiming: the App runs on the OWNER'S machine, so
+recordings are **stored** only there. The media still transits B3's WSS to reach it, so "never
+leaves your machine" is false; "stored only on your machine" is defensible and is the stronger
+claim anyway, because it is the one a regulated buyer is actually asking about.
 
 - [ ] **Recording is not built; the transcript is, for the wrong calls.** `voice._make_recorder`
       writes turns into `memory` and `brain.record`, so a call reads like any conversation — but
       it is a byproduct of OUR agent talking, from the realtime model's transcript events. We
-      never touch audio: no `.wav`, no frames, nothing. The SDK does support the other shape —
-      `examples/connect_spy_isolated.py`, per-party isolated tracks via `call.caller
-      .audio_stream()` / `call.callee.audio_stream()`. "Spy" there is call-centre vocabulary for
-      supervisor listen-in, not stealth.
+      never touch audio: no `.wav`, no frames, nothing. `examples/connect_spy_isolated.py` is the
+      working model — `connect(ring_time_seconds=…)` originates Leg 2, then both
+      `call.caller.audio_stream()` and `call.callee.audio_stream()` are consumed to WAV. ("Spy"
+      there is call-centre vocabulary for supervisor listen-in — `whisper()` speaks to the
+      subscriber only, `barge()` to both — not stealth, and not the topology.)
+      **It collides with the secretary:** `voice.register()` already claims `on_incoming_call`,
+      and one connector has one handler. So this is a MODE, not an addition — the owner picks
+      whether the agent answers or the call is carried through to them. Build it behind a
+      setting, default off; rip nothing out until it is proven.
 - [ ] **Consent gates this AND outbound campaigns, and neither has an answer.** Recording has
       jurisdiction-specific rules (PDPA here, two-party-consent regimes elsewhere); an outbound
       campaign needs to know who is on the list and whether they agreed. Same class of question
       — capturing or initiating without the other side having agreed — and no amount of the
       existing architecture addresses it, because every invariant we have governs what the agent
       may SAY or DO, not whether the other party consented to be in the conversation at all.
+      Sharper on this path than on any other: carrying a call means holding both sides of a
+      conversation neither party had with us.
 
 **Engineering**
 

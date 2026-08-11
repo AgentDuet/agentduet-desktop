@@ -42,11 +42,16 @@ Linux and macOS (Apple Silicon).
 
 ## 2. Install & run on PC — done
 
-**Have.** An installer that places the binary, links it onto `PATH`, registers it with whichever
-assistant hosts are present, and can start, stop and report on the background service. It can
-also install a login item so the service comes back after a reboot.
+**Have.** An installer that places the binary, links it onto `PATH`, and can start, stop and
+report on the background service. It can also install a login item so the service comes back
+after a reboot.
 
 This is the step where "no more hosting decision" actually got delivered.
+
+**It no longer asks for an AI assistant** (2026-08-11). Setup used to detect one, offer to
+install Goose, register the mcp and open it. The person this is packaged for does not have a
+coding assistant and should not install one to finish setting up a phone answering service.
+`agentduet-desktop connect` remains for whoever wants it.
 
 **Missing.** Linux system-library detection is partial, and the Windows install path is untested
 because there is no Windows build to test it with.
@@ -144,9 +149,19 @@ The trunk-initiated route skips steps 3, 4 and 5 outright:
 
 That last point deserves saying plainly, because it cuts against an assumption easy to carry in
 from the rest of this repository: **transcription and recording need almost none of the safety
-architecture here.** No knowledge lookup, no disclosure decision, no bounds check — it observes
-and it writes down what it heard. Which makes it much sooner and much safer to ship, and means
+architecture here.** No knowledge lookup, no disclosure decision, no bounds check — nobody is
+answered and nothing is decided. Which makes it much sooner and much safer to ship, and means
 the security work is not what carries the first version.
+
+**It is not a forward and not a tap.** The 07 August topology puts the agent between two legs:
+the inbound call terminates on it, and it originates a second leg onward to the PBX. A
+back-to-back user agent. So the media is ours by construction rather than by permission, which
+is what "out of the box" means here — and the two audio tracks are simply the two legs.
+
+**The custody question therefore gets bigger, not smaller.** The secretary holds only what the
+owner told it to say; this holds everything both parties say. The answer is in the topology —
+the app runs on the owner's own machine — but state it precisely: recordings are **stored** only
+there, while the media transits the platform to reach it.
 
 ## Decisions this surfaces
 
