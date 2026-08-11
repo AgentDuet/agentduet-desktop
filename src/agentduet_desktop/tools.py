@@ -1101,7 +1101,13 @@ def edit_knowledge(file: str, old: str, new: str = "") -> str:
 #: write a section the code never reads — the same silent failure as the heading rename that
 #: emptied the never-say list.
 SETTING_FIELDS = {"name": "Name", "pronoun": "Pronoun", "voice": "Voice",
-                  "never_say": "Never say", "phone": "Phone"}
+                  "never_say": "Never say", "phone": "Phone",
+                  # What happens to a call: `answer` or `carry`. Settable like any other
+                  # heading, but note it is the one whose WRONG value is not merely unhelpful —
+                  # `carry` starts recording two people. owner.calls() only accepts an exact
+                  # match and treats everything else as `answer`, so a typo cannot switch
+                  # recording on by accident.
+                  "calls": "Calls"}
 
 
 def _section_bullets(doc: pathlib.Path, heading: str) -> list[str]:
