@@ -63,13 +63,13 @@
 <body>
 <div class="wrap">
   <h1>Set up your secretary</h1>
-  <p class="lede">Four steps. You tell your AI assistant the rest afterwards.</p>
+  <p class="lede">Four steps. Then it answers for you, whether or not this page is open.</p>
 
   <div class="steps">
     <div id="s1" class="on">1 · install</div>
     <div id="s2">2 · a model</div>
     <div id="s3">3 · your number</div>
-      <div id="s4">4 · your assistant</div>
+      <div id="s4">4 · finish</div>
   </div>
 
   <!-- ---------------- 1 · INSTALL ---------------- -->
@@ -143,23 +143,16 @@
     <div id="m3"></div>
   </section>
 
-  <!-- ---------------- 4 · YOUR ASSISTANT ---------------- -->
+  <!-- ---------------- 4 · FINISH ----------------
+       This step used to be "your AI assistant": detect one, offer to install Goose, register the
+       mcp, open it. That is gone (2026-08-11). The people this is being packaged for — small
+       vendors handed a binary — do not have a coding assistant and should not be asked to
+       install one to finish setting up a phone answering service. It was also the most fragile
+       part of the installer by a wide margin, and it downloaded third-party software.
+       Connecting an assistant is still supported, as an explicit `agentduet-desktop connect`
+       for whoever wants it. -->
   <section class="card" id="c4">
-    <h2>Your AI assistant</h2>
-    <p class="hint">This is how you use the secretary. There is no dashboard.</p>
-    <div class="state" id="hostState">…</div>
-    <button id="doConnect">Connect</button>
-    <button class="ghost" id="doGoose">Install Goose</button>
-    <div id="mHost"></div>
-    <p class="note">Restart it afterwards — it loads its tools at startup.</p>
-    <!-- Appears once an assistant is on disk. Being handed a configured tool with no way to open
-         it is not a finished install, especially for someone whose first assistant this is. -->
-    <div id="launchWrap" hidden>
-      <button id="doLaunch">Open it now</button>
-      <span class="note" id="launchNote"></span>
-      <div id="mLaunch"></div>
-    </div>
-    <hr style="border:0;border-top:1px solid var(--line);margin:1.2rem 0">
+    <h2>Finish</h2>
     <p class="hint">It keeps answering after you close this page.</p>
     <button id="doDone">Done</button>
     <div id="mDone"></div>
@@ -314,31 +307,7 @@
   };
   $('skipInstall').onclick = () => show(2);
 
-  // ---- 4 · your assistant --------------------------------------------------------------
-  // Offering to OPEN it is part of this step, not a nicety. Installing an assistant someone has
-  // never used and then leaving them on a web page is where the flow stopped: "now open a
-  // terminal and type goose" is not an instruction a first-time owner acts on.
-  function showLaunch(found) {
-    if (!found || !found.length) return;
-    $('launchWrap').hidden = false;
-    $('launchNote').textContent = found[0];
-  }
-  fetch(`/api/hosts?t=${T}`).then(r => r.json()).then(d => {
-    $('hostState').textContent = d.found.length
-      ? d.found.join(', ')
-      : 'None found. You would have no way to read your messages.';
-    showLaunch(d.found);
-  }).catch(() => {});
-
-  $('doLaunch').onclick = async () => {
-    $('doLaunch').disabled = true;
-    const d = await post('/api/launch', {});
-    say('mLaunch', d.ok, d.message);
-    // Re-enabled either way: a launch that failed is worth retrying, and a window the owner
-    // closed is worth reopening without reloading the page.
-    $('doLaunch').disabled = false;
-  };
-
+  // ---- 4 · finish ----------------------------------------------------------------------
   // The last act of the installer: start the INSTALLED copy detached and stand this one down.
   // Until this exists, the daemon still running is the file they downloaded — so tidying the
   // Downloads folder leaves a secretary that dies at the next reboot and says nothing.
@@ -346,7 +315,6 @@
     $('doDone').disabled = true;
     const d = await post('/api/handover', {});
     say('mDone', d.ok, d.message);
-    if (d.ok) $('hostState').textContent = 'Running in the background.';
   };
 
   // ---- leaving without finishing -------------------------------------------------------
@@ -386,29 +354,6 @@
                : 'Setup unfinished, so nobody can reach you yet.<br><br>')
       + 'What you saved stays saved.<br>'
       + 'Start again from the app icon, or <code>agentduet-desktop</code>.</div>';
-  };
-
-  $('doConnect').onclick = async () => {
-    $('doConnect').disabled = true;
-    const d = await post('/api/hosts', {});
-    say('mHost', d.ok, d.message);
-    $('doConnect').disabled = false;
-  };
-
-  // Detection is a default, not a decision — finding Claude Code does not mean they want it.
-  $('doGoose').onclick = async () => {
-    $('doGoose').disabled = true;
-    $('hostState').textContent = 'installing Goose — about a minute…';
-    const d = await post('/api/hosts', {install: 'goose'});
-    say('mHost', d.ok, d.message);
-    $('doGoose').disabled = false;
-    // Re-detect: it should now be in the list, and Connect should register with it too. This is
-    // also where the Open button has to appear — the owner has just installed an assistant and
-    // this is the moment they would use it, not after a page reload they have no reason to do.
-    fetch(`/api/hosts?t=${T}`).then(r => r.json())
-      .then(x => { $('hostState').textContent = x.found.join(', ') || 'none found';
-                   showLaunch(x.found); })
-      .catch(() => {});
   };
 
 </script>
