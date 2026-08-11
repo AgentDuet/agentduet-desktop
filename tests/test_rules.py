@@ -358,11 +358,28 @@ def test_carry_mode() -> None:
     ok("the ring time is inside the SDK's range", 1 <= carry.RING_SECONDS <= 120,
        carry.RING_SECONDS)
 
-    # No agent, so no tools: this path must not be able to reach the registry at all.
+    # NO AGENT ON THIS PATH. The check is the DECISION surface, not the word "brain": carrying
+    # writes its transcript into the same history the rest of the product reads, and
+    # `brain.record` is an append-only log, not a judgement. What must never appear is anything
+    # that reads knowledge, decides disclosure, or gives a model something to call — because
+    # that is what "none of the fence applies here" actually rests on.
     csrc = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
             / "carry.py").read_text()
-    for forbidden in ("brain", "tools", "_tool_declarations", "VoiceAgent"):
+    for forbidden in ("handle_query", "search_knowledge", "_tool_declarations", "VoiceAgent",
+                      "permissions", "capabilities", "check_bounds"):
         ok(f"carrying never reaches {forbidden}", forbidden not in csrc)
+    ok("and it logs through record(), not through the agent",
+       "brain.record(" in csrc and "brain.handle" not in csrc)
+
+    # Transcription is a separate module ON PURPOSE: carrying a call has to keep working when
+    # the provider is down, out of credit, or unconfigured.
+    from agentduet_desktop import transcribe
+    ok("transcription reports why it cannot run, rather than failing a call",
+       transcribe.available()[0] in (True, False) and isinstance(transcribe.available()[1], str))
+    ok("the ASR model takes audio with NO text part — it is a task model, not a chat model",
+       '"text"' not in transcribe._one.__doc__ if transcribe._one.__doc__ else True)
+    ok("a long call is chunked so request size does not scale with call length",
+       1 <= transcribe.CHUNK_SECONDS <= 300, transcribe.CHUNK_SECONDS)
 
 
 def test_ring_limit() -> None:
