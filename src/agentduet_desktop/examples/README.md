@@ -10,7 +10,7 @@ the shape before declaring your own.
 
 ## Using one
 
-1. Copy the document into `$DDUET_HOME/knowledge/` (default `~/.dduet/knowledge/`).
+1. Copy the document into `$AGENTDUET_HOME/knowledge/` (default `~/.dduet/knowledge/`).
 2. Declare the capability with the same name, using the bounds in `capability.json`
    (`declare_capability`, or the owner's assistant will do it if asked).
 3. Check `list_knowledge`: the capability and its document should appear as a pair, with no
@@ -35,7 +35,7 @@ the shape before declaring your own.
 | `<name>.md` | what may be **said** — prices, specifics, the words askers use | the model reads it as prose, and it is the single source for values that are only quoted, never compared |
 | `<name>.html` | what may be **clicked** — optional | the shape follows the domain: a menu with sizes looks nothing like a callback form. Omit it and the framework serves a generic time-picker built from the bounds |
 
-Copy the `.md` into `$DDUET_HOME/knowledge/` and the `.html` (if any) into `$DDUET_HOME/canvas/`.
+Copy the `.md` into `$AGENTDUET_HOME/knowledge/` and the `.html` (if any) into `$AGENTDUET_HOME/canvas/`.
 Both are named after the capability — that is how the code finds one from the other.
 
 **Where a value must live in both** (opening hours are gated *and* quoted), the JSON owns it and

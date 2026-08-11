@@ -129,14 +129,14 @@ def available() -> tuple[bool, str]:
         from agentduet_adapters.qwen import QwenVoice  # noqa: F401
     except ImportError as exc:
         return False, f"the Qwen voice adapter is not installed ({exc})"
-    # The instance's key, and only that. The daemon loads $DDUET_HOME/.env into the
+    # The instance's key, and only that. The daemon loads $AGENTDUET_HOME/.env into the
     # environment at startup, so a key attached at setup is visible here.
     #
     # We used to accept ~/.qwen as well. That is the USER's home, not the instance, so a
     # throwaway instance holding no credentials at all still reported "voice: available" —
     # which made a first-run test on a developer machine prove nothing about anyone else's.
     if not os.getenv("DASHSCOPE_API_KEY"):
-        return False, "no DashScope key for this instance — run `dduet-desktop init`"
+        return False, "no DashScope key for this instance — run `agentduet-desktop init`"
     return True, ""
 
 

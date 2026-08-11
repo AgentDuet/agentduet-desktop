@@ -49,7 +49,7 @@ def cmd_run(args) -> int:
             shell.open_in_browser(url)
             print(f"  already running (pid {pid}) — opened {url}")
         else:
-            print(f"  already running (pid {pid}). Use `dduet-desktop stop` to stop it.")
+            print(f"  already running (pid {pid}). Use `agentduet-desktop stop` to stop it.")
         return 0
     if args.no_channel:
         os.environ["SECRETARY_CHANNEL"] = "0"
@@ -153,7 +153,7 @@ def cmd_mcp(args) -> int:
     """BE the MCP server, on stdin/stdout.
 
     Exists so the command an assistant is configured with is stable: `<binary> mcp`. The dev
-    incantation `python -m dduet_desktop.secretary_mcp` cannot be registered on an installed
+    incantation `python -m agentduet_desktop.secretary_mcp` cannot be registered on an installed
     machine — there is no python and no module path, and in a frozen binary sys.executable IS
     the binary. Anything registered without this points at a venv that only exists here.
     """
@@ -178,7 +178,7 @@ def cmd_tools(args) -> int:
             print(f"      {toolstore.PENDING / (n + '.js')}")
         return 0
     if not args.name:
-        print(f"  which tool? `dduet-desktop tools {args.action} <name>`")
+        print(f"  which tool? `agentduet-desktop tools {args.action} <name>`")
         return 1
     if args.action == "approve":
         print("  " + toolstore.approve(args.name))
@@ -199,7 +199,7 @@ def cmd_connect(args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     from . import version_string
-    p = argparse.ArgumentParser(prog="dduet-desktop", description=__doc__.split("\n")[0])
+    p = argparse.ArgumentParser(prog="agentduet-desktop", description=__doc__.split("\n")[0])
     p.add_argument("--version", action="version", version=version_string())
     sub = p.add_subparsers(dest="cmd", required=False)
 

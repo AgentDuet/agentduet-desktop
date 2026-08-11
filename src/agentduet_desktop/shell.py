@@ -33,7 +33,7 @@ from . import paths
 
 logger = logging.getLogger("dduet.shell")
 
-TITLE = "DDuet Desktop"
+TITLE = "AgentDuet Desktop"
 
 
 def site_url(timeout: float = 20.0) -> str | None:

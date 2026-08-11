@@ -18,8 +18,9 @@ __pycache__/
 *.py[cod]
 
 # Instance data must NEVER be committed: it holds the owner's knowledge, their people, and
-# $DDUET_HOME/.env with a model key and a connector credential.
+# $AGENTDUET_HOME/.env with a model key and a connector credential.
 /.dduet/
+/.agentduet-desktop/
 .env
 *.env
 !.env.example

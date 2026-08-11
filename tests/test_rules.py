@@ -26,13 +26,13 @@ from datetime import datetime, timedelta
 
 TMP = pathlib.Path(tempfile.mkdtemp(prefix="secretary-rules-"))
 
-from dduet_desktop import capabilities
-from dduet_desktop import memory
-from dduet_desktop import paths
-from dduet_desktop import permissions
-from dduet_desktop import policy
-from dduet_desktop import schedule
-from dduet_desktop import tools
+from agentduet_desktop import capabilities
+from agentduet_desktop import memory
+from agentduet_desktop import paths
+from agentduet_desktop import permissions
+from agentduet_desktop import policy
+from agentduet_desktop import schedule
+from agentduet_desktop import tools
 
 # Redirect stores BEFORE any test writes. Module-level constants, so this must happen here
 # rather than inside a fixture.
@@ -84,7 +84,7 @@ def test_no_undefined_names() -> None:
     """
     print("\n  -- lint: no undefined names --")
     import subprocess
-    src = pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop"
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
     try:
         done = subprocess.run([sys.executable, "-m", "pyflakes", *sorted(map(str, src.glob("*.py")))],
                               capture_output=True, text=True, timeout=120)
@@ -105,7 +105,7 @@ def test_prompts() -> None:
     """Prompt templates are checked OFFLINE, because on voice the prompt is the control and a
     hole in it is only otherwise discovered by a stranger on the phone."""
     print("\n  -- prompts: templates render, and refuse holes --")
-    from dduet_desktop import prompts
+    from agentduet_desktop import prompts
 
     problems = prompts.check_all()
     ok("every template declares exactly the parameters it uses", not problems, "; ".join(problems))
@@ -148,7 +148,7 @@ def test_asker_tool_surface() -> None:
     """
     print("\n  -- asker: the five tools, and nothing else --")
     import re
-    src = (pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop" / "voice.py").read_text()
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "voice.py").read_text()
 
     declared = set(re.findall(r'\{"name": "(\w+)",', src))
     handlers = set(re.findall(r"@tool\s*\n\s*async def (\w+)\(", src))
@@ -174,7 +174,7 @@ def test_asker_tool_surface() -> None:
     ok("dispatch checks the declared registry, not the handler table",
        "if name not in ASKER_TOOL_NAMES" in src)
     # Compiled in, never read from the instance directory — see the withdrawn checklist item.
-    ok("the registry is not loaded from $DDUET_HOME",
+    ok("the registry is not loaded from $AGENTDUET_HOME",
        not re.search(r"ASKER_TOOLS\s*=\s*.*(json\.load|read_text|paths\.)", src))
 
     # RETURN VALUES ARE CALLER-VISIBLE. A tool result enters the context of a model that is
@@ -202,7 +202,7 @@ def test_untrusted_marking() -> None:
     quoted to a privileged one.
     """
     print("\n  -- untrusted: what a stranger wrote is marked as theirs --")
-    from dduet_desktop import tools
+    from agentduet_desktop import tools
 
     ok("a stranger's words are delimited", tools.UNTRUSTED_MARK in tools.untrusted("hello"))
     ok("empty stays empty", tools.untrusted("") == "")
@@ -217,7 +217,7 @@ def test_untrusted_marking() -> None:
 
     # The owner's OWN words must not be marked as a stranger's — it would teach the reader to
     # ignore the label, and the label only works while it means something.
-    src = (pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop" / "tools.py").read_text()
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "tools.py").read_text()
     ok("the secretary's own answers are not marked", 'untrusted(r["answer"])' not in src
        and "untrusted(r['answer'])" not in src)
 
@@ -230,7 +230,7 @@ def test_tool_grants() -> None:
     rather than a capability we hid.
     """
     print("\n  -- grants: tools are per caller --")
-    from dduet_desktop import permissions
+    from agentduet_desktop import permissions
 
     eq("a stranger gets exactly the safe two",
        permissions.tools_for("nobody@x", False), ["search_knowledge", "escalate"])
@@ -254,7 +254,7 @@ def test_tool_grants() -> None:
        and "book" not in permissions.tools_for("v@x", True))
 
     # The grant is not the bounds check. Both must run, or a granted caller books without limits.
-    src = (pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop" / "voice.py").read_text()
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "voice.py").read_text()
     ok("dispatch checks the grant as well as the registry",
        "permissions.tools_for(caller, verified)" in src)
     ok("and the bounds check still stands behind it", "capabilities.check_bounds" in src)
@@ -268,7 +268,7 @@ def test_status_and_render() -> None:
     removes the field.
     """
     print("\n  -- returns: the handler cannot write what the caller hears --")
-    from dduet_desktop import voice
+    from agentduet_desktop import voice
 
     # THE WHOLE POINT. A handler smuggling prose, a path and an exception gets none of it through.
     out = voice._render({"status": "booked", "at": "10:00", "say": "PWNED",
@@ -293,7 +293,7 @@ def test_status_and_render() -> None:
     # Every status a handler can return must exist in the table, or it renders as unavailable at
     # runtime — a silent downgrade nobody would notice until a caller was told the wrong thing.
     import re
-    src = (pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop" / "voice.py").read_text()
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "voice.py").read_text()
     used = set(re.findall(r'"status": "(\w+)"', src))
     ok("every status a handler returns is declared", used <= set(voice.SAY),
        f"undeclared: {sorted(used - set(voice.SAY))}")
@@ -307,7 +307,7 @@ def test_ring_limit() -> None:
     a product whose promise is "it answers so you do not have to" is the product failing.
     """
     print("\n  -- ring limit: a caller cannot make the phone unusable --")
-    from dduet_desktop import voice
+    from agentduet_desktop import voice
 
     voice._rings.clear()
     allowed = [voice._may_ring("a@x") for _ in range(voice.RING_PER_CALLER + 2)]
@@ -326,7 +326,7 @@ def test_ring_limit() -> None:
     voice._rings.append((0.0, "a@x"))          # an ancient ring
     ok("old rings fall out of the window", voice._may_ring("a@x"))
 
-    src = (pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop" / "voice.py").read_text()
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "voice.py").read_text()
     ok("both ringing tools are limited", src.count("if not _may_ring(caller):") == 2)
     # REFUSING TO RING IS NOT REFUSING THE CALLER. The escalation is recorded either way, or an
     # abuse control becomes a way to silence people.
@@ -345,7 +345,7 @@ def test_tool_installation() -> None:
     A single registry entry would undo this, so its absence is asserted rather than remembered.
     """
     print("\n  -- tools: proposed by the assistant, approved by the owner --")
-    from dduet_desktop import toolstore
+    from agentduet_desktop import toolstore
 
     toolstore.ACTIVE = TMP / "tools"
     toolstore.PENDING = toolstore.ACTIVE / "pending"
@@ -369,7 +369,7 @@ def test_tool_installation() -> None:
     ok("but there is no way to APPROVE one through it",
        not [k for k in tools.OWNER_TOOLS if "approve" in k],
        f"found {[k for k in tools.OWNER_TOOLS if 'approve' in k]}")
-    cli = (pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop" / "cli.py").read_text()
+    cli = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "cli.py").read_text()
     ok("approving lives in the CLI, where a person types it", "toolstore.approve(args.name)" in cli)
 
 
@@ -384,7 +384,7 @@ def test_login_item() -> None:
     print("\n  -- login item: no parameters, on purpose --")
     import inspect
     import tempfile
-    from dduet_desktop import loginitem
+    from agentduet_desktop import loginitem
 
     # THE ASSERTION THAT MATTERS. One added argument would undo the whole reasoning.
     for fn in (loginitem.install_login_item, loginitem.remove_login_item,
@@ -394,7 +394,7 @@ def test_login_item() -> None:
 
     tmp = pathlib.Path(tempfile.mkdtemp())
     real_unit, real_target = loginitem.LINUX_UNIT, loginitem._target
-    loginitem.LINUX_UNIT = tmp / "dduet-desktop.service"
+    loginitem.LINUX_UNIT = tmp / "agentduet-desktop.service"
     exe = tmp / "bin"; exe.write_text("#!/bin/sh\n"); exe.chmod(0o755)
     link = tmp / "link"; link.symlink_to(exe)
     loginitem._target = lambda: link
@@ -426,7 +426,7 @@ def test_login_item() -> None:
 
     # It registers the SYMLINK. A versioned path would keep launching the old build after an
     # update, silently, because the new one is never started.
-    src = (pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop"
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
            / "loginitem.py").read_text()
     ok("it registers the stable symlink, not the versioned payload",
        "install.installed_path()" in src)
@@ -435,7 +435,7 @@ def test_login_item() -> None:
 def test_hosts() -> None:
     """Assistant detection and registration. Model-free: it is paths and process calls."""
     print("\n  -- hosts: what an assistant is told to launch --")
-    from dduet_desktop import hosts
+    from agentduet_desktop import hosts
 
     # PATH-INDEPENDENCE. A double-clicked app inherits the desktop session's environment, not the
     # shell's, and ~/.local/bin is often missing from it — so `shutil.which` found nothing and
@@ -468,7 +468,7 @@ def test_hosts() -> None:
     # The dev incantation cannot be registered on an installed machine — no python, no module
     # path — so a frozen build must register ITSELF. Getting this wrong produces a config that
     # works on the developer's laptop and nowhere else.
-    ok("from source it launches the module", cmd[1:] == ["-m", "dduet_desktop.secretary_mcp"], cmd)
+    ok("from source it launches the module", cmd[1:] == ["-m", "agentduet_desktop.secretary_mcp"], cmd)
 
     import sys
     sys.frozen = True                       # pretend to be a PyInstaller build
@@ -477,11 +477,18 @@ def test_hosts() -> None:
            hosts.launch_command())
         # The registered path must be the SYMLINK when one exists, never the versioned file —
         # otherwise every update silently breaks the owner's assistant.
-        from dduet_desktop import install
+        from agentduet_desktop import install
         link = install.installed_path()
         if link.is_symlink() and link.resolve().is_file():
             ok("it registers the stable symlink, not the versioned payload",
                hosts.launch_command()[0] == str(link), hosts.launch_command()[0])
+        else:
+            # SAY SO. This check is conditional on the product being installed, and when it is
+            # not it used to vanish from the run — the total dropped by one and nothing said
+            # why. That is indistinguishable from a check being deleted, and it is how the
+            # rename nearly passed unnoticed: `installed_path()` moved to the new binary name,
+            # the old install stopped matching, and the suite just counted one lower.
+            print(f"  SKIP  it registers the stable symlink — {link} is not installed here")
     finally:
         del sys.frozen
 
@@ -511,9 +518,9 @@ def test_setup_mode() -> None:
     print("\n  -- setup mode: the installer must not hold the channel --")
     import os
     import re
-    from dduet_desktop import llm, owner
+    from agentduet_desktop import llm, owner
 
-    src = pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop"
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
 
     # ONE definition. Checked in the source because the alternative is importing both modules,
     # and this suite must run with no venv: `web` pulls in aiohttp, `secretary_agent` the SDK.
@@ -960,7 +967,7 @@ def test_knowledge_writes() -> None:
     # owner.md is a knowledge document like any other: the instructions/facts split was not a
     # real mechanism (the file is parsed field by field, never injected as prose), so excluding
     # it from retrieval only meant the owner's own facts could not be found.
-    from dduet_desktop import folder_index
+    from agentduet_desktop import folder_index
     (paths.KNOWLEDGE / "owner.md").write_text("# Owner\n\n## Who\n- Runs a bakery.\n")
     indexed = [q.name for q in folder_index.files_under(paths.KNOWLEDGE)]
     ok("owner.md is indexed like any other document", "owner.md" in indexed, str(indexed))

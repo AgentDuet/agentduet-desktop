@@ -11,7 +11,7 @@ split we built the product around would have a back door.
 So a proposal and an approval are different acts, in different places:
 
     propose_tool()            an mcp tool — the assistant writes JS into tools/pending/
-    dduet-desktop tools ok    a command the OWNER types — moves it into tools/
+    agentduet-desktop tools ok    a command the OWNER types — moves it into tools/
 
 The daemon loads from `tools/` and never looks in `pending/`. There is deliberately no
 `approve_tool` in the owner registry: adding one would undo this in a single line, so its absence
@@ -97,7 +97,7 @@ def propose(name: str, source: str, endpoints: dict | None = None) -> str:
     return (f"Proposed {name!r}. It is NOT active — nothing will run it yet.\n"
             f"Written to {_path(name, pending=True)}\n{listed}\n"
             f"Read it, then switch it on yourself with:\n"
-            f"    dduet-desktop tools approve {name}\n\n"
+            f"    agentduet-desktop tools approve {name}\n\n"
             f"That step is a command you type on purpose. I cannot do it for you, and neither "
             f"can anything that talks to me.")
 
@@ -106,7 +106,7 @@ def approve(name: str) -> str:
     """Make a proposed tool active. Called from the CLI, never from the registry."""
     src = _path(name, pending=True)
     if not src.is_file():
-        return f"No proposed tool called {name!r}. `dduet-desktop tools list` shows what is waiting."
+        return f"No proposed tool called {name!r}. `agentduet-desktop tools list` shows what is waiting."
     ACTIVE.mkdir(parents=True, exist_ok=True)
     _path(name).write_text(src.read_text())
     src.unlink()

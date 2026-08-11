@@ -6,7 +6,7 @@ points metadata does not exist inside a frozen bundle.
 
 import sys
 
-from dduet_desktop.cli import main
+from agentduet_desktop.cli import main
 
 if __name__ == "__main__":
     sys.exit(main())

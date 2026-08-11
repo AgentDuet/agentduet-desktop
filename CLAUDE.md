@@ -1,8 +1,8 @@
-# CLAUDE.md — dduet-desktop
+# CLAUDE.md — agentduet-desktop
 
-The release package for **DDuet Desktop**: a secretary that runs on the owner's machine, answers
-external parties over the DDUET channel, escalates what it should not decide, and can act only
-inside limits the owner declared.
+The release package for **AgentDuet Desktop**: a secretary that runs on the owner's machine,
+answers external parties over WhatsApp and by phone, escalates what it should not decide, and
+can act only inside limits the owner declared.
 
 Split out of `../secretary-sample/` on 2026-07-30. That folder still exists and still runs the
 POC demo — **do not assume a change here is there, or vice versa.** They will diverge; this one
@@ -11,35 +11,36 @@ is the deliverable.
 ## Layout
 
 ```
-src/dduet_desktop/        the framework — 23 modules, package-relative imports
+src/agentduet_desktop/        the framework — 23 modules, package-relative imports
   web.html sim.html       the owner's view, the channel simulator
   setup.html              first-run setup (2 steps)
   canvas-default.html     generic asker-facing surface for a capability with no page of its own
-  templates/              seeded ONCE into $DDUET_HOME on first run, then owned by the owner
+  templates/              seeded ONCE into $AGENTDUET_HOME on first run, then owned by the owner
   examples/               working capabilities to copy from — NEVER installed
 tests/                    test_rules (model-free), test_behaviour (drives a real model), test_isolation
 packaging/                PyInstaller spec
 entry.py                  frozen-binary entry point (a spec cannot use a console-script name)
 ```
 
-Instance data lives in **`$DDUET_HOME`** (default `~/.dduet`): `settings.md`, `knowledge/`,
+Instance data lives in **`$AGENTDUET_HOME`** (default `~/.agentduet-desktop` — *not*
+`~/.agentduet`, which is where an SDK user's API key goes): `settings.md`, `knowledge/`,
 `canvas/`, `people/`, `permissions.json`, `capabilities.json`, `.env`, `run/`.
 
-Build: `uv build --wheel` · `pyinstaller --distpath dist-bin packaging/dduet-desktop.spec`
-(needs a build venv with the working SDK — see Blockers). ~35s, output `dist-bin/dduet-desktop`.
+Build: `uv build --wheel` · `pyinstaller --distpath dist-bin packaging/agentduet-desktop.spec`
+(needs a build venv with the working SDK — see Blockers). ~35s, output `dist-bin/agentduet-desktop`.
 
 **Don't rebuild to iterate.** `./dev.sh` restarts from source in ~3s against the same
-`$DDUET_HOME`, and the pages (`web.html`, `settings.html`, `setup.html`, `sim.html`) are
+`$AGENTDUET_HOME`, and the pages (`web.html`, `settings.html`, `setup.html`, `sim.html`) are
 `read_text()` **per request** — an HTML change needs only a browser refresh, no restart and no
 build. Rebuild only to test the real install or to ship. The site token survives a restart, so
 an open tab keeps working either way.
 
 ## Working rules
 
-- **Never wipe `$DDUET_HOME`.** No `rm -rf ~/.dduet` to "start clean" — correct the specific
+- **Never wipe `$AGENTDUET_HOME`.** No `rm -rf` on it to "start clean" — correct the specific
   file or key instead. Clearing it destroys the owner's setup, the knowledge they have built up
   by using the agent, and `run/secretary.pid`, after which a second launch cannot see the first
-  and both fight for port 8899. Use a throwaway `DDUET_HOME=/tmp/...` for experiments.
+  and both fight for port 8899. Use a throwaway `AGENTDUET_HOME=/tmp/...` for experiments.
 - **Check what is already running before starting anything** (`status`, or `ss -ltnp | grep 8899`).
   `--onefile` shows TWO processes per launch — a bootloader and its child — which is normal, not
   a duplicate.
@@ -119,7 +120,7 @@ Break one of these and the product is a different product.
 
 - **PyInstaller cannot see lazy imports.** `web`, `brain`, `tools` and the provider SDKs are
   imported inside functions; the binary builds clean and fails at runtime. The spec collects
-  `dduet_desktop` submodules explicitly. Never `collect_submodules("mcp")` — `mcp.cli` calls
+  `agentduet_desktop` submodules explicitly. Never `collect_submodules("mcp")` — `mcp.cli` calls
   `sys.exit(1)` at import and aborts the build.
 - **pywebview has no GUI backend inside a `--onefile` binary on Linux** (GTK/Qt Python bindings
   are system libraries). `webview.start()` raises; the window is optional and must fall back to
@@ -141,7 +142,7 @@ Break one of these and the product is a different product.
   test blocks and daemons mid-run. Kill by PID or port.
 - **SIGTERM is caught somewhere in the async stack** and does not always exit. `stop` verifies
   and escalates to SIGKILL; never report "stopped" on the strength of a signal sent.
-- **`chmod 0600` is a no-op on Windows.** The model key in `$DDUET_HOME/.env` is unprotected there.
+- **`chmod 0600` is a no-op on Windows.** The model key in `$AGENTDUET_HOME/.env` is unprotected there.
 - **Python ≥3.12** — the SDK requires it.
 
 ## Open — the checklist
@@ -182,11 +183,11 @@ existed only because of the owner interface were removed — see the Cleared not
 
 **Backend, not this package**
 
-- [ ] Identity: does DDUET issue a stable identity, and carry the verified property?
-- [ ] **Directory/discovery.** DDUET carries no phone number — the subscriber is the connector
-      uuid, the visitor is an email. A per-agent URL exists (`stg.dduet.com/<slug>/chat`) but
-      only on staging; prod DDUET needs `AGENTDUET_BASE_URL=ws://wss-dev...` today, which
-      conflicts with voice arriving on prod. One client, one base URL.
+- [ ] Identity: does AgentDuet issue a stable identity, and carry the verified property?
+- [x] ~~**Directory/discovery.**~~ **MOOT 2026-08-11.** This described the DDUET web-chat
+      surface, which is gone. WhatsApp and voice both arrive on prod, so there is no base-URL
+      conflict left and nothing to discover a per-agent URL for. Discovery becomes a real
+      question again only if a web surface returns.
 - [x] ~~**Reply over WhatsApp.**~~ **BUILT 2026-08-11** — WhatsApp is now the messaging channel,
       not an unhandled network. `on_incoming_message` accepts `Network.WA`, replies with
       `SendWAMessage` in the `wa_echo_bot.py` shape (`_wa_text`, one helper so the asker reply and
@@ -239,8 +240,8 @@ existed only because of the owner interface were removed — see the Cleared not
       agent can reach that can write that file can grant the agent tools, and the asker agent
       reads text written by strangers. That is the OpenClaw failure shape (see `docs/tool-surface-
       risk.md`), reintroduced as a refactor. If it is ever revisited, the list must be BUILD-TIME
-      data compiled into the binary, never read from `$DDUET_HOME`.
-- [ ] `dduet-desktop tool <name> [--arg=value]` — one generic verb dispatching into the registry.
+      data compiled into the binary, never read from `$AGENTDUET_HOME`.
+- [ ] `agentduet-desktop tool <name> [--arg=value]` — one generic verb dispatching into the registry.
 - [ ] `test_behaviour.py` is **flaky** (~2 in 5 on "bare revision keeps the negotiation
       classification"). A single red line there is a signal to replay, not a verdict.
 - [ ] No behaviour test asserts the configured **pronoun** reaches an answer.

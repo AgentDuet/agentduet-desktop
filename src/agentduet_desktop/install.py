@@ -34,15 +34,15 @@ from . import build_id
 #: /Applications is the destination, so neither of these applies.
 #:
 #: XDG user-level binaries. On PATH by default on most desktop Linux; we check rather than
-#: assume, because a PATH that does not include it turns `dduet-desktop` into "command not found"
+#: assume, because a PATH that does not include it turns `agentduet-desktop` into "command not found"
 #: at exactly the moment the owner is told to type it.
 BIN_DIR = pathlib.Path.home() / ".local/bin"
 DESKTOP_DIR = pathlib.Path.home() / ".local/share/applications"
-APP_ID = "dduet-desktop"
+APP_ID = "agentduet-desktop"
 
 #: VERSIONED PAYLOAD + SYMLINK, copied from how Claude Code installs itself:
 #:
-#:     ~/.local/bin/dduet-desktop  ->  ~/.local/share/dduet-desktop/versions/0.1.0a2
+#:     ~/.local/bin/agentduet-desktop  ->  ~/.local/share/agentduet-desktop/versions/0.1.0a2
 #:
 #: Three reasons, and the third is the one that matters most here:
 #:
@@ -182,11 +182,11 @@ def install() -> str:
         bundle = _app_bundle()
         if bundle is None:
             return ("This is the bare binary, not the app. Open the DMG and drag "
-                    "DDuet Desktop to your Applications folder.")
+                    "AgentDuet Desktop to your Applications folder.")
         if str(bundle).startswith("/Applications/"):
             return f"Installed — running from {bundle}."
         return (f"Running from {bundle}.\n"
-                f"Drag DDuet Desktop to your Applications folder, then open it from there. "
+                f"Drag AgentDuet Desktop to your Applications folder, then open it from there. "
                 f"Until you do, your AI assistant will be told to launch the secretary from "
                 f"this location — and moving it later would break that link.")
 
@@ -266,7 +266,7 @@ def _desktop_entry(target: pathlib.Path) -> str:
         entry.write_text(
             "[Desktop Entry]\n"
             "Type=Application\n"
-            "Name=DDuet Desktop\n"
+            "Name=AgentDuet Desktop\n"
             "Comment=A secretary that answers your calls and messages\n"
             f"Exec={target}\n"
             "Terminal=false\n"

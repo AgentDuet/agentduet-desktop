@@ -24,7 +24,7 @@ to open it is not a finished install. See `launch_assistant`.
 
 WHY THE COMMAND IS `<binary> mcp`
 
-Not `python -m dduet_desktop.secretary_mcp`. That works only here: an installed owner has no
+Not `python -m agentduet_desktop.secretary_mcp`. That works only here: an installed owner has no
 python and no module path, and inside a frozen binary `sys.executable` IS the binary. Anything
 registered the dev way points at a venv that exists on one machine.
 
@@ -48,15 +48,15 @@ import sys
 def launch_command() -> list[str]:
     if getattr(sys, "frozen", False):
         # THE SYMLINK, not sys.executable. An installed build lives at a versioned path
-        # (~/.local/share/dduet-desktop/versions/0.1.0a2) and sys.executable resolves to it —
+        # (~/.local/share/agentduet-desktop/versions/0.1.0a2) and sys.executable resolves to it —
         # so registering that would go stale on the next update and the owner's assistant would
-        # quietly lose the secretary. ~/.local/bin/dduet-desktop always points at current.
+        # quietly lose the secretary. ~/.local/bin/agentduet-desktop always points at current.
         from . import install
         link = install.installed_path()
         if link.is_symlink() and link.resolve().is_file():
             return [str(link), "mcp"]
         return [sys.executable, "mcp"]          # not installed yet: register where it is
-    return [sys.executable, "-m", "dduet_desktop.secretary_mcp"]
+    return [sys.executable, "-m", "agentduet_desktop.secretary_mcp"]
 
 
 #: Name the server is registered under. Deliberately not "secretary": a user-scoped server of
@@ -184,7 +184,7 @@ def registration() -> list[tuple[str, str]]:
             out.append((label, "could not read its config"))
             continue
         if got is None:
-            out.append((label, "NOT registered — run `dduet-desktop connect`"))
+            out.append((label, "NOT registered — run `agentduet-desktop connect`"))
         elif got != want:
             out.append((label, f"registered, but pointing at {got[0]} — run `connect` to fix"))
         else:
@@ -346,7 +346,7 @@ GOOSE_DISABLE = ["developer"]
 #: Goose's "tom" extension injects this into every turn. A blank prompt tells a first-time user
 #: nothing; this tells them what they have and what to ask for.
 GOOSE_ORIENTATION = (
-    "You are connected to DDuet Desktop, a secretary that answers this person's calls and "
+    "You are connected to AgentDuet Desktop, a secretary that answers this person's calls and "
     "messages while they are away. Use the `dduet` tools. If they seem unsure what to do, "
     "suggest: \"what is waiting for me?\", \"who has contacted me?\", \"is my secretary "
     "running?\", or telling you what they do so the secretary can answer for them."
@@ -378,7 +378,7 @@ def _set_goose_provider(cfg: dict) -> list[str]:
     exist on every machine (headless, WSL, some desktops), and a keyring write that fails is how
     this whole step broke the first time. File storage is Goose's own documented alternative and
     behaves the same everywhere. It is 0600, and the same key is already on disk at that mode in
-    $DDUET_HOME/.env, so this adds no new exposure — but it IS weaker than a keyring, and the
+    $AGENTDUET_HOME/.env, so this adds no new exposure — but it IS weaker than a keyring, and the
     installer says so rather than quietly downgrading them.
     """
     from . import llm
@@ -732,16 +732,16 @@ def connect(apply: bool = True, install: str = "") -> str:
         return "\n".join(head + [
             "  No AI assistant found.",
             "",
-            "  `dduet-desktop connect --install goose` will install one. Goose is the option we",
+            "  `agentduet-desktop connect --install goose` will install one. Goose is the option we",
             "  suggest: it works with any model provider including local ones, the software is",
             "  free, and it has real per-tool permission modes.",
             "",
             "  DDuet works without one — the daemon still answers calls and messages, and",
-            "  `dduet-desktop status` shows what is happening. But there is no way to read",
+            "  `agentduet-desktop status` shows what is happening. But there is no way to read",
             "  your escalations or change what it knows until you have one.",
             "",
             "  Any MCP-speaking assistant works. Claude Code and Goose are the two we test.",
-            "  Install one, then run `dduet-desktop connect` again."])
+            "  Install one, then run `agentduet-desktop connect` again."])
 
     lines = head + [f"  Found: {', '.join(found)}", ""]
     for label in found:

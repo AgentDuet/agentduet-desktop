@@ -341,7 +341,7 @@ async def main() -> None:
         logger.info("Owner site: %s", await web.start())
     except Exception as exc:
         logger.warning("Owner site did not start (%s: %s) — carrying on. Inbound is unaffected; "
-                       "reach this daemon through the mcp, or `dduet-desktop status`.",
+                       "reach this daemon through the mcp, or `agentduet-desktop status`.",
                        type(exc).__name__, exc)
 
     logger.info("Secretary up for %s", owner_name())
@@ -429,7 +429,7 @@ async def main() -> None:
 
 
 def run() -> int:
-    """Synchronous entry point, for `dduet-desktop run`."""
+    """Synchronous entry point, for `agentduet-desktop run`."""
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

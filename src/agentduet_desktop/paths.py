@@ -1,20 +1,21 @@
 """Where everything lives — the one place that knows install from instance.
 
-DDuet Desktop is meant to be distributed: a user installs the code, attaches their own
+AgentDuet Desktop is meant to be distributed: a user installs the code, attaches their own
 model, and is interviewed into a configuration. That only works if there is a hard line
 between what an upgrade REPLACES and what it must never touch:
 
   install   the code, plus assets that ship with it (web.html, sim.html, templates).
             Replaced wholesale on upgrade. The user never edits it.
   instance  owner.md, knowledge/, people/, permissions.json, capabilities.json, .env and
-            run/ — everything the user or the agent authored. Lives under $DDUET_HOME
-            (default ~/.dduet). Never touched by an upgrade; one directory to back up.
+            run/ — everything the user or the agent authored. Lives under $AGENTDUET_HOME
+            (default ~/.agentduet-desktop). Never touched by an upgrade; one directory
+            to back up.
 
 Before this module, instance data sat *inside* the install directory, so "upgrade the
 code" and "keep my configuration" were the same directory. Fine for a POC on one laptop,
 fatal for anything shipped.
 
-`$DDUET_HOME` was already the convention for the search index (folder_index.home()), so
+`$AGENTDUET_HOME` was already the convention for the search index (folder_index.home()), so
 this consolidates rather than invents.
 
 MIGRATION is by COPY, not move: the originals stay put as a backup until the owner deletes
@@ -32,8 +33,25 @@ INSTALL = pathlib.Path(__file__).parent
 
 
 def home() -> pathlib.Path:
-    """The instance directory. Overridable, which is also what makes tests cheap."""
-    return pathlib.Path(os.getenv("DDUET_HOME", pathlib.Path.home() / ".dduet"))
+    """The instance directory. Overridable, which is also what makes tests cheap.
+
+    ONE PATH, no fallback to the pre-rename `~/.dduet`. A fallback was written first and then
+    deleted: it existed to protect instance data, and at the rename there was none worth
+    protecting — every alpha instance held nothing but seeded templates, a few test queries and
+    a `.env`. Carrying two possible instance directories forever, so that an owner can edit one
+    while the daemon runs the other, is a worse bug than asking two alpha users to set up again.
+    An old directory is not read, but it IS reported (see the notice at the bottom of this
+    module) so nobody silently wonders where their setup went.
+
+    NOT `~/.agentduet` — that name is TAKEN. It is where an SDK user puts their AgentDuet
+    key, one line, mode 0600, the same convention as `~/.gemini`. Defaulting the instance
+    directory there collides with a file that predates this product, and `mkdir` fails with a
+    bare FileExistsError naming a path the owner never chose. `.agentduet-desktop` also names
+    the right thing: this is the desktop product's instance, not the platform's config.
+    """
+    if explicit := os.getenv("AGENTDUET_HOME"):
+        return pathlib.Path(explicit)
+    return pathlib.Path.home() / ".agentduet-desktop"
 
 
 HOME = home()
@@ -89,6 +107,15 @@ def migrate() -> list[str]:
     files with a stale template.
     """
     seeded = []
+    # A FILE where the instance directory should be is not a crash to leak raw. `mkdir` raises a
+    # bare FileExistsError naming a path the owner never picked, from an import, before anything
+    # has printed — which is how a wrong default becomes an unreadable stack trace. Say what is
+    # in the way and how to point elsewhere. (Found the hard way: `~/.agentduet` is already
+    # an API-key file on a developer machine.)
+    if HOME.exists() and not HOME.is_dir():
+        raise SystemExit(
+            f"{HOME} is a file, not a directory, so it cannot hold the instance.\n"
+            f"Move it aside, or set AGENTDUET_HOME to somewhere else.")
     HOME.mkdir(parents=True, exist_ok=True)
     for dest, legacy in _MIGRATE:
         if dest.exists() or not legacy.exists():
@@ -120,7 +147,13 @@ def legacy_leftovers() -> list[pathlib.Path]:
 #: and get an empty list — because the import above had already done the work — and then tell a
 #: first-time owner their instance was "already present" seconds after creating it.
 SEEDED = migrate()
-if SEEDED and os.getenv("DDUET_QUIET") != "1":
-    print(f"dduet: created your instance at {HOME}", file=sys.stderr)
+if SEEDED and os.getenv("AGENTDUET_QUIET") != "1":
+    print(f"agentduet: created your instance at {HOME}", file=sys.stderr)
     for line in SEEDED:
         print(f"  {line}", file=sys.stderr)
+    # Only when a FRESH instance was just created — that is the exact moment someone who used
+    # the pre-rename build wonders where their configuration went. `home()` deliberately does
+    # not read this directory; saying nothing would look like the setup had been lost.
+    if (legacy := pathlib.Path.home() / ".dduet").is_dir() and legacy != HOME:
+        print(f"  note: an older instance exists at {legacy}. It is not read any more — copy "
+              f"over what you want (usually just .env) and delete it.", file=sys.stderr)

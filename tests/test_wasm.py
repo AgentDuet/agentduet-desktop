@@ -26,7 +26,7 @@ import tempfile
 # ISOLATION FIRST, BEFORE ANY IMPORT. A fulfiller test reads knowledge through the real
 # permission path, and without this it reads the OWNER'S documents — which is how a "safe" test
 # quietly starts depending on one machine's private data.
-os.environ["DDUET_HOME"] = tempfile.mkdtemp(prefix="wasm-test-")
+os.environ["AGENTDUET_HOME"] = tempfile.mkdtemp(prefix="wasm-test-")
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "src"))
 
@@ -57,7 +57,7 @@ def main() -> int:
     os.environ["AGENTDUET_API_KEY"] = "adk-LEAKED-CANARY-0002"
 
     try:
-        from dduet_desktop import wasm_host
+        from agentduet_desktop import wasm_host
     except ImportError as exc:
         ok("the wasm host module exists", False, f"{exc}")
         print(f"\n  {PASS} passed, {FAIL} failed")
@@ -98,7 +98,7 @@ def main() -> int:
     # they ALL PASSED while `inherit_env()` was still in the host. They prove the engine is
     # minimal, not that we configured the sandbox correctly. A test that passes when the code is
     # wrong manufactures confidence, so the configuration is asserted directly.
-    host = (pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop" / "wasm_host.py")
+    host = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "wasm_host.py")
     src = "\n".join(l for l in host.read_text().splitlines() if not l.strip().startswith("#"))
     # The CALL, not the word. The docstring explains why inherit_env() was removed, and matching
     # prose instead of code is how a check starts failing for being well documented — the same
@@ -159,7 +159,7 @@ def main() -> int:
     ok("an unknown request kind is refused", out["status"] == "tool_failed", str(out))
 
     # ---- the fulfiller: where a request meets the owner's grants ---------------------------
-    from dduet_desktop import paths
+    from agentduet_desktop import paths
     (paths.KNOWLEDGE).mkdir(parents=True, exist_ok=True)
     (paths.KNOWLEDGE / "hours.md").write_text("We open at 9am on weekdays.")
 
@@ -172,7 +172,7 @@ def main() -> int:
        "9am" in str(out.get("result", {}).get("text", "")), str(out)[:200])
 
     # THE POINT of routing through permissions: a tool must not be a way around disclosure.
-    host_src = (pathlib.Path(__file__).parent.parent / "src" / "dduet_desktop"
+    host_src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
                 / "wasm_host.py").read_text()
     ok("knowledge is fetched through the same gate as the built-in tool",
        "permissions.context_for(caller, verified, query)" in host_src)
@@ -186,8 +186,8 @@ def main() -> int:
     # ---- reaching the outside: the owner names it, the tool asks by name --------------------
     # A tool that could supply a URL is an SSRF: a caller talks it into fetching an internal
     # address. So it names a NAME, and there is no URL for it to express.
-    from dduet_desktop import toolstore
-    toolstore.ACTIVE = pathlib.Path(os.environ["DDUET_HOME"]) / "tools"
+    from agentduet_desktop import toolstore
+    toolstore.ACTIVE = pathlib.Path(os.environ["AGENTDUET_HOME"]) / "tools"
     toolstore.PENDING = toolstore.ACTIVE / "pending"
 
     toolstore.propose("weather", "result({ok:1});",

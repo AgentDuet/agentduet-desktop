@@ -91,14 +91,14 @@ def _is_ours(pid: int) -> bool:
     path in its arguments, and the first version of this check duly identified a bash process as
     the daemon. Same self-match that makes `pkill -f` dangerous.
 
-    So: the executable is named dduet-desktop (frozen), or argv names our module (from source).
+    So: the executable is named agentduet-desktop (frozen), or argv names our module (from source).
     """
     def _matches(argv: list[str]) -> bool:
         if not argv:
             return False
-        if os.path.basename(argv[0]).startswith("dduet-desktop"):
+        if os.path.basename(argv[0]).startswith("agentduet-desktop"):
             return True
-        return any(a == "dduet_desktop.cli" or a.endswith("/dduet_desktop/cli.py") for a in argv)
+        return any(a == "agentduet_desktop.cli" or a.endswith("/agentduet_desktop/cli.py") for a in argv)
 
     try:
         raw = pathlib.Path(f"/proc/{pid}/cmdline").read_bytes().decode("utf-8", "replace")
@@ -186,7 +186,7 @@ def service_status() -> str:
         out.append("  last from the log:")
         out += [f"    {l[:150]}" for l in tail]
     if not pid:
-        out.append("\n  Start it with service_start, or `dduet-desktop run` in a terminal.")
+        out.append("\n  Start it with service_start, or `agentduet-desktop run` in a terminal.")
     return "\n".join(out)
 
 
@@ -200,7 +200,7 @@ def service_start() -> str:
     if not ok:
         # Starting it would produce a daemon that connects and then cannot answer anyone.
         return (f"Not started: no working model ({why}). Secrets must be set at a terminal — "
-                f"run `dduet-desktop init`.")
+                f"run `agentduet-desktop init`.")
     if not connector.configured():
         # Not fatal — everything local works — but say it, because a running daemon that never
         # hears from anyone looks identical to one nobody has contacted.
@@ -222,7 +222,7 @@ def service_start() -> str:
         pass
 
     subprocess.Popen(
-        [sys.executable, "-m", "dduet_desktop.cli", "run", "--headless"],
+        [sys.executable, "-m", "agentduet_desktop.cli", "run", "--headless"],
         stdout=log, stderr=log, stdin=subprocess.DEVNULL, close_fds=True, **kwargs)
 
     for _ in range(20):

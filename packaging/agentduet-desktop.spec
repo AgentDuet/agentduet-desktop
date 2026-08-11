@@ -12,8 +12,8 @@
 #    served HTML pages are data files. Without them the binary starts, creates an empty instance,
 #    and serves a blank owner site.
 #
-# Build:  pyinstaller packaging/dduet-desktop.spec --noconfirm
-# Result: dist/dduet-desktop (dist/dduet-desktop.exe on Windows)
+# Build:  pyinstaller packaging/agentduet-desktop.spec --noconfirm
+# Result: dist/agentduet-desktop (dist/agentduet-desktop.exe on Windows)
 
 import sys
 from pathlib import Path
@@ -41,11 +41,11 @@ except Exception:
 import datetime as _dt
 _built = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 if _sha:
-    (Path(SPECPATH).parent / "src" / "dduet_desktop" / "_build.py").write_text(
+    (Path(SPECPATH).parent / "src" / "agentduet_desktop" / "_build.py").write_text(
         f'COMMIT = "{_sha}{"+dirty" if _dirty else ""}"\n'
         f'BUILT = "{_built}"\n')
 
-datas = collect_data_files("dduet_desktop",
+datas = collect_data_files("agentduet_desktop",
                            includes=["*.html", "templates/**/*", "examples/**/*",
                                      # Prompts are DATA. Without this the binary builds
                                      # clean and voice dies at render time on a real call.
@@ -77,7 +77,7 @@ hiddenimports = [
     # daemon, `tools`/`brain`/`canvas` from each other) to keep import order and startup cost
     # under control — and PyInstaller's static analysis follows none of those. Without this the
     # binary builds, starts, and then fails to open the owner site: "cannot import name 'web'".
-    *collect_submodules("dduet_desktop"),
+    *collect_submodules("agentduet_desktop"),
     # Providers. Absent ones are tolerated at runtime — llm.py catches ImportError and reports
     # which credential is missing — so a build machine without all three still produces a
     # working binary for the providers it does have.
@@ -106,7 +106,7 @@ pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz, a.scripts, a.binaries, a.datas,
-    name="dduet-desktop",
+    name="agentduet-desktop",
     console=True,          # it IS a terminal tool: init is an interview, run prints the URL
     onefile=True,
     upx=False,             # UPX compression is a reliable way to trip antivirus heuristics
@@ -122,16 +122,16 @@ exe = EXE(
 # and is the honest fix before anyone outside the team sees this.
 #
 # console=True above means stdout exists but nobody sees it when launched from Finder, so the
-# daemon also logs to $DDUET_HOME/run/daemon.log — otherwise a failed start is silent.
+# daemon also logs to $AGENTDUET_HOME/run/daemon.log — otherwise a failed start is silent.
 if sys.platform == "darwin":
     app = BUNDLE(
         exe,
-        name="DDuet Desktop.app",
+        name="AgentDuet Desktop.app",
         icon=None,
-        bundle_identifier="com.b3networks.dduet-desktop",
+        bundle_identifier="com.b3networks.agentduet-desktop",
         info_plist={
-            "CFBundleName": "DDuet Desktop",
-            "CFBundleDisplayName": "DDuet Desktop",
+            "CFBundleName": "AgentDuet Desktop",
+            "CFBundleDisplayName": "AgentDuet Desktop",
             "CFBundleShortVersionString": "0.1.0",
             "CFBundleVersion": "0.1.0",
             "NSHighResolutionCapable": True,

@@ -31,7 +31,7 @@ import pathlib
 import subprocess
 import sys
 
-LABEL = "com.b3networks.dduet-desktop"
+LABEL = "com.b3networks.agentduet-desktop"
 
 #: macOS. A LaunchAgent (user scope, ~/Library) rather than a LaunchDaemon (root, /Library):
 #: nothing here needs root, and a root daemon answering a stranger's phone call is a much larger
@@ -39,13 +39,13 @@ LABEL = "com.b3networks.dduet-desktop"
 MAC_PLIST = pathlib.Path.home() / "Library/LaunchAgents" / f"{LABEL}.plist"
 
 #: Linux. A systemd USER unit, so it needs no sudo and starts with the owner's session.
-LINUX_UNIT = pathlib.Path.home() / ".config/systemd/user/dduet-desktop.service"
+LINUX_UNIT = pathlib.Path.home() / ".config/systemd/user/agentduet-desktop.service"
 
 #: Windows. The per-user Startup folder. Task Scheduler would be tidier, but it means shelling out
 #: to schtasks with an XML payload, and a .cmd in Startup is inspectable by the owner — which for
 #: a thing that runs at every login is worth more than tidiness.
 WIN_STARTUP = (pathlib.Path(os.environ.get("APPDATA", pathlib.Path.home()))
-               / "Microsoft/Windows/Start Menu/Programs/Startup" / "dduet-desktop.cmd")
+               / "Microsoft/Windows/Start Menu/Programs/Startup" / "agentduet-desktop.cmd")
 
 
 def _target() -> pathlib.Path | None:
@@ -90,7 +90,7 @@ def _plist(exe: pathlib.Path) -> str:
 
 def _unit(exe: pathlib.Path) -> str:
     return f"""[Unit]
-Description=DDuet Desktop — answers your calls and messages
+Description=AgentDuet Desktop — answers your calls and messages
 After=network-online.target
 
 [Service]
@@ -144,7 +144,7 @@ def _activate(path: pathlib.Path) -> str:
         if sys.platform.startswith("win"):
             return "  active at the next login"
         subprocess.run(["systemctl", "--user", "daemon-reload"], capture_output=True, timeout=15)
-        done = subprocess.run(["systemctl", "--user", "enable", "dduet-desktop.service"],
+        done = subprocess.run(["systemctl", "--user", "enable", "agentduet-desktop.service"],
                               capture_output=True, text=True, timeout=15)
         if done.returncode != 0:
             # Common and worth naming: on a headless box or over plain ssh there may be no user
@@ -166,7 +166,7 @@ def remove_login_item() -> str:
             subprocess.run(["launchctl", "unload", "-w", str(path)],
                            capture_output=True, timeout=15)
         elif not sys.platform.startswith("win"):
-            subprocess.run(["systemctl", "--user", "disable", "dduet-desktop.service"],
+            subprocess.run(["systemctl", "--user", "disable", "agentduet-desktop.service"],
                            capture_output=True, timeout=15)
         path.unlink()
     except (OSError, subprocess.SubprocessError) as exc:

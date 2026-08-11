@@ -746,7 +746,7 @@ def reply_to(asker: str, text: str, about: str = "", close: bool | None = None) 
 #    another. The model proposes the file; code checks it.
 # 2. WRITE BOUNDARY. Reads may point anywhere the owner granted, including real repositories
 #    outside the instance (the index currently holds a product-hub README). Appending there
-#    would edit the owner's actual source tree, so writes are confined to $DDUET_HOME/knowledge
+#    would edit the owner's actual source tree, so writes are confined to $AGENTDUET_HOME/knowledge
 #    whatever the model asks for.
 # 3. BOUNDS ARE NOT KNOWLEDGE. "We're open till 22:00" written as a fact makes the agent SAY
 #    22:00 while check_bounds still refuses 21:30 — the agent contradicting itself out loud.
@@ -1175,7 +1175,7 @@ def setup_status() -> str:
     if missing:
         lines += ["", f"  {' and '.join(missing)} must be set at a TERMINAL, not here — a",
                   "  credential typed into chat is sent to the model provider and stored in",
-                  "  plaintext. Tell the owner to run:  dduet-desktop init"]
+                  "  plaintext. Tell the owner to run:  agentduet-desktop init"]
     if not cur["name"]:
         lines += ["", "  No name yet. Ask them, then set it with set_setting — you can do the",
                   "  whole interview here; only the two credentials need a terminal."]
@@ -1326,7 +1326,7 @@ def list_tools() -> str:
     out = [f"active   : {', '.join(on) if on else 'none'}",
            f"proposed : {', '.join(waiting) if waiting else 'none'}"]
     if waiting:
-        out.append(f"\nTo switch one on: dduet-desktop tools approve {waiting[0]}")
+        out.append(f"\nTo switch one on: agentduet-desktop tools approve {waiting[0]}")
     return "\n".join(out)
 
 
@@ -1451,13 +1451,13 @@ def attach_model(key: str, model: str = "") -> str:
     """Attach a model by API key: verify it works, then save it to this instance.
 
     Removes the need for any external CLI — the framework owns the credential step, which
-    is what makes `init` possible on a machine with nothing installed but DDuet Desktop.
+    is what makes `init` possible on a machine with nothing installed but AgentDuet Desktop.
 
     Verify BEFORE writing. A credential that is saved and broken produces the worst failure
     this agent has: it starts, connects, and silently escalates every single message,
     because "no working model" and "nothing to answer" look the same from outside.
 
-    The key is written to $DDUET_HOME/.env at 0600 and is never echoed, logged, or returned
+    The key is written to $AGENTDUET_HOME/.env at 0600 and is never echoed, logged, or returned
     — the confirmation reports its length and last four characters only.
     """
     key = (key or "").strip()

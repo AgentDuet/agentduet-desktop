@@ -244,12 +244,13 @@ precisely so this loop has something to act on.
 
 ## Running it
 
-Needs the SDK's **`feature/dduet-channel`** branch (DDUET isn't on `main` yet):
+> **This README is stale** — it still describes `secretary-sample` and the DDUET web-chat
+> channel, both of which are gone. The install step below is current; the rest is being rewritten.
+
+The SDK comes from PyPI:
 
 ```bash
-cd ../wss-sdk-python && git checkout feature/dduet-channel
-cd ../secretary-sample
-uv venv && uv pip install -e ../wss-sdk-python python-dotenv google-genai aiohttp mcp
+uv venv && uv pip install -e . && uv pip install "agentduet>=1.0.0"
 
 cp .env.example .env      # keys + the two model names
 ./start.sh                # prints the owner-site URL (with its token)
@@ -321,7 +322,7 @@ booking. Bookings are visible via the `bookings` tool.
 
 **Model: `qwen3.6-flash` on DashScope (attached 2026-07-29).** Key read from `~/.qwen`
 (same bare-file convention as `~/.gemini`); `attach_model` verified it live and saved it to
-`$DDUET_HOME/.env`. Booking and escalation both confirmed correct on it. Adding this third
+`$AGENTDUET_HOME/.env`. Booking and escalation both confirmed correct on it. Adding this third
 provider touched `llm.py` only — the seam holds. Gates behave identically across providers;
 reply *wording* differs (Qwen's refusals are more scattershot than Gemini's).
 
