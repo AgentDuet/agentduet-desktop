@@ -368,8 +368,10 @@ def test_carry_mode() -> None:
     for forbidden in ("handle_query", "search_knowledge", "_tool_declarations", "VoiceAgent",
                       "permissions", "capabilities", "check_bounds"):
         ok(f"carrying never reaches {forbidden}", forbidden not in csrc)
-    ok("and it logs through record(), not through the agent",
-       "brain.record(" in csrc and "brain.handle" not in csrc)
+    # Carrying no longer records anything itself: the transcript path moved to `transcribe`,
+    # which owns the queue. So carry.py should not reach the history at all — the call handler
+    # ends when the audio is closed on disk.
+    ok("carrying does not write to the history itself — the queue does", "brain" not in csrc)
 
     # Transcription is a separate module ON PURPOSE: carrying a call has to keep working when
     # the provider is down, out of credit, or unconfigured.
@@ -384,20 +386,107 @@ def test_carry_mode() -> None:
     # deciding whether it can run — crashed on any machine without the key. Which is every fresh
     # install, and every CI runner.
     import os as _os
+    import unittest.mock as mock
     from agentduet_desktop import llm
     saved = {k: _os.environ.pop(k, None) for k in ("DASHSCOPE_API_KEY", "DASHSCOPE_KEY_FILE")}
     try:
         eq("with no key and no key-file, the credential is absent, not an exception",
            llm._DashScope.credential(), None)
-        eq("and transcription says so instead of raising", transcribe.available()[0], False)
+        # With no key, transcription is not necessarily off — the LOCAL engine is the whole
+        # point of the fallback. What must hold is that it ANSWERS: hosted is unavailable, and
+        # the engine is either local or nothing, never an exception.
+        with mock.patch.object(transcribe, "_local_available", return_value=False):
+            eq("with no key and no local engine, transcription is off", transcribe.engine(), "")
+        with mock.patch.object(transcribe, "_local_available", return_value=True):
+            eq("with no key but a local engine, it still works", transcribe.engine(), "local")
     except Exception as exc:
         ok("asking for an absent credential does not raise", False, f"{type(exc).__name__}: {exc}")
     finally:
         _os.environ.update({k: v for k, v in saved.items() if v is not None})
-    ok("the ASR model takes audio with NO text part — it is a task model, not a chat model",
-       '"text"' not in transcribe._one.__doc__ if transcribe._one.__doc__ else True)
+    # THE HOSTED REQUEST CARRIES AUDIO AND NOTHING ELSE. qwen3-asr-flash is a dedicated ASR
+    # task and rejects a text part with a 400 — found the hard way. Checking the request BUILDER
+    # rather than a docstring, because prose passing a test is how a check starts succeeding for
+    # being well written.
+    import inspect
+    body_src = inspect.getsource(transcribe._hosted_one)
+    ok("the hosted request sends audio with no text part",
+       '"input_audio"' in body_src and '"type": "text"' not in body_src)
     ok("a long call is chunked so request size does not scale with call length",
        1 <= transcribe.CHUNK_SECONDS <= 300, transcribe.CHUNK_SECONDS)
+
+
+def test_transcribe_queue() -> None:
+    """The queue is the filesystem: a .wav with no sibling .txt is work to do.
+
+    Deliberately runs WITHOUT the local speech engine installed — CI does not carry 430 MB of
+    inference runtime to check queue bookkeeping, and the bookkeeping is where the bugs are.
+    What must hold is that nothing is transcribed twice, nothing is retried forever, and an
+    empty recording is not mistaken for work.
+    """
+    print("\n  -- transcription queue: derived from disk, so a restart resumes it --")
+    import unittest.mock as mock
+    from agentduet_desktop import carry, transcribe
+
+    home = pathlib.Path(tempfile.mkdtemp(prefix="queue-test-"))
+    with mock.patch.object(carry, "RECORDINGS", home / "recordings"):
+        carry.RECORDINGS.mkdir(parents=True)
+        def wav(name, size=4096):
+            p = carry.RECORDINGS / name
+            p.write_bytes(b"RIFF" + b"\0" * (size - 4))
+            return p
+
+        todo = wav("20260811T100000-c1-caller.wav")
+        wav("20260811T100000-c1-callee.wav")
+        # A header and nothing else — exactly what an unbridged call leaves behind.
+        wav("20260811T110000-c2-caller.wav", size=44)
+        # Already transcribed, and permanently failed.
+        wav("20260811T120000-c3-caller.wav").with_suffix(".txt").write_text("done")
+        wav("20260811T130000-c4-caller.wav").with_suffix(".failed").write_text("boom")
+
+        names = [p.name for p in transcribe.pending()]
+        eq("only untranscribed recordings are pending", len(names), 2)
+        ok("an empty recording is not work", not any("c2" in n for n in names), names)
+        ok("one with a transcript is not re-queued", not any("c3" in n for n in names), names)
+        ok("one marked failed is not retried", not any("c4" in n for n in names), names)
+        ok("and they come oldest first", names == sorted(names), names)
+
+        # A FAILURE MUST BE MARKED, not silently left pending — otherwise a corrupt file is
+        # retried every poll for the life of the daemon.
+        with mock.patch.object(transcribe, "transcribe", side_effect=RuntimeError("nope")), \
+             mock.patch.object(transcribe, "available", return_value=(True, "")):
+            eq("a failing engine writes nothing", transcribe.drain_once(), 0)
+        ok("the failure is marked beside the audio", todo.with_suffix(".failed").is_file())
+        # BOTH legs are marked, not just the one: drain_once works the whole queue, so an engine
+        # that is down fails every job in the pass. That is correct — each is independently
+        # re-queued by deleting its marker — and it is why the queue is empty here.
+        eq("every job in the pass is marked, so none is left half-done",
+           transcribe.pending(), [])
+
+        # THE SUCCESS PATH files a transcript and an entry, and empties the queue.
+        wav("20260811T140000-c5-caller.wav")
+        with mock.patch.object(transcribe, "transcribe", return_value="hello there"), \
+             mock.patch.object(transcribe, "available", return_value=(True, "")), \
+             mock.patch.object(transcribe, "_record") as rec:
+            eq("a working engine drains what is left", transcribe.drain_once(), 1)
+            ok("and files it into the history", rec.called)
+
+        # NOTHING TO TRANSCRIBE WITH is not a failure of the recording — the audio is the part
+        # that cannot be recreated, and it must survive having no engine.
+        with mock.patch.object(transcribe, "engine", return_value=""):
+            ok("with no engine at all it reports why, and writes nothing",
+               transcribe.available()[0] is False and "not transcribed" in transcribe.available()[1])
+
+    # Engine PREFERENCE. Hosted is measurably more accurate on the same audio, so a machine with
+    # a key should not quietly fall back to the weaker local one.
+    with mock.patch.object(transcribe, "_hosted_key", return_value="k"), \
+         mock.patch.object(transcribe, "_local_available", return_value=True):
+        eq("a key means hosted, even when local is installed", transcribe.engine(), "hosted")
+    with mock.patch.object(transcribe, "_hosted_key", return_value=None), \
+         mock.patch.object(transcribe, "_local_available", return_value=True):
+        eq("no key falls back to local", transcribe.engine(), "local")
+    with mock.patch.object(transcribe, "_hosted_key", return_value=None), \
+         mock.patch.object(transcribe, "_local_available", return_value=False):
+        eq("neither is an empty engine, not a crash", transcribe.engine(), "")
 
 
 def test_ring_limit() -> None:
@@ -1090,6 +1179,7 @@ def main() -> None:
     test_tool_installation()
     test_login_item()
     test_carry_mode()
+    test_transcribe_queue()
     test_ring_limit()
     test_hosts()
     test_setup_mode()

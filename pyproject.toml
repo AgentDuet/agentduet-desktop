@@ -20,6 +20,10 @@ dependencies = [
 gemini = ["google-genai>=1.0"]
 anthropic = ["anthropic>=0.40"]
 qwen = ["httpx>=0.27"]        # DashScope's OpenAI-compatible endpoint
+# Speech-to-text ON THIS MACHINE, for transcribing carried calls with no key and no network.
+# Optional because it is ~430 MB installed and most of that is a CPU inference runtime — a
+# cost worth choosing, not one to impose on an owner who only wants the agent to answer.
+stt = ["faster-whisper>=1.0"]
 # The owner's view in a native window rather than a browser tab. Optional on purpose: the site
 # is the primary surface and must come up even where no system webview exists.
 ui = ["pywebview>=5.0"]

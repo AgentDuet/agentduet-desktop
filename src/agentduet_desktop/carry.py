@@ -153,52 +153,11 @@ async def handle(sm, noti) -> None:
         for t in legs:
             t.cancel()
         await asyncio.gather(*legs, return_exceptions=True)
-        # AFTER the audio is closed, and off the event loop. Transcription is a network round
-        # trip per minute of call; running it inline would hold the handler open long after the
-        # two people hung up, and blocking here would stop the next call being set up.
-        asyncio.create_task(asyncio.to_thread(_transcribe_call, str(call.id), caller))
-
-
-def _transcribe_call(call_id: str, caller: str) -> None:
-    """Write a transcript beside each recording, and one entry into the owner's history.
-
-    SEPARATE FROM RECORDING, and after it. The recording is the artefact that matters — it is
-    the thing that cannot be recreated — so it is closed on disk before anything is asked of a
-    provider. A transcription failure must never cost the audio.
-
-    ONE ENTRY PER LEG, NOT AN INTERLEAVED DIALOGUE. The two files start together but carry no
-    per-utterance timing, so any interleaving would be invented. Two labelled blocks are honest
-    about what we know; turn-by-turn needs timestamps captured during the call and is not this.
-    """
-    from . import brain, transcribe
-
-    ok, why = transcribe.available()
-    if not ok:
-        logger.warning("call %s: recorded but not transcribed — %s", call_id, why)
-        return
-
-    for leg in ("caller", "callee"):
-        wavs = sorted(RECORDINGS.glob(f"*-{call_id}-{leg}.wav"))
-        if not wavs:
-            continue
-        wav = wavs[-1]
-        try:
-            text = transcribe.transcribe(wav)
-        except Exception as exc:
-            logger.error("call %s: could not transcribe the %s leg (%s: %s)",
-                         call_id, leg, type(exc).__name__, exc)
-            continue
-        if not text:
-            logger.info("call %s: the %s leg had no speech in it", call_id, leg)
-            continue
-        wav.with_suffix(".txt").write_text(text + "\n")
-        # Into the same log the rest of the product reads, so a carried call shows up in the
-        # digest and the history rather than only as a file the owner has to go looking for.
-        # `outcome="carried"` marks it as a call nobody answered — it is not an exchange with
-        # the agent, and filing it as one would misreport what happened.
-        brain.record(caller, f"[carried call, {leg}]", "carried", "", text,
-                     None, "TELCO", None, False, f"call-{call_id}")
-        logger.info("call %s: transcribed the %s leg (%d chars)", call_id, leg, len(text))
+        # THE TRANSCRIPT IS NOT THIS FUNCTION'S JOB. Carrying a call ends when the audio is
+        # closed on disk; a `.wav` with no sibling `.txt` is the queue, and the worker in
+        # `transcribe` picks it up within a poll. That keeps the call path free of a network
+        # round trip it must not depend on, survives a restart mid-transcription, and means a
+        # provider being down costs a text file rather than anything on the call.
 
 
 def register(sm) -> bool:
