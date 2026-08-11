@@ -223,13 +223,16 @@ def main(interactive: bool = True) -> int:
         return 1
     connected = connect(interactive)
 
-    # Offered, not assumed. An owner with an assistant should do this there; an owner without
-    # one still needs a way through, so it stays.
+    # THE INTERVIEW IS THE DEFAULT NOW (2026-08-11). It used to be opt-in — "your AI assistant
+    # can do this over the mcp, better than these prompts" with a (y/N) that defaulted to NO —
+    # which is correct only for an owner who HAS an assistant. This is being packaged for small
+    # vendors handed a binary, and for them the default path ended setup with the agent not
+    # knowing their name, having declined a step whose alternative they do not own. Skipping is
+    # still one keystroke, so nobody with an assistant is forced through it.
     if interactive and owner.name() == owner.DEFAULT_NAME:
         print("\n  Now the part that is not secret: who you are and what you do.")
-        print("  Your AI assistant can do this over the mcp, which is a better conversation")
-        print("  than these prompts — ask it to run setup_status.")
-        if input("\n  Do it here instead? (y/N)\n  > ").strip().lower().startswith("y"):
+        print("  Three questions. Press Enter to answer them, or type s to skip.")
+        if not input("\n  > ").strip().lower().startswith("s"):
             print("\n  " + (interview() or "(no summary returned)").replace("\n", "\n  "))
 
     print(f"""
@@ -237,8 +240,10 @@ def main(interactive: bool = True) -> int:
     agentduet-desktop run          start the daemon — it answers while you are away
     agentduet-desktop status       what is running, and what this build can do
 
-  Then point your AI assistant at the mcp and ask it "what is my setup status?".
-  It can do the rest: who you are, what you do, and what the agent may act on.
+  It answers on its own from here. Nothing else has to be installed.
+
+  Optional, if you use a coding assistant (Claude Code, Goose):
+    agentduet-desktop connect      register the mcp, so you can ask it what is waiting
 """ + ("" if connected else
        "\n  No connector yet, so nobody outside can reach it. Run init again when you have one.\n"))
     return 0

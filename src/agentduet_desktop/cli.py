@@ -122,14 +122,13 @@ def cmd_status(args) -> int:
     except Exception as exc:
         print(f"  tools    : NOT available — {type(exc).__name__}: {str(exc)[:70]}")
 
-    # WHETHER ANYONE CAN ACTUALLY DRIVE IT. With no owner interface the assistant IS the only
-    # surface, so an unregistered assistant means the product is unreachable — and this command
-    # used to report a perfectly healthy secretary in exactly that state.
+    # An assistant is OPTIONAL, and this line says so by omission: nothing is printed when there
+    # is none. It used to read "assistant: NONE found — nothing can drive this secretary", which
+    # was true while the mcp was the only owner surface and became false the moment setup stopped
+    # asking for one. Telling a small vendor their working secretary cannot be driven, because
+    # they have not installed a coding tool they have never heard of, is a bug in the report.
     from . import hosts
-    reg = hosts.registration()
-    if not reg:
-        print("  assistant: NONE found — nothing can drive this secretary")
-    for label, state in reg:
+    for label, state in hosts.registration():
         print(f"  assistant: {label} — {state}")
     return 0
 

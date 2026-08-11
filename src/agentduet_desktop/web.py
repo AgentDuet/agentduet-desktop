@@ -587,28 +587,6 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response(install.status())
         return web.json_response({"ok": True, "message": install.install()})
 
-    async def api_hosts(request):
-        """Which AI assistants are installed, and register with them."""
-        if not authed(request):
-            return web.json_response({"error": "unauthorised"}, status=401)
-        from . import hosts
-        apply = request.method == "POST"
-        # `install` lets the owner override the detection. Finding Claude Code does not mean
-        # they want to use it — they may be evaluating Goose, or want the one with per-tool
-        # permission modes. Detection is a default, not a decision.
-        install = ""
-        if apply:
-            try:
-                install = (await request.json()).get("install", "")
-            except Exception:
-                install = ""
-        # OFF THE EVENT LOOP. connect() downloads an installer and waits on a subprocess — up to
-        # ~200 MB for Goose Desktop. Run inline, it blocks every other request for the duration:
-        # the page's own status polling stalls, and on a configured instance the DDUET channel
-        # stalls with it, so an install could make the secretary miss a call.
-        msg = await asyncio.to_thread(hosts.connect, apply, install)
-        return web.json_response({"ok": True, "found": hosts.detect(), "message": msg})
-
     async def api_connector_signin(request):
         """Begin an OAuth sign-in for the connector. NOT IMPLEMENTED — the seam, not the flow.
 
@@ -632,19 +610,12 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             {"ok": False, "message": "Sign-in is configured but not implemented in this build. "
                                      "Use 'Enter key manually instead'."})
 
-    async def api_launch(request):
-        """Open the owner's assistant. The step that makes step 4 finish somewhere usable.
-
-        Takes NO parameters, deliberately. It launches whatever is found on disk, in a fixed
-        order — nothing in the request chooses a program or a path. This endpoint sits behind the
-        site token, but an owner-facing surface that would start an arbitrary command on the
-        strength of a request body is the wrong shape regardless of who can reach it.
-        """
-        if not authed(request):
-            return web.json_response({"error": "unauthorised"}, status=401)
-        from . import hosts
-        msg = hosts.launch_assistant()
-        return web.json_response({"ok": msg.startswith("Opening"), "message": msg})
+    # `/api/hosts` and `/api/launch` USED TO LIVE HERE. They backed setup's "your AI assistant"
+    # step — detect, register the mcp, install Goose, open it — and that step is gone: connecting
+    # an assistant is optional and belongs to `agentduet-desktop connect`, not to first-run setup.
+    # Removed rather than left dormant. `/api/hosts` ran an installer that downloads ~200 MB, and
+    # `/api/launch` started a program on disk; keeping unreachable endpoints that do either, on a
+    # server the whole product binds for the owner, is surface with nothing asking for it.
 
     async def api_handover(request):
         """Start the installed daemon and stand down. The last act of the installer."""
@@ -958,9 +929,6 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/handover", api_handover),
         web.get("/api/install", api_install),
         web.post("/api/install", api_install),
-        web.get("/api/hosts", api_hosts),
-        web.post("/api/hosts", api_hosts),
-        web.post("/api/launch", api_launch),
         web.post("/api/connector/signin", api_connector_signin),
         web.get("/api/ui", api_ui),
         web.post("/api/ui", api_ui),

@@ -75,12 +75,17 @@ Break one of these and the product is a different product.
 
 ## Decisions, and why — do not re-litigate without reading these
 
-- **The product is TWO PARTS: the asker daemon and the owner mcp. There is no owner interface**
-  (2026-08-03 — see `docs/design.md`, which is the single source of direction). This reverses
-  the 2026-07-30 decision that made the site primary; that reasoning was not wrong, the
-  assumption about who the owner is changed. The site is **transitional** and stays until `init`
-  covers first-run configuration — but it is no longer load-bearing, and the daemon must not
-  exit when it fails to bind.
+- **The daemon is the product. The mcp is OPTIONAL** (2026-08-11). This revises the 2026-08-03
+  "two parts, no owner interface" decision, and for the same reason that one revised 2026-07-30:
+  the assumption about who the owner is changed again. Packaged for small vendors handed a
+  binary, the owner does not have Claude Code or Goose and should not install one to finish
+  setting up a phone answering service. So **setup no longer mentions an assistant** — its step 4
+  is "finish", `init` runs the interview by default instead of deferring to the mcp, and `status`
+  prints nothing when no assistant is registered rather than "nothing can drive this secretary".
+  `agentduet-desktop connect` remains for whoever wants it, and the 44 mcp tools are unchanged.
+  **Consequence: the site is load-bearing again, not transitional** — the August onboarding flow
+  puts authorisation and WhatsApp verification in it, so something has to render them. The daemon
+  must still not exit when it fails to bind.
 - **`knowledge/` is one flat, public folder.** `public/` vs `partners/` is gone. A fact only one
   person may hear belongs in `people/<identity>.md`. Consequence: verified and unverified read
   the same documents — curate accordingly.
