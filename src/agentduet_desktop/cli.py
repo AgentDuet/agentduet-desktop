@@ -113,9 +113,10 @@ def cmd_status(args) -> int:
     from . import owner as owner_settings
     if owner_settings.calls() == owner_settings.CALLS_CARRY:
         from . import carry, transcribe
-        t_ok, t_why = transcribe.available()
         print(f"  calls    : CARRIED onward, both legs recorded to {carry.RECORDINGS}")
-        print(f"  transcript: {'on' if t_ok else 'OFF — ' + t_why}")
+        print(f"  transcript: {transcribe.describe()}")
+        if waiting := len(transcribe.pending()):
+            print(f"  queued   : {waiting} recording(s) waiting to be transcribed")
     else:
         print("  calls    : answered by the agent")
 

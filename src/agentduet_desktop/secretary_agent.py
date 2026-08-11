@@ -300,11 +300,36 @@ async def run_channel() -> None:
                    .outbound_message(True))
         if calls_on:
             builder = builder.inbound_call(InboundCallMode.ALL)
-        await sm.setup_trigger_conditions(builder.build())
-        logger.info("trigger conditions set: inbound_message=True, outbound_message=True, "
-                    "inbound_call=%s", "ALL" if calls_on else "off")
+        # NOT FATAL (2026-08-11). This raised, and the raise killed the whole channel: connect,
+        # register, die, retry — forever, with the daemon reporting only "channel unavailable".
+        #
+        # Two facts make dying the wrong response. Trigger conditions PERSIST SERVER-SIDE, so a
+        # connector that was configured by an earlier run is still configured when this call
+        # fails. And NONE of the SDK's own examples call this at all — `basic_example`,
+        # `wa_echo_bot` and `connect_spy_isolated` connect, register a handler and run — which
+        # means a connector is expected to work without it. Verified: with this call skipped the
+        # socket stays up indefinitely, where with it the server closes the connection.
+        #
+        # So try it, say plainly what happened, and carry on. Setting triggers is an attempt to
+        # ENSURE a state, not a precondition for running — and refusing to answer the phone
+        # because we could not re-assert a setting that may already be correct is a worse
+        # failure than the one it guards against.
+        try:
+            await sm.setup_trigger_conditions(builder.build())
+            logger.info("trigger conditions set: inbound_message=True, outbound_message=True, "
+                        "inbound_call=%s", "ALL" if calls_on else "off")
+        except Exception as exc:
+            logger.warning(
+                "could not set trigger conditions (%s: %s) — carrying on with whatever the "
+                "connector already has. If nothing arrives, that is the first thing to check.",
+                type(exc).__name__, exc)
 
         asyncio.create_task(drain_outbox())
+        # Recordings become transcripts here, not on the call path. Started unconditionally:
+        # the queue is derived from the filesystem, so it is a no-op when nothing was carried,
+        # and it also picks up anything a previous run left unfinished.
+        from . import transcribe
+        asyncio.create_task(transcribe.worker())
 
         logger.info("AgentDuet channel connected — inbound is live")
         status.set_channel("live")
