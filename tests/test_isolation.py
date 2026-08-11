@@ -8,10 +8,29 @@ If those ever share a code path, a prompt-injected message becomes privilege esc
 """
 
 import ast
+import os
 import pathlib
 import sys
+import tempfile
+
+# ISOLATION FIRST, BEFORE ANY IMPORT FROM THE PACKAGE — `paths` reads this at import time.
+#
+# Every folder and profile check below used to run against the OWNER'S OWN INSTANCE. On a machine
+# with no profiles they were vacuous and passed; on this one they read real documents. Neither is
+# a test. A seeded home makes them mean the same thing everywhere.
+_HOME = pathlib.Path(tempfile.mkdtemp(prefix="iso-test-"))
+os.environ["DDUET_HOME"] = str(_HOME)
 
 HERE = pathlib.Path(__file__).parent
+# The SOURCE tree, not this folder. `HERE / "secretary_agent.py"` resolved to tests/, which does
+# not exist, so this suite died with a FileNotFoundError before reaching a single assertion —
+# and a suite that crashes enforces nothing. Invariant 9 was unguarded for as long as that stood.
+SRC = HERE.parent / "src" / "dduet_desktop"
+# Imports go through the PACKAGE. They used to be bare (`import tools`), which worked when the
+# modules were flat and stopped working the day they became a package with relative imports —
+# a module doing `from . import paths` cannot be imported as a top-level module at all. That is
+# the second reason this file has not run in a while, and it hides the first.
+sys.path.insert(0, str(SRC.parent))
 OWNER_ONLY = {"tools", "web", "secretary_mcp"}
 failures: list[str] = []
 
@@ -30,7 +49,7 @@ def imports_of(path: pathlib.Path) -> set[str]:
 # 1 · the daemon may only touch owner modules at the top level of main(), never from
 #     the inbound message handler. Simplest enforceable rule: the module-level imports
 #     of secretary_agent must not include the owner surface.
-agent = HERE / "secretary_agent.py"
+agent = SRC / "secretary_agent.py"
 tree = ast.parse(agent.read_text())
 top_level = set()
 for node in tree.body:
@@ -44,7 +63,7 @@ if leaked:
     failures.append(f"secretary_agent.py imports owner module(s) at top level: {leaked}")
 
 # 2 · the inbound handler must not reference any owner tool by name.
-import tools  # noqa: E402
+from dduet_desktop import tools  # noqa: E402
 
 owner_tool_names = set(tools.OWNER_TOOLS)
 handler_src = ""
@@ -55,16 +74,28 @@ for name in owner_tool_names:
     if name in handler_src:
         failures.append(f"on_message references owner tool '{name}'")
 
+# Seed the instance: one public document, and one person whose profile carries a folder grant
+# and an escalation rule. Without the profile, checks 5 and 5b iterate an empty list and pass
+# without testing anything — the failure mode that hid behind this suite not running at all.
+from dduet_desktop import paths  # noqa: E402
+
+paths.KNOWLEDGE.mkdir(parents=True, exist_ok=True)
+(paths.KNOWLEDGE / "hours.md").write_text("We open at 9am on weekdays.\n")
+paths.PEOPLE.mkdir(parents=True, exist_ok=True)
+(_HOME / "partners").mkdir(exist_ok=True)
+(_HOME / "partners" / "rates.md").write_text("Partner rate: 12.\n")
+(paths.PEOPLE / "partner@example.com.md").write_text(
+    "# partner@example.com\n\n## Folders\n\n- partners\n\n## Always escalate\n\n- pricing\n")
+
 # 3 · permissions must reject a symlink escape from an allowed folder.
-import os  # noqa: E402
-import tempfile  # noqa: E402
+from dduet_desktop import permissions  # noqa: E402
 
-import permissions  # noqa: E402
-
-secret = pathlib.Path(tempfile.gettempdir()) / "_iso_secret.md"
+secret = _HOME / "_iso_secret.md"
 secret.write_text("TOPSECRET")
-# knowledge/ is flat now — there is no public/ subfolder to plant the symlink in.
-link = HERE / "knowledge" / "_iso_link.md"
+# Planted in the folder permissions ACTUALLY reads. It used to go into `tests/knowledge/`, a
+# directory that does not exist and that nothing would have read if it did — so this check has
+# never once exercised the symlink guard it is named for.
+link = paths.KNOWLEDGE / "_iso_link.md"
 try:
     if link.is_symlink() or link.exists():
         link.unlink()
@@ -84,7 +115,7 @@ if any("partners" in s for s in srcs):
 
 # 5 · a profile must never apply on an unverified channel — otherwise anyone who
 #     self-declares an identity inherits that person's tone, scope and access.
-import people  # noqa: E402
+from dduet_desktop import people  # noqa: E402
 
 for identity in people.list_profiles():
     if people.profile_for(identity, False):
@@ -101,7 +132,7 @@ for identity in people.list_profiles():
 # 5b · verification is carried by the IDENTITY, never inferred from the transport.
 #      A self-vouching network must not smuggle a profile in for an unverified claim.
 for identity in people.list_profiles():
-    for net in ("DDUET", "WHATSAPP", "TELCO"):
+    for net in ("WA", "WHATSAPP", "TELCO"):
         if people.default_verified(net) and not people.profile_for(identity, False):
             continue        # default only applies when the caller passes nothing
     if people.profile_for(identity, False) or people.folders_for(identity, False):
