@@ -5,7 +5,7 @@ WHY IT IS NOT A TOOL THE ASSISTANT CAN CALL
 Two secrets go in here. To hand a secret to the owner's assistant, the owner has to type it into
 a chat box — and that message is sent to the model provider as part of the prompt AND written to
 `run/owner_chat.json` in plaintext, where the chat panel renders it back. So credentials are
-entered on a page and go straight to `$DDUET_HOME/.env`; the assistant is told to say so rather
+entered on a page and go straight to `$AGENTDUET_HOME/.env`; the assistant is told to say so rather
 than offered a tool that invites the paste.
 
 WHY VERIFY BEFORE SAVING

@@ -26,11 +26,11 @@ import tempfile
 import time
 import urllib.request
 
-from dduet_desktop import paths
+from agentduet_desktop import paths
 
 HERE = pathlib.Path(__file__).parent
 # Set to point at an already-running daemon; otherwise this suite starts its OWN on a spare
-# port with its OWN $DDUET_HOME. It used to drive the owner's live instance, so every run left
+# port with its OWN $AGENTDUET_HOME. It used to drive the owner's live instance, so every run left
 # forged identities in their people list and test rows in the append-only log they read.
 BASE = os.getenv("SECRETARY_BEHAVIOUR_BASE", "")
 TOKEN = ""
@@ -69,9 +69,9 @@ def start_own_instance() -> None:
 
     port = _free_port()
     # No channel: one client per connector, and the owner's daemon already holds it.
-    env = {**os.environ, "DDUET_HOME": str(_TMP_HOME), "SECRETARY_WEB_PORT": str(port),
+    env = {**os.environ, "AGENTDUET_HOME": str(_TMP_HOME), "SECRETARY_WEB_PORT": str(port),
            "SECRETARY_SIM": "1", "SECRETARY_CHANNEL": "0"}
-    _DAEMON = subprocess.Popen([sys.executable, "-u", "-m", "dduet_desktop.secretary_agent"], cwd=HERE, env=env,
+    _DAEMON = subprocess.Popen([sys.executable, "-u", "-m", "agentduet_desktop.secretary_agent"], cwd=HERE, env=env,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     BASE = f"http://127.0.0.1:{port}"
     tokfile = _TMP_HOME / "run" / "web-token"
@@ -265,7 +265,7 @@ def main() -> None:
         print("\n  throwaway instance discarded — nothing to clean up")
     else:
       try:
-          from dduet_desktop import tools
+          from agentduet_desktop import tools
           asked = {q for _, _, _, q, _, _ in CASES}
           asked |= {q for _, _, _, turns in CONVERSATIONS for q, _ in turns}
           cleared = sum(1 for g in tools.open_escalations() if g["question"] in asked

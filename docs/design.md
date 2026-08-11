@@ -1,4 +1,4 @@
-# DDuet Desktop — the design
+# AgentDuet Desktop — the design
 
 Single source of direction, 2026-08-03. Replaces `agents.md` and `service.md`, which were
 written across a week of pivots and had begun to contradict each other and the code.
@@ -127,7 +127,7 @@ Proposed 'weather_check'. NOT active.
 It wants to reach:
     forecast  ->  https://api.open-meteo.com/v1/forecast
 
-Approve with:  dduet-desktop tools approve weather_check
+Approve with:  agentduet-desktop tools approve weather_check
 ```
 
 At runtime the tool asks by NAME:
@@ -226,7 +226,7 @@ instance.
   against the decision above. It does not reverse it, but the in-process choice is a bet that we call
   the API correctly, and it should be re-weighed if a panic ever appears outside deliberate misuse.
 
-Packaging is a trap and the remedy is in `packaging/dduet-desktop.spec`: `--collect-all wasmtime`
+Packaging is a trap and the remedy is in `packaging/agentduet-desktop.spec`: `--collect-all wasmtime`
 does not bundle the native library, and the build succeeds and dies at the first real call. `status`
 therefore runs a real tool rather than importing the runtime.
 
@@ -435,7 +435,7 @@ So the split is:
 
 | | where | why |
 |---|---|---|
-| model key, connector credential | `dduet-desktop init`, at a terminal | a secret in a chat box goes to the model provider and lands in `owner_chat.json` |
+| model key, connector credential | `agentduet-desktop init`, at a terminal | a secret in a chat box goes to the model provider and lands in `owner_chat.json` |
 | everything else | the assistant, via the mcp | it is a conversation, which is what the interview wanted to be |
 
 ### A UI for the secrets is fine — the rule is narrower than "no interface"
@@ -510,7 +510,7 @@ Per-platform, and the delivery concern now that there is no UI to carry the firs
 
 Notarization needs an Apple Developer ID. Acceptable for a colleague, not past that.
 
-**DDuet is the product; installing an assistant is optional.** A boundary, because it is easy to
+**AgentDuet Desktop is the product; installing an assistant is optional.** A boundary, because it is easy to
 drift across: we detect, offer, and configure what the owner chooses. If a change ever makes Goose
 required or bundles it, that has crossed this line and needs deciding again.
 

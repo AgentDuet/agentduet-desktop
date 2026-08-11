@@ -1,6 +1,6 @@
 """Persistent chunk index for granted folders.
 
-Lives in the USER's home (`~/.dduet` by default, `DDUET_HOME` to override), not in the
+Lives in the USER's home (`~/.dduet` by default, `AGENTDUET_HOME` to override), not in the
 checkout — the folders it indexes don't live here either (`~/ext-projects/product-hub`
 has nothing to do with this sample), it is derived data about the *user's* files, three
 processes need it (daemon, MCP, sim), and it should survive moving the code.

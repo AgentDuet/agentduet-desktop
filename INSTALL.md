@@ -1,4 +1,4 @@
-# Installing DDuet Desktop — alpha 2
+# Installing AgentDuet Desktop — alpha 2
 
 A secretary that runs on your own machine. It answers people who call or message you, escalates
 anything it should not decide alone, and can only act inside limits you set.
@@ -27,7 +27,7 @@ today. Gemini and Anthropic work for messages but the phone will not answer.
 
 ## macOS
 
-1. Open the `.dmg` and drag **DDuet Desktop** to your Applications folder.
+1. Open the `.dmg` and drag **AgentDuet Desktop** to your Applications folder.
 2. **Right-click the app → Open → Open.** Do not double-click.
    The app is not signed yet, so a normal double-click will be refused with *"the developer
    cannot be verified"*. This is expected. You only need to do this once.
@@ -42,12 +42,12 @@ The binary is a single file. A file manager will not run it by double-clicking, 
 launch is one command:
 
 ```bash
-chmod +x ./dduet-desktop
-./dduet-desktop
+chmod +x ./agentduet-desktop
+./agentduet-desktop
 ```
 
 Your browser opens on the setup page. **Step 1 installs it properly** — after that it is on your
-applications menu and available as `dduet-desktop` in a terminal.
+applications menu and available as `agentduet-desktop` in a terminal.
 
 ---
 
@@ -56,7 +56,7 @@ applications menu and available as `dduet-desktop` in a terminal.
 If you are given a new build, check it took effect before testing anything:
 
 ```bash
-dduet-desktop --version
+agentduet-desktop --version
 ```
 
 If the code in brackets has not changed, you are still running the old one. On Linux the likely
@@ -86,8 +86,8 @@ you do, what the secretary is allowed to act on. That part is a conversation, no
 ## Check it is working
 
 ```bash
-dduet-desktop --version   # e.g. 0.1.0a2 (82094ff) — binary
-dduet-desktop status      # what is running, and what this build can do
+agentduet-desktop --version   # e.g. 0.1.0a2 (82094ff) — binary
+agentduet-desktop status      # what is running, and what this build can do
 ```
 
 **Always quote `--version` when reporting anything.** The version alone is not enough — several
@@ -122,15 +122,15 @@ Please don't report these — they are on the list.
 
 Send Stanley:
 
-1. `dduet-desktop --version` — **the code in brackets is the part that matters**
-2. `dduet-desktop status`
-3. `~/.dduet/run/daemon.log`
+1. `agentduet-desktop --version` — **the code in brackets is the part that matters**
+2. `agentduet-desktop status`
+3. `~/.agentduet-desktop/run/daemon.log`
 
 And say what you expected and what happened — including **"it went quiet"**, which is a real
 failure mode on calls and does not always show up anywhere else.
 
 ## Where your data lives
 
-Everything is on your machine, in `~/.dduet` — settings, what it knows, who has contacted you,
+Everything is on your machine, in `~/.agentduet-desktop` — settings, what it knows, who has contacted you,
 call transcripts. Nothing is uploaded except what the model provider sees to answer a question.
 Deleting that folder resets it completely.

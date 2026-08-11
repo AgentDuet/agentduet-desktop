@@ -33,7 +33,7 @@ from datetime import datetime
 logger = logging.getLogger("dduet.status")
 
 #: Where a call-learned number is kept. Imported lazily-ish via paths so a throwaway
-#: $DDUET_HOME gets its own.
+#: $AGENTDUET_HOME gets its own.
 from . import paths
 NUMBER_FILE = paths.RUN / "channel-number"
 

@@ -66,7 +66,7 @@ jobs:
           pip install ".[gemini,anthropic,qwen]" pyinstaller
 
       - name: Build the binary
-        run: pyinstaller --noconfirm --distpath dist-bin packaging/dduet-desktop.spec
+        run: pyinstaller --noconfirm --distpath dist-bin packaging/agentduet-desktop.spec
 
       # Proves the binary RUNS, not merely that it linked. PyInstaller happily produces a
       # binary that dies at first import because a lazy import was never collected — that has
@@ -78,12 +78,12 @@ jobs:
       # passed this step while having no Gemini, no Anthropic and no working voice.
       - name: Smoke test
         env:
-          DDUET_HOME: ${{ runner.temp }}/dduet-smoke
+          AGENTDUET_HOME: ${{ runner.temp }}/dduet-smoke
           # Presence-only check in voice.available(); never used to call anything. Without it
           # the step cannot tell "adapter missing" from "no key configured".
           DASHSCOPE_API_KEY: ci-smoke-test-not-a-real-key
         run: |
-          ./dist-bin/dduet-desktop status | tee status.txt
+          ./dist-bin/agentduet-desktop status | tee status.txt
           for p in gemini anthropic qwen; do
             grep -qE "providers:.*\b$p\b" status.txt \
               || { echo "::error::binary was built without the $p provider"; exit 1; }
@@ -97,16 +97,16 @@ jobs:
       - name: Package the app (macOS)
         if: runner.os == 'macOS'
         run: |
-          hdiutil create -volname "DDuet Desktop" \
-            -srcfolder "dist-bin/DDuet Desktop.app" \
-            -ov -format UDZO "dduet-desktop-${{ matrix.name }}.dmg"
+          hdiutil create -volname "AgentDuet Desktop" \
+            -srcfolder "dist-bin/AgentDuet Desktop.app" \
+            -ov -format UDZO "agentduet-desktop-${{ matrix.name }}.dmg"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: dduet-desktop-${{ matrix.name }}
+          name: agentduet-desktop-${{ matrix.name }}
           # The DMG on macOS, the bare binary on Linux. Both paths are listed because a
           # per-OS `path` would need two upload steps for no gain.
           path: |
-            dduet-desktop-${{ matrix.name }}.dmg
-            dist-bin/dduet-desktop
+            agentduet-desktop-${{ matrix.name }}.dmg
+            dist-bin/agentduet-desktop
           if-no-files-found: error

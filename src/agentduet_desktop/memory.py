@@ -41,7 +41,7 @@ STORE = paths.RUN / "conversations.json"
 # single 120-minute TTL was protecting against.
 # Owner-tunable: how long an external party can still see their own thread, and how much of it
 # may colour a new question. Policy choices, not internals — so they read from the environment
-# (set in $DDUET_HOME/.env) with the shipped default as the fallback.
+# (set in $AGENTDUET_HOME/.env) with the shipped default as the fallback.
 RETAIN_MINUTES = int(os.getenv("SECRETARY_RETAIN_MINUTES", 3 * 24 * 60))
 CONTEXT_MINUTES = int(os.getenv("SECRETARY_CONTEXT_MINUTES", 120))
 MAX_TURNS = 60                   # per conversation, oldest dropped (retention cap)

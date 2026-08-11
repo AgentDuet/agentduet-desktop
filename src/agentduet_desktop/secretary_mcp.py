@@ -13,7 +13,7 @@ react to a message at 2am. That is the daemon's job, and the daemon exists regar
 
 Consequences to design around, not surprises to discover:
 
-  - This process inherits the HOST's environment. `$DDUET_HOME` must resolve the same way here
+  - This process inherits the HOST's environment. `$AGENTDUET_HOME` must resolve the same way here
     as in the daemon, or the face quietly operates on a different instance.
   - It holds NO credentials. Replies are queued to an outbox and the daemon sends them.
   - Both processes write the same instance files, with no locking. The outbox exists for exactly
@@ -28,7 +28,7 @@ assistant for something the secretary plainly does and be told it could not. Enu
 registry by hand is the same bug this codebase keeps paying for, so the list is derived and
 cannot fall behind.
 
-    claude mcp add secretary -- /path/to/.venv/bin/python -m dduet_desktop.secretary_mcp
+    claude mcp add secretary -- /path/to/.venv/bin/python -m agentduet_desktop.secretary_mcp
 
 Run as a MODULE, not a file path: the imports are package-relative.
 """

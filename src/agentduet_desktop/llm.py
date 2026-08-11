@@ -1,6 +1,6 @@
 """The model seam — one place that knows which provider is attached.
 
-DDuet Desktop is distributed, and the user attaches their own model. That only works if
+AgentDuet Desktop is distributed, and the user attaches their own model. That only works if
 the agent's decision code never names a vendor. Before this module, `brain.py` imported
 `google.genai` and called `client.models.generate_content` at eight separate call sites,
 so "attach Sonnet" meant editing the decision core.
@@ -189,7 +189,7 @@ class _DashScope:
     #: OPT-IN ONLY. This used to default to ~/.qwen, so a key sitting in the developer's home
     #: silently credentialed every instance on the machine — including throwaway ones created
     #: to test a first run, which reported themselves configured while holding nothing. A
-    #: credential belongs to the INSTANCE, in $DDUET_HOME/.env, or the install cannot be
+    #: credential belongs to the INSTANCE, in $AGENTDUET_HOME/.env, or the install cannot be
     #: reasoned about and a dev machine stops resembling a new one.
     KEY_FILE = pathlib.Path(os.environ["DASHSCOPE_KEY_FILE"]) \
         if os.getenv("DASHSCOPE_KEY_FILE") else None

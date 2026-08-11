@@ -3,14 +3,14 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dduet-desktop"
+name = "agentduet-desktop"
 dynamic = ["version"]
 description = "A personal secretary that answers external parties on your behalf, on your own machine."
 requires-python = ">=3.12"   # the SDK requires 3.12
 dependencies = [
   "agentduet>=1.0.0",        # released SDK: TELCO + WhatsApp
   "aiohttp>=3.9",            # the local owner site
-  "python-dotenv>=1.0",      # reads $DDUET_HOME/.env
+  "python-dotenv>=1.0",      # reads $AGENTDUET_HOME/.env
   "pyyaml>=6.0",           # writing Goose's config.yaml — YAML needs a real parser
   "mcp>=1.0",                # the owner surface, for whatever AI app they already use
 ]
@@ -25,7 +25,7 @@ qwen = ["httpx>=0.27"]        # DashScope's OpenAI-compatible endpoint
 ui = ["pywebview>=5.0"]
 
 [project.scripts]
-dduet-desktop = "dduet_desktop.cli:main"
+agentduet-desktop = "agentduet_desktop.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -33,7 +33,7 @@ where = ["src"]
 # Templates, examples and the served pages are DATA, not importable code.
 [tool.setuptools.dynamic]
 # One source of truth. Two declarations drift, and the one that drifts is the one nobody reads.
-version = {attr = "dduet_desktop.__version__"}
+version = {attr = "agentduet_desktop.__version__"}
 
 [tool.setuptools.package-data]
-dduet_desktop = ["*.html", "templates/**/*", "examples/**/*", "prompts/**/*"]
+agentduet_desktop = ["*.html", "templates/**/*", "examples/**/*", "prompts/**/*"]

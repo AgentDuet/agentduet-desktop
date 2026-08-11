@@ -19,13 +19,13 @@ import tempfile
 # with no profiles they were vacuous and passed; on this one they read real documents. Neither is
 # a test. A seeded home makes them mean the same thing everywhere.
 _HOME = pathlib.Path(tempfile.mkdtemp(prefix="iso-test-"))
-os.environ["DDUET_HOME"] = str(_HOME)
+os.environ["AGENTDUET_HOME"] = str(_HOME)
 
 HERE = pathlib.Path(__file__).parent
 # The SOURCE tree, not this folder. `HERE / "secretary_agent.py"` resolved to tests/, which does
 # not exist, so this suite died with a FileNotFoundError before reaching a single assertion —
 # and a suite that crashes enforces nothing. Invariant 9 was unguarded for as long as that stood.
-SRC = HERE.parent / "src" / "dduet_desktop"
+SRC = HERE.parent / "src" / "agentduet_desktop"
 # Imports go through the PACKAGE. They used to be bare (`import tools`), which worked when the
 # modules were flat and stopped working the day they became a package with relative imports —
 # a module doing `from . import paths` cannot be imported as a top-level module at all. That is
@@ -63,7 +63,7 @@ if leaked:
     failures.append(f"secretary_agent.py imports owner module(s) at top level: {leaked}")
 
 # 2 · the inbound handler must not reference any owner tool by name.
-from dduet_desktop import tools  # noqa: E402
+from agentduet_desktop import tools  # noqa: E402
 
 owner_tool_names = set(tools.OWNER_TOOLS)
 handler_src = ""
@@ -77,7 +77,7 @@ for name in owner_tool_names:
 # Seed the instance: one public document, and one person whose profile carries a folder grant
 # and an escalation rule. Without the profile, checks 5 and 5b iterate an empty list and pass
 # without testing anything — the failure mode that hid behind this suite not running at all.
-from dduet_desktop import paths  # noqa: E402
+from agentduet_desktop import paths  # noqa: E402
 
 paths.KNOWLEDGE.mkdir(parents=True, exist_ok=True)
 (paths.KNOWLEDGE / "hours.md").write_text("We open at 9am on weekdays.\n")
@@ -88,7 +88,7 @@ paths.PEOPLE.mkdir(parents=True, exist_ok=True)
     "# partner@example.com\n\n## Folders\n\n- partners\n\n## Always escalate\n\n- pricing\n")
 
 # 3 · permissions must reject a symlink escape from an allowed folder.
-from dduet_desktop import permissions  # noqa: E402
+from agentduet_desktop import permissions  # noqa: E402
 
 secret = _HOME / "_iso_secret.md"
 secret.write_text("TOPSECRET")
@@ -115,7 +115,7 @@ if any("partners" in s for s in srcs):
 
 # 5 · a profile must never apply on an unverified channel — otherwise anyone who
 #     self-declares an identity inherits that person's tone, scope and access.
-from dduet_desktop import people  # noqa: E402
+from agentduet_desktop import people  # noqa: E402
 
 for identity in people.list_profiles():
     if people.profile_for(identity, False):

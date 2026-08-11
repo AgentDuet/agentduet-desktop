@@ -120,7 +120,7 @@ def _ask(prompt: str, allow_blank: bool) -> str:
 
 
 def ensure_instance() -> list[str]:
-    """Create $DDUET_HOME from the templates. Idempotent, and never overwrites."""
+    """Create $AGENTDUET_HOME from the templates. Idempotent, and never overwrites."""
     return paths.migrate()
 
 
@@ -166,7 +166,7 @@ def connect(interactive: bool = True) -> bool:
     print("  and a second one fights the first for the same number.")
     uuid_in = input("\n  Connector uuid (blank to skip)\n  > ").strip()
     if not uuid_in:
-        print("  Skipped. Add one later with `dduet-desktop init` again.")
+        print("  Skipped. Add one later with `agentduet-desktop init` again.")
         return False
     key = input("  Connector API key\n  > ").strip()
 
@@ -203,7 +203,7 @@ def interview() -> str:
 
 
 def main(interactive: bool = True) -> int:
-    print("\n  DDuet Desktop — setup")
+    print("\n  AgentDuet Desktop — setup")
     ensure_instance()
     # paths.SEEDED, not a second migrate() call: the import already did the work, so calling it
     # again always returns nothing and reported "already present" on an instance created a
@@ -219,7 +219,7 @@ def main(interactive: bool = True) -> int:
     # and a conversation is a better interview than a list of prompts.
     if not attach(interactive):
         print("\n  Setup stopped: without a model the agent cannot answer anyone."
-              "\n  Run `dduet-desktop init` again once you have a key.")
+              "\n  Run `agentduet-desktop init` again once you have a key.")
         return 1
     connected = connect(interactive)
 
@@ -234,8 +234,8 @@ def main(interactive: bool = True) -> int:
 
     print(f"""
   Next:
-    dduet-desktop run          start the daemon — it answers while you are away
-    dduet-desktop status       what is running, and what this build can do
+    agentduet-desktop run          start the daemon — it answers while you are away
+    agentduet-desktop status       what is running, and what this build can do
 
   Then point your AI assistant at the mcp and ask it "what is my setup status?".
   It can do the rest: who you are, what you do, and what the agent may act on.

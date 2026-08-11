@@ -2,7 +2,7 @@
 
 Stanley Leong · 2026-08-04
 
-Why DDuet Desktop is shaped the way it is, in terms a backend engineer already knows.
+Why AgentDuet Desktop is shaped the way it is, in terms a backend engineer already knows.
 
 Kept because it is useful in three places that will each want a different length: a white paper,
 an explanation for a customer, and our own direction when a decision gets hard.
@@ -43,7 +43,7 @@ served to the client and can be edited, so they call the API directly with argum
 choosing. The equivalent here: **audit the tools as if the prompt did not exist.** The prompt is
 not a boundary any more than a web form is.
 
-## What DDuet is, in one line
+## What AgentDuet Desktop is, in one line
 
 **A small backend that runs on your own computer, whose users are the people who contact you.**
 
@@ -104,7 +104,7 @@ guardrails have to be defaults and structure, not documentation:
   caller-visible text.
 - Customer code never runs in our process, and its returns are treated as untrusted input.
 
-This is not a tax on the product. It is the difference between DDuet and someone wiring an agent
+This is not a tax on the product. It is the difference between AgentDuet Desktop and someone wiring an agent
 to their shell — and it is what a paid audit would be selling against, which is only credible if
 the platform's own floor is already high.
 
