@@ -376,6 +376,24 @@ def test_carry_mode() -> None:
     from agentduet_desktop import transcribe
     ok("transcription reports why it cannot run, rather than failing a call",
        transcribe.available()[0] in (True, False) and isinstance(transcribe.available()[1], str))
+
+    # ASKING WHETHER A CREDENTIAL EXISTS MUST ANSWER, NOT RAISE. `_DashScope.credential()` called
+    # `.read_text()` on a KEY_FILE that is None unless DASHSCOPE_KEY_FILE is set, and the
+    # `except OSError` beside it does not catch AttributeError. Invisible while every caller was
+    # already on the DashScope path; the first one to ask unconditionally — transcription,
+    # deciding whether it can run — crashed on any machine without the key. Which is every fresh
+    # install, and every CI runner.
+    import os as _os
+    from agentduet_desktop import llm
+    saved = {k: _os.environ.pop(k, None) for k in ("DASHSCOPE_API_KEY", "DASHSCOPE_KEY_FILE")}
+    try:
+        eq("with no key and no key-file, the credential is absent, not an exception",
+           llm._DashScope.credential(), None)
+        eq("and transcription says so instead of raising", transcribe.available()[0], False)
+    except Exception as exc:
+        ok("asking for an absent credential does not raise", False, f"{type(exc).__name__}: {exc}")
+    finally:
+        _os.environ.update({k: v for k, v in saved.items() if v is not None})
     ok("the ASR model takes audio with NO text part — it is a task model, not a chat model",
        '"text"' not in transcribe._one.__doc__ if transcribe._one.__doc__ else True)
     ok("a long call is chunked so request size does not scale with call length",
