@@ -130,6 +130,25 @@ It wants to reach:
 Approve with:  agentduet-desktop tools approve weather_check
 ```
 
+**What the approval step is, and what it is not.** It is the moment the owner fixes the
+destinations — that is the whole SSRF property above, and it is enforced in code: `resolve_url`
+resolves a name against the approved manifest and ignores a `url` field entirely.
+
+It is **not** a barrier against the owner's own assistant. `approve()` copies a file from
+`pending/` into `tools/`; anything that can write `$AGENTDUET_HOME` installs a tool without
+going near the CLI, and the same is true of `permissions.json` and `capabilities.json`. Being a
+CLI command only keeps it out of reach of an assistant that has neither a shell nor write access
+to that directory — and Claude Code always has Bash, Cowork writes to folders the owner
+connects, and Goose's shell is one toggle away. **The control that matters is whether
+`$AGENTDUET_HOME` is reachable by the assistant at all**, and that is the owner's host
+configuration, not something this package enforces.
+
+This is worth stating rather than leaving implied, because the owner's assistant reads
+asker-authored text — escalations and threads — so it is a prompt-injection target, and
+"approval is a separate step" would otherwise read as a defence it is not. Making it one means
+requiring something no agent can produce: a code delivered on the owner's phone over the
+product's own channel and typed back. That converges with outbound, which is unbuilt.
+
 At runtime the tool asks by NAME:
 
 ```js
