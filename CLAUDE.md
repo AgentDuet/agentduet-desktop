@@ -160,11 +160,19 @@ existed only because of the owner interface were removed — see the Cleared not
       then stops dead waiting on a human. Still the biggest get-started gap.
 
 
-- [ ] **Publish the SDK.** `agentduet` is not on PyPI with DDUET support; `1.0.0b10` there has
-      `VoiceAgent` but no DDUET at all. It is ONE repo on two branches —
-      `B3Networks/wss-sdk-python`, `feature/dduet-channel` (`1.0.1b1`, also on testpypi) and
-      `feat/adapters-extra`. CI works around it with a committed wheel in `vendor/`, which
-      **goes stale silently**.
+- [x] ~~**Publish the SDK.**~~ **RESOLVED 2026-08-11, by dropping the requirement.** `agentduet`
+      `1.0.0` shipped to PyPI on 2026-08-10 and still has **no DDUET at all** — its API is
+      unchanged from `1.0.0b10`, so publishing did not help. DDUET lives only on
+      `B3Networks/wss-sdk-python` `feature/dduet-channel` (`1.0.1b1`), a PRIVATE repo, which is
+      why CI carried a committed wheel in `vendor/`.
+      **So the channel was swapped to WhatsApp instead** — `Network.WA` + `SendWAMessage`, both
+      in the released SDK. `vendor/` is deleted and `pyproject.toml` asks for `agentduet>=1.0.0`.
+      Neither onboarding path in the August flow used DDUET anyway. This also removed the
+      base-URL clash: DDUET needed a dev endpoint while voice needs prod, and one client has one
+      base URL.
+      **Watch the version ordering:** `1.0.1b1` (the DDUET branch) sorts ABOVE `1.0.0`, and when
+      main ships a real `1.0.1` it will outrank the branch while still lacking DDUET. DDUET is a
+      feature, so that branch ought to be renumbered `1.1.0b1`.
 - [ ] **Windows binary.** Intel Mac was DROPPED 2026-08-04: `macos-13` is retired so the job
       never started, and a queued job holds its whole run open — finished builds looked
       unfinished for hours. A pre-2020 Mac cannot run our build; check the chip before sending.
@@ -179,18 +187,24 @@ existed only because of the owner interface were removed — see the Cleared not
       uuid, the visitor is an email. A per-agent URL exists (`stg.dduet.com/<slug>/chat`) but
       only on staging; prod DDUET needs `AGENTDUET_BASE_URL=ws://wss-dev...` today, which
       conflicts with voice arriving on prod. One client, one base URL.
-- [ ] **Reply over WhatsApp.** Inbound WA now REACHES us (2026-08-05, after Dat added the WA
-      route — the connector predated WhatsApp support). We have what a reply needs: participant
-      `6596918851`, subscriber (the WABA `phone_number_id`) `1151661421362480`, and the payload
-      shape from the SDK's `wa_echo_bot.py`. `on_incoming_message` currently drops any non-DDUET
-      network with a log line. What is NOT known is the INBOUND payload shape — `_first_text`
-      parses Nexus proto3 parts, and Meta's message object is different, so log a raw payload
-      before writing the extractor. Also decide `default_verified("WA")`: WhatsApp proves phone
-      ownership, which is arguably stronger than DDUET's collected-but-maybe-unauthenticated
-      email. **Shared sandbox number** — fine to test, unusable as product until per-owner WABA
-      lands (~September, Cedric's release).
-- [ ] Outbound initiate: DDUET is passive, so held replies are delivered only when the person
-      next writes.
+- [x] ~~**Reply over WhatsApp.**~~ **BUILT 2026-08-11** — WhatsApp is now the messaging channel,
+      not an unhandled network. `on_incoming_message` accepts `Network.WA`, replies with
+      `SendWAMessage` in the `wa_echo_bot.py` shape (`_wa_text`, one helper so the asker reply and
+      the owner's queued reply cannot drift), and `default_verified("WA")` is **true** — the
+      number is proven at registration, and `SELF_VOUCHING_NETWORKS` had said "WHATSAPP" for
+      months while the SDK enum is "WA", so the intent had never fired. It grants the profile and
+      their own history; `knowledge/` is public to everyone either way, so disclosure is unchanged.
+- [ ] **Confirm the INBOUND WhatsApp payload shape.** Still not known. `wa_echo_bot.py` proves
+      only the OUTBOUND shape — it replies with a fixed string and never reads a body.
+      `_first_text` now accepts Meta flat (`text.body`), Meta wrapped (`messages[].text.body`) and
+      the old Nexus `parts`, and **logs any payload it cannot read, in full**. Narrow it once a
+      real message has been seen; not before.
+- [ ] **Per-owner WABA.** **Shared sandbox number** — fine to test, unusable as product until it
+      lands (~September, Cedric's release). Known ids: participant `6596918851`, subscriber (the
+      WABA `phone_number_id`) `1151661421362480`.
+- [ ] Outbound initiate: messaging is reactive, so held replies are delivered only when the
+      person next writes. On WhatsApp there is a second limit — Meta's 24h customer-service
+      window, after which a free-form reply needs an approved template we do not have.
 - [ ] Unverified askers: `knowledge/` is flat and public. Decide the disclosure tier before
       strangers are in scope.
 - [ ] **DashScope caps concurrent realtime connections per ACCOUNT** ("max_connections 100").

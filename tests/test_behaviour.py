@@ -110,7 +110,7 @@ def stop_own_instance() -> None:
 
 def call(asker: str, verified: bool, question: str, convo: str) -> dict:
     token = TOKEN or (paths.RUN / "web-token").read_text().strip()
-    body = json.dumps({"asker": asker, "verified": verified, "network": "DDUET",
+    body = json.dumps({"asker": asker, "verified": verified, "network": "WA",
                        "conversation": convo, "message": question}).encode()
     req = urllib.request.Request(f"{BASE}/api/sim?t={token}", data=body,
                                 headers={"Content-Type": "application/json"})

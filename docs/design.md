@@ -20,7 +20,7 @@ reverse it, so the fastest way to make a bad change here is to skip that.
 
 ## The daemon is the product
 
-**The asker daemon.** Always on. Holds the DDUET connection, answers calls and messages from
+**The asker daemon.** Always on. Holds the AgentDuet connection, answers calls and messages from
 external parties, decides nothing it has not been authorised to decide. It ships with a working
 secretary, and it takes **tools** as its extension point. This is the product; everything else
 serves it.
@@ -41,7 +41,7 @@ customer without an assistant would have bought nothing — and they have not.
   customer-tools section, and `docs/tool-surface-risk.md`.
 
 ```
-   stranger ──phone/DDUET──>  ASKER DAEMON  <──MCP──  owner's assistant
+   stranger ─phone/WhatsApp─>  ASKER DAEMON  <──MCP──  owner's assistant
                               always on               (Claude Code / Goose)
                               5 tools                  33 tools
                               no OS reach

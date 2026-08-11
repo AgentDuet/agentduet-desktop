@@ -43,15 +43,15 @@ jobs:
         with:
           python-version: "3.12"      # the floor the SDK requires
 
-      # The SDK is not on PyPI and its repo is private. A private repo's Actions "access"
-      # setting only permits using it as a source of ACTIONS and REUSABLE WORKFLOWS — it does
-      # not give GITHUB_TOKEN git-clone rights, which was verified the hard way ("Repository
-      # not found"). Cloning would need a PAT or deploy key, so the wheel is committed under
-      # vendor/ instead: no secret to create, rotate or leak. See vendor/README.md.
+      # The SDK comes from PyPI now (1.0.0, released 2026-08-10). It used to be a wheel
+      # committed under vendor/, because the DDUET channel lived only on a branch of a PRIVATE
+      # repo that CI cannot clone — a private repo's Actions "access" setting governs actions
+      # and reusable workflows, not `git clone`. Dropping DDUET for WhatsApp removed the need
+      # for that wheel, and with it the thing that stopped this repo being published at all.
 
       - name: Install
         run: |
-          pip install vendor/*.whl
+          pip install "agentduet>=1.0.0"
           # Voice. A different org (AgentDuet) but PUBLIC, so no credentials. Without this the
           # binary starts fine and silently cannot answer calls: voice.available() catches the
           # ImportError and reports "voice not enabled", which reads as a config problem.

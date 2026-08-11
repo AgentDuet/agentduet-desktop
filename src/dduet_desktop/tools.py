@@ -727,9 +727,9 @@ def reply_to(asker: str, text: str, about: str = "", close: bool | None = None) 
         # Held, not dropped. Closing the escalation while nothing was sent made the queue
         # claim it was handled when the person had heard nothing.
         asker_actions.queue_reply(asker, sent)
-        return (f"Closed: {what}.{tail} HELD for delivery — {asker} has no live "
-                f"chat session and DDUET cannot start one, so I will send this the moment "
-                f"they next write. It is visible as awaiting delivery until then.")
+        return (f"Closed: {what}.{tail} HELD for delivery — {asker} has never written in, so "
+                f"there is no conversation to reply into and we cannot start one. I will send "
+                f"this the moment they write. It is visible as awaiting delivery until then.")
 
     with OUTBOX.open("a") as f:
         f.write(json.dumps({"asker": asker, "text": sent,

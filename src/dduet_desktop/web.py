@@ -708,7 +708,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         result = await brain.handle_query(
             (body.get("asker") or "").strip(),
             (body.get("message") or "").strip(),
-            (body.get("network") or "DDUET").upper(),
+            (body.get("network") or "WA").upper(),
             verified=bool(v) if v is not None else None,
             conversation=(body.get("conversation") or "").strip() or None,
         )

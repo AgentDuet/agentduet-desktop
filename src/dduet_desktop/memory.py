@@ -7,10 +7,12 @@ is meaningless on its own, and retrieval had nothing to key on.
 
 TWO THINGS THAT MATTER
 
-1. **The conversation key is the SESSION, not the person.** DDUET's `dduet_session_uid`
-   is the per-conversation Nexus token, and concurrent sessions of one email stay
-   distinct — so two parallel chats don't bleed into each other. Channels without a
-   session id (telco, WhatsApp) fall back to the identity.
+1. **The conversation key is the SESSION where one exists, otherwise the person.** No live
+   channel supplies a session id today — WhatsApp and telco both key on the identity, which
+   on those channels IS the person: one number, one thread. The distinction is kept because a
+   channel that allows several concurrent conversations per identity (a web chat with a
+   per-visit token, say) must not let them bleed into each other, and that is a property of
+   the channel rather than something to rediscover when one arrives.
 
 2. **Verified and unverified streams never share history.** Keyed with a `v:`/`u:`
    prefix. Otherwise an unverified claim of an identity could read back answers that
