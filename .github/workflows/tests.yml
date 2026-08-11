@@ -1,0 +1,56 @@
+# The suites that must pass on every change. Separate from `build.yml` on purpose: that one
+# produces 40 MB binaries and runs on a tag, so nothing was checking a push to main at all — the
+# 249 rule checks only ever ran on the machine of whoever happened to write them.
+#
+# WHAT IS DELIBERATELY NOT HERE: `test_behaviour.py`. It drives a real model, so it needs a
+# credential, costs money per run, and is known flaky (~2 in 5 on one negotiation case). A
+# required check that fails two times in five teaches people to ignore required checks, which is
+# worse than not having it. It stays a thing a human replays.
+name: tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# A second push supersedes the first: nobody needs the result for a commit already replaced.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10          # these take about a minute; ten is "something has hung"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"      # the floor the SDK requires
+          cache: pip
+
+      - name: Install
+        run: |
+          # ALL THREE providers, matching build.yml: the suites read llm.py's provider table, and
+          # a missing one is reported as "not available" rather than raised — so a thin install
+          # would pass while hiding exactly the gap that shipped in the first macOS build.
+          pip install ".[gemini,anthropic,qwen]"
+          # wasmtime runs customer tool code in the sandbox; the Javy plugin itself is committed
+          # under src/agentduet_desktop/wasm/, so there is nothing to fetch.
+          # pyflakes backs the "no undefined names" check, which is the one that catches a name
+          # deleted by an edit — it passed 140 other checks once while the voice path was broken.
+          pip install wasmtime pyflakes
+
+      # Three suites, each run even if an earlier one fails. A single `&&` chain would report the
+      # first failure and hide the rest, which turns one red run into several round trips.
+      - name: Rules (model-free)
+        run: python tests/test_rules.py
+
+      - name: Isolation (the asker cannot reach an owner tool)
+        if: ${{ !cancelled() }}
+        run: python tests/test_isolation.py
+
+      - name: Sandbox (what a customer tool cannot reach)
+        if: ${{ !cancelled() }}
+        run: python tests/test_wasm.py

@@ -201,6 +201,15 @@ class _DashScope:
         key = os.getenv(cls.KEY)
         if key:
             return key
+        # KEY_FILE is None unless DASHSCOPE_KEY_FILE is set, and `None.read_text()` raises
+        # AttributeError — which the `except OSError` below does NOT catch. So on a machine with
+        # neither the variable nor the file, asking whether a DashScope credential exists RAISED
+        # instead of answering "no". It stayed hidden because the only callers were on the
+        # DashScope path, where a key was present by definition; the first caller that asks the
+        # question unconditionally — transcription, deciding whether it can run at all — hit it
+        # immediately on a machine with no key.
+        if cls.KEY_FILE is None:
+            return None
         try:
             # First non-blank line, so both a bare key and a KEY=value line work.
             for line in cls.KEY_FILE.read_text().splitlines():
