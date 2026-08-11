@@ -157,6 +157,25 @@ def voice() -> str:
     return _strip_guidance(_sections().get("Voice", "")).strip()
 
 
+#: What to do with an inbound call. The two are MUTUALLY EXCLUSIVE by construction: one
+#: connector has one `on_incoming_call` handler, so the daemon registers one of them and not
+#: both. Anything unrecognised means "answer" — the mode that has been in production, so a
+#: typo cannot silently stop the agent picking up.
+CALLS_ANSWER = "answer"
+CALLS_CARRY = "carry"
+
+
+def calls() -> str:
+    """`answer` (the agent picks up) or `carry` (bridge it onward and record both legs).
+
+    Defaults to ANSWER, and an unreadable value falls back to it. Carrying is the mode that
+    starts recording two humans, so it has to be chosen explicitly and in a file the owner can
+    see — never inferred, and never the fallback for a heading someone mistyped.
+    """
+    first = _first_line(_strip_guidance(_sections().get("Calls", ""))).strip().lower()
+    return CALLS_CARRY if first.startswith(CALLS_CARRY) else CALLS_ANSWER
+
+
 def never_say() -> list[str]:
     """Topics the owner never wants stated on their behalf, however readable.
 
