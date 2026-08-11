@@ -358,6 +358,18 @@ def test_carry_mode() -> None:
     ok("the ring time is inside the SDK's range", 1 <= carry.RING_SECONDS <= 120,
        carry.RING_SECONDS)
 
+    # ANSWER BEFORE CONNECT, in that order. It is the documented flow, and it is what makes a
+    # FAILED bridge still produce a recording of the caller — without it a call that cannot be
+    # bridged yields two empty files and nothing to transcribe. The order is the property, so it
+    # is asserted as an order rather than as two separate calls existing.
+    csrc_ = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+             / "carry.py").read_text()
+    # `await`, so this matches the CALL and not the module docstring's mention of connect() —
+    # which sits above both and made the first version of this check fail for the wrong reason.
+    ok("carrying answers the call before bridging it",
+       0 < csrc_.index("await call.answer()") < csrc_.index("await call.connect("))
+    ok("and asks for spy mode rather than assuming the default", "call.spy()" in csrc_)
+
     # NO AGENT ON THIS PATH. The check is the DECISION surface, not the word "brain": carrying
     # writes its transcript into the same history the rest of the product reads, and
     # `brain.record` is an append-only log, not a judgement. What must never appear is anything
