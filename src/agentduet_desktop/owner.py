@@ -90,6 +90,15 @@ def cannot_answer(deep: bool = False) -> str:
     `deep` really calls the model instead of only looking for a credential — right for a page
     load, wrong for anything polled, which would spend a token per poll.
     """
+    # CARRYING NEEDS NO MODEL, so nothing here may close the channel for the want of one.
+    # Nobody is answered in that mode: the call is bridged to a human and recorded, and with a
+    # local speech engine the transcript needs no credential either. Requiring a model would
+    # hold an owner on the setup page waiting to attach something the path never touches —
+    # which is what this instance did the moment `carry` existed, and is the same "answering is
+    # impossible, not configuration is incomplete" bar this function already draws, applied to
+    # a mode that did not exist when it was written.
+    if calls() == CALLS_CARRY:
+        return ""
     from . import llm
     if deep:
         ok, why = llm.verify()

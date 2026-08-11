@@ -378,6 +378,79 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.Response(status=401, text="bad or missing token")
         return web.Response(text=(HERE / "settings.html").read_text(), content_type="text/html")
 
+    async def api_setup_about(request):
+        """Who the owner is — WITHOUT needing a model.
+
+        GET returns what is recorded, so a second run edits rather than duplicates. POST writes
+        name/pronoun/phone through set_setting (settings.md, parsed by heading) and the one
+        free-text answer into knowledge/owner.md under `## Who`.
+
+        THE POINT IS THAT NO MODEL IS INVOLVED. `/api/setup/interview` exists and phrases this
+        better, but it runs the answers through the LLM — so on an install with no credential it
+        cannot run at all, and this step is exactly the one an owner recording calls still needs.
+        A sentence written verbatim is worth more than a better sentence they cannot reach.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import owner as owner_settings, paths as _paths
+        if request.method == "GET":
+            import re as _re
+            who = ""
+            if _paths.KNOWLEDGE.joinpath("owner.md").is_file():
+                m = _re.search(r"^##\s+Who\s*$(.*?)(?=^##\s|\Z)",
+                               _paths.KNOWLEDGE.joinpath("owner.md").read_text(), _re.S | _re.M)
+                # Strip the template's guidance comment, or the box prefills with instructions.
+                who = _re.sub(r"<!--.*?-->", "", m.group(1) if m else "", flags=_re.S).strip()
+                # WITHOUT THE BULLETS. They are storage, not what the owner typed — handing
+                # "- I run …" back to the textarea makes the next save write "- - I run …".
+                who = "\n".join(l.strip().lstrip("-•").strip() for l in who.splitlines()
+                                if l.strip())
+            name = owner_settings.name()
+            return web.json_response({
+                # DEFAULT_NAME is a fallback, not an answer — prefilling "the owner" would look
+                # like a recorded choice and get saved back as one.
+                "name": "" if name == owner_settings.DEFAULT_NAME else name,
+                "pronoun": owner_settings.pronoun_raw(), "phone": owner_settings.phone(),
+                "does": who, "calls": owner_settings.calls()})
+
+        body = await request.json()
+        done, problems = [], []
+        for field in ("name", "pronoun", "phone"):
+            value = (body.get(field) or "").strip()
+            if not value:
+                continue          # blank means "leave it", never "clear it"
+            out = tools.set_setting(field, value)
+            (problems if out.lower().startswith("unknown") else done).append(out)
+        # UNCHANGED MEANS UNTOUCHED. add_knowledge APPENDS, so re-saving a prefilled form
+        # would file the same sentence twice and the agent would answer from whichever surfaced
+        # first. Comparing against what is recorded makes reopening setup and pressing Save a
+        # no-op, which is what anyone would expect it to be.
+        #
+        # A CHANGED answer still appends rather than replacing. Reconciling a rewrite is what
+        # /api/setup/interview does, and it needs a model — so on this path the honest behaviour
+        # is to add, and to say so here rather than imply an edit that does not happen.
+        current = ""
+        if _paths.KNOWLEDGE.joinpath("owner.md").is_file():
+            import re as _re2
+            m2 = _re2.search(r"^##\s+Who\s*$(.*?)(?=^##\s|\Z)",
+                             _paths.KNOWLEDGE.joinpath("owner.md").read_text(), _re2.S | _re2.M)
+            current = _re2.sub(r"<!--.*?-->", "", m2.group(1) if m2 else "", flags=_re2.S)
+            current = " ".join(l.strip().lstrip("-•").strip() for l in current.splitlines()
+                               if l.strip())
+        does = (body.get("does") or "").strip()
+        if does and does not in current:
+            # Positional order is (fact, file, section) — and the section matters: without it the
+            # bullet lands under whatever heading happens to be last, which for owner.md is
+            # Availability. A sentence about what you do, filed as when you are free, is worse
+            # than not filing it.
+            out = tools.add_knowledge(does, "owner.md", "Who")   # the FILENAME, extension and all
+            # add_knowledge signals refusal with a "NOT saved." prefix, which is the whole
+            # failure vocabulary here — matching anything looser would swallow a real refusal.
+            (problems if out.startswith("NOT saved") else done).append(out)
+        if problems:
+            return web.json_response({"ok": False, "message": "; ".join(problems)})
+        return web.json_response({"ok": True, "message": "Saved. It knows who it works for now."})
+
     async def api_setup_setting(request):
         """Set one owner setting directly — no model involved."""
         if not authed(request):
@@ -623,6 +696,16 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response({"error": "unauthorised"}, status=401)
         from . import service
         msg = service.handover()
+        # NOTHING TO HAND OVER TO IS NOT A FAILURE. Handover promotes the INSTALLED copy and
+        # stands this one down; with no install there is simply no second copy to promote, and
+        # the daemon the owner is talking to keeps answering either way. Reporting that in red
+        # on a step called "Finish" tells someone their setup broke when it did not — and it is
+        # the normal state for anyone running from source, or who used Skip on step 1.
+        if msg.startswith("Not installed"):
+            return web.json_response({"ok": True, "message":
+                "Setup is complete and this secretary is answering now. It was not installed to "
+                "this machine, so it stops when you close it — run step 1 if you want it to "
+                "start again by itself after a reboot."})
         ok = msg.startswith("Handing over")
         if ok:
             # Answer FIRST, exit after. Exiting inside the handler would drop the response and
@@ -917,6 +1000,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/setup", setup_page),
         web.get("/settings", settings_page),
         web.post("/api/setup/setting", api_setup_setting),
+        web.get("/api/setup/about", api_setup_about),
+        web.post("/api/setup/about", api_setup_about),
         web.post("/api/setup/connector", api_setup_connector),
         web.post("/api/quit", api_quit),
         web.get("/api/setup/current", api_setup_current),

@@ -63,13 +63,15 @@
 <body>
 <div class="wrap">
   <h1>Set up your secretary</h1>
-  <p class="lede">Four steps. Then it answers for you, whether or not this page is open.</p>
+  <p class="lede">Six steps. Then it works for you, whether or not this page is open.</p>
 
   <div class="steps">
     <div id="s1" class="on">1 · install</div>
-    <div id="s2">2 · a model</div>
-    <div id="s3">3 · your number</div>
-      <div id="s4">4 · finish</div>
+    <div id="s2">2 · what it does</div>
+    <div id="s3">3 · a model</div>
+    <div id="s4">4 · your number</div>
+    <div id="s5">5 · about you</div>
+    <div id="s6">6 · finish</div>
   </div>
 
   <!-- ---------------- 1 · INSTALL ---------------- -->
@@ -84,8 +86,30 @@
     <div id="mInst"></div>
   </section>
 
-  <!-- ---------------- 2 · MODEL ---------------- -->
+  <!-- ---------------- 2 · WHAT IT DOES ----------------
+       FIRST, because it decides whether a model is needed at all. Carrying a call answers
+       nobody: it bridges the caller to your phone and records both sides, which needs no LLM
+       and — with the local speech engine — no credential of any kind. Asking for a model before
+       asking what the thing is for is how an owner who only wants call recording ends up stuck
+       on a screen demanding an API key they will never use. -->
   <section class="card" id="c2">
+    <h2>What should it do with a call?</h2>
+    <div class="row">
+      <label><input type="radio" name="calls" value="answer" checked> <b>Answer for me.</b>
+        An assistant picks up, answers from what you tell it, and escalates the rest.
+        <span class="sm">Needs a model.</span></label>
+    </div>
+    <div class="row">
+      <label><input type="radio" name="calls" value="carry"> <b>Put it through to me, and record it.</b>
+        The call is bridged to your phone. Both sides are recorded and transcribed.
+        <span class="sm">No model needed. You are recording two people — check what you must tell them.</span></label>
+    </div>
+    <div class="acts"><button id="bMode">Continue</button><span class="sp"></span></div>
+    <div id="mMode"></div>
+  </section>
+
+  <!-- ---------------- 3 · MODEL ---------------- -->
+  <section class="card" id="c3">
     <h2>Attach a model</h2>
     <p class="hint">Checked before saving. Stored on this machine only.</p>
     <div class="row">
@@ -104,14 +128,17 @@
     <div class="acts">
       <button id="b1">Save</button>
     <button class="ghost" id="b1keep" hidden>Keep current key</button>
+      <!-- Only when carrying. Skipping with "answer" selected would produce an agent with
+           nothing behind it: the daemon would hold the connector and never speak. -->
+      <button class="ghost" id="b1skip" hidden>Skip — I only want calls recorded</button>
       <span class="sp"></span>
       <span class="spin" id="sp1"></span>
     </div>
     <div id="m1"></div>
   </section>
 
-  <!-- ---------------- 3 · CONNECTOR ---------------- -->
-  <section class="card" id="c3">
+  <!-- ---------------- 4 · CONNECTOR ---------------- -->
+  <section class="card" id="c4">
     <h2>Your B3 connector</h2>
     <p class="hint">Gives you a phone number and a message channel. Skip if you have none yet.</p>
     <!-- SIGN IN, when there is somewhere to sign in to. Hidden unless the backend advertises an
@@ -143,7 +170,53 @@
     <div id="m3"></div>
   </section>
 
-  <!-- ---------------- 4 · FINISH ----------------
+  <!-- ---------------- 5 · ABOUT YOU ----------------
+       This did not exist, and its absence was audible: a real call was answered as "the
+       personal assistant for the owner", and "what can you do?" got a generic answer because
+       knowledge/ held nothing but its own templates. The CLI interview covered this and the
+       page never did — fine while the owner was assumed to have a terminal, wrong for someone
+       handed a binary.
+
+       NO MODEL IS REQUIRED. Name, pronoun and phone go through set_setting, which writes
+       settings.md directly. Only the free-text "what you do" is improved by a model, and it is
+       written verbatim when there is none. -->
+  <section class="card" id="c5">
+    <h2>About you</h2>
+    <p class="hint">So it can say who it works for, and judge what is your kind of question.</p>
+    <label>Your name
+      <span class="sm">How it signs off and refers to you.</span>
+      <input id="oName" autocomplete="off" placeholder="…"></label>
+    <label>Pronoun <span class="sm">Optional. Blank means it uses your name rather than guessing.</span>
+      <input id="oPronoun" autocomplete="off" placeholder="he/him, she/her, they/them"></label>
+    <label>Your number <span class="sm">Optional, E.164. For it to RING YOU — never given out.
+      Blank and it will not offer a callback.</span>
+      <input id="oPhone" autocomplete="off" placeholder="+6591234567"></label>
+    <label>What do you do?
+      <span class="sm">A sentence or two, plus any other business you run. It has no other way
+      to judge whether a question is your kind of thing.</span>
+      <textarea id="oDoes" rows="3" placeholder="I service air-conditioners for homes and small offices on the east side. I also rent out two apartments."></textarea></label>
+    <!-- SHOWN, NOT PREFILLED, and deliberately not click-to-fill. design.md already settled
+         this for capabilities — "the pizza example is not installed; a new owner should not
+         inherit someone else's business" — and a one-click "I am a plumber" is the same
+         mistake in a smaller box. Someone in a hurry accepts it, and the agent then answers
+         a stranger about a trade its owner is not in.
+
+         Each example teaches something different rather than repeating one shape: the first
+         adds a service AREA, the second states a LIMIT (so the agent learns it may say no),
+         the third shows a SECOND business, which is the part people leave out. -->
+    <p class="hint">Examples, to show the shape — write your own:<br>
+      &middot; &ldquo;I am a plumber. Mostly emergency callouts, homes and small shops in the west.&rdquo;<br>
+      &middot; &ldquo;I run a two-chair barber shop. Walk-ins only, I do not take appointments.&rdquo;<br>
+      &middot; &ldquo;I sell and repair bicycles. I also do frame respraying, which takes about a week.&rdquo;</p>
+    <div class="acts">
+      <button id="bAbout">Save</button>
+      <button class="ghost" id="aboutSkip">Skip</button>
+      <span class="sp"></span><span class="spin" id="spAbout"></span>
+    </div>
+    <div id="mAbout"></div>
+  </section>
+
+  <!-- ---------------- 6 · FINISH ----------------
        This step used to be "your AI assistant": detect one, offer to install Goose, register the
        mcp, open it. That is gone (2026-08-11). The people this is being packaged for — small
        vendors handed a binary — do not have a coding assistant and should not be asked to
@@ -151,7 +224,7 @@
        part of the installer by a wide margin, and it downloaded third-party software.
        Connecting an assistant is still supported, as an explicit `agentduet-desktop connect`
        for whoever wants it. -->
-  <section class="card" id="c4">
+  <section class="card" id="c6">
     <h2>Finish</h2>
     <p class="hint">It keeps answering after you close this page.</p>
     <button id="doDone">Done</button>
@@ -183,7 +256,7 @@
   const esc = s => (s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 
   function show(n){
-    [1,2,3,4].forEach(i => {
+    [1,2,3,4,5,6].forEach(i => {
       $('c' + i).classList.toggle('on', i === n);
       $('s' + i).classList.toggle('on', i === n);
       $('s' + i).classList.toggle('done', i < n);
@@ -207,12 +280,12 @@
     const d = await post('/api/setup/model', {model: $('model').value, key});
     $('b1').disabled = false; $('sp1').textContent = '';
     say('m1', d.ok, d.message);
-    if (d.ok) setTimeout(() => show(3), 700);   // model done -> the connector
+    if (d.ok) setTimeout(() => show(4), 700);   // model done -> the connector
   };
 
 
   // ---- 3 · the connector ---------------------------------------------------------------
-  $('b3skip').onclick = () => show(4);          // skipping is fine; the assistant step is not
+  $('b3skip').onclick = () => show(5);          // no connector yet is fine; about-you is not
   $('b3').onclick = async () => {
     const key = $('cKey').value.trim(), uuid = $('cUuid').value.trim();
     if (!key || !uuid) { say('m3', false, 'Both fields are needed — or skip for now.'); return; }
@@ -220,7 +293,7 @@
     const d = await post('/api/setup/connector', {key, uuid});
     $('b3').disabled = false; $('sp3').textContent = '';
     say('m3', d.ok, d.message);
-    if (d.ok) setTimeout(() => show(4), 900);
+    if (d.ok) setTimeout(() => show(5), 900);
   };
 
   // EXISTING CREDENTIALS. Re-running setup should not demand a key the owner already gave —
@@ -233,7 +306,7 @@
     if (cur.model_configured) {
       $('m1').innerHTML = `<div class="msg ok">Already attached: ${esc(cur.model)}</div>`;
       $('b1keep').hidden = false;
-      $('b1keep').onclick = () => show(3);
+      $('b1keep').onclick = () => show(4);
       $('key').placeholder = 'paste only if you are changing it';
       if (cur.model_name) $('model').value = cur.model_name;
     }
@@ -261,7 +334,7 @@
     if (cur.connector_configured) {
       $('m3').innerHTML = `<div class="msg ok">Already configured — ${esc(cur.connector_uuid)}</div>`;
       $('b3keep').hidden = false;
-      $('b3keep').onclick = () => show(4);
+      $('b3keep').onclick = () => show(5);
       // Skip is for someone who has no connector. With one already saved it is a second button
       // that does the same nothing as Keep, and the pair only invites a wrong guess.
       $('b3skip').hidden = true;
@@ -277,7 +350,7 @@
     const r = await fetch(`/api/setup/current?t=${T}`);
     if (!r.ok) return;
     const cur = await r.json();
-    if (cur.configured) { show(3); $('s1').classList.add('done'); $('s2').classList.add('done'); }
+    if (cur.configured) { show(4); [1,2,3].forEach(i => $('s'+i).classList.add('done')); }
   })();
 
   // ---- 1 · install ---------------------------------------------------------------------
@@ -306,6 +379,55 @@
     setTimeout(() => show(2), 1200);
   };
   $('skipInstall').onclick = () => show(2);
+
+  // ---- 2 · what it does ------------------------------------------------------------------
+  // The choice is SAVED, not just remembered in the page: the daemon reads `## Calls` from
+  // settings.md, and a mode that only existed in a browser tab would be lost on the first
+  // reload — leaving an owner who chose recording with an agent answering their calls.
+  $('bMode').onclick = async () => {
+    const mode = document.querySelector('input[name=calls]:checked').value;
+    $('bMode').disabled = true;
+    const d = await post('/api/setup/setting', {field: 'calls', value: mode});
+    $('bMode').disabled = false;
+    if (!d.ok) return say('mMode', false, d.message);
+    // Skipping the model is offered ONLY for carrying. With "answer" chosen it would produce an
+    // agent with nothing behind it: the daemon holds the connector and never speaks.
+    $('b1skip').hidden = (mode !== 'carry');
+    say('mMode', true, mode === 'carry'
+      ? 'Calls will be put through to you and recorded. A model is optional from here.'
+      : 'The assistant will answer. The next step attaches its model.');
+    setTimeout(() => show(3), 700);
+  };
+  $('b1skip').onclick = () => show(4);
+
+  // ---- 5 · about you ---------------------------------------------------------------------
+  // NO MODEL NEEDED. name/pronoun/phone go through set_setting, which edits settings.md by
+  // heading. `does` is the one free-text answer, and it is written to knowledge/owner.md as
+  // given — a model would phrase it better, and requiring one to record a sentence about
+  // yourself is exactly the tax this step exists to avoid.
+  $('bAbout').onclick = async () => {
+    const name = $('oName').value.trim();
+    if (!name) return say('mAbout', false, 'A name at least — otherwise it answers as "the owner".');
+    $('bAbout').disabled = true; $('spAbout').classList.add('go');
+    const d = await post('/api/setup/about', {
+      name, pronoun: $('oPronoun').value.trim(),
+      phone: $('oPhone').value.trim(), does: $('oDoes').value.trim()});
+    $('bAbout').disabled = false; $('spAbout').classList.remove('go');
+    say('mAbout', d.ok, d.message);
+    if (d.ok) setTimeout(() => show(6), 900);
+  };
+  $('aboutSkip').onclick = () => show(6);
+
+  // Prefill from what is already recorded, so a second run edits rather than duplicates.
+  fetch(`/api/setup/about?t=${T}`).then(r => r.json()).then(d => {
+    if (!d || d.error) return;
+    for (const [k, el] of [['name','oName'],['pronoun','oPronoun'],['phone','oPhone'],['does','oDoes']])
+      if (d[k]) $(el).value = d[k];
+    if (d.calls) {
+      const r = document.querySelector(`input[name=calls][value="${d.calls}"]`);
+      if (r) { r.checked = true; $('b1skip').hidden = (d.calls !== 'carry'); }
+    }
+  }).catch(() => {});
 
   // ---- 4 · finish ----------------------------------------------------------------------
   // The last act of the installer: start the INSTALLED copy detached and stand this one down.

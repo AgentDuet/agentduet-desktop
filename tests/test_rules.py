@@ -427,6 +427,36 @@ def test_carry_mode() -> None:
        1 <= transcribe.CHUNK_SECONDS <= 300, transcribe.CHUNK_SECONDS)
 
 
+def test_setup_without_a_model() -> None:
+    """Setup must complete with no model attached, because one mode needs none.
+
+    Carrying a call answers nobody: it bridges to a human and records, and with the local
+    speech engine the transcript needs no credential either. So an owner who wants call
+    recording must be able to get all the way through — and before this, `cannot_answer()`
+    refused the connector for the want of a model that path never touches.
+    """
+    print("\n  -- setup: a model is required only by the mode that needs one --")
+    import unittest.mock as mock
+    from agentduet_desktop import owner, tools
+
+    for mode, want in ((owner.CALLS_CARRY, ""), (owner.CALLS_ANSWER, "no model is attached")):
+        with mock.patch.object(owner, "calls", return_value=mode), \
+             mock.patch("agentduet_desktop.llm.configured", return_value=False):
+            eq(f"{mode} with no model -> {want or 'runs'}", owner.cannot_answer(), want)
+
+    # The mode is a SETTING, so the page's choice survives a restart. A mode that lived only in
+    # a browser tab would leave an owner who chose recording with an agent answering their calls.
+    ok("the call mode can be set like any other setting", "calls" in tools.SETTING_FIELDS)
+
+    # And the page must offer the skip ONLY for the mode that may skip. Offering it under
+    # "answer" produces a daemon holding the connector with nothing behind it to speak.
+    page = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+            / "setup.html").read_text()
+    ok("skipping the model is offered only when carrying",
+       "$('b1skip').hidden = (mode !== 'carry')" in page)
+    ok("and the page asks who the owner is at all", 'id="oName"' in page and "api/setup/about" in page)
+
+
 def test_transcribe_queue() -> None:
     """The queue is the filesystem: a .wav with no sibling .txt is work to do.
 
@@ -1191,6 +1221,7 @@ def main() -> None:
     test_tool_installation()
     test_login_item()
     test_carry_mode()
+    test_setup_without_a_model()
     test_transcribe_queue()
     test_ring_limit()
     test_hosts()
