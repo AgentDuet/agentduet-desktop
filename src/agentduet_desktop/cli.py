@@ -106,6 +106,19 @@ def cmd_status(args) -> int:
             pass
     print(f"  providers: {', '.join(providers) if providers else 'NONE — no model can be attached'}")
 
+    # WHAT HAPPENS TO A CALL, before what the call machinery can do. Which mode is active
+    # changes the answer to "why did nobody answer my test call?" more than any line below it,
+    # and reading `voice: available` while the agent is deliberately not answering is the kind
+    # of true-but-misleading report that sends someone debugging the wrong thing.
+    from . import owner as owner_settings
+    if owner_settings.calls() == owner_settings.CALLS_CARRY:
+        from . import carry, transcribe
+        t_ok, t_why = transcribe.available()
+        print(f"  calls    : CARRIED onward, both legs recorded to {carry.RECORDINGS}")
+        print(f"  transcript: {'on' if t_ok else 'OFF — ' + t_why}")
+    else:
+        print("  calls    : answered by the agent")
+
     from . import voice
     ok, why = voice.available()
     print(f"  voice    : {'available' if ok else 'NOT available — ' + why}")
