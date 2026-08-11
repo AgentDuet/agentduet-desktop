@@ -129,6 +129,25 @@ async def handle(sm, noti) -> None:
     legs = [asyncio.create_task(_record_leg(call.caller, str(call.id), "caller")),
             asyncio.create_task(_record_leg(call.callee, str(call.id), "callee"))]
     try:
+        # ANSWER FIRST, THEN BRIDGE. This is the documented order — the platform docs'
+        # call-monitoring flow is answer -> (brief hold message) -> connect -> spy — and the SDK's
+        # `connect_spy_isolated.py` example omitting `answer()` is what led this the other way
+        # first. Two things change by answering:
+        #
+        #   The caller hears silence rather than ringing while the far end is rung, which is
+        #   what any PBX does; and their audio flows from this moment, so a bridge that fails
+        #   still leaves a recording of their side. Without it, a failed bridge records nothing
+        #   at all — not one leg, not a second of it.
+        #
+        # Worth being clear-eyed about the second: on a failed bridge we are recording someone
+        # waiting to be connected to a person who never arrives. That is not a new consent
+        # question — this mode already records both parties — but it is the least expected
+        # moment for it, so it is written down rather than left as a surprise in the logs.
+        answered = await call.answer()
+        if not answered:
+            logger.error("call %s from %s: could not answer (%s)", call_id, caller,
+                         getattr(answered, "error_code", "?"))
+            return
         result = await call.connect(ring_time_seconds=RING_SECONDS)
         if not result:
             # An unanswered destination is an ORDINARY outcome, not an error: nobody picked up.
@@ -141,6 +160,17 @@ async def handle(sm, noti) -> None:
                              getattr(result, "error_message", "?"),
                              getattr(result, "error_code", "?"))
             return
+        # SILENT, EXPLICITLY. `connect()` documents spy as its default, and the platform's own
+        # call-monitoring example still calls this — so it is asked for rather than assumed. A
+        # failure is logged and ignored: if the default already holds we are silent anyway, and
+        # if it does not, hanging up a working call over an audio-mode command would be worse
+        # than the risk it guards. Nothing here ever sends audio, so there is nothing to leak
+        # into the conversation either way.
+        try:
+            await call.spy()
+        except Exception as exc:
+            logger.warning("call %s: could not confirm spy mode (%s: %s) — connect() documents "
+                           "it as the default, so carrying on", call_id, type(exc).__name__, exc)
         logger.info("call %s from %s: carried through, recording both legs", call_id, caller)
         await done.wait()
     except Exception as exc:
