@@ -1,15 +1,26 @@
 """Desktop secretary — POC.
 
-Runs on the OWNER's machine. Receives queries from verified external parties over the
-AgentDuet DDUET channel, answers from `knowledge.md`, escalates anything the policy
-won't let it answer, and logs every query for the daily digest.
+Runs on the OWNER's machine. Receives queries from external parties over the AgentDuet
+WhatsApp channel, answers from `knowledge.md`, escalates anything the policy won't let it
+answer, and logs every query for the daily digest.
 
     ./start.sh          # run it      ./stop.sh
     python digest.py    # today's report
 
-DDUET is PASSIVE: we can only reply to a `dduet_session_uid` seen on inbound — we can
-never start a conversation. That's why escalation goes to the owner as a DESKTOP
-notification, not as a message: there is no outbound channel to the owner.
+Messaging is REACTIVE: a reply goes to a participant we have seen on inbound, so we cannot
+start a conversation with someone who has never written. That is why escalation reaches the
+owner as a DESKTOP notification rather than a message.
+
+WHY WHATSAPP AND NOT DDUET (2026-08-11)
+The DDUET channel — Nexus web chat, visitor identified by email — was dropped. It exists only
+on the `feature/dduet-channel` branch of the SDK, so using it meant vendoring a wheel built
+from a private repository, which blocks publishing this package at all. The released SDK on
+PyPI carries TELCO and WA and no DDUET. Neither onboarding path in the August flow uses DDUET
+either; both arrive over a trunk or over WhatsApp. Dropping it also ends the base-URL clash,
+because DDUET needed a dev endpoint while voice needs prod, and one client has one base URL.
+
+To reverse this, DDUET has to be merged into the SDK's main line and released — at which
+point the guard below takes a second network rather than swapping back.
 """
 
 import asyncio
@@ -28,7 +39,7 @@ from agentduet import (
     InboundCallMode,
     TriggerConditionsBuilder,
     Network,
-    SendDduetMessage,
+    SendWAMessage,
     Session,
     SessionManager,
     SessionManagerConfig,
@@ -44,7 +55,7 @@ from . import status
 HERE = pathlib.Path(__file__).parent
 RUN = paths.RUN
 LOG = RUN / "queries.jsonl"
-SESSIONS = RUN / "sessions.json"   # asker -> live dduet session (read by secretary_mcp)
+SESSIONS = RUN / "sessions.json"   # asker -> who we may reply to (read by secretary_mcp)
 OUTBOX = RUN / "outbox.jsonl"      # owner replies queued by secretary_mcp.reply_to
 
 # Explicitly the INSTANCE file. A bare load_dotenv() searches the CWD and found the
@@ -91,22 +102,72 @@ def owner_name() -> str:
 #: one behaviour: waiting for the owner to supply something, in the same process.
 CONNECTOR_POLL_SECONDS = 3
 
+#: Meta Graph API version quoted on every outbound WhatsApp message, matching the SDK's
+#: `examples/wa_echo_bot.py`. A code constant on purpose: it is the same in every environment
+#: and is not something an operator retunes — it changes when Meta deprecates a version, which
+#: is a code change with a message-shape review attached, not a setting to flip.
+WA_API_VERSION = "v23.0"
+
 
 def _first_text(payload: dict) -> str:
-    """Pull the first text part out of a Nexus MessageContent (proto3-JSON)."""
-    for part in payload.get("parts", []):
+    """The message body, whichever shape it arrives in.
+
+    THE INBOUND SHAPE IS NOT CONFIRMED. The outbound one is — `examples/wa_echo_bot.py` in the
+    SDK shows it exactly — but that bot replies with a fixed string and never reads an inbound
+    body, so it proves nothing about the direction we need. Meta's message object nests the body
+    under `text.body`, sometimes inside a `messages` array; the older Nexus form used typed
+    `parts`. All three are accepted rather than guessing one, and anything unrecognised is logged
+    in full, because the first real message is what settles this.
+
+    Narrow this once a real payload has been seen. Until then the tolerance is deliberate.
+    """
+    if isinstance(payload.get("text"), dict):                 # Meta, flat
+        return payload["text"].get("body", "")
+    for m in payload.get("messages", []) or []:               # Meta, wrapped
+        if isinstance(m.get("text"), dict):
+            return m["text"].get("body", "")
+    for part in payload.get("parts", []) or []:               # Nexus MessageContent
         if part.get("type") == "text":
             return part.get("text", {}).get("body", "")
+    logger.warning("could not read a text body from an inbound message — raw payload: %s",
+                   json.dumps(payload, default=str)[:2000])
     return ""
 
 
-def remember_session(asker: str, subscriber: str, uid: str) -> None:
-    """DDUET is passive — a reply needs a session_uid we saw on inbound. Persist it so
-    the owner can reply later via the MCP tool."""
+def _wa_text(body: str, *, to: str) -> SendWAMessage:
+    """One outbound WhatsApp text, shaped as `examples/wa_echo_bot.py` in the SDK shapes it.
+
+    A helper rather than two literals because both senders — answering an asker, and delivering
+    a reply the owner queued — must produce the same object. They were separate literals for
+    DDUET and the two did drift.
+    """
+    return SendWAMessage(
+        api_version=WA_API_VERSION,
+        data={
+            "messaging_product": "whatsapp",
+            "type": "text",
+            "to": to,
+            "recipient_type": "individual",
+            "preview_url": False,
+            "text": {"body": body},
+        },
+    )
+
+
+def remember_session(asker: str, subscriber: str) -> None:
+    """Remember who we may reply to, and through which subscriber.
+
+    A reply needs the subscriber the message arrived on — for WhatsApp that is the Business
+    Account's `phone_number_id`, which nothing else exposes. Persisted so the owner can answer
+    later through the MCP tool, in a process that never saw the inbound message.
+
+    No session token any more: DDUET needed a per-conversation Nexus id, WhatsApp routes on the
+    participant. Which also means two parallel conversations with one person are ONE thread here
+    — correct for WhatsApp, where the number is the person.
+    """
     RUN.mkdir(exist_ok=True)
     data = json.loads(SESSIONS.read_text()) if SESSIONS.exists() else {}
     data[asker] = {
-        "dduet_session_uid": uid,
         "subscriber": subscriber,
         "last_seen": datetime.now().isoformat(timespec="seconds"),
     }
@@ -116,7 +177,7 @@ def remember_session(asker: str, subscriber: str, uid: str) -> None:
 
 
 async def run_channel() -> None:
-    """One attempt at the DDUET channel. Raises if it cannot connect, so main() can retry."""
+    """One attempt at the AgentDuet channel. Raises if it cannot connect, so main() can retry."""
     # Bound ONCE here, at the top. Kept a lazy import (it reaches the adapters), but it must be
     # bound before first use: a `from . import voice` further down made `voice` local to this
     # whole function, so the CallAudioConfig line above it raised UnboundLocalError.
@@ -142,50 +203,45 @@ async def run_channel() -> None:
 
         @sm.on_incoming_message
         async def on_message(msg: IncomingMessage):
-            if msg.network is not Network.DDUET:
-                # SAY SO. This used to `return` in silence, which meant a WhatsApp message
-                # arriving would leave no trace at all — indistinguishable from the channel
-                # being dead, and impossible to test against. The SDK supports TELCO and WA
-                # besides DDUET; we answer only DDUET today.
-                #
-                # It logs the SUBSCRIBER deliberately: for WhatsApp that is the Business
-                # Account's phone_number_id, which nothing else exposes and which any outbound
-                # WA reply needs. One inbound message is how we would learn it.
-                logger.info("ignored a %s message from %s (subscriber %s) — only DDUET is "
+            if msg.network is not Network.WA:
+                # SAY SO. This used to `return` in silence, which meant a message on another
+                # network left no trace at all — indistinguishable from the channel being dead,
+                # and impossible to test against. The released SDK carries TELCO and WA; we
+                # answer WA here, and TELCO arrives as a CALL through voice.register(), not here.
+                logger.info("ignored a %s message from %s (subscriber %s) — only WA is "
                             "answered on this channel", msg.network, msg.participant.value,
                             msg.subscriber)
                 return
 
-            asker = msg.participant.value          # verified identity (email)
+            asker = msg.participant.value          # the sender's wa_id (their phone number)
             question = _first_text(msg.payload)
             logger.info("← %s: %s", asker, question)
-            remember_session(asker, msg.subscriber, msg.dduet_session_uid)
-            # NOT status.set_number(): on DDUET the subscriber is the CONNECTOR UUID, not a
-            # phone number (see the SDK's dduet_echo_bot — "open an ephemeral session for our
-            # subscriber (the connectorUuid)"). Storing it would have displayed
-            # bb27e3d4-… in the header as though it were the owner's number. A number exists
-            # only on an inbound CALL, where subscriber is the line the call runs on.
+            remember_session(asker, msg.subscriber)
+            # NOT status.set_number(): the subscriber is the Business Account's
+            # `phone_number_id`, a Meta identifier and not a dialable number, so showing it in
+            # the header would read as the owner's number while being unusable as one. A real
+            # number arrives only on an inbound CALL, where the subscriber is the line it ran on.
 
-            # OPEN QUESTION (asked in #AI-Product, 2026-07-28): DDUET makes the
-            # visitor's email mandatory, but it is not yet confirmed whether Nexus
-            # AUTHENTICATES it or merely collects it. Mandatory != verified, so we
-            # treat DDUET as unverified until that comes back. Flip this to the real
-            # per-message signal once the field is known.
+            # WhatsApp proves the sender controls the number — Meta authenticates it at
+            # registration, which is a stronger claim than an email a web form merely collected.
+            # `people.SELF_VOUCHING_NETWORKS` already said WhatsApp self-vouches; it listed the
+            # name "WHATSAPP" while the SDK enum is "WA", so the intent never actually fired.
+            #
+            # Know what this turns on: a verified asker gets their curated profile and their own
+            # retained history. It does NOT widen `knowledge/`, which is flat and public to every
+            # asker either way, so the disclosure surface is unchanged by this line.
             network = msg.network.value if hasattr(msg.network, "value") else str(msg.network)
             verified = people.default_verified(network)
+            # No conversation key: DDUET had a per-conversation Nexus token, WhatsApp has none,
+            # so memory falls back to the identity — which on this channel IS the person.
             result = await brain.handle_query(asker, question, network, verified=verified,
-                                              conversation=msg.dduet_session_uid or None)
+                                              conversation=None)
             reply, outcome = result["reply"], result["outcome"]
             logger.info("→ [%s%s] %s", outcome,
                         f" {result['reason']}" if result["reason"] else "", reply)
 
             send = await (await session_for(msg.subscriber)).send_message(
-                SendDduetMessage.text(
-                    reply,
-                    dduet_session_uid=msg.dduet_session_uid,
-                    user_email=asker,
-                )
-            )
+                _wa_text(reply, to=asker))
             if not send.success:
                 logger.error("reply failed: %s (%s)", send.error_code, send.error_content)
 
@@ -205,22 +261,19 @@ async def run_channel() -> None:
                         logger.error("owner reply dropped — no session for %s", item["asker"])
                         continue
                     result = await (await session_for(s["subscriber"])).send_message(
-                        SendDduetMessage.text(
-                            item["text"],
-                            dduet_session_uid=s["dduet_session_uid"],
-                            user_email=item["asker"],
-                        )
-                    )
+                        _wa_text(item["text"], to=item["asker"]))
                     if result.success:
                         logger.info("→ (from owner) %s: %s", item["asker"], item["text"])
                         brain.record(item["asker"], "(owner reply)", "owner", "", item["text"])
                     else:
-                        # Most likely the Nexus session expired — passivity means we
-                        # cannot re-open it. Surface it rather than failing silently.
+                        # Most likely outside WhatsApp's customer-service window: Meta only
+                        # allows a free-form reply within 24h of the person's last message, and
+                        # after that it needs an approved template we do not have. Surface it
+                        # rather than failing silently — the owner's answer did not arrive.
                         logger.error("owner reply failed for %s: %s (%s)",
                                      item["asker"], result.error_code, result.error_content)
 
-        # DDUET inbound is gated by the connector's trigger conditions — the wss-edge
+        # Inbound messaging is gated by the connector's trigger conditions — the wss-edge
         # plan notes it "reuses the existing inboundMessage/outboundMessage gates
         # (channel-agnostic)". These persist server-side, and the bank demo's VoiceAgent
         # sets inbound_call=ALL on the same connector, which can clear them. So set
@@ -242,7 +295,7 @@ async def run_channel() -> None:
 
         asyncio.create_task(drain_outbox())
 
-        logger.info("DDUET channel connected — inbound is live")
+        logger.info("AgentDuet channel connected — inbound is live")
         status.set_channel("live")
         try:
             # install_signal_handlers=False is REQUIRED, not a preference: shell.py runs this
@@ -293,12 +346,12 @@ async def main() -> None:
 
     logger.info("Secretary up for %s", owner_name())
 
-    # SECRETARY_CHANNEL=0 runs the owner site WITHOUT connecting to DDUET. One client per
+    # SECRETARY_CHANNEL=0 runs the owner site WITHOUT connecting to AgentDuet. One client per
     # connector is a hard constraint — a second one makes call.answer() race — so anything that
     # needs the local decision path but not real inbound traffic (the behaviour suite, offline
     # work on the site) must be able to skip the channel rather than fight the live daemon.
     if os.getenv("SECRETARY_CHANNEL", "1") == "0":
-        logger.info("DDUET channel disabled (SECRETARY_CHANNEL=0) — site only")
+        logger.info("AgentDuet channel disabled (SECRETARY_CHANNEL=0) — site only")
         status.set_channel("off", "SECRETARY_CHANNEL=0")
         while True:
             await asyncio.sleep(3600)
@@ -329,7 +382,7 @@ async def main() -> None:
     # inbound calls being answered, with no name ever filled in. See owner.cannot_answer.
     from . import owner
     if why := owner.cannot_answer():
-        logger.info("Cannot answer anyone yet (%s) — serving the setup pages only. The DDUET "
+        logger.info("Cannot answer anyone yet (%s) — serving the setup pages only. The AgentDuet "
                     "channel stays closed and the connector is not claimed until this is fixed.",
                     why)
         status.set_channel("setup", why)
@@ -350,7 +403,7 @@ async def main() -> None:
     # again. The symptom was a chip reading "not connected" while the credential sat there
     # correct, advising the owner to check a network that was fine.
     if not connector_ready():
-        logger.info("No DDUET connector configured (AGENTDUET_API_KEY / "
+        logger.info("No AgentDuet connector configured (AGENTDUET_API_KEY / "
                     "AGENTDUET_CONNECTOR_UUID) — running the owner's view only. "
                     "Everything local works; inbound messages need a connector. "
                     "Waiting for one to be added.")
@@ -366,7 +419,7 @@ async def main() -> None:
             status.set_channel("connecting")
             await run_channel()
         except Exception as exc:
-            logger.warning("DDUET channel unavailable (%s: %s) — owner site stays up, "
+            logger.warning("AgentDuet channel unavailable (%s: %s) — owner site stays up, "
                            "retrying in %ds", type(exc).__name__, exc, delay)
             status.set_channel("retrying", f"{type(exc).__name__}: {str(exc)[:120]}")
             await asyncio.sleep(delay)

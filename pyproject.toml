@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "A personal secretary that answers external parties on your behalf, on your own machine."
 requires-python = ">=3.12"   # the SDK requires 3.12
 dependencies = [
-  "agentduet>=1.0.0b7",      # the DDUET channel
+  "agentduet>=1.0.0",        # released SDK: TELCO + WhatsApp
   "aiohttp>=3.9",            # the local owner site
   "python-dotenv>=1.0",      # reads $DDUET_HOME/.env
   "pyyaml>=6.0",           # writing Goose's config.yaml — YAML needs a real parser

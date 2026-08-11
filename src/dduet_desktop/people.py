@@ -38,10 +38,13 @@ OBSERVED = "## Observed"
 #: phone number is proof on its own. Used only as a DEFAULT when the inbound message
 #: carries no explicit signal.
 #:
-#: Verification is a property of the IDENTITY, not the channel. DDUET carries both:
-#: a logged-in Nexus visitor is verified, a walk-up one is not. So every entry point
-#: passes an explicit `verified` flag and these functions never infer it from network.
-SELF_VOUCHING_NETWORKS = {"TELCO", "WHATSAPP"}
+#: Verification is a property of the IDENTITY, not the channel, so every entry point passes an
+#: explicit `verified` flag and these functions never infer it from the network on their own.
+#:
+#: "WA" is the SDK's enum value; "WHATSAPP" was here first and never matched anything, so the
+#: intent to trust WhatsApp was declared for months without ever firing. Both are listed because
+#: the spelled-out name is what a human writes when adding a channel by hand.
+SELF_VOUCHING_NETWORKS = {"TELCO", "WA", "WHATSAPP"}
 
 
 def default_verified(network: str) -> bool:
