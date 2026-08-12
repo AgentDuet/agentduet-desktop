@@ -364,10 +364,12 @@ def test_carry_mode() -> None:
     # is asserted as an order rather than as two separate calls existing.
     csrc_ = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
              / "carry.py").read_text()
-    # `await`, so this matches the CALL and not the module docstring's mention of connect() —
-    # which sits above both and made the first version of this check fail for the wrong reason.
-    ok("carrying answers the call before bridging it",
-       0 < csrc_.index("await call.answer()") < csrc_.index("await call.connect("))
+    # IT MUST NOT ANSWER FIRST. Two flows exist on the platform: connect-without-answering
+    # (supported) and answer-then-connect (specified in the docs, never implemented on the comm
+    # side — confirmed 2026-08-12). We ran the unsupported one for a day because a doc page
+    # showed it, and read the resulting timeouts as a SIP problem. This pins the supported order
+    # so the doc cannot quietly win again.
+    ok("carrying does NOT answer before bridging", "await call.answer()" not in csrc_)
     ok("and asks for spy mode rather than assuming the default", "call.spy()" in csrc_)
 
     # NO AGENT ON THIS PATH. The check is the DECISION surface, not the word "brain": carrying
