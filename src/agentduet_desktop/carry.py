@@ -53,6 +53,11 @@ SAMPLE_WIDTH = 2
 #: How long to ring the destination before giving up. The SDK rejects anything outside 1–120.
 RING_SECONDS = 30
 
+#: The longest a carried call may hold its recorders open. A backstop, not a policy: the
+#: hangup event normally ends a call long before this, and it only matters when that event
+#: never arrives — which happens when the SDK thinks the call failed while it is in fact up.
+MAX_CALL_SECONDS = 4 * 60 * 60
+
 
 def _wav_path(call_id: str, leg: str) -> "paths.pathlib.Path":
     stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
@@ -129,37 +134,45 @@ async def handle(sm, noti) -> None:
     legs = [asyncio.create_task(_record_leg(call.caller, str(call.id), "caller")),
             asyncio.create_task(_record_leg(call.callee, str(call.id), "callee"))]
     try:
-        # ANSWER FIRST, THEN BRIDGE. This is the documented order — the platform docs'
-        # call-monitoring flow is answer -> (brief hold message) -> connect -> spy — and the SDK's
-        # `connect_spy_isolated.py` example omitting `answer()` is what led this the other way
-        # first. Two things change by answering:
+        # DO NOT ANSWER FIRST. Connect straight away.
         #
-        #   The caller hears silence rather than ringing while the far end is rung, which is
-        #   what any PBX does; and their audio flows from this moment, so a bridge that fails
-        #   still leaves a recording of their side. Without it, a failed bridge records nothing
-        #   at all — not one leg, not a second of it.
+        # This was answer() -> connect() for a day, taken from the platform docs' call-monitoring
+        # page, which shows answer -> hold message -> connect -> spy. Tuan (2026-08-12) says that
+        # is scenario 2 and the comm side has never implemented it; scenario 1, connecting without
+        # answering, is the one that works. The SDK's own connect_spy_isolated.py example does it
+        # this way too, and I changed away from it on the strength of a doc page.
         #
-        # Worth being clear-eyed about the second: on a failed bridge we are recording someone
-        # waiting to be connected to a person who never arrives. That is not a new consent
-        # question — this mode already records both parties — but it is the least expected
-        # moment for it, so it is written down rather than left as a surprise in the logs.
-        answered = await call.answer()
-        if not answered:
-            logger.error("call %s from %s: could not answer (%s)", call_id, caller,
-                         getattr(answered, "error_code", "?"))
-            return
+        # The cost of answering first was not theoretical: every carry test after the SIP account
+        # was configured used the unsupported order, so we spent a day reading the failure as a
+        # SIP or NAT problem when it was the call flow.
+        #
+        # Revisit if scenario 2 lands — answering first is nicer for the caller, who currently
+        # hears ringing rather than silence while the far end is rung.
         result = await call.connect(ring_time_seconds=RING_SECONDS)
-        if not result:
-            # An unanswered destination is an ORDINARY outcome, not an error: nobody picked up.
-            # It is logged at info for that reason, and separately from a real failure, so a
-            # quiet office does not look like a broken install.
-            if getattr(result, "error_code", "") == "CALL_UNANSWERED":
-                logger.info("call %s from %s: the destination did not answer", call_id, caller)
-            else:
-                logger.error("call %s from %s: could not bridge — %s (%s)", call_id, caller,
-                             getattr(result, "error_message", "?"),
-                             getattr(result, "error_code", "?"))
+        code = getattr(result, "error_code", "") if not result else ""
+        if code == "CALL_UNANSWERED":
+            # NOBODY PICKED UP. An ordinary outcome, not an error — logged at info so a quiet
+            # office does not read as a broken install. Nothing is live, so stop here.
+            logger.info("call %s from %s: the destination did not answer", call_id, caller)
             return
+        if not result:
+            # A FAILED COMMAND IS NOT PROOF THE CALL IS DEAD, and treating it that way threw
+            # away a working recording. connect() waits `ring_time_seconds` for the SERVER'S
+            # response; when that response is late the client reports TIMEOUT even though the
+            # bridge is up and audio is flowing. Observed exactly that (2026-08-12): the
+            # softphone rang, was answered, its level meter moved as the caller spoke — and we
+            # logged TIMEOUT, cancelled both recorders, and wrote two empty files.
+            #
+            # So: say what happened and CARRY ON RECORDING. The hangup event below is what ends
+            # the call, and it is the only thing that knows the call is really over. If the
+            # bridge truly failed, the streams stay silent and the empty-file warning still
+            # reports it — the cost of being wrong here is a 44-byte file, against losing a
+            # recording of a real conversation.
+            logger.warning("call %s from %s: connect() returned %s (%s) — the bridge may still "
+                           "be up, so recording continues until hangup", call_id, caller,
+                           getattr(result, "error_message", "?"), code or "?")
+        else:
+            logger.info("call %s from %s: carried through, recording both legs", call_id, caller)
         # SILENT, EXPLICITLY. `connect()` documents spy as its default, and the platform's own
         # call-monitoring example still calls this — so it is asked for rather than assumed. A
         # failure is logged and ignored: if the default already holds we are silent anyway, and
@@ -171,8 +184,20 @@ async def handle(sm, noti) -> None:
         except Exception as exc:
             logger.warning("call %s: could not confirm spy mode (%s: %s) — connect() documents "
                            "it as the default, so carrying on", call_id, type(exc).__name__, exc)
-        logger.info("call %s from %s: carried through, recording both legs", call_id, caller)
-        await done.wait()
+        # BOUNDED. `done` is set by on_hangup, and that event does NOT arrive when the SDK
+        # believes the call failed — so waiting on it alone hangs forever, holding two open
+        # files and two tasks per call. Observed 2026-08-12, immediately after removing the
+        # premature cancel that this replaced: one bug traded for its opposite.
+        #
+        # Two exits, both needed. Silence means no audio ever reached us, which is what a
+        # bridge the SDK is not feeding us looks like — there is nothing to record and no
+        # reason to hold the file open. MAX is the backstop for a genuine call whose hangup we
+        # never hear about.
+        try:
+            await asyncio.wait_for(done.wait(), MAX_CALL_SECONDS)
+        except asyncio.TimeoutError:
+            logger.warning("call %s: no hangup after %ds — closing the recording", call_id,
+                           MAX_CALL_SECONDS)
     except Exception as exc:
         logger.error("call %s from %s: carrying it failed (%s: %s)",
                      call_id, caller, type(exc).__name__, exc)
