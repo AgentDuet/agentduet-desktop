@@ -459,6 +459,73 @@ def test_setup_without_a_model() -> None:
     ok("and the page asks who the owner is at all", 'id="oName"' in page and "api/setup/about" in page)
 
 
+def test_answered_call_recording() -> None:
+    """An answered call can be saved as audio, without disturbing the call or the queue."""
+    print("\n  -- recording an answered call --")
+    import unittest.mock as mock
+    from agentduet_desktop import owner, voice, tools
+
+    # DEFAULT ON, and only an explicit refusal turns it off. The asymmetry against calls() is
+    # deliberate: there a typo must not silently START recording, here it must not silently STOP
+    # it. Both keep the documented behaviour when the value is unreadable.
+    for text, want in (("", True), ("yes", True), ("no", False), ("off", False),
+                       ("false", False), ("YES", True), ("ys", True), ("maybe", True)):
+        with mock.patch.object(owner, "_sections", return_value={"Record calls": text}):
+            eq(f"'{text or '(unset)'}' -> record={want}", owner.record_calls(), want)
+
+    ok("it is settable like any other field", "record_calls" in tools.SETTING_FIELDS)
+
+    # CLOSING TWICE MUST BE HARMLESS. It happens on every normal call — the SDK closes the
+    # session from its on_hangup handler and the call path closes it again in a finally — and
+    # the first version logged each recording twice, which reads as two recordings of one call.
+    rec = voice._Recorder.__new__(voice._Recorder)
+    rec._caller = rec._agent = None
+    rec._frames = {"caller": 0, "agent": 0}
+    rec._call_id = "t"
+    rec._closed = False
+    class _Inner:
+        n = 0
+        async def close(self): _Inner.n += 1
+    rec._inner = _Inner()
+    import asyncio as _a
+    _a.run(rec.close()); _a.run(rec.close())
+    eq("closing twice closes the session once", _Inner.n, 1)
+
+    # THE TAP IS THE SESSION, NOT THE CALL. The SDK's bridge already pumps caller audio into
+    # ms.push_audio and AudioOut back to the call, so decorating the session captures both
+    # directions. Opening a second consumer on call.caller.audio_stream() would race the bridge
+    # for the same frames.
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+           / "voice.py").read_text()
+    ok("recording wraps the model session", "_Recorder(ms, str(call.id))" in src)
+    # THE AST, NOT THE TEXT. Both places voice.py mentions audio_stream() are comments
+    # explaining why we do NOT consume it, so a string match fails for being well documented —
+    # the same trap that has now caught this suite four times. An Attribute node only exists if
+    # the code really reaches for it.
+    import ast as _ast
+    consumers = [n for n in _ast.walk(_ast.parse(src))
+                 if isinstance(n, _ast.Attribute) and n.attr == "audio_stream"]
+    ok("and does not open a second audio consumer", not consumers,
+       f"{len(consumers)} real reference(s) to audio_stream in code")
+
+    # WRAPPED BEFORE answer(), or the greeting — the agent's first words — is missing.
+    ok("the wrap happens before the call is answered",
+       src.index("_Recorder(ms,") < src.index("await call.answer()"))
+
+    # ANSWERED CALLS MUST NOT ENTER THE TRANSCRIPTION QUEUE. They already have a transcript,
+    # written turn by turn from the model's own events; transcribing the audio too would file a
+    # second, differently-worded copy of the same conversation. pending() globs non-recursively,
+    # so the subdirectory is what keeps them out.
+    from agentduet_desktop import carry, transcribe
+    home = pathlib.Path(tempfile.mkdtemp(prefix="answered-test-"))
+    with mock.patch.object(carry, "RECORDINGS", home / "recordings"):
+        (carry.RECORDINGS / voice.ANSWERED).mkdir(parents=True)
+        (carry.RECORDINGS / voice.ANSWERED / "x-1-caller.wav").write_bytes(b"RIFF" + b"\0" * 4000)
+        (carry.RECORDINGS / "y-2-caller.wav").write_bytes(b"RIFF" + b"\0" * 4000)
+        names = [p.name for p in transcribe.pending()]
+        eq("only carried recordings are queued", names, ["y-2-caller.wav"])
+
+
 def test_transcribe_queue() -> None:
     """The queue is the filesystem: a .wav with no sibling .txt is work to do.
 
@@ -1223,6 +1290,7 @@ def main() -> None:
     test_tool_installation()
     test_login_item()
     test_carry_mode()
+    test_answered_call_recording()
     test_setup_without_a_model()
     test_transcribe_queue()
     test_ring_limit()

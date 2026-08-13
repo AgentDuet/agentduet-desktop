@@ -31,6 +31,8 @@ import logging
 import os
 import pathlib
 import uuid
+import wave
+from datetime import datetime
 
 from . import (brain, capabilities, identity, memory, paths, people, permissions, policy,
                schedule, status)
@@ -478,6 +480,113 @@ def _only_capability() -> str | None:
     return caps[0] if len(caps) == 1 else None
 
 
+# ---- recording an answered call ------------------------------------------------------------
+
+#: Answered calls land in their OWN folder, and that is what keeps them out of the
+#: transcription queue: `transcribe.pending()` globs `*.wav` non-recursively in `recordings/`,
+#: so a subdirectory is invisible to it. Deliberate — an answered call ALREADY has a transcript,
+#: written turn by turn from the model's own events, and re-transcribing the audio would file a
+#: second, differently-worded copy of the same conversation against the same caller.
+ANSWERED = "answered"
+
+
+class _Recorder:
+    """Wraps a ModelSession to write both sides of an answered call to disk.
+
+    THE TAP POINTS ARE THE SDK'S OWN BRIDGE, not the call. `_bridge` pumps
+    `call.caller.audio_stream()` into `ms.push_audio()` and `ms.events()`'s AudioOut back into
+    `call.send_audio()` — so decorating the session sees every frame in both directions without
+    opening a second consumer on the call's audio stream. Same technique as the bank demo's
+    RecordingSession, and it is why this needs no SDK change.
+
+    The two files are NOT aligned. The caller's side is continuous for the whole call; the
+    agent's side only exists while it is speaking. Mixing them would need the caller-timeline
+    offset of each agent chunk (the bank demo keeps exactly that), and a naive sum compresses
+    the agent's speech toward the start. Two files, honestly unmixed, is the right MVP — the
+    transcript already carries who said what in order.
+
+    NEVER let recording break a call. Every write is guarded: a full disk, a read-only home or a
+    closed file costs the recording, and the person on the phone must not notice.
+    """
+
+    def __init__(self, inner, call_id: str):
+        from . import carry
+        self._inner = inner
+        self._dir = carry.RECORDINGS / ANSWERED
+        stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+        self._caller = self._open(f"{stamp}-{call_id}-caller.wav")
+        self._agent = self._open(f"{stamp}-{call_id}-agent.wav")
+        self._frames = {"caller": 0, "agent": 0}
+        self._call_id = call_id
+        self._closed = False
+
+    def _open(self, name: str):
+        try:
+            self._dir.mkdir(parents=True, exist_ok=True)
+            w = wave.open(str(self._dir / name), "wb")
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(CALL_SAMPLE_RATE)
+            return w
+        except Exception as exc:
+            logger.error("could not open %s for recording (%s: %s)", name, type(exc).__name__, exc)
+            return None
+
+    def _write(self, which: str, writer, pcm: bytes) -> None:
+        if writer is None or not pcm:
+            return
+        try:
+            writer.writeframes(pcm)
+            self._frames[which] += len(pcm)
+        except Exception:
+            pass          # a failed write must never reach the caller
+
+    async def push_audio(self, pcm):
+        self._write("caller", self._caller, pcm)
+        await self._inner.push_audio(pcm)
+
+    async def events(self):
+        from agentduet import AudioOut
+        async for ev in self._inner.events():
+            if isinstance(ev, AudioOut):
+                self._write("agent", self._agent, ev.pcm)
+            yield ev
+
+    async def send_tool_result(self, call_id, result):
+        await self._inner.send_tool_result(call_id, result)
+
+    async def close(self):
+        # IDEMPOTENT. close() arrives TWICE on a normal call: the SDK closes the session from
+        # its own on_hangup handler, and the call path closes it again in a finally. The writes
+        # are guarded so nothing was corrupted, but every recording was reported to the log
+        # twice — which reads as two recordings of one call, and would have had someone hunting
+        # for a duplicate that does not exist.
+        if self._closed:
+            return
+        self._closed = True
+        for which, w in (("caller", self._caller), ("agent", self._agent)):
+            if w is None:
+                continue
+            try:
+                w.close()
+            except Exception:
+                pass
+            secs = self._frames[which] / (CALL_SAMPLE_RATE * 2)
+            # Report the EMPTY case distinctly, same as the carry path: a header with no frames
+            # looks like a recording in a directory listing and is the failure most likely to go
+            # unnoticed.
+            if secs:
+                logger.info("call %s: recorded %.1fs of the %s side", self._call_id, secs, which)
+            else:
+                logger.warning("call %s: the %s side recorded NO audio", self._call_id, which)
+        await self._inner.close()
+
+    def __getattr__(self, name):
+        # Anything the SDK asks of a session that is not intercepted above. Without this a new
+        # ModelSession method would break every answered call the day the SDK adds one.
+        return getattr(self._inner, name)
+
+
 # ---- transcripts into the same record the text side uses ---------------------------------
 
 def _make_recorder(caller: str, verified: bool, convo: str):
@@ -586,6 +695,13 @@ def register(sm, owner_name: str) -> bool:
         call = await session.process_call(noti)
         live["call"] = call
         ms = await model.open()
+        # WRAP THE SESSION, not the call. The SDK's bridge already pumps the caller's audio into
+        # ms.push_audio() and the model's AudioOut back to the call, so decorating ms sees both
+        # directions without opening a second consumer on call.caller.audio_stream(). Wrapped
+        # BEFORE answer(): the greeting is the agent's first words and belongs in the recording.
+        from . import owner as _owner
+        if _owner.record_calls():
+            ms = _Recorder(ms, str(call.id))
         if not await call.answer():
             logger.error("answer failed for call %s", call.id)
             await ms.close()

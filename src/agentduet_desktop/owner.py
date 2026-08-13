@@ -185,6 +185,23 @@ def calls() -> str:
     return CALLS_CARRY if first.startswith(CALLS_CARRY) else CALLS_ANSWER
 
 
+def record_calls() -> bool:
+    """Whether an ANSWERED call is written to disk as audio. Default ON.
+
+    Separate from `## Calls`, which decides who talks to the caller — this decides whether the
+    audio is kept. Default on because a secretary you cannot review is hard to trust, and the
+    transcript alone loses tone, interruptions and anything the model mis-heard.
+
+    `no`, `off` and `false` all disable it; anything else records. That asymmetry is deliberate
+    and the opposite of `calls()`: there, a typo must not silently start recording two people,
+    so only an exact match enables. Here the default already records, so a typo must not
+    silently STOP it — in both cases an unreadable value keeps the documented behaviour rather
+    than quietly inverting it.
+    """
+    first = _first_line(_strip_guidance(_sections().get("Record calls", ""))).strip().lower()
+    return first not in ("no", "off", "false")
+
+
 def never_say() -> list[str]:
     """Topics the owner never wants stated on their behalf, however readable.
 
