@@ -31,5 +31,14 @@ Never over-promise; if unsure, say the owner will follow up.
      announce it for you. -->
 answer
 
+## Record calls
+<!-- yes (default) — an answered call is saved as audio under run/recordings/answered/,
+     one file for the caller and one for the agent. The written transcript is kept either way.
+     no             — keep only the transcript.
+
+     You are recording someone. Whether they must be told, and by whom, depends on where you
+     and they are. This software does not announce it for you. -->
+yes
+
 ## Never say
 <!-- Topics never to state on your behalf, however readable the source. One per line. -->
