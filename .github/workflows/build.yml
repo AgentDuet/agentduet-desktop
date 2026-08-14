@@ -104,8 +104,16 @@ jobs:
       - name: Package the app (macOS)
         if: runner.os == 'macOS'
         run: |
+          # SIZE IT EXPLICITLY, with room to spare. `hdiutil create -srcfolder` estimates the
+          # volume from the source, and that estimate is too tight for a large .app: bundling
+          # the speech engine took this from 58 MB to ~155 MB and the step began failing with
+          # "No space left on device" — having already mounted the volume and started copying,
+          # so it reads as a disk problem on the runner rather than an undersized image.
+          APP="dist-bin/AgentDuet Desktop.app"
+          MB=$(du -sm "$APP" | cut -f1)
+          echo "app is ${MB} MB; creating a $((MB + 200)) MB image"
           hdiutil create -volname "AgentDuet Desktop" \
-            -srcfolder "dist-bin/AgentDuet Desktop.app" \
+            -srcfolder "$APP" -size $((MB + 200))m \
             -ov -format UDZO "agentduet-desktop-${{ matrix.name }}.dmg"
 
       - uses: actions/upload-artifact@v4
