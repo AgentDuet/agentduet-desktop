@@ -13,6 +13,12 @@ dependencies = [
   "python-dotenv>=1.0",      # reads $AGENTDUET_HOME/.env
   "pyyaml>=6.0",           # writing Goose's config.yaml — YAML needs a real parser
   "mcp>=1.0",                # the owner surface, for whatever AI app they already use
+  # THE TOOL SANDBOX. Not optional and never was: wasm_host imports it at module level,
+  # so without it `status` reports "tools: NOT available" and a customer-authored tool
+  # cannot run at all. It was declared nowhere and installed by nobody, so every binary
+  # shipped so far has had no sandbox — while the spec dutifully tried to collect its
+  # native library and warned that customer tools would fail.
+  "wasmtime>=25",
 ]
 
 # One provider is required, none in particular — the model is config, not code.
