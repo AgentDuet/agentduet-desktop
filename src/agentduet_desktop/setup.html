@@ -9,13 +9,13 @@
     --ink:#101418; --paper:#f6f7f8; --surface:#fff; --line:#e2e6ea; --line2:#eef1f4;
     --muted:#5b6675; --faint:#8b96a3;
     --accent:#00b2ff; --accent-ink:#0077b0; --coral:#f0523d;
-    --good:#1a7f5a; --good-bg:#e8f5ef;
+    --good:#1a7f5a; --good-bg:#e8f5ef; --bad:#b3261e; --bad-bg:#fff1ee;
     --sans:"SF Pro Display",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
   }
   @media (prefers-color-scheme:dark){
     :root{--ink:#eef3f7;--paper:#0f1419;--surface:#161d24;--line:#242e38;--line2:#1c242c;
-      --muted:#93a6b5;--faint:#6b7c8a;--accent-ink:#4cc7ff;--good:#4ade9e;--good-bg:#13322a;}
+      --muted:#93a6b5;--faint:#6b7c8a;--accent-ink:#4cc7ff;--good:#4ade9e;--good-bg:#13322a;--bad:#ffb4a8;--bad-bg:#2a1512;}
   }
   *{box-sizing:border-box;margin:0;padding:0;}
   body{font-family:var(--sans);background:var(--paper);color:var(--ink);
@@ -24,17 +24,19 @@
   h1{font-size:1.6rem;font-weight:780;letter-spacing:-.02em;}
   .lede{color:var(--muted);margin-top:.5rem;}
 
-  .steps{display:flex;gap:.5rem;margin:1.8rem 0 1.4rem;font-family:var(--mono);font-size:.66rem;
-    letter-spacing:.08em;text-transform:uppercase;}
-  .steps div{flex:1;padding:.45rem .5rem;border-radius:7px;background:var(--line2);
-    color:var(--faint);text-align:center;}
-  .steps div.on{background:var(--accent-ink);color:#fff;}
-  .steps div.done{background:var(--good-bg);color:var(--good);}
+  .steps{display:flex;gap:.4rem;margin:1.7rem 0 1.7rem;font-family:var(--mono);font-size:.62rem;
+    letter-spacing:.1em;text-transform:uppercase;}
+  .steps div{flex:1;padding:.35rem .2rem .45rem;text-align:center;color:var(--faint);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;
+    border-bottom:2px solid var(--line);transition:color .12s,border-color .12s;}
+  .steps div:hover{color:var(--muted);}
+  .steps div.on{color:var(--accent-ink);border-bottom-color:var(--accent);font-weight:700;}
+  .steps div.done{color:var(--good);border-bottom-color:var(--good);}
 
   section.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;
     padding:1.4rem 1.4rem 1.5rem;display:none;}
   section.card.on{display:block;}
-  h2{font-size:1.12rem;font-weight:720;}
+  h2{font-size:1.24rem;font-weight:760;letter-spacing:-.01em;}
   .hint{color:var(--muted);font-size:.9rem;margin-top:.4rem;}
   label{display:block;margin-top:1.1rem;font-size:.88rem;font-weight:650;}
   label .sm{display:block;font-weight:400;color:var(--muted);font-size:.83rem;margin-top:.15rem;}
@@ -50,11 +52,24 @@
   button:disabled{opacity:.45;cursor:default;}
   .acts{display:flex;gap:.6rem;align-items:center;margin-top:1.5rem;}
   .acts .sp{flex:1;}
+  .state{margin-top:.9rem;padding:.75rem .9rem;border-radius:10px;background:var(--line2);
+    color:var(--muted);font-size:.88rem;line-height:1.55;}
+  .state code{font-family:var(--mono);font-size:.8rem;color:var(--ink);word-break:break-all;}
+  .state .note{display:block;margin-top:.35rem;color:var(--faint);font-size:.82rem;}
+
+  .pick{display:block;margin-top:.7rem;padding:.8rem .9rem;border:1px solid var(--line);
+    border-radius:11px;font-weight:400;font-size:.92rem;cursor:pointer;
+    transition:border-color .12s,background .12s;}
+  .pick:hover{border-color:var(--faint);}
+  .pick:has(input:checked){border-color:var(--accent-ink);background:var(--line2);}
+  .pick input{width:auto;margin:0 .5rem 0 0;accent-color:var(--accent-ink);}
+  .pick b{font-weight:680;}
+  .pick .sm{display:block;margin:.3rem 0 0 1.45rem;color:var(--faint);font-size:.82rem;}
+
   .msg{margin-top:1rem;padding:.7rem .85rem;border-radius:10px;font-size:.9rem;
     white-space:pre-wrap;}
   .msg.ok{background:var(--good-bg);color:var(--good);border:1px solid var(--good);}
-  .msg.no{background:#fff1ee;color:#b3261e;border:1px solid var(--coral);}
-  @media (prefers-color-scheme:dark){ .msg.no{background:#2a1512;color:#ffb4a8;} }
+  .msg.no{background:var(--bad-bg);color:var(--bad);border:1px solid var(--coral);}
   a{color:var(--accent-ink);}
 
                       .spin{font-family:var(--mono);font-size:.8rem;color:var(--faint);}
@@ -66,12 +81,12 @@
   <p class="lede">Six steps. Then it works for you, whether or not this page is open.</p>
 
   <div class="steps">
-    <div id="s1" class="on">1 · install</div>
-    <div id="s2">2 · what it does</div>
-    <div id="s3">3 · a model</div>
-    <div id="s4">4 · your number</div>
-    <div id="s5">5 · about you</div>
-    <div id="s6">6 · finish</div>
+    <div id="s1" class="on">1 install</div>
+    <div id="s2">2 mode</div>
+    <div id="s3">3 model</div>
+    <div id="s4">4 number</div>
+    <div id="s5">5 about you</div>
+    <div id="s6">6 finish</div>
   </div>
 
   <!-- ---------------- 1 · INSTALL ---------------- -->
@@ -94,16 +109,14 @@
        on a screen demanding an API key they will never use. -->
   <section class="card" id="c2">
     <h2>What should it do with a call?</h2>
-    <div class="row">
-      <label><input type="radio" name="calls" value="answer" checked> <b>Answer for me.</b>
-        An assistant picks up, answers from what you tell it, and escalates the rest.
-        <span class="sm">Needs a model.</span></label>
-    </div>
-    <div class="row">
-      <label><input type="radio" name="calls" value="carry"> <b>Put it through to me, and record it.</b>
-        The call is bridged to your phone. Both sides are recorded and transcribed.
-        <span class="sm">No model needed. You are recording two people — check what you must tell them.</span></label>
-    </div>
+    <label class="pick"><input type="radio" name="calls" value="answer" checked>
+      <b>Answer for me.</b>
+      An assistant picks up, answers from what you tell it, and escalates the rest.
+      <span class="sm">Needs a model.</span></label>
+    <label class="pick"><input type="radio" name="calls" value="carry">
+      <b>Put it through to me, and record it.</b>
+      The call is bridged to your phone. Both sides are recorded and transcribed.
+      <span class="sm">No model needed. You are recording two people — check what you must tell them.</span></label>
     <div class="acts"><button id="bMode">Continue</button><span class="sp"></span></div>
     <div id="mMode"></div>
   </section>
@@ -227,6 +240,10 @@
   <section class="card" id="c6">
     <h2>Finish</h2>
     <p class="hint">It keeps answering after you close this page.</p>
+    <!-- WHERE THE FILES GO. Filled from /api/setup/current, never written into this page:
+         the instance directory differs by platform and by install, and telling a Mac owner
+         to look in /home/... would have them conclude the recording never ran. -->
+    <div class="state" id="whereFiles">…</div>
     <button id="doDone">Done</button>
     <div id="mDone"></div>
   </section>
@@ -254,6 +271,16 @@
   const T = new URLSearchParams(location.search).get('t') || '';
   const $ = id => document.getElementById(id);
   const esc = s => (s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+
+  // THE STEPS ARE NAVIGATION. They looked like it and were not: every transition was
+  // forward-only, so there was no way back to a step already passed — and reloading /setup does
+  // not help either, because the resume below jumps straight to the connector once a model is
+  // configured. Asked how to return to step 1, the honest answer was "you cannot". Nothing here
+  // enforces order anyway: install, connector and about-you all have Skip, so free movement is
+  // what the wizard already meant.
+  function wireSteps(){
+    [1,2,3,4,5,6].forEach(i => { $('s' + i).onclick = () => show(i); });
+  }
 
   function show(n){
     [1,2,3,4,5,6].forEach(i => {
@@ -350,6 +377,12 @@
     const r = await fetch(`/api/setup/current?t=${T}`);
     if (!r.ok) return;
     const cur = await r.json();
+    // ?step=N WINS over the resume. Resuming a configured instance at the connector is right
+    // when someone opens setup cold, and wrong when they are being SENT to a particular step —
+    // "go back to step 1" would otherwise bounce them straight to 4 again, which is exactly
+    // what made the earlier version feel like a trap.
+    const want = parseInt(new URLSearchParams(location.search).get('step') || '', 10);
+    if (want >= 1 && want <= 6) { show(want); return; }
     if (cur.configured) { show(4); [1,2,3].forEach(i => $('s'+i).classList.add('done')); }
   })();
 
@@ -379,6 +412,7 @@
     setTimeout(() => show(2), 1200);
   };
   $('skipInstall').onclick = () => show(2);
+  wireSteps();
 
   // ---- 2 · what it does ------------------------------------------------------------------
   // The choice is SAVED, not just remembered in the page: the daemon reads `## Calls` from
@@ -426,6 +460,26 @@
     if (d.calls) {
       const r = document.querySelector(`input[name=calls][value="${d.calls}"]`);
       if (r) { r.checked = true; $('b1skip').hidden = (d.calls !== 'carry'); }
+    }
+  }).catch(() => {});
+
+  // ---- where the recordings land -------------------------------------------------------
+  // At the END because it is what an owner needs AFTER setup rather than during it: the first
+  // question once a call has actually happened is "where did it go?". The path is asked for,
+  // never written here — $AGENTDUET_HOME differs by platform and install.
+  fetch(`/api/setup/current?t=${T}`).then(r => r.json()).then(d => {
+    const el = $('whereFiles');
+    if (!el || !d || d.error) return;
+    if (d.calls === 'carry') {
+      el.innerHTML = 'Carried calls are recorded to<br><code>' + esc(d.carried_dir) + '</code>'
+        + '<br><span class="note">Both sides, and a transcript beside each one.</span>';
+    } else if (d.record_calls) {
+      el.innerHTML = 'Answered calls are recorded to<br><code>' + esc(d.recordings_dir) + '</code>'
+        + '<br><span class="note">Per call: the caller, the agent, the two mixed together, '
+        + 'and the transcript.</span>';
+    } else {
+      el.innerHTML = 'Calls are not recorded. The written transcript is kept either way, and '
+        + 'recording can be switched on in settings.';
     }
   }).catch(() => {});
 

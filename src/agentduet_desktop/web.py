@@ -523,6 +523,15 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         # saved connector connects within seconds.
         cur["connector"] = "configured" if connector.configured() else "not configured"
         cur["connector_uuid"] = os.getenv(connector.UUID, "")
+        # WHERE THE RECORDINGS GO, resolved on THIS machine. Never a path written into the page:
+        # $AGENTDUET_HOME differs by platform and by install, and a Mac owner told to look in
+        # /home/... would reasonably conclude the feature had not run. Sent as an absolute path
+        # so it can be pasted into a file manager.
+        from . import carry, owner as _own, voice as _voice
+        cur["calls"] = _own.calls()
+        cur["record_calls"] = _own.record_calls()
+        cur["recordings_dir"] = str(carry.RECORDINGS / _voice.ANSWERED)
+        cur["carried_dir"] = str(carry.RECORDINGS)
         # False until the backend has a sign-in endpoint. The page uses it to decide whether to
         # lead with "Sign in" or with the manual fields — see connector.OAUTH_URL.
         cur["oauth_available"] = connector.oauth_available()
