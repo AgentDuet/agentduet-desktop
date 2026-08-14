@@ -429,6 +429,34 @@ def test_carry_mode() -> None:
        1 <= transcribe.CHUNK_SECONDS <= 300, transcribe.CHUNK_SECONDS)
 
 
+def test_shipped_dependencies() -> None:
+    """Everything the binary needs at RUNTIME is declared, so the build installs it.
+
+    Twice now a whole feature has been built, tested from source, and shipped in no binary
+    because nothing declared its dependency: the local speech engine (an extra the build did not
+    install) and the wasm sandbox (declared nowhere at all, while the spec warned about it into
+    a log nobody read). Both failed the same way — silently, on someone else's machine, as a
+    capability that simply reports itself unavailable.
+    """
+    print("\n  -- packaging: what the binary must contain --")
+    root = pathlib.Path(__file__).parent.parent
+    proj = (root / "pyproject.toml").read_text()
+    ci = (root / ".github" / "workflows" / "build.yml").read_text()
+
+    # A HARD dependency, because wasm_host imports it at module level — an absent one is not a
+    # degraded feature, it is `status` reporting "tools: NOT available" on every install.
+    ok("wasmtime is a declared dependency", '"wasmtime' in proj.split("[project.optional")[0])
+
+    # The speech engine is an EXTRA, so the build has to ask for it by name.
+    ok("the build installs the stt extra", "stt]" in ci or ",stt" in ci)
+
+    # The spec cannot see either of these by analysis: wasmtime is reached through ctypes, and
+    # faster_whisper is imported inside a function and probed with find_spec.
+    spec = (root / "packaging" / "agentduet-desktop.spec").read_text()
+    ok("and the spec collects the speech engine explicitly",
+       "faster_whisper" in spec and "ctranslate2" in spec)
+
+
 def test_setup_without_a_model() -> None:
     """Setup must complete with no model attached, because one mode needs none.
 
@@ -1389,6 +1417,7 @@ def main() -> None:
     test_status_and_render()
     test_tool_installation()
     test_login_item()
+    test_shipped_dependencies()
     test_carry_mode()
     test_answered_call_recording()
     test_setup_without_a_model()
