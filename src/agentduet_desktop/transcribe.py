@@ -37,8 +37,10 @@ import wave
 
 logger = logging.getLogger("secretary")
 
-#: The hosted ASR task model.
-MODEL = os.getenv("SECRETARY_ASR_MODEL", "qwen3-asr-flash")
+#: The hosted ASR task model. A function for the same reason as `local_model()`: a value read
+#: once at import cannot be changed without restarting the daemon.
+def hosted_model() -> str:
+    return os.getenv("SECRETARY_ASR_MODEL", "qwen3-asr-flash")
 
 #: How hard the local engine tries. Measured on a real 22s call, against the hosted engine's
 #: "Hi! Hello, hello! What can you do? Okay. Err. Never mind. Bye. Bye.":
@@ -63,7 +65,6 @@ MODEL = os.getenv("SECRETARY_ASR_MODEL", "qwen3-asr-flash")
 #: Still 4.4x realtime on the 88s file, so cost is download size, not time. The lesson is about
 #: the sample, not the model: a short clip starves both equally and hides the difference.
 QUALITY = {"fast": "base", "balanced": "small", "accurate": "medium", "max": "large-v3"}
-LOCAL_QUALITY = os.getenv("SECRETARY_STT_QUALITY", "")
 
 #: BEAM 5 AND VAD ALWAYS, at every tier. Not a trade: beam=5 with VAD measured FASTER than the
 #: beam=1 default it replaces (14x against 10.8x), because VAD strips silence so there is less
@@ -74,10 +75,15 @@ VAD = True
 
 def local_model() -> str:
     """The faster-whisper model to load. An explicit model name still wins over the tier."""
+    # READ AT USE TIME, never captured at import. This was a module constant, so changing the
+    # tier did nothing until a restart — and the settings page deliberately writes into the
+    # RUNNING process's environment so that a restart is not needed. CLAUDE.md calls this out
+    # by name; I reintroduced it anyway, which is what a documented gotcha is for.
     if name := os.getenv("SECRETARY_STT_MODEL"):
         return name
     from . import owner
-    tier = (LOCAL_QUALITY or owner.transcription_quality() or "balanced").lower()
+    tier = (os.getenv("SECRETARY_STT_QUALITY") or owner.transcription_quality()
+            or "balanced").lower()
     return QUALITY.get(tier, QUALITY["balanced"])
 
 #: Audio is sent inline as base64, so one hosted request carries about 1.4x the WAV's bytes. A
@@ -93,6 +99,11 @@ EMPTY_WAV_BYTES = 64
 #: How often the worker looks for work. Long, because nothing is waiting on it: the call is over
 #: and the audio is safe on disk.
 POLL_SECONDS = 20
+
+#: How many times a recording is retried before it is written off. Exists because the first
+#: transcription on a fresh install DOWNLOADS the speech model — hundreds of megabytes, or 2.9 GB
+#: at `max` — and a network failure there says nothing about the recording.
+MAX_ATTEMPTS = 3
 
 
 class TranscriptionUnavailable(RuntimeError):
@@ -136,10 +147,39 @@ def describe() -> str:
     """One line for `status`, naming which engine would actually run."""
     which = engine()
     if which == "hosted":
-        return f"hosted ({MODEL})"
+        return f"hosted ({hosted_model()})"
     if which == "local":
         return f"local ({local_model()}, on this machine)"
     return "OFF — " + available()[1]
+
+
+#: Roughly what each tier costs to fetch, for telling the owner BEFORE it happens rather than
+#: after. Measured from the cache on disk, not from the docs.
+MODEL_MB = {"tiny": 75, "base": 142, "small": 464, "medium": 1500, "large-v3": 2900}
+
+
+def is_cached(model: str = "") -> bool:
+    """Is the local model already on disk? Never downloads to find out."""
+    try:
+        from faster_whisper.utils import download_model
+        download_model(model or local_model(), local_files_only=True)
+        return True
+    except Exception:
+        return False
+
+
+def fetch(model: str = "") -> str:
+    """Download the local model now. Blocking, and the whole point of calling it early.
+
+    Without this the model arrives on the FIRST TRANSCRIPTION — hundreds of megabytes, or 2.9 GB
+    at `max`, fetched silently from a background worker at whatever moment a call happens to end.
+    On a metered connection that is rude, and when it fails the recording it was working on is
+    what pays. Better to say the number and let the owner choose the moment.
+    """
+    name = model or local_model()
+    from faster_whisper.utils import download_model
+    download_model(name)
+    return name
 
 
 def _chunks(path: pathlib.Path, seconds: int = CHUNK_SECONDS):
@@ -167,7 +207,7 @@ def _hosted_one(audio: bytes, key: str) -> str:
     b64 = base64.b64encode(audio).decode()
     # AUDIO ONLY. A text part is rejected: this is a dedicated ASR task, not a chat model that
     # happens to hear. Adding "please transcribe" here would break every call.
-    body = {"model": MODEL, "messages": [{"role": "user", "content": [
+    body = {"model": hosted_model(), "messages": [{"role": "user", "content": [
         {"type": "input_audio",
          "input_audio": {"data": f"data:audio/wav;base64,{b64}", "format": "wav"}}]}]}
     r = httpx.post(f"https://{host}/compatible-mode/v1/chat/completions", json=body,
@@ -307,15 +347,32 @@ def drain_once() -> int:
         try:
             text = transcribe(wav)
         except Exception as exc:
-            # A PERMANENT marker, so a corrupt or unreadable file is not retried every poll
-            # forever. Deleting the `.failed` re-queues it.
-            logger.error("could not transcribe %s (%s: %s)", wav.name, type(exc).__name__, exc)
-            wav.with_suffix(".failed").write_text(f"{type(exc).__name__}: {exc}\n")
+            # RETRY BEFORE GIVING UP. This marked `.failed` on the first exception, which is
+            # right for a corrupt file and wrong for everything else — and the commonest failure
+            # here is not the file at all, it is the local model DOWNLOADING on first use. That
+            # is up to 2.9 GB fetched inside this call, so a dropped connection, a closed laptop
+            # or a metered link would permanently lose a recording's transcript to a blip.
+            #
+            # Counting attempts on disk keeps the queue derived from the filesystem — no state
+            # to get out of step with the recordings — and a genuinely unreadable file still
+            # stops after MAX_ATTEMPTS instead of being retried every poll forever.
+            tries = wav.with_suffix(".try")
+            n = int(tries.read_text().strip() or 0) + 1 if tries.exists() else 1
+            if n >= MAX_ATTEMPTS:
+                logger.error("could not transcribe %s after %d attempts (%s: %s)",
+                             wav.name, n, type(exc).__name__, exc)
+                wav.with_suffix(".failed").write_text(f"{type(exc).__name__}: {exc}\n")
+                tries.unlink(missing_ok=True)
+            else:
+                logger.warning("could not transcribe %s (%s: %s) — attempt %d of %d, will retry",
+                               wav.name, type(exc).__name__, exc, n, MAX_ATTEMPTS)
+                tries.write_text(str(n))
             continue
         if not text:
             logger.info("%s had no speech in it", wav.name)
             wav.with_suffix(".txt").write_text("")
             continue
+        wav.with_suffix(".try").unlink(missing_ok=True)
         _record(wav, text)
         done += 1
         logger.info("transcribed %s (%d chars, %s)", wav.name, len(text), engine())

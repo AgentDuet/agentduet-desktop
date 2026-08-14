@@ -508,6 +508,52 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         asyncio.get_running_loop().create_task(_bye())
         return web.json_response({"ok": True, "message": "Stopping."})
 
+    #: One background download at a time, and its outcome. A module-level dict rather than a
+    #: task per request: the page POSTs once and then POLLS, so the state has to outlive the
+    #: request that started it.
+    _stt = {"running": False, "error": "", "model": ""}
+
+    async def api_setup_stt(request):
+        """The on-machine speech model: whether it is needed, whether it is here, and fetching it.
+
+        GET reports; POST starts a download and returns immediately. It is NOT a blocking POST
+        because this can be 2.9 GB — a request held open that long is a request that times out
+        on someone's slow connection, and then the page cannot tell a failure from a slow link.
+
+        ONLY RELEVANT WITH NO MODEL KEY. With one attached the hosted engine transcribes and
+        nothing is ever downloaded, so the whole step is hidden rather than shown-and-skipped.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import owner as _own, transcribe
+
+        model = transcribe.local_model()
+        needed = transcribe.engine() == "local" and _own.record_calls()
+        if request.method == "GET":
+            return web.json_response({
+                "needed": needed, "model": model,
+                "mb": transcribe.MODEL_MB.get(model, 0),
+                "cached": transcribe.is_cached(model),
+                "running": _stt["running"], "error": _stt["error"],
+                "installed": transcribe._local_available()})
+
+        if _stt["running"]:
+            return web.json_response({"ok": True, "message": "Already downloading."})
+        _stt.update(running=True, error="", model=model)
+
+        async def _go():
+            try:
+                await asyncio.to_thread(transcribe.fetch, model)
+            except Exception as exc:
+                # Kept, not raised: the page is polling and this is the only way it learns why.
+                _stt["error"] = f"{type(exc).__name__}: {exc}"
+                logger.warning("speech model download failed: %s", _stt["error"])
+            finally:
+                _stt["running"] = False
+
+        asyncio.create_task(_go())
+        return web.json_response({"ok": True, "message": f"Downloading {model}…"})
+
     async def api_setup_current(request):
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
@@ -1010,6 +1056,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/settings", settings_page),
         web.post("/api/setup/setting", api_setup_setting),
         web.get("/api/setup/about", api_setup_about),
+        web.get("/api/setup/stt", api_setup_stt),
+        web.post("/api/setup/stt", api_setup_stt),
         web.post("/api/setup/about", api_setup_about),
         web.post("/api/setup/connector", api_setup_connector),
         web.post("/api/quit", api_quit),

@@ -244,6 +244,18 @@
          the instance directory differs by platform and by install, and telling a Mac owner
          to look in /home/... would have them conclude the recording never ran. -->
     <div class="state" id="whereFiles">…</div>
+    <!-- THE SPEECH MODEL, shown ONLY when it is actually needed: no model key attached,
+         and recording on. With a key the hosted engine transcribes and nothing is ever
+         downloaded, so this would be a step shown and skipped. That is also why it lives
+         inside Finish rather than being a seventh chip — a step in the strip that half of
+         owners never see makes the strip lie about how long setup is. -->
+    <div class="state" id="sttBox" hidden>
+      <div id="sttWhat">…</div>
+      <div class="acts" style="margin-top:.7rem">
+        <button id="doStt">Download now</button>
+        <span class="sp"></span><span class="spin" id="spStt"></span>
+      </div>
+    </div>
     <button id="doDone">Done</button>
     <div id="mDone"></div>
   </section>
@@ -482,6 +494,44 @@
         + 'recording can be switched on in settings.';
     }
   }).catch(() => {});
+
+  // ---- the on-machine speech model ------------------------------------------------------
+  // Without this it arrives on the FIRST TRANSCRIPTION: hundreds of megabytes, or 2.9 GB at
+  // `max`, fetched silently from a background worker at whatever moment a call happens to end.
+  // Saying the number and letting the owner pick the moment is the whole point.
+  let sttPoll = null;
+  function sttRender(d){
+    const box = $('sttBox'), what = $('sttWhat');
+    if (!box || !d || d.error === 'unauthorised') return;
+    if (!d.needed || !d.installed) { box.hidden = true; return; }   // hosted, or engine absent
+    box.hidden = false;
+    $('doStt').hidden = d.cached || d.running;
+    $('spStt').textContent = d.running ? 'downloading…' : '';
+    if (d.cached) {
+      what.innerHTML = 'Speech recognition runs on this machine. '
+        + '<b>' + esc(d.model) + '</b> is ready.';
+    } else {
+      what.innerHTML = 'Calls are transcribed on this machine, so nothing is sent anywhere. '
+        + 'That needs a one-off download of about <b>' + d.mb + ' MB</b> (<code>'
+        + esc(d.model) + '</code>).<br><span class="note">If you skip it, it downloads by '
+        + 'itself the first time a call is transcribed.</span>'
+        + (d.err ? '<br><span class="note">Last attempt failed: ' + esc(d.err) + '</span>' : '');
+    }
+    // Poll only WHILE running, and stop as soon as it is not. A timer left running behind a
+    // finished download is a page that keeps asking a question it already has the answer to.
+    if (d.running && !sttPoll) sttPoll = setInterval(sttCheck, 3000);
+    if (!d.running && sttPoll) { clearInterval(sttPoll); sttPoll = null; }
+  }
+  function sttCheck(){
+    fetch(`/api/setup/stt?t=${T}`).then(r => r.json())
+      .then(d => sttRender({...d, err: d.error})).catch(() => {});
+  }
+  sttCheck();
+  $('doStt').onclick = async () => {
+    $('doStt').hidden = true; $('spStt').textContent = 'starting…';
+    await post('/api/setup/stt', {});
+    sttCheck();
+  };
 
   // ---- 4 · finish ----------------------------------------------------------------------
   // The last act of the installer: start the INSTALLED copy detached and stand this one down.
