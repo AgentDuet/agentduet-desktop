@@ -475,6 +475,32 @@ def test_answered_call_recording() -> None:
 
     ok("it is settable like any other field", "record_calls" in tools.SETTING_FIELDS)
 
+    # THE SPEECH MODEL IS FETCHED BEFORE IT IS NEEDED, or it arrives on the first transcription:
+    # hundreds of MB, or 2.9 GB at `max`, silently, from a background worker, at whatever moment
+    # a call happens to end.
+    import os as _o
+    from agentduet_desktop import transcribe as _t
+    for tier, model in (("fast", "base"), ("balanced", "small"),
+                        ("accurate", "medium"), ("max", "large-v3")):
+        _o.environ["SECRETARY_STT_QUALITY"] = tier
+        eq(f"{tier} -> {model}", _t.local_model(), model)
+        ok(f"and {tier} states its download size", _t.MODEL_MB.get(model, 0) > 0)
+    _o.environ.pop("SECRETARY_STT_QUALITY", None)
+
+    # READ AT USE TIME, not captured at import. The settings page writes into the RUNNING
+    # process's environment so a restart is not needed, and this was a module constant — so
+    # changing the tier did nothing until the daemon was restarted. CLAUDE.md names this trap.
+    _o.environ["SECRETARY_STT_QUALITY"] = "max"
+    eq("a tier changed after import takes effect immediately", _t.local_model(), "large-v3")
+    _o.environ.pop("SECRETARY_STT_QUALITY", None)
+    _o.environ["SECRETARY_ASR_MODEL"] = "some-other-asr"
+    eq("and so does the hosted model name", _t.hosted_model(), "some-other-asr")
+    _o.environ.pop("SECRETARY_ASR_MODEL", None)
+
+    # Checking the cache must never trigger a download — that is the whole point of asking.
+    ok("an absent model reports uncached rather than fetching it",
+       _t.is_cached("no-such-model-at-all") is False)
+
     # CLOSING TWICE MUST BE HARMLESS. It happens on every normal call — the SDK closes the
     # session from its on_hangup handler and the call path closes it again in a finally — and
     # the first version logged each recording twice, which reads as two recordings of one call.
@@ -622,12 +648,18 @@ def test_transcribe_queue() -> None:
         with mock.patch.object(transcribe, "transcribe", side_effect=RuntimeError("nope")), \
              mock.patch.object(transcribe, "available", return_value=(True, "")):
             eq("a failing engine writes nothing", transcribe.drain_once(), 0)
-        ok("the failure is marked beside the audio", todo.with_suffix(".failed").is_file())
-        # BOTH legs are marked, not just the one: drain_once works the whole queue, so an engine
-        # that is down fails every job in the pass. That is correct — each is independently
-        # re-queued by deleting its marker — and it is why the queue is empty here.
-        eq("every job in the pass is marked, so none is left half-done",
-           transcribe.pending(), [])
+            # ONE FAILURE IS NOT FATAL. The commonest failure here is the local model
+            # DOWNLOADING on first use — up to 2.9 GB — so a dropped connection says nothing
+            # about the recording, and writing it off would lose a real transcript to a blip.
+            ok("a first failure is retried, not written off",
+               not todo.with_suffix(".failed").exists() and todo.with_suffix(".try").is_file())
+            ok("and it stays in the queue", any("c1-caller" in q.name for q in transcribe.pending()))
+            # But a genuinely unreadable file must stop, or it is retried every poll forever.
+            for _ in range(transcribe.MAX_ATTEMPTS):
+                transcribe.drain_once()
+        ok("a persistent failure is eventually marked", todo.with_suffix(".failed").is_file())
+        ok("and the attempt counter is cleaned up", not todo.with_suffix(".try").exists())
+        eq("nothing is left half-done once every job has given up", transcribe.pending(), [])
 
         # THE SUCCESS PATH files a transcript and an entry, and empties the queue.
         wav("20260811T140000-c5-caller.wav")
