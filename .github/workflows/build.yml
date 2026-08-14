@@ -63,7 +63,14 @@ jobs:
           # ALL THREE providers, because the model is config rather than code: the setup wizard
           # offers Gemini, Anthropic and Qwen, and it defaults to Gemini. A binary built with
           # only [qwen] fails on the first screen for anyone who takes the default.
-          pip install ".[gemini,anthropic,qwen]" pyinstaller
+          #
+          # [stt] TOO, and it is worth ~157 MB of binary. Carrying a call was deliberately made
+          # to need NO model key — cannot_answer() lets it run without one, setup lets the model
+          # step be skipped — so the owner it serves is exactly the one with no credential. Left
+          # out, that owner gets recordings and no transcripts, and the no-key path we built is
+          # a claim rather than a feature. numpy is already here via the qwen adapter, so the
+          # real additions are ctranslate2, onnxruntime, tokenizers and av.
+          pip install ".[gemini,anthropic,qwen,stt]" pyinstaller
 
       - name: Build the binary
         run: pyinstaller --noconfirm --distpath dist-bin packaging/agentduet-desktop.spec
