@@ -221,6 +221,55 @@ _local_model = None
 _loaded_name = ""
 
 
+def _device() -> tuple[str, str]:
+    """(device, compute type). Uses a GPU that is ALREADY here; never asks for one.
+
+    WE DO NOT BUNDLE CUDA, and that is deliberate rather than lazy. cuDNN and cuBLAS are 2-3 GB
+    of wheels against a 58 MB binary; PyInstaller and ctypes-loaded native libraries are already
+    a scar in this repo; and macOS — the primary target — has no CUDA at all, so it would help
+    neither the build we ship nor the person we ship it to. Transcription is queued and
+    post-call besides: `medium` does a five-minute call in about 100 seconds on a CPU while
+    nothing waits for it.
+    
+    But refusing a GPU someone already has is just as wrong, and detecting one costs a single
+    call. On a machine with CUDA properly installed this is roughly an order of magnitude
+    faster; everywhere else it is exactly what it was.
+    """
+    if forced := os.getenv("SECRETARY_STT_DEVICE"):
+        return forced, os.getenv("SECRETARY_STT_COMPUTE", "default")
+    try:
+        import ctranslate2
+        if ctranslate2.get_cuda_device_count() > 0:
+            return "cuda", os.getenv("SECRETARY_STT_COMPUTE", "float16")
+    except Exception:
+        pass                        # no ctranslate2, no driver, no GPU — all mean CPU
+    return "cpu", os.getenv("SECRETARY_STT_COMPUTE", "int8")
+
+
+def _load(name: str):
+    """Load the model, falling back to CPU if the GPU path will not start.
+
+    A detected GPU is not a working one: the driver can be too old, the CUDA libraries absent,
+    the card busy. That failure arrives at model load, and without this it would surface as a
+    transcription failure on a real recording — three retries later the file is written off for
+    a reason that has nothing to do with it.
+    """
+    from faster_whisper import WhisperModel
+    device, compute = _device()
+    try:
+        m = WhisperModel(name, device=device, compute_type=compute)
+        logger.info("speech model %s loaded on %s (%s)", name, device, compute)
+        return m
+    except Exception as exc:
+        if device == "cpu":
+            raise
+        logger.warning("%s would not load on %s (%s: %s) — falling back to the CPU",
+                       name, device, type(exc).__name__, exc)
+        return WhisperModel(name, device="cpu", compute_type="int8")
+
+
+
+
 def _local(path: pathlib.Path) -> str:
     """Whisper on the CPU. The model is loaded ONCE and reused for the life of the process.
 
@@ -235,7 +284,7 @@ def _local(path: pathlib.Path) -> str:
     # daemon restarts, and the owner sees no difference from a setting they just changed.
     if _local_model is None or _loaded_name != want:
         logger.info("loading the local speech model (%s) — first use downloads it", want)
-        _local_model = WhisperModel(want, device="cpu", compute_type="int8")
+        _local_model = _load(want)
         _loaded_name = want
     from . import owner
     lang = os.getenv("SECRETARY_STT_LANGUAGE") or owner.language() or None

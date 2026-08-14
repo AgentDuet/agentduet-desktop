@@ -497,6 +497,18 @@ def test_answered_call_recording() -> None:
     eq("and so does the hosted model name", _t.hosted_model(), "some-other-asr")
     _o.environ.pop("SECRETARY_ASR_MODEL", None)
 
+    # A GPU IS USED IF PRESENT, NEVER REQUIRED. CUDA is not bundled — 2-3 GB of wheels against a
+    # 58 MB binary, and macOS has none at all — so this must degrade to CPU silently on the
+    # machines we actually ship to, and must never raise while merely deciding.
+    dev, comp = _t._device()
+    ok("a device is chosen without raising", dev in ("cpu", "cuda") and bool(comp), f"{dev}/{comp}")
+    _o.environ["SECRETARY_STT_DEVICE"] = "cuda"
+    eq("an explicit device wins", _t._device()[0], "cuda")
+    _o.environ.pop("SECRETARY_STT_DEVICE", None)
+    _o.environ["SECRETARY_STT_COMPUTE"] = "float32"
+    eq("and the compute type can be set with it", _t._device()[1], "float32")
+    _o.environ.pop("SECRETARY_STT_COMPUTE", None)
+
     # Checking the cache must never trigger a download — that is the whole point of asking.
     ok("an absent model reports uncached rather than fetching it",
        _t.is_cached("no-such-model-at-all") is False)
