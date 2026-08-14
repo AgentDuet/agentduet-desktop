@@ -491,6 +491,62 @@ def test_answered_call_recording() -> None:
     _a.run(rec.close()); _a.run(rec.close())
     eq("closing twice closes the session once", _Inner.n, 1)
 
+    # THE TRANSCRIPT SITS BESIDE ITS AUDIO, sharing the stamp and txn uuid so the pair is
+    # obvious in a directory listing.
+    home2 = pathlib.Path(tempfile.mkdtemp(prefix="txt-test-"))
+    rec2 = voice._Recorder.__new__(voice._Recorder)
+    rec2._dir, rec2._stamp, rec2._call_id = home2, "20260101T000000", "abc"
+    rec2.write_transcript([("hello", "hi there"), ("bye", "")])
+    out = home2 / "20260101T000000-abc.txt"
+    ok("a transcript is written next to the recording", out.is_file())
+    ok("and it reads as a dialogue",
+       out.read_text() == "them : hello\nagent: hi there\nthem : bye\nagent: \n", repr(out.read_text()))
+    # Nothing said means nothing written — an empty file would look like a lost transcript.
+    rec2._call_id = "empty"
+    rec2.write_transcript([])
+    ok("an empty call writes no transcript at all",
+       not (home2 / "20260101T000000-empty.txt").exists())
+
+    # THE MIX. Two files are the record; this is the one a human plays. Both properties below
+    # are the ones that make it listenable rather than merely present.
+    import array as _arr, wave as _wave
+    def _mk(cid, caller, chunks):
+        r = voice._Recorder.__new__(voice._Recorder)
+        r._dir, r._stamp, r._call_id = home2, "T", cid
+        r._caller = r._agent = None
+        r._frames = {"caller": 0, "agent": 0}
+        r._closed = False
+        r._caller_pcm = bytearray(_arr.array("h", caller).tobytes())
+        r._agent_chunks = [(o, _arr.array("h", v).tobytes()) for o, v in chunks]
+        r._write_mixed()
+        w = _wave.open(str(home2 / f"T-{cid}-mixed.wav"))
+        got = _arr.array("h"); got.frombytes(w.readframes(w.getnframes()))
+        return list(got)
+
+    # PLACEMENT. The agent only produces audio while speaking, so without the caller-timeline
+    # offset its speech would be dragged to the start and the mix would be gibberish.
+    eq("agent audio lands where it was spoken, not at the start",
+       _mk("m1", [100] * 6, [(4, [1000, 1000])]), [100, 100, 1100, 1100, 100, 100])
+
+    # CLIPPING, not wrapping. Two int16 streams can exceed the range, and an overflow turns a
+    # loud moment into a burst of noise that sounds like a broken recording rather than a loud one.
+    eq("a loud sum clips instead of wrapping",
+       _mk("m2", [30000, -30000], [(0, [30000, -30000])]), [32767, -32768])
+
+    # audioop does this in the bank demo and is REMOVED in Python 3.13; this package supports 3.12+.
+    _vsrc = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+             / "voice.py").read_text()
+    # The only mention left is the comment saying why we avoid it, so match the CALL.
+    ok("mixing does not depend on audioop", "audioop." not in _vsrc and "import audioop" not in _vsrc)
+
+    # IT IS WRITTEN AFTER THE FLUSH. The SDK can close the session from its hangup handler
+    # before the teardown runs, so writing from close() would drop the caller's last words —
+    # the one line most worth keeping.
+    vsrc = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+            / "voice.py").read_text()
+    ok("the transcript is written after the final flush",
+       vsrc.index("await recorder.flush()") < vsrc.index("ms.write_transcript(recorder.turns)"))
+
     # THE TAP IS THE SESSION, NOT THE CALL. The SDK's bridge already pumps caller audio into
     # ms.push_audio and AudioOut back to the call, so decorating the session captures both
     # directions. Opening a second consumer on call.caller.audio_stream() would race the bridge

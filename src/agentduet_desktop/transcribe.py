@@ -40,10 +40,45 @@ logger = logging.getLogger("secretary")
 #: The hosted ASR task model.
 MODEL = os.getenv("SECRETARY_ASR_MODEL", "qwen3-asr-flash")
 
-#: The local model. `base` is the default trade: ~145 MB, about 7x realtime on a laptop CPU, and
-#: noticeably better than `tiny` on names. Anything faster-whisper accepts works — `tiny` when
-#: size matters, `small` when accuracy does.
-LOCAL_MODEL = os.getenv("SECRETARY_STT_MODEL", "base")
+#: How hard the local engine tries. Measured on a real 22s call, against the hosted engine's
+#: "Hi! Hello, hello! What can you do? Okay. Err. Never mind. Bye. Bye.":
+#:
+#:   fast      base   14x realtime  ~145 MB   "…what you do? Okay, uh, never mind, I'm fine."
+#:   balanced  small  5.8x          ~484 MB   "Hi, hello, hello, okay, do okay, nevermind, bye"
+#:   accurate  medium 3.1x          ~1.5 GB   "…what can you do? Okay, never mind, bye-bye."
+#:
+#: `accurate` is the only one that recovered "what can you do", and at 3x realtime a five-minute
+#: call still finishes in under two minutes — which is free, because this runs after the call on
+#: a queue and nothing waits for it. BALANCED is the default only because the model downloads on
+#: first use and 1.5 GB is a surprise to hand someone who never looks at a transcript.
+#:
+#: `max` is large-v3, ~3 GB, and it EARNS ITS PLACE on real call lengths — which a 22-second
+#: clip did not show. On that clip it matched medium word for word, and the first version of
+#: this comment concluded there was no point to it. On 57s and 88s recordings the two agree only
+#: ~80% of the time, and the differences change meaning:
+#:
+#:   medium  "can you WAIT FOR my credit card bill?"     large  "can you WAVE my credit card bill?"
+#:   medium  "my name is Spandy Leong"                   large  "my name is Standee Leong"
+#:
+#: Still 4.4x realtime on the 88s file, so cost is download size, not time. The lesson is about
+#: the sample, not the model: a short clip starves both equally and hides the difference.
+QUALITY = {"fast": "base", "balanced": "small", "accurate": "medium", "max": "large-v3"}
+LOCAL_QUALITY = os.getenv("SECRETARY_STT_QUALITY", "")
+
+#: BEAM 5 AND VAD ALWAYS, at every tier. Not a trade: beam=5 with VAD measured FASTER than the
+#: beam=1 default it replaces (14x against 10.8x), because VAD strips silence so there is less
+#: audio to decode. The old default was the worst of both — slower AND greedier.
+BEAM_SIZE = 5
+VAD = True
+
+
+def local_model() -> str:
+    """The faster-whisper model to load. An explicit model name still wins over the tier."""
+    if name := os.getenv("SECRETARY_STT_MODEL"):
+        return name
+    from . import owner
+    tier = (LOCAL_QUALITY or owner.transcription_quality() or "balanced").lower()
+    return QUALITY.get(tier, QUALITY["balanced"])
 
 #: Audio is sent inline as base64, so one hosted request carries about 1.4x the WAV's bytes. A
 #: minute of 24 kHz mono 16-bit is ~2.8 MB; a ten-minute call in one request would be ~38 MB.
@@ -103,7 +138,7 @@ def describe() -> str:
     if which == "hosted":
         return f"hosted ({MODEL})"
     if which == "local":
-        return f"local ({LOCAL_MODEL}, on this machine)"
+        return f"local ({local_model()}, on this machine)"
     return "OFF — " + available()[1]
 
 
@@ -143,6 +178,7 @@ def _hosted_one(audio: bytes, key: str) -> str:
 
 
 _local_model = None
+_loaded_name = ""
 
 
 def _local(path: pathlib.Path) -> str:
@@ -152,13 +188,47 @@ def _local(path: pathlib.Path) -> str:
     file would dominate the run and let two copies exist at once. That is also why the worker
     drains strictly one at a time.
     """
-    global _local_model
+    global _local_model, _loaded_name
     from faster_whisper import WhisperModel
-    if _local_model is None:
-        logger.info("loading the local speech model (%s) — first use may download it", LOCAL_MODEL)
-        _local_model = WhisperModel(LOCAL_MODEL, device="cpu", compute_type="int8")
-    segments, _info = _local_model.transcribe(str(path), beam_size=1)
-    return "".join(s.text for s in segments).strip()
+    want = local_model()
+    # Reload when the tier CHANGES. Without this, raising the quality does nothing until the
+    # daemon restarts, and the owner sees no difference from a setting they just changed.
+    if _local_model is None or _loaded_name != want:
+        logger.info("loading the local speech model (%s) — first use downloads it", want)
+        _local_model = WhisperModel(want, device="cpu", compute_type="int8")
+        _loaded_name = want
+    from . import owner
+    lang = os.getenv("SECRETARY_STT_LANGUAGE") or owner.language() or None
+    # PRIMING WITH THE OWNER'S NAME beats a bigger model, and costs nothing. Measured on an 88s
+    # call: medium heard "my name is Spandy Leong"; primed with "Stanley Leong" it heard it
+    # correctly, which neither medium nor large-v3 managed unprimed. A caller saying the owner's
+    # name is the commonest proper noun on this path and the one most worth getting right.
+    #
+    # A PUNCTUATED SENTENCE, not a bare name — the prompt sets STYLE as well as vocabulary, and
+    # that is not obvious until it bites. Measured on the same 88s call with large-v3:
+    #
+    #   "Stanley Leong"             -> "hi hi uh can i waive my credit card bill ah okay my
+    #                                   name is uh standee leong last four digit is 5678"
+    #   "Stanley Leong."            -> "Hi, hi, can I waive my credit card bill? Okay, my name
+    #                                   is Standy Leong. Last four digits is 5678."
+    #   "A call for Stanley Leong." -> the same, with the name CORRECT.
+    #
+    # An unpunctuated prompt teaches it to write unpunctuated lowercase text, and the whole
+    # transcript loses its sentence boundaries. Kept short and factual regardless: Whisper will
+    # echo this prompt into the output when the audio is silent or unclear, so every word here
+    # is a word that can appear in a transcript nobody said.
+    name = owner.name()
+    prompt = f"A call for {name}." if name and name != owner.DEFAULT_NAME else None
+    segments, info = _local_model.transcribe(str(path), beam_size=BEAM_SIZE, language=lang,
+                                             vad_filter=VAD, initial_prompt=prompt)
+    text = "".join(s.text for s in segments).strip()
+    if lang is None:
+        # SAY WHAT IT GUESSED. A wrong guess produces a fluent transcript of the wrong language,
+        # which reads as a broken recording rather than a misconfiguration — this is the only
+        # place that difference is visible.
+        logger.info("%s: language guessed as %s (p=%.2f) — set `## Language` in settings.md if "
+                    "that is wrong", path.name, info.language, info.language_probability)
+    return text
 
 
 def transcribe(path: pathlib.Path) -> str:
