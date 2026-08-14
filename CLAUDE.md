@@ -35,6 +35,24 @@ Build: `uv build --wheel` · `pyinstaller --distpath dist-bin packaging/agentdue
 build. Rebuild only to test the real install or to ship. The site token survives a restart, so
 an open tab keeps working either way.
 
+## Which surface, per platform (decided 2026-08-14)
+
+**macOS and Windows set up in the browser page; Linux sets up in the console.** All three ship
+the same binary and both surfaces exist everywhere — this is about which one is DOCUMENTED and
+led with, not which one works.
+
+The reasoning is who is holding it. Mac is where the testers are today. Windows is where the
+SIs will be, and neither audience wants a terminal. Linux is where someone SELF-HOSTS, on a box
+they reached over ssh, where opening a loopback browser page is the awkward path rather than the
+easy one.
+
+**Consequence, and it is the part that bites: `init` must cover what the wizard covers.** It did
+not — the wizard gained a mode question, a recording setting and a speech-model download while
+`init` still asked only for a model, a connector and the interview. Worse, it `return 1`-ed
+without a model, so the no-key carry-only owner — the exact person Linux self-hosting serves —
+could not finish setup at all. That was the same bug `cannot_answer()` had, in the other
+surface, found the day this decision was made. Anything added to one now goes in both.
+
 ## Working rules
 
 - **Never wipe `$AGENTDUET_HOME`.** No `rm -rf` on it to "start clean" — correct the specific

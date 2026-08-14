@@ -202,6 +202,54 @@ def interview() -> str:
     return result.get("reply", "")
 
 
+def choose_mode(interactive: bool = True) -> str:
+    """Answer calls, or put them through and record them. Returns the mode in force."""
+    current = owner.calls()
+    if not interactive:
+        return current
+    print("\n  What should it do with a call?")
+    print("    1  answer it for you — an assistant picks up.  Needs a model.")
+    print("    2  put it through to your phone, and record both sides.  No model needed.")
+    print("       You are recording two people; check what you must tell them.")
+    pick = input(f"\n  1 or 2 [{'2' if current == owner.CALLS_CARRY else '1'}]: ").strip()
+    if pick not in ("1", "2"):
+        return current
+    mode = owner.CALLS_CARRY if pick == "2" else owner.CALLS_ANSWER
+    tools.set_setting("calls", mode)
+    print(f"  -> calls will be {'carried and recorded' if mode == owner.CALLS_CARRY else 'answered'}")
+    return mode
+
+
+def offer_speech_model(interactive: bool = True) -> None:
+    """Fetch the on-machine speech model now, rather than on the first call.
+
+    The console half of the web wizard's download step, and it matters more here: a Linux owner
+    is likelier to be self-hosting on a box nobody is watching, so a silent several-hundred-MB
+    download during the first real call is worse, not better.
+    """
+    from . import transcribe
+    if not interactive or transcribe.engine() != "local" or not owner.record_calls():
+        return                      # a model key means hosted, and nothing is ever downloaded
+    model = transcribe.local_model()
+    if transcribe.is_cached(model):
+        return
+    mb = transcribe.MODEL_MB.get(model, 0)
+    print("\n  Calls are transcribed on this machine, so nothing is sent anywhere.")
+    print(f"  That needs a one-off download of about {mb} MB ({model}).")
+    if input("  Download it now? [Y/n] ").strip().lower().startswith("n"):
+        print("  Skipped — it downloads by itself the first time a call is transcribed.")
+        return
+    try:
+        print("  Downloading… this can take a few minutes.")
+        transcribe.fetch(model)
+        print(f"  -> {model} is ready.")
+    except Exception as exc:
+        # NOT fatal. The model still downloads on first use; failing setup over it would be
+        # refusing to finish for something that fixes itself.
+        print(f"  Could not download it ({type(exc).__name__}). It will try again on "
+              "the first call.")
+
+
 def main(interactive: bool = True) -> int:
     print("\n  AgentDuet Desktop — setup")
     ensure_instance()
@@ -217,11 +265,36 @@ def main(interactive: bool = True) -> int:
     # plaintext. Everything else in setup is a conversation the owner's own assistant can have
     # (set_setting, add_knowledge, declare_capability, grant_folder are all in the registry) —
     # and a conversation is a better interview than a list of prompts.
-    if not attach(interactive):
-        print("\n  Setup stopped: without a model the agent cannot answer anyone."
-              "\n  Run `agentduet-desktop init` again once you have a key.")
+    # WHAT IT DOES WITH A CALL, before asking for a model — because the answer decides whether
+    # a model is needed at all. This is the console counterpart of the web wizard's step 2, and
+    # Linux is console-first (see CLAUDE.md), so leaving it out meant a Linux owner could not
+    # choose the mode at all without hand-editing settings.md.
+    mode = choose_mode(interactive)
+
+    # THE TWO SECRETS. Carrying needs neither: nobody is answered, and with the local speech
+    # engine the transcript needs no credential either. This used to `return 1` on a missing
+    # model regardless, so an owner who only wanted calls recorded could not finish setup — the
+    # same bug cannot_answer() had, in the other surface, found the day Linux became
+    # console-first.
+    if mode == owner.CALLS_CARRY:
+        # DO NOT EVEN ASK. Carrying answers nobody and the transcript runs on this machine, so a
+        # key is not merely optional here — demanding one is the thing that sent an owner off to
+        # sign up for a model they will never call. Offered, because they may want to answer
+        # calls later and this is the moment they have the terminal open.
+        if not llm.configured():
+            print("\n  Carrying a call needs no model, so this step is optional.")
+            if input("  Attach one anyway, to answer calls later? [y/N] ").strip().lower()\
+                    .startswith("y"):
+                attach(interactive)
+        else:
+            print(f"  model: {llm.describe()}")
+    elif not attach(interactive):
+        print("\n  Setup stopped: to ANSWER calls the agent needs a model."
+              "\n  Run `agentduet-desktop init` again once you have a key,"
+              "\n  or choose to have calls put through to you instead.")
         return 1
     connected = connect(interactive)
+    offer_speech_model(interactive)
 
     # THE INTERVIEW IS THE DEFAULT NOW (2026-08-11). It used to be opt-in — "your AI assistant
     # can do this over the mcp, better than these prompts" with a (y/N) that defaulted to NO —
@@ -235,7 +308,7 @@ def main(interactive: bool = True) -> int:
         if not input("\n  > ").strip().lower().startswith("s"):
             print("\n  " + (interview() or "(no summary returned)").replace("\n", "\n  "))
 
-    print(f"""
+    print("""
   Next:
     agentduet-desktop run          start the daemon — it answers while you are away
     agentduet-desktop status       what is running, and what this build can do
