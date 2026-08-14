@@ -261,9 +261,24 @@ ours to build.
       exception: it still hands over 4,000 characters to paraphrase, because on a knowledge
       question the documents ARE the answer. Narrowing that to a sentence is the per-turn half
       of the fence a prompt cannot do, and the last piece of it.
-- [ ] **Post-hoc grounding check** on the transcript. Nearly free once the tool contract lands.
+- [ ] **Post-hoc grounding check** on the transcript. Nearly free once the tool contract lands —
+      and cheaper still since 2026-08-14: every answered call now writes the caller's audio, the
+      agent's audio and a turn-by-turn transcript, so checking whether the agent said something
+      the knowledge does not support is a text comparison over data already on disk. Detection,
+      not prevention, and the honest substitute for the cascade below.
 - [ ] **Measure a hosted cascade.** Rejected 2026-07-31, but the recorded reason rejects a LOCAL
       cascade. It is the only option that restores every invariant.
+      **NOT YET, decided 2026-08-14.** `AgentDuet/agentduet-pipecat` (Tuan, public) makes a
+      cascade cheap to build — `AgentDuetTransport` drops a live Call into a Pipecat pipeline.
+      But nothing today wants one: agent mode is speech-to-speech on a single realtime stream,
+      and carry mode is STT only, post-call, on a queue. A cascade is the only thing Pipecat
+      buys, and it would cost two more vendor credentials (their quickstart wants Deepgram AND
+      Google) on a product that was just made to work with none, plus Pipecat's weight in a
+      58 MB binary.
+      **The trigger is specific:** someone needing a TEXT model on a live call — a customer
+      bringing their own, a language the realtime model handles badly, or per-turn control the
+      realtime path cannot give. Until then the cheaper route to most of the same benefit is the
+      grounding check below, which today's recording work made nearly free.
 - [ ] `_ring_owner` (the callback that rings the owner) has **never executed** — every other
       part of the callback is tested, and the ring is now rate-limited. It cannot be unit
       tested: it is a closure over the live `SessionManager`, and it opens a session, dials,
