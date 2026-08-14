@@ -91,13 +91,37 @@ hiddenimports = [
     "yaml",          # writing Goose config.yaml
     # The window shell, optional at runtime — absent, `run` uses the browser.
     "webview",
+    # THE LOCAL SPEECH ENGINE. Imported lazily inside transcribe._load(), and its presence is
+    # probed with find_spec rather than an import — so PyInstaller's analysis sees NEITHER, and
+    # without this the binary builds clean and reports "faster-whisper is not installed" for
+    # ever. Exactly the lazy-import gotcha at the top of CLAUDE.md.
+    *collect_submodules("faster_whisper"),
+    "ctranslate2", "onnxruntime", "av", "tokenizers",
 ]
+
+# ctranslate2 keeps its inference engine in a SIBLING `ctranslate2.libs/` directory, the
+# manylinux auditwheel layout, and the extension finds it by an RPATH of `$ORIGIN/../
+# ctranslate2.libs`. collect_dynamic_libs() looks INSIDE the package and therefore returns
+# nothing at all — which would build a binary that imports faster_whisper happily and then dies
+# loading the first model, on someone else's machine. onnxruntime and av have contrib hooks and
+# need nothing here.
+_ct2_libs = []
+try:
+    import ctranslate2 as _ct2
+    _ct2_root = Path(_ct2.__file__).parent
+    for _d in (_ct2_root.parent / "ctranslate2.libs", _ct2_root / ".libs"):
+        if _d.is_dir():
+            _ct2_libs += [(str(_f), _d.name) for _f in _d.iterdir() if _f.is_file()]
+    if not _ct2_libs:
+        print("NOTE: no sibling ctranslate2 libs found — fine on wheels that embed them")
+except Exception as _exc:
+    print(f"WARNING: ctranslate2 not collected ({_exc}) — local transcription will fail")
 
 a = Analysis(
     [str(Path(SPECPATH).parent / "entry.py")],
     pathex=[str(Path(SPECPATH).parent / "src")],
     datas=datas,
-    binaries=_wasm_binaries,
+    binaries=_wasm_binaries + _ct2_libs,
     hiddenimports=hiddenimports,
     excludes=["tkinter", "test", "unittest"],   # nothing here draws a GUI
     noarchive=False,
