@@ -514,11 +514,23 @@ class _Recorder:
         self._inner = inner
         self._dir = carry.RECORDINGS / ANSWERED
         stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+        self._stamp = stamp
         self._caller = self._open(f"{stamp}-{call_id}-caller.wav")
         self._agent = self._open(f"{stamp}-{call_id}-agent.wav")
         self._frames = {"caller": 0, "agent": 0}
         self._call_id = call_id
         self._closed = False
+        # FOR THE MIX. The caller's side runs continuously; the agent's exists only while it
+        # speaks, so the two are not aligned and a plain concatenation would drag the agent's
+        # speech to the front. Each agent chunk is therefore kept with the caller-timeline byte
+        # offset it arrived at — the technique from the bank demo's RecordingSession, which
+        # needs no model-specific "turn complete" signal and so works across every adapter.
+        #
+        # Held in memory, which is the cost: about 2.8 MB per minute of call for the caller
+        # plus whatever the agent said. Fine for calls of the length a secretary takes; if
+        # hour-long calls ever matter, this wants spilling to disk.
+        self._caller_pcm = bytearray()
+        self._agent_chunks: list[tuple[int, bytes]] = []
 
     def _open(self, name: str):
         try:
@@ -543,6 +555,7 @@ class _Recorder:
 
     async def push_audio(self, pcm):
         self._write("caller", self._caller, pcm)
+        self._caller_pcm.extend(pcm or b"")
         await self._inner.push_audio(pcm)
 
     async def events(self):
@@ -550,6 +563,8 @@ class _Recorder:
         async for ev in self._inner.events():
             if isinstance(ev, AudioOut):
                 self._write("agent", self._agent, ev.pcm)
+                # Pinned to where the caller's timeline had reached when this arrived.
+                self._agent_chunks.append((len(self._caller_pcm), ev.pcm))
             yield ev
 
     async def send_tool_result(self, call_id, result):
@@ -579,7 +594,82 @@ class _Recorder:
                 logger.info("call %s: recorded %.1fs of the %s side", self._call_id, secs, which)
             else:
                 logger.warning("call %s: the %s side recorded NO audio", self._call_id, which)
+        # After both sides are closed, and guarded: a failed mix must not cost the two real
+        # recordings, which are the ones that cannot be recreated.
+        try:
+            self._write_mixed()
+        except Exception as exc:
+            logger.warning("call %s: mixing failed (%s: %s)", self._call_id,
+                           type(exc).__name__, exc)
         await self._inner.close()
+
+    def _write_mixed(self) -> None:
+        """One file you can actually listen to: both sides, correctly placed in time.
+
+        Two files are the record; this is the one a human plays. Each agent chunk is laid onto a
+        silent track at the caller-timeline offset it arrived at, then the two tracks are summed.
+        Consecutive chunks are clamped so they cannot overlap each other.
+
+        NO `audioop`, which is what the bank demo uses — it is deprecated in 3.12 and REMOVED in
+        3.13, and this package supports 3.12+. `array` does the same job and will not vanish.
+
+        SUMMING CLIPS, it does not wrap. Two int16 streams can exceed the range, and letting that
+        overflow turns a loud moment into a burst of noise that sounds like a broken recording
+        rather than a loud one.
+        """
+        import array
+        if not self._caller_pcm and not self._agent_chunks:
+            return
+        total = len(self._caller_pcm)
+        for off, pcm in self._agent_chunks:
+            total = max(total, off + len(pcm))
+        agent = bytearray(total)
+        head = 0
+        for off, pcm in self._agent_chunks:
+            start = max(off, head)
+            start += start % 2                 # keep 16-bit sample alignment
+            end = start + len(pcm)
+            if end > len(agent):
+                agent.extend(b"\x00" * (end - len(agent)))
+            agent[start:end] = pcm
+            head = end
+        n = max(len(agent), len(self._caller_pcm)) & ~1
+        a = array.array("h"); a.frombytes(bytes(self._caller_pcm).ljust(n, b"\x00")[:n])
+        b = array.array("h"); b.frombytes(bytes(agent).ljust(n, b"\x00")[:n])
+        out = array.array("h", (max(-32768, min(32767, x + y)) for x, y in zip(a, b)))
+        w = self._open(f"{self._stamp}-{self._call_id}-mixed.wav")
+        if w is None:
+            return
+        try:
+            w.writeframes(out.tobytes())
+            w.close()
+            logger.info("call %s: mixed both sides into one file (%.1fs)",
+                        self._call_id, len(out) / CALL_SAMPLE_RATE)
+        except Exception as exc:
+            logger.warning("call %s: could not write the mixed recording (%s: %s)",
+                           self._call_id, type(exc).__name__, exc)
+
+    def write_transcript(self, turns) -> None:
+        """The dialogue, on disk beside its audio.
+
+        The same turns already go to `queries.jsonl` and that stays the source the digest and
+        history read. This is a COPY, and it exists so the folder is self-contained: opening
+        `answered/` and finding audio with no words next to it makes a recording much harder to
+        review than it needs to be.
+
+        Called explicitly after the transcript's own flush rather than from close(), because the
+        SDK closes the session from its hangup handler and that can land BEFORE the flush — so
+        writing here would sometimes drop the last thing the caller said, which is exactly the
+        line worth having.
+        """
+        if not turns:
+            return
+        try:
+            body = "\n".join(f"them : {q}\nagent: {a}" for q, a in turns)
+            (self._dir / f"{self._stamp}-{self._call_id}.txt").write_text(body + "\n")
+        except Exception as exc:
+            logger.warning("call %s: could not write the transcript beside the audio (%s: %s)",
+                           self._call_id, type(exc).__name__, exc)
 
     def __getattr__(self, name):
         # Anything the SDK asks of a session that is not intercepted above. Without this a new
@@ -603,9 +693,11 @@ def _make_recorder(caller: str, verified: bool, convo: str):
     own rather than borrowed by the next question.
     """
     pending: list[str] = []          # caller utterances not yet answered
+    turns: list[tuple[str, str]] = []   # the finished dialogue, for the .txt beside the audio
     spoke = asyncio.Event()          # set on the first transcript of either side
 
     async def _write(question: str, answer: str) -> None:
+        turns.append((question, answer))
         await asyncio.to_thread(
             memory.append, memory.key(caller, verified, convo), question, answer, "voice")
         await asyncio.to_thread(
@@ -637,6 +729,7 @@ def _make_recorder(caller: str, verified: bool, convo: str):
 
     _on_transcript.flush = _flush
     _on_transcript.spoke = spoke
+    _on_transcript.turns = turns
     return _on_transcript
 
 
@@ -777,6 +870,11 @@ def register(sm, owner_name: str) -> bool:
             dog.cancel()
             live.pop("call", None)
             await recorder.flush()          # the last question, if it was never answered
+            # AFTER the flush, so the final turn is in it. Only when audio was recorded — with
+            # nothing in `answered/` there is no audio for it to sit beside, and the history
+            # already has the dialogue.
+            if isinstance(ms, _Recorder):
+                ms.write_transcript(recorder.turns)
             about = live.pop("callback", "")
             if about:
                 from . import owner as owner_settings

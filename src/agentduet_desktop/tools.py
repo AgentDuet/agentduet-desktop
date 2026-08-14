@@ -1107,7 +1107,7 @@ SETTING_FIELDS = {"name": "Name", "pronoun": "Pronoun", "voice": "Voice",
                   # `carry` starts recording two people. owner.calls() only accepts an exact
                   # match and treats everything else as `answer`, so a typo cannot switch
                   # recording on by accident.
-                  "calls": "Calls", "record_calls": "Record calls"}
+                  "calls": "Calls", "record_calls": "Record calls", "language": "Language", "transcription": "Transcription"}
 
 
 def _section_bullets(doc: pathlib.Path, heading: str) -> list[str]:

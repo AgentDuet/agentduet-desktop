@@ -40,5 +40,24 @@ answer
      and they are. This software does not announce it for you. -->
 yes
 
+## Transcription
+<!-- How hard the on-machine speech engine tries. Only used when no model key is attached.
+     fast      quickest, smallest download (~145 MB), least accurate
+     balanced  the default (~484 MB)
+     accurate  better (~1.5 GB)
+     max       best (~3 GB) — still transcribes a call in about a quarter of its length
+
+     Your name from above is used to help it hear names correctly, whichever you pick.
+
+     Transcribing happens after the call, on a queue, so nothing waits for it. If your
+     transcripts are missing words, this is the dial. -->
+balanced
+
+## Language
+<!-- The language your calls are in, as a code: en, vi, zh, ms, th. Leave empty to guess.
+     Only the on-machine speech engine uses this, and guessing is unreliable on phone audio —
+     an English call has been detected as Vietnamese and transcribed as nonsense. If your
+     transcripts come back in the wrong language, set this. -->
+
 ## Never say
 <!-- Topics never to state on your behalf, however readable the source. One per line. -->

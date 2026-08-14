@@ -185,6 +185,32 @@ def calls() -> str:
     return CALLS_CARRY if first.startswith(CALLS_CARRY) else CALLS_ANSWER
 
 
+def language() -> str:
+    """The language calls are in, as an ISO code — "en", "vi", "zh". "" means guess.
+
+    ONLY THE LOCAL SPEECH ENGINE USES THIS, and it needs it. Whisper detects the language from
+    the opening audio, and on telephony-band speech that is unreliable: a real recorded call in
+    English was detected as Vietnamese with 0.70 confidence and transcribed as gibberish, while
+    the same file pinned to English came back correctly. A wrong guess does not fail loudly, it
+    produces a fluent transcript of the wrong language — which is worse than no transcript.
+
+    Empty is still the default, because the alternative is picking a language for the owner and
+    being wrong in the other direction. When empty, the detected language is logged so a bad
+    guess is visible rather than silent.
+    """
+    return _first_line(_strip_guidance(_sections().get("Language", ""))).strip().lower()
+
+
+def transcription_quality() -> str:
+    """`fast`, `balanced` or `accurate` for the on-machine speech engine. "" means balanced.
+
+    Only the local engine has this dial; the hosted one has a single quality. The tiers trade
+    download size and CPU time for accuracy, and since transcription runs after the call on a
+    queue, time is the cheap side of that trade — see `transcribe.QUALITY` for the measurements.
+    """
+    return _first_line(_strip_guidance(_sections().get("Transcription", ""))).strip().lower()
+
+
 def record_calls() -> bool:
     """Whether an ANSWERED call is written to disk as audio. Default ON.
 
