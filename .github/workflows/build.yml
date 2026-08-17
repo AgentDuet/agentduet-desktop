@@ -36,6 +36,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read        # GITHUB_TOKEN needs this to clone the SDK repo
+    # JOB level, not step level, and that is load-bearing: a step's `if:` cannot read env the
+    # step itself declares, so `if: env.APPLE_CERT_P12 != ''` only works when the value is
+    # visible from up here. Signing is skipped whenever the secret is absent, which is every
+    # build until the certificate lands and every build in a fork — those still produce a
+    # working, unsigned DMG exactly as before.
+    env:
+      APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -98,6 +105,53 @@ jobs:
           grep -q "voice    : available" status.txt \
             || { echo "::error::binary cannot answer calls — check agentduet-adapters[qwen]"; exit 1; }
 
+      # ---- signing, and only when there is a certificate to sign with -----------------------
+
+      - name: Import the signing certificate (macOS)
+        if: runner.os == 'macOS' && env.APPLE_CERT_P12 != ''
+        env:
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        run: |
+          # A DEDICATED keychain, thrown away with the runner. Importing into the login keychain
+          # would leave the private key reachable by every later step in the job.
+          PASSWORD=$(uuidgen)
+          security create-keychain -p "$PASSWORD" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security unlock-keychain -p "$PASSWORD" build.keychain
+          echo "$APPLE_CERT_P12" | base64 --decode > cert.p12
+          security import cert.p12 -k build.keychain -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign
+          rm cert.p12
+          # WITHOUT THIS THE JOB HANGS rather than fails: codesign raises a GUI prompt for
+          # keychain access that nobody can answer, and the step sits there until the timeout.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$PASSWORD" build.keychain
+          security list-keychains -d user -s build.keychain login.keychain
+
+      - name: Sign the app (macOS)
+        if: runner.os == 'macOS' && env.APPLE_CERT_P12 != ''
+        run: |
+          APP="dist-bin/AgentDuet Desktop.app"
+          # Ask the keychain which identity it holds instead of rebuilding its name from the team
+          # id. The name embeds the legal entity ("Developer ID Application: B3 Networks Pte Ltd
+          # (TEAMID)") and a rename would break the build for a reason nobody would guess. The
+          # SHA-1 that comes back is accepted by codesign anywhere a name is.
+          IDENTITY=$(security find-identity -v -p codesigning build.keychain \
+                     | awk '/Developer ID Application/ {print $2; exit}')
+          [ -n "$IDENTITY" ] || { echo "::error::no Developer ID Application identity in the keychain"; exit 1; }
+
+          # INNER BINARIES FIRST, deepest last-modified-wins order. A bundle's signature covers
+          # its contents, so signing the outer .app before its dylibs invalidates the outer one.
+          # `--deep` looks like the shortcut for this and is deprecated by Apple precisely
+          # because it applies the same entitlements to nested code that should not have them.
+          find "$APP" -type f \( -name "*.dylib" -o -name "*.so" -o -perm +111 \) -print0 \
+            | xargs -0 -I{} codesign --force --options runtime --timestamp \
+                --entitlements packaging/entitlements.plist --sign "$IDENTITY" {}
+
+          codesign --force --options runtime --timestamp \
+            --entitlements packaging/entitlements.plist --sign "$IDENTITY" "$APP"
+
+          # --strict, because a signature that merely exists is not one Gatekeeper accepts.
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
       # A .app is a DIRECTORY, and upload-artifact zips it without reliably preserving the
       # executable bit — the bundle then does nothing when double-clicked. A DMG keeps
       # permissions intact, and it is also the format a Mac user expects: open, drag across.
@@ -115,6 +169,48 @@ jobs:
           hdiutil create -volname "AgentDuet Desktop" \
             -srcfolder "$APP" -size $((MB + 200))m \
             -ov -format UDZO "agentduet-desktop-${{ matrix.name }}.dmg"
+
+      # Notarization is Apple scanning the signed build and recording that it did. STAPLING is
+      # the separate step that attaches the result to the file — without it the first launch
+      # needs a working network to check, and a tester on a bad connection sees the warning we
+      # paid to remove.
+      - name: Notarize and staple (macOS)
+        if: runner.os == 'macOS' && env.APPLE_CERT_P12 != ''
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          DMG="agentduet-desktop-${{ matrix.name }}.dmg"
+          IDENTITY=$(security find-identity -v -p codesigning build.keychain \
+                     | awk '/Developer ID Application/ {print $2; exit}')
+          # The disk image is signed too. Notarization accepts it either way, but an unsigned
+          # container around a signed app is a needless question mark for anyone who checks.
+          codesign --force --timestamp --sign "$IDENTITY" "$DMG"
+
+          echo "$APPLE_API_KEY_P8" | base64 --decode > key.p8
+          trap 'rm -f key.p8' EXIT      # even if notarytool fails
+
+          set +e
+          xcrun notarytool submit "$DMG" \
+            --key key.p8 --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER_ID" \
+            --wait --timeout 30m 2>&1 | tee notary.txt
+          set -e
+
+          # DO NOT TRUST THE EXIT CODE ALONE. `submit --wait` has returned 0 on a submission
+          # that came back Invalid, so the only reliable signal is the status it printed.
+          grep -q "status: Accepted" notary.txt || {
+            ID=$(awk '/id: / {print $2; exit}' notary.txt)
+            echo "::error::notarization was not accepted — full log follows"
+            [ -n "$ID" ] && xcrun notarytool log "$ID" \
+              --key key.p8 --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER_ID"
+            exit 1
+          }
+
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+          # What a user's Mac will actually decide, asked the way Gatekeeper asks it.
+          spctl -a -t open --context context:primary-signature -vv "$DMG"
 
       - uses: actions/upload-artifact@v4
         with:

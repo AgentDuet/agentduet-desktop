@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+Entitlements for the HARDENED RUNTIME, which notarization requires.
+
+These are not the sandbox. The sandbox (`com.apple.security.app-sandbox`) is a Mac App Store
+requirement and we deliberately do not ship it — see the Apple-Developer-Account thread. The
+hardened runtime is a smaller thing: it switches off several capabilities a normal process has,
+and each entry below switches one back on. Every one is a hole, so each needs a reason.
+
+WHY EACH:
+
+allow-jit
+  wasmtime compiles WebAssembly to native code and executes it. That is the definition of JIT,
+  and it is the tool sandbox — the thing customer tools run inside. Without this entitlement
+  wasmtime cannot map executable memory and the sandbox dies at the moment a tool is called,
+  which is late, rare, and will look like a tool bug rather than a signing one.
+
+allow-unsigned-executable-memory
+  Broader than allow-jit and kept separate deliberately. CPython's ctypes and several native
+  wheels (ctranslate2, onnxruntime, av) allocate executable pages that carry no signature. TRY
+  REMOVING THIS FIRST if we ever tighten: it is the widest hole here, and it may be unnecessary
+  once everything else is right. It is included now because failing without it is a crash on a
+  real user's machine, not a build error.
+
+disable-library-validation
+  PyInstaller onefile mode unpacks its bundled .dylib/.so files into a temporary directory and
+  loads them from there at run time. Library validation refuses libraries that are not signed by
+  the same Team ID, and extracted-at-runtime libraries do not satisfy it. Without this the
+  binary fails at import, before anything of ours runs.
+
+allow-dyld-environment-variables
+  The PyInstaller bootloader sets DYLD_* variables so the child process finds the unpacked
+  libraries. The hardened runtime strips those by default, and the two-process onefile launch
+  described in CLAUDE.md is exactly the shape that depends on them.
+
+NOT INCLUDED, on purpose:
+
+  device.audio-input — the agent's audio arrives over the network from the AgentDuet WSS
+  connection. Nothing opens a local microphone. Add it only if that changes, and note it needs
+  an NSMicrophoneUsageDescription in Info.plist too or the app is killed on first use.
+
+  network.* — those are sandbox keys and mean nothing here. The loopback site on 8899 and the
+  outbound WSS connection both work under the hardened runtime with no entitlement.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+	<key>com.apple.security.cs.allow-dyld-environment-variables</key>
+	<true/>
+</dict>
+</plist>
