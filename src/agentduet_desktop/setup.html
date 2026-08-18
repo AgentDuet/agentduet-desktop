@@ -134,6 +134,7 @@
   </div>
 
   <p class="quit"><a href="#" id="doCancel">Quit</a> <span id="cancelWhat"></span></p>
+  <p class="quit" id="backRow" hidden><a href="#" id="doBack">Cancel</a></p>
 </div>
 
 <script>
@@ -179,10 +180,20 @@
     };
   });
 
+  // WHERE THEY CAME FROM decides the way out. On a first run the only exit is Quit, and that
+  // is deliberate: closing the tab leaves the daemon running with nothing on screen to say so,
+  // and the token goes with the tab. Arriving from Settings is the opposite case — the daemon
+  // is theirs and running, and stopping it to back out of a screen they opened by choice is a
+  // trap. So that path gets Cancel, which only navigates.
+  const FROM = new URLSearchParams(location.search).get('from') || '';
   let DONE = false;
   fetch(`/api/setup/current?t=${T}`).then(r => r.json()).then(d => {
     OAUTH = !!d.oauth_available;
     DONE = !!d.setup_done;
+    if (FROM === 'settings' || DONE) {
+      $('doCancel').parentElement.hidden = true;
+      $('backRow').hidden = false;
+    }
     $('folder').value = d.carried_dir || '';
     $('num').textContent = d.phone || '—';
     if (d.phone) { $('lineNum').textContent = d.phone; $('lineBadge').classList.add('on'); }
@@ -210,6 +221,11 @@
     onAir = ['live', 'connecting', 'retrying'].indexOf(c.channel) >= 0;
     $('cancelWhat').textContent = onAir ? '— this machine is on the air.' : '';
   }).catch(() => {});
+
+  $('doBack').onclick = (e) => {
+    e.preventDefault();
+    location.href = (FROM === 'settings' ? '/settings?t=' : '/?t=') + T;
+  };
 
   $('doCancel').onclick = async (e) => {
     e.preventDefault();
