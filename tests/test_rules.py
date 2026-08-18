@@ -989,6 +989,27 @@ def test_setup_mode() -> None:
        "/api/state" in page and "onAir" in page)
     # Both of these have unwired a whole page before: localStorage is a ReferenceError in
     # WebKitGTK, and an unwired form submits natively to `/`, dropping the token.
+    # ---- the two setup surfaces must stay level -------------------------------------------
+    # macOS and Windows set up in the browser page, Linux in the console (CLAUDE.md). Both ship
+    # everywhere, so a setting reachable from only one is a setting half the owners cannot
+    # change. It has drifted twice: `init` lacked the mode question and the speech download
+    # while the wizard had them, and later the wizard had no language control while `init` did —
+    # and language is the one that decides whether an English call comes back as fluent Malay.
+    init_src = (src / "init.py").read_text()
+    settings_page = (src / "settings.html").read_text()
+    for field in ("name", "calls", "language", "transcription"):
+        ok(f"the console can set `{field}`", f'"{field}"' in init_src)
+        ok(f"and so can the settings page",
+           f"'{field}'" in settings_page or f'"{field}"' in settings_page
+           or f'id="{field}"' in settings_page)
+
+    # The interview drives the MODEL. The owner this console path serves is the one carrying
+    # calls with no key, so offering it unconditionally meant it failed at the first question —
+    # and the name it would have set is what primes the speech engine.
+    ok("the interview is offered only when a model is attached",
+       "llm.configured() and not knows_what_they_do" in init_src)
+    ok("and the name can be set without one", "def who_you_are" in init_src)
+
     # EVERY FILE A PAGE ASKS FOR MUST BE PACKAGED. app.css shipped in neither glob when it was
     # introduced, so the binary would have served every page unstyled while the source ran fine —
     # the failure mode this repo keeps rediscovering. Checked as a glob, not a filename, so the

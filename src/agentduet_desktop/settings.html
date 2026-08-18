@@ -113,6 +113,18 @@
             key it runs here, and nothing leaves the machine.</p></div>
         </div>
         <div class="state" id="sttState">…</div>
+        <div class="grp"><label class="fl">Language of your calls</label>
+          <select id="language">
+            <option value="">guess it (not recommended)</option>
+            <option value="en">English</option>
+            <option value="vi">Vietnamese</option>
+            <option value="zh">Chinese</option>
+            <option value="ms">Malay</option>
+            <option value="th">Thai</option>
+          </select></div>
+        <p class="note">Guessing is unreliable on phone audio. Left to guess, both models we
+          ship read a Singapore English call as Malay — confidently — and translated it, which
+          reversed the meaning. Set this.</p>
         <div class="grp"><label class="fl">How hard it tries</label>
           <select id="quality">
             <option value="fast">fast — quickest, smallest download</option>
@@ -202,6 +214,7 @@
     const mode = document.querySelector(`input[name=calls][value="${cur.calls || 'carry'}"]`);
     if (mode) mode.checked = true;
     if (cur.transcription) $('quality').value = cur.transcription;
+    $('language').value = cur.language || '';
     $('doesState').textContent = cur.does
       ? cur.does.split('\n').length + ' fact(s) recorded: ' + cur.does.split('\n')[0]
       : 'nothing recorded yet';
@@ -287,6 +300,7 @@
   };
   $('saveQuality').onclick = async () => {
     $('saveQuality').disabled = true; $('spQuality').textContent = 'saving…';
+    await post('/api/setup/setting', {field: 'language', value: $('language').value});
     const d = await post('/api/setup/setting', {field: 'transcription', value: $('quality').value});
     $('saveQuality').disabled = false; $('spQuality').textContent = '';
     say('mStt', d.ok, d.message);
