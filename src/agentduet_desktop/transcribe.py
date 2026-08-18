@@ -221,6 +221,38 @@ _local_model = None
 _loaded_name = ""
 
 
+#: The macOS release that first shipped SpeechAnalyzer/SpeechTranscriber, the long-form API.
+#: The older SFSpeechRecognizer exists further back but was built for dictation and caps a
+#: request at about a minute, which is useless for a call.
+ANE_MIN_MACOS = 26
+
+
+def ane_support() -> tuple[bool, str]:
+    """Can this machine use the Apple Neural Engine for speech, and if not, why not.
+
+    NOT IMPLEMENTED YET — this only answers whether it COULD be. The UI offers the option and
+    disables it where the answer is no, so the reason has to be a sentence a person can act on
+    ("your Mac is too old") rather than a boolean.
+
+    The ANE is a separate accelerator on Apple Silicon, and nothing addresses it directly: you
+    hand a model to Core ML and Core ML decides where the ops run. So the real test is not "is
+    there an ANE" but "is the API that uses it present", which is a macOS version question.
+    """
+    import platform
+    if platform.system() != "Darwin":
+        return False, "only on a Mac"
+    if platform.machine() not in ("arm64", "aarch64"):
+        return False, "needs Apple Silicon"
+    ver = platform.mac_ver()[0] or "0"
+    try:
+        major = int(ver.split(".")[0])
+    except ValueError:
+        return False, "could not read the macOS version"
+    if major < ANE_MIN_MACOS:
+        return False, f"needs macOS {ANE_MIN_MACOS} or newer, this is {ver}"
+    return True, ""
+
+
 def _device() -> tuple[str, str]:
     """(device, compute type). Uses a GPU that is ALREADY here; never asks for one.
 

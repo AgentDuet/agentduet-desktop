@@ -154,7 +154,7 @@
       <div class="tab" id="t-transcribe">
         <div>
           <h1>Transcribe Call</h1>
-          <p class="sub">Runs speech-to-text directly on your Mac using Apple Neural Engine.</p>
+          <p class="sub">Runs speech-to-text directly on your computer.</p>
         </div>
         <div class="card">
           <div class="row" style="border-bottom:1px solid var(--line);padding-bottom:1rem">
@@ -162,12 +162,13 @@
             <label class="sw"><input type="checkbox" data-svc="transcribe"><span class="track"></span></label>
           </div>
           <div>
-            <label class="fl">Select Local Whisper Model</label>
+            <label class="fl">Select Local Model</label>
             <select id="quality">
               <option value="fast">Whisper Base (142 MB - Fastest)</option>
               <option value="balanced">Whisper Small (464 MB - Fast &amp; Recommended)</option>
               <option value="accurate">Whisper Medium (1.5 GB - Multilingual)</option>
               <option value="max">Whisper Large v3 (2.9 GB - Best)</option>
+              <option value="ane" id="optAne">Apple Neural Engine (no download)</option>
             </select>
           </div>
           <div class="banner" id="offline">
@@ -351,6 +352,11 @@
     rows();
     files('fCalls', [...((D.files || {}).calls || []), ...((D.files || {}).answered || [])]);
     files('fMsgs', (D.files || {}).messages);
+    const ane = D.ane || {};
+    const opt = $('optAne');
+    opt.disabled = !ane.supported;
+    opt.textContent = 'Apple Neural Engine (no download)'
+      + (ane.supported ? '' : ' — ' + (ane.why || 'not available here'));
     if ((D.stt || {}).quality) $('quality').value = D.stt.quality;
 
     const sel = $('model');
@@ -363,6 +369,12 @@
   load();
 
   $('quality').onchange = async () => {
+    if ($('quality').value === 'ane') {
+      say('mStt', false, 'The Apple Neural Engine path is not built yet. '
+        + 'Pick a Whisper model for now.');
+      load();                       // put the select back to what is actually configured
+      return;
+    }
     const d = await post('/api/setup/setting', {field: 'transcription', value: $('quality').value});
     say('mStt', d.ok, d.message);
     load();
