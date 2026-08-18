@@ -26,10 +26,13 @@ Never over-promise; if unsure, say the owner will follow up.
 
      Only one applies: a call is either answered or carried, never both.
 
-     Before choosing `carry`, know that you are recording two people talking. Whether they
-     have to be told, and by whom, depends on where you and they are. This software does not
-     announce it for you. -->
-answer
+     `carry` IS THE DEFAULT because carrying is the product — see "Two products, one binary"
+     in CLAUDE.md. Answering is the second product and needs a model key.
+
+     Know what the default means: you are recording two people talking. Whether they have to be
+     told, and by whom, depends on where you and they are. This software does not announce it
+     for you, and nobody has answered that question for us either. -->
+carry
 
 ## Record calls
 <!-- yes (default) — an answered call is saved as audio under run/recordings/answered/,
