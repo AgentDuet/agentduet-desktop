@@ -90,12 +90,23 @@ SIs will be, and neither audience wants a terminal. Linux is where someone SELF-
 they reached over ssh, where opening a loopback browser page is the awkward path rather than the
 easy one.
 
-**Consequence, and it is the part that bites: `init` must cover what the wizard covers.** It did
-not — the wizard gained a mode question, a recording setting and a speech-model download while
-`init` still asked only for a model, a connector and the interview. Worse, it `return 1`-ed
-without a model, so the no-key carry-only owner — the exact person Linux self-hosting serves —
-could not finish setup at all. That was the same bug `cannot_answer()` had, in the other
-surface, found the day this decision was made. Anything added to one now goes in both.
+**Consequence, and it is the part that bites: `init` must cover what the wizard covers.** It has
+drifted TWICE now, in both directions — the wizard gained a mode question, a recording setting
+and a speech-model download while `init` asked only for a model, a connector and the interview;
+then later `init` gained a language question the settings page did not have, and language is the
+setting that decides whether an English call comes back as fluent Malay. `tests/test_rules.py`
+now checks the two surfaces cover the same fields, because remembering did not work.
+
+**The interview is model-driven, so it cannot be the only way to set a name.** It hands the
+answers to the model and lets it write the files — which fails at the first question for an
+owner with no key, and that is precisely the owner this console path exists for. `who_you_are()`
+sets name and pronoun with no model; the interview is offered only when one is attached, and
+only adds what the owner DOES. This matters beyond tidiness: `transcribe.py` primes the speech
+engine with the owner's name, which measurably beat moving to a bigger model, so a nameless
+install silently gets worse transcripts.
+
+**The Linux browser page is for debugging now**, not the documented path. Anything an owner must
+be able to do has to work in `init`.
 
 ## The house style — `app.css`
 

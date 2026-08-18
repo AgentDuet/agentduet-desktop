@@ -220,6 +220,105 @@ def choose_mode(interactive: bool = True) -> str:
     return mode
 
 
+def who_you_are(interactive: bool = True) -> None:
+    """Name and pronoun, WITHOUT a model.
+
+    The interview below does this better — but it drives the model, and the owner this whole
+    console path exists for is the one carrying calls with no key at all. For them the interview
+    cannot run, and until this existed their name stayed unset.
+
+    That is not cosmetic. transcribe.py primes the speech engine with "A call for <name>.", and
+    on a real recording that turned "Spandy Leong" into "Stanley Leong" — it beat moving to a
+    bigger model. A nameless install quietly gets worse transcripts and nothing says so.
+    """
+    if not interactive:
+        return
+    from . import owner, tools
+    current = owner.name()
+    have = current and current != owner.DEFAULT_NAME
+    print("\n  Who you are.")
+    if have:
+        print(f"  name: {current}")
+    name = input(f"\n  Your name{' [' + current + ']' if have else ''}\n  > ").strip()
+    if name:
+        tools.set_setting("name", name)
+        print(f"  -> {name}")
+    elif not have:
+        print("  -> left blank. Transcripts will hear names less well; set it later in settings.md.")
+
+    print("\n  How should it refer to you to OUTSIDERS? Blank uses your name rather than")
+    print("  guessing — it once inferred 'he' from a name, to a stranger, with nobody there")
+    print("  to correct it.")
+    pronoun = input("  he/him, she/her, they/them [blank]\n  > ").strip()
+    if pronoun:
+        tools.set_setting("pronoun", pronoun)
+        print(f"  -> {pronoun}")
+
+
+#: The languages the speech engine is told about. Blank means guess, and guessing is the thing
+#: this exists to discourage.
+LANGUAGES = [("en", "English"), ("vi", "Vietnamese"), ("zh", "Chinese"),
+             ("ms", "Malay"), ("th", "Thai")]
+
+
+def choose_language(interactive: bool = True) -> None:
+    """Pin the transcription language.
+
+    ASKED, not defaulted, and asked with the reason. Left to guess, `medium` called a Singapore
+    English call MALAY at 0.95 confidence and `large-v3` at 0.87 — and neither garbled it. They
+    TRANSLATED, fluently, and the meaning inverted: "can I waive my credit card bill" came back
+    as "can I pay my bill". A wrong transcript that reads perfectly is worse than a broken one,
+    because nothing about it looks wrong.
+    """
+    if not interactive:
+        return
+    from . import owner, tools
+    current = (owner.language() or "").strip()
+    print("\n  What language are your calls in?")
+    print("  Leaving this blank lets the engine guess, and on phone audio it guesses badly:")
+    print("  an English call has been transcribed as fluent Malay, with the meaning reversed.")
+    for i, (code, label) in enumerate(LANGUAGES, 1):
+        print(f"    {i}  {label} ({code})")
+    print("    6  something else — type the code")
+    pick = input(f"\n  1-6{f' [{current}]' if current else ''}: ").strip()
+    if not pick:
+        return
+    if pick == "6":
+        code = input("  Language code (e.g. id, ta, hi)\n  > ").strip().lower()
+    elif pick.isdigit() and 1 <= int(pick) <= len(LANGUAGES):
+        code = LANGUAGES[int(pick) - 1][0]
+    else:
+        code = pick.lower()
+    if code:
+        tools.set_setting("language", code)
+        print(f"  -> transcripts will be read as {code}")
+
+
+def choose_quality(interactive: bool = True) -> None:
+    """Which local speech model, BEFORE anything is downloaded.
+
+    Asked first so the download that follows is the one they chose. The web hub shows the same
+    four with their sizes; this is its console half.
+    """
+    if not interactive:
+        return
+    from . import owner, tools, transcribe
+    if transcribe.engine() != "local":
+        return                      # a key is attached: the hosted engine transcribes
+    current = owner.transcription_quality() or "balanced"
+    tiers = [("fast", "quickest, least accurate"), ("balanced", "the default"),
+             ("accurate", "better"), ("max", "best, and the largest")]
+    print("\n  How hard should the speech engine try?")
+    for i, (tier, why) in enumerate(tiers, 1):
+        mb = transcribe.MODEL_MB.get(transcribe.QUALITY[tier], 0)
+        mark = " <- current" if tier == current else ""
+        print(f"    {i}  {tier:9} {mb:>5} MB   {why}{mark}")
+    pick = input(f"\n  1-4 [{current}]: ").strip()
+    if pick.isdigit() and 1 <= int(pick) <= len(tiers):
+        tools.set_setting("transcription", tiers[int(pick) - 1][0])
+        print(f"  -> {tiers[int(pick) - 1][0]}")
+
+
 def offer_speech_model(interactive: bool = True) -> None:
     """Fetch the on-machine speech model now, rather than on the first call.
 
@@ -294,6 +393,13 @@ def main(interactive: bool = True) -> int:
               "\n  or choose to have calls put through to you instead.")
         return 1
     connected = connect(interactive)
+
+    # WHO, then HOW THEY ARE HEARD. Both work with no model, which is the point: this is the
+    # path a Linux owner self-hosting a recorder walks, and every step above may have been
+    # declined without stopping them.
+    who_you_are(interactive)
+    choose_language(interactive)
+    choose_quality(interactive)
     offer_speech_model(interactive)
 
     # THE INTERVIEW IS THE DEFAULT NOW (2026-08-11). It used to be opt-in — "your AI assistant
@@ -302,9 +408,17 @@ def main(interactive: bool = True) -> int:
     # vendors handed a binary, and for them the default path ended setup with the agent not
     # knowing their name, having declined a step whose alternative they do not own. Skipping is
     # still one keystroke, so nobody with an assistant is forced through it.
-    if interactive and owner.name() == owner.DEFAULT_NAME:
-        print("\n  Now the part that is not secret: who you are and what you do.")
-        print("  Three questions. Press Enter to answer them, or type s to skip.")
+    # ONLY WITH A MODEL. The interview hands the answers to the model and lets it write the
+    # files, so with no key it fails at the first question — and the owner most likely to have
+    # no key is the one this console path serves. who_you_are() above covers the settings it
+    # would have set; this adds what the owner DOES, which needs the drafting.
+    # "does" is the Who section of owner.md — the thing the interview writes and the only one
+    # of its outputs who_you_are() does not already cover.
+    knows_what_they_do = bool(tools.current_setup().get("does", "").strip())
+    if interactive and llm.configured() and not knows_what_they_do:
+        print("\n  One more, and this one uses your model: what do you do?")
+        print("  It writes the answer into your knowledge, in the third person.")
+        print("  Press Enter to answer, or type s to skip.")
         if not input("\n  > ").strip().lower().startswith("s"):
             print("\n  " + (interview() or "(no summary returned)").replace("\n", "\n  "))
 

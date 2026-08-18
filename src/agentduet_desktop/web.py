@@ -627,6 +627,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         from . import carry, owner as _own, voice as _voice
         cur["calls"] = _own.calls()
         cur["transcription"] = _own.transcription_quality()
+        cur["language"] = _own.language()
         cur["record_calls"] = _own.record_calls()
         cur["recordings_dir"] = str(carry.RECORDINGS / _voice.ANSWERED)
         cur["carried_dir"] = str(carry.RECORDINGS)
