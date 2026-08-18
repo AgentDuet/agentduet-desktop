@@ -33,9 +33,13 @@
   .who .p{font-family:var(--mono);font-size:.7rem;color:var(--faint);}
   .navlabel{font-family:var(--mono);font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;
     color:var(--faint);padding:.5rem .3rem .35rem;}
-  nav button{display:block;width:100%;text-align:left;font:inherit;font-size:.83rem;
-    font-weight:600;color:var(--muted);background:transparent;border:0;border-radius:8px;
-    padding:.45rem .55rem;cursor:pointer;}
+  nav button{display:flex;align-items:center;gap:.55rem;width:100%;text-align:left;font:inherit;
+    font-size:.83rem;font-weight:600;color:var(--muted);background:transparent;border:0;
+    border-radius:8px;padding:.45rem .55rem;cursor:pointer;}
+  .ic{width:1.05rem;height:1.05rem;flex:0 0 1.05rem;}
+  .rowic{width:1.15rem;height:1.15rem;flex:0 0 1.15rem;color:var(--accent-ink);}
+  h1 .ic{width:1.15rem;height:1.15rem;vertical-align:-.15em;margin-right:.4rem;
+    color:var(--accent-ink);}
   nav button:hover{background:var(--line2);color:var(--ink);}
   nav button.on{background:var(--line2);color:var(--accent-ink);}
   .store{margin-top:auto;padding:.7rem .4rem 0;border-top:1px solid var(--line);
@@ -116,11 +120,11 @@
 
   <div class="navlabel">Main Control</div>
   <nav>
-    <button data-v="overview" class="on">Overview</button>
-    <button data-v="record-call">Record Call</button>
-    <button data-v="transcribe">Transcribe Call</button>
-    <button data-v="record-message">Record Message</button>
-    <button data-v="connect-ai">Connect AI</button>
+    <button data-v="overview" class="on"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>Overview</button>
+    <button data-v="record-call"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h3l1.5 4-2 1.5a12 12 0 0 0 6 6l1.5-2 4 1.5v3a2 2 0 0 1-2.2 2A17 17 0 0 1 3.5 5.7 2 2 0 0 1 5.5 3.5Z"/></svg>Record Call</button>
+    <button data-v="transcribe"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2M7 8v8M11 4v16M15 8v8M19 11v2"/></svg>Transcribe Call</button>
+    <button data-v="record-message"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a7 7 0 0 1-7 7H8l-4 3v-4.2A7 7 0 0 1 11 5h2a7 7 0 0 1 7 7Z"/></svg>Record Message</button>
+    <button data-v="connect-ai"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4"/><circle cx="12" cy="3" r="1.3"/><path d="M2 13v3M22 13v3"/><circle cx="9" cy="13.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="13.5" r="1.1" fill="currentColor" stroke="none"/><path d="M9.5 17h5"/></svg>Connect AI</button>
   </nav>
 
   <div class="store">
@@ -134,7 +138,7 @@
 <main>
   <!-- ---- overview ---- -->
   <section class="panel on" id="p-overview">
-    <h1>Service Status Overview</h1>
+    <h1><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>Service Status Overview</h1>
     <p class="lede" id="ovLede">…</p>
     <div style="margin-top:.7rem"><span class="pill" id="ovPill"><i></i>…</span></div>
 
@@ -145,7 +149,7 @@
 
   <!-- ---- record call ---- -->
   <section class="panel" id="p-record-call">
-    <h1>Record Call</h1>
+    <h1><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h3l1.5 4-2 1.5a12 12 0 0 0 6 6l1.5-2 4 1.5v3a2 2 0 0 1-2.2 2A17 17 0 0 1 3.5 5.7 2 2 0 0 1 5.5 3.5Z"/></svg>Record Call</h1>
     <p class="lede">Manage audio saving rules and browse locally recorded calls.</p>
     <div class="card">
       <div class="row" style="border:0;padding:0;cursor:default">
@@ -165,7 +169,7 @@
 
   <!-- ---- transcribe ---- -->
   <section class="panel" id="p-transcribe">
-    <h1>Transcribe Call</h1>
+    <h1><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2M7 8v8M11 4v16M15 8v8M19 11v2"/></svg>Transcribe Call</h1>
     <p class="lede">Runs speech-to-text directly on your Mac using Apple Neural Engine.</p>
     <div class="card">
       <div class="row" style="border:0;padding:0;cursor:default">
@@ -193,7 +197,7 @@
 
   <!-- ---- record message ---- -->
   <section class="panel" id="p-record-message">
-    <h1>Record Message</h1>
+    <h1><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a7 7 0 0 1-7 7H8l-4 3v-4.2A7 7 0 0 1 11 5h2a7 7 0 0 1 7 7Z"/></svg>Record Message</h1>
     <p class="lede">Archive incoming and outgoing SMS &amp; mobile messages locally.</p>
     <div class="card">
       <div class="row" style="border:0;padding:0;cursor:default">
@@ -213,7 +217,7 @@
 
   <!-- ---- connect ai ---- -->
   <section class="panel" id="p-connect-ai">
-    <h1>Connect AI</h1>
+    <h1><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4"/><circle cx="12" cy="3" r="1.3"/><path d="M2 13v3M22 13v3"/><circle cx="9" cy="13.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="13.5" r="1.1" fill="currentColor" stroke="none"/><path d="M9.5 17h5"/></svg>Connect AI</h1>
     <p class="lede">Pass call transcripts to cloud providers for smart action items &amp;
       summaries.</p>
     <div class="card">
@@ -263,18 +267,28 @@
   // THE FOUR SERVICES, in the design's order. `real` says whether the switch does anything —
   // two of them have nothing behind them yet, and a switch that lights up while changing
   // nothing is the one thing a stub must never do.
+  const ICON = {
+    call: '<path d="M6.5 3.5h3l1.5 4-2 1.5a12 12 0 0 0 6 6l1.5-2 4 1.5v3a2 2 0 0 1-2.2 2A17 17 0 0 1 3.5 5.7 2 2 0 0 1 5.5 3.5Z"/>',
+    wave: '<path d="M3 11v2M7 8v8M11 4v16M15 8v8M19 11v2"/>',
+    chat: '<path d="M20 12a7 7 0 0 1-7 7H8l-4 3v-4.2A7 7 0 0 1 11 5h2a7 7 0 0 1 7 7Z"/>',
+    bot:  '<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4"/><circle cx="12" cy="3" r="1.3"/><path d="M2 13v3M22 13v3"/><circle cx="9" cy="13.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="13.5" r="1.1" fill="currentColor" stroke="none"/><path d="M9.5 17h5"/>',
+  };
+  const glyph = k => `<svg class="rowic" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
+
   const SERVICES = [
-    ['record_call',    'Record Call',     'record-call',    'Both sides of a carried call.'],
-    ['transcribe',     'Transcribe Call', 'transcribe',     'Speech to text, on this machine.'],
-    ['record_message', 'Record Message',  'record-message', 'SMS and mobile messages.'],
-    ['connect_ai',     'Connect AI',      'connect-ai',     'Summaries from a cloud model.'],
+    ['record_call',    'Record Call',     'record-call',    'Both sides of a carried call.',   'call'],
+    ['transcribe',     'Transcribe Call', 'transcribe',     'Speech to text, on this machine.','wave'],
+    ['record_message', 'Record Message',  'record-message', 'SMS and mobile messages.',        'chat'],
+    ['connect_ai',     'Connect AI',      'connect-ai',     'Summaries from a cloud model.',   'bot'],
   ];
 
   let D = {};
   function rows(){
-    $('ovRows').innerHTML = SERVICES.map(([k, label, v, sub]) => {
+    $('ovRows').innerHTML = SERVICES.map(([k, label, v, sub, ic]) => {
       const s = (D.services || {})[k] || {};
       return `<div class="row" data-go="${v}">
+        ${glyph(ic)}
         <div class="t"><b>${label}</b><span>${esc(sub)}</span></div>
         <label class="sw" data-stop="1">
           <input type="checkbox" data-svc="${k}" ${s.on ? 'checked' : ''}><i></i></label>
