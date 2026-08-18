@@ -616,6 +616,11 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         cur["carried_dir"] = str(carry.RECORDINGS)
         # False until the backend has a sign-in endpoint. The page uses it to decide whether to
         # lead with "Sign in" or with the manual fields — see connector.OAUTH_URL.
+        # Whether setup has been FINISHED before. The page uses it to decide that "Complete"
+        # is a re-run and must not hand over: handover is the installer's last act, and on an
+        # already-installed copy it would spawn a replacement and stand this one down — a
+        # daemon restart, triggered from a Settings button, for no reason.
+        cur["setup_done"] = (paths.RUN / "setup-done").exists()
         cur["oauth_available"] = connector.oauth_available()
         return web.json_response(cur)
 
