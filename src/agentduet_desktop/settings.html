@@ -4,194 +4,161 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Settings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
 <style>
-  :root{
-    --ink:#101418; --paper:#f6f7f8; --surface:#fff; --line:#e2e6ea; --line2:#eef1f4;
-    --muted:#5b6675; --faint:#8b96a3;
-    --accent:#00b2ff; --accent-ink:#0077b0; --coral:#f0523d;
-    --good:#1a7f5a; --good-bg:#e8f5ef;
-    --sans:"SF Pro Display",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
-  }
-  @media (prefers-color-scheme:dark){
-    :root{--ink:#eef3f7;--paper:#0f1419;--surface:#161d24;--line:#242e38;--line2:#1c242c;
-      --muted:#93a6b5;--faint:#6b7c8a;--accent-ink:#4cc7ff;--good:#4ade9e;--good-bg:#13322a;}
-  }
-  *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:var(--sans);background:var(--paper);color:var(--ink);
-    -webkit-font-smoothing:antialiased;line-height:1.5;}
-  .wrap{max-width:44rem;margin:0 auto;padding:2rem 1.3rem 5rem;}
-  header{display:flex;align-items:baseline;gap:.8rem;margin-bottom:.3rem;}
-  h1{font-size:1.5rem;font-weight:780;letter-spacing:-.02em;}
-  a.back{margin-left:auto;font-family:var(--mono);font-size:.68rem;color:var(--accent-ink);
-    text-decoration:none;border-bottom:1px solid var(--accent);}
-  .lede{color:var(--muted);margin-bottom:1.6rem;}
-
-  section{background:var(--surface);border:1px solid var(--line);border-radius:14px;
-    padding:1.2rem 1.3rem 1.35rem;margin-bottom:1rem;}
-  h2{font-size:1.05rem;font-weight:720;}
-  .hint{color:var(--muted);font-size:.88rem;margin-top:.35rem;}
-  label{display:block;margin-top:1rem;font-size:.87rem;font-weight:650;}
-  label .sm{display:block;font-weight:400;color:var(--muted);font-size:.82rem;margin-top:.15rem;}
-  input,textarea{width:100%;font:inherit;font-size:.93rem;margin-top:.35rem;padding:.5rem .65rem;
-    border:1px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink);}
-  textarea{min-height:3.4rem;resize:vertical;}
-  .row{display:flex;gap:.6rem;} .row>*{flex:1;}
-  button{font:inherit;font-size:.9rem;font-weight:700;padding:.55rem 1.05rem;border:0;
-    border-radius:9px;background:var(--accent-ink);color:#fff;cursor:pointer;margin-top:1.1rem;}
-  button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);}
-  button:disabled{opacity:.45;cursor:default;}
-  .pick{display:block;margin-top:.7rem;padding:.8rem .9rem;border:1px solid var(--line);
-    border-radius:11px;font-weight:400;font-size:.92rem;cursor:pointer;
-    transition:border-color .12s,background .12s;}
-  .pick:hover{border-color:var(--faint);}
-  .pick:has(input:checked){border-color:var(--accent-ink);background:var(--line2);}
-  .pick input{width:auto;margin:0 .5rem 0 0;accent-color:var(--accent-ink);}
-  .pick b{font-weight:680;}
-  .pick .sm{display:block;margin:.3rem 0 0 1.45rem;color:var(--faint);font-size:.82rem;}
-
-  .msg{margin-top:.9rem;padding:.6rem .8rem;border-radius:9px;font-size:.88rem;
-    white-space:pre-wrap;}
-  .msg.ok{background:var(--good-bg);color:var(--good);border:1px solid var(--good);}
-  .msg.no{background:#fff1ee;color:#b3261e;border:1px solid var(--coral);}
-  @media (prefers-color-scheme:dark){ .msg.no{background:#2a1512;color:#ffb4a8;} }
-  .state{font-family:var(--mono);font-size:.72rem;color:var(--faint);margin-top:.5rem;}
-  .spin{font-family:var(--mono);font-size:.76rem;color:var(--faint);margin-left:.7rem;}
-  .note{font-size:.84rem;color:var(--muted);margin-top:.9rem;}
-  .switch{display:flex;align-items:flex-start;gap:.65rem;margin-top:.9rem;cursor:pointer;}
-  .switch input{width:auto;flex:none;margin-top:.25rem;}
-  .switch span{font-size:.87rem;font-weight:650;}
-  .switch span .sm{display:block;font-weight:400;color:var(--muted);font-size:.82rem;
-    margin-top:.15rem;}
+  .sec{display:flex;flex-direction:column;gap:1.5rem;}
+  .grp{display:flex;flex-direction:column;gap:.5rem;}
+  .head{display:flex;align-items:center;gap:.75rem;}
+  .head h2{font-size:.95rem;}
+  .head p{font-size:11px;color:var(--muted);margin-top:.1rem;}
+  .spin{font-family:var(--mono);font-size:11px;color:var(--faint);margin-left:.5rem;}
+  .acts{display:flex;align-items:center;}
+  .dbg{display:flex;align-items:center;gap:.6rem;font-size:.75rem;color:#cbd5e1;cursor:pointer;}
+  .dbg input{width:auto;accent-color:var(--accent);}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <h1>Settings</h1>
-    <a class="back" id="back">&larr; back to the dashboard</a>
-  </header>
-  <p class="lede">Changed here, not by asking your assistant — it cannot take keys in chat.</p>
 
-  <!-- ---------------- who you are ---------------- -->
-  <section>
-    <h2>You</h2>
-    <p class="hint">The name it signs off with, and how it refers to you when writing to
-      someone else.</p>
-    <div class="row">
-      <label>Name<input id="name" autocomplete="off"></label>
-      <label>Pronoun
-        <span class="sm">blank = your name, never a guess</span>
-        <input id="pronoun" placeholder="she/her" autocomplete="off">
-      </label>
+<div class="window">
+  <div class="titlebar">
+    <div class="lights">
+      <i></i><i></i><i></i>
+      <div class="brand"><div class="ad">AD</div><span>AgentDuet</span></div>
     </div>
-    <label>Your own number
-      <span class="sm">E.164, e.g. +6591234567. For the agent to RING YOU when a caller wants
-        a person — never given out. Leave empty and it will not offer a callback.</span>
-      <input id="phone" placeholder="+6591234567" autocomplete="off">
-    </label>
-    <label>Never discuss
-      <span class="sm">One per line. It refuses these however readable the source.</span>
-      <textarea id="never" placeholder="my fees&#10;my home address"></textarea>
-    </label>
-    <button id="saveYou">Save</button>
-    <div id="mYou"></div>
-  </section>
+    <div></div>
+    <a class="tbtn on" id="back" href="#">
+      <span class="material-symbols-rounded">arrow_back</span><span>Back to Hub</span></a>
+  </div>
 
-  <!-- ---------------- the model ---------------- -->
-  <section>
-    <h2>Model</h2>
-    <p class="hint">The key is checked with the provider before it is saved, and stored only on
-      this machine.</p>
-    <div class="state" id="modelState">…</div>
-    <div class="row">
-      <label>Model<input id="model" placeholder="qwen3.6-flash" autocomplete="off"></label>
-      <label>API key<input id="key" type="password" placeholder="paste to replace" autocomplete="off"></label>
+  <div class="scroll">
+    <div class="sec">
+
+      <div class="card">
+        <div class="head">
+          <div class="tile"><span class="material-symbols-rounded">person</span></div>
+          <div><h2>You</h2><p>Used to sign replies, and given to the speech engine so it hears
+            names correctly.</p></div>
+        </div>
+        <div class="grp"><label class="fl">Name</label><input type="text" id="name"></div>
+        <div class="grp"><label class="fl">Pronoun</label><input type="text" id="pronoun"
+          placeholder="he/him, she/her, they/them — leave empty to use your name"></div>
+        <div class="grp"><label class="fl">Phone</label><input type="text" id="phone"
+          placeholder="+6591234567 — for the agent to ring YOU on, never given out"></div>
+        <div class="grp"><label class="fl">Never say</label><textarea id="never"
+          placeholder="one topic per line"></textarea></div>
+        <div class="acts"><button class="btn" id="saveYou">Save</button></div>
+        <div id="mYou"></div>
+      </div>
+
+      <div class="card">
+        <div class="head">
+          <div class="tile"><span class="material-symbols-rounded">smart_toy</span></div>
+          <div><h2>Model</h2><p>Only needed to answer calls, or to summarise a transcript.</p></div>
+        </div>
+        <div class="state" id="modelState">…</div>
+        <div class="grp"><label class="fl">Provider</label><input type="text" id="model"></div>
+        <div class="grp"><label class="fl">API key</label><input type="password" id="key"
+          placeholder="paste a key" autocomplete="off"></div>
+        <div class="acts"><button class="btn" id="saveModel">Check and save</button>
+          <span class="spin" id="spModel"></span></div>
+        <div id="mModel"></div>
+      </div>
+
+      <div class="card">
+        <div class="head">
+          <div class="tile"><span class="material-symbols-rounded">dialpad</span></div>
+          <div><h2>B3 connector</h2><p>Gives this install its number and message channel.
+            Without it everything local still works — it just never hears from anyone.</p></div>
+        </div>
+        <div class="state" id="connState">…</div>
+        <div class="grp"><label class="fl">API key</label><input type="password" id="cKey"
+          placeholder="AGENTDUET_API_KEY" autocomplete="off"></div>
+        <div class="grp"><label class="fl">Connector uuid</label><input type="text" id="cUuid"
+          placeholder="00000000-0000-0000-0000-000000000000" autocomplete="off"></div>
+        <div class="acts"><button class="btn" id="saveConn">Check and save</button>
+          <span class="spin" id="spConn"></span></div>
+        <div id="mConn"></div>
+        <p class="note">One client per connector: if another copy is running against the same
+          connector, they will fight over inbound routing.</p>
+      </div>
+
+      <div class="card">
+        <div class="head">
+          <div class="tile"><span class="material-symbols-rounded">call</span></div>
+          <div><h2>What happens to a call</h2><p>Only one applies — a call is either carried or
+            answered, never both. One connector has one handler.</p></div>
+        </div>
+        <label class="pick"><input type="radio" name="calls" value="carry">
+          <b>Carry it to me</b>
+          <span class="sm">Bridged to your phone, both sides recorded. Nobody is answered, and
+            no model key is needed.</span></label>
+        <label class="pick"><input type="radio" name="calls" value="answer">
+          <b>Answer it</b>
+          <span class="sm">The agent picks up and speaks for you. Needs a model above.</span></label>
+        <div class="acts"><button class="btn" id="saveCalls">Save</button>
+          <span class="spin" id="spCalls"></span></div>
+        <div id="mCalls"></div>
+        <p class="note">Carrying records two people talking. Whether they must be told, and by
+          whom, depends on where you and they are — this software does not announce it.</p>
+      </div>
+
+      <div class="card">
+        <div class="head">
+          <div class="tile"><span class="material-symbols-rounded">graphic_eq</span></div>
+          <div><h2>Speech recognition</h2><p>With a model key the hosted engine does it; with no
+            key it runs here, and nothing leaves the machine.</p></div>
+        </div>
+        <div class="state" id="sttState">…</div>
+        <div class="grp"><label class="fl">How hard it tries</label>
+          <select id="quality">
+            <option value="fast">fast — quickest, smallest download</option>
+            <option value="balanced">balanced — the default</option>
+            <option value="accurate">accurate — better</option>
+            <option value="max">max — best, and the largest</option>
+          </select></div>
+        <div class="acts"><button class="btn" id="saveQuality">Save</button>
+          <span class="spin" id="spQuality"></span>
+          <button class="btn ghost" id="doStt" hidden style="margin-left:.5rem">Download it now</button>
+          <span class="spin" id="spStt"></span></div>
+        <div id="mStt"></div>
+        <p class="note">Transcribing happens after a call, on a queue, so nothing waits for it.
+          Your name above is given to the engine, and measurably improves how names are heard.</p>
+      </div>
+
+      <div class="card">
+        <div class="head">
+          <div class="tile"><span class="material-symbols-rounded">description</span></div>
+          <div><h2>What you do</h2><p>Learned by running, not by filling in a form.</p></div>
+        </div>
+        <div class="state" id="doesState">…</div>
+        <div class="acts"><button class="btn ghost" id="rerun">Run setup again</button></div>
+      </div>
+
+      <div class="card">
+        <div class="head">
+          <div class="tile"><span class="material-symbols-rounded">bug_report</span></div>
+          <div><h2>Diagnostics</h2><p>Extra detail in the owner's view.</p></div>
+        </div>
+        <label class="dbg"><input type="checkbox" id="debug"> Show debug detail</label>
+      </div>
+
     </div>
-    <button id="saveModel">Check and save</button><span class="spin" id="spModel"></span>
-    <div id="mModel"></div>
-  </section>
-
-  <!-- ---------------- the B3 connector ---------------- -->
-  <section id="connector">
-    <h2>B3 connector</h2>
-    <p class="hint">Gives this install its phone number and message channel. Without it
-      everything local still works — it just never hears from anyone.</p>
-    <div class="state" id="connState">…</div>
-    <label>API key<input id="cKey" type="password" placeholder="AGENTDUET_API_KEY" autocomplete="off"></label>
-    <label>Connector uuid<input id="cUuid" placeholder="00000000-0000-0000-0000-000000000000" autocomplete="off"></label>
-    <button id="saveConn">Check and save</button><span class="spin" id="spConn"></span>
-    <div id="mConn"></div>
-    <p class="note">One client per connector: if another copy of this is running against the same
-      connector, they will fight over inbound routing.</p>
-  </section>
-
-  <section>
-    <h2>What happens to a call</h2>
-    <p class="hint">Only one applies. A call is either carried or answered, never both — one
-      connector has one handler.</p>
-    <label class="pick"><input type="radio" name="calls" value="carry">
-      <b>Carry it to me</b>
-      <span class="sm">Bridged to your phone, both sides recorded. Nobody is answered, and no
-        model key is needed.</span></label>
-    <label class="pick"><input type="radio" name="calls" value="answer">
-      <b>Answer it</b>
-      <span class="sm">The agent picks up and speaks for you. Needs a model above.</span></label>
-    <button id="saveCalls">Save</button><span class="spin" id="spCalls"></span>
-    <div id="mCalls"></div>
-    <p class="note">Carrying records two people talking. Whether they must be told, and by whom,
-      depends on where you and they are — this software does not announce it.</p>
-  </section>
-
-  <section>
-    <h2>Speech recognition</h2>
-    <p class="hint">How calls become text. With a model key above the hosted engine does it;
-      with no key it runs here, and nothing leaves the machine.</p>
-    <div class="state" id="sttState">…</div>
-    <label>How hard it tries
-      <select id="quality">
-        <option value="fast">fast — quickest, smallest download</option>
-        <option value="balanced">balanced — the default</option>
-        <option value="accurate">accurate — better</option>
-        <option value="max">max — best, and the largest</option>
-      </select></label>
-    <button id="saveQuality">Save</button><span class="spin" id="spQuality"></span>
-    <button id="doStt" class="ghost" hidden>Download it now</button><span class="spin" id="spStt"></span>
-    <div id="mStt"></div>
-    <p class="note">Transcribing happens after a call, on a queue, so nothing waits for it.
-      Set your name above too — it is given to the engine, and it measurably improves how
-      names are heard.</p>
-  </section>
-
-  <!-- ---------------- the interview ---------------- -->
-  <section>
-    <h2>What you do</h2>
-    <p class="hint">Written as prose the agent answers from, so it is edited by conversation
-      rather than in a box here.</p>
-    <div class="state" id="doesState">…</div>
-    <button class="ghost" id="rerun">Go through the questions again</button>
-    <p class="note">It reconciles rather than duplicating — it corrects what changed and leaves
-      the rest, including anything learned since.</p>
-  </section>
-
-  <!-- ---------------- diagnostics ---------------- -->
-  <section>
-    <h2>Diagnostics</h2>
-    <p class="hint">Off by default. The dashboard is meant to show what was asked, what was said
-      and what needs you — reason codes and ids are ours, not yours.</p>
-    <label class="switch">
-      <input type="checkbox" id="debug">
-      <span>Show the workings
-        <span class="sm">Reason codes, identity ids, source filenames, search traces, the tools
-          each answer used, and the instructions sent on your behalf during setup.</span>
-      </span>
-    </label>
-    <p class="note">Kept in this browser only, not in your instance — it changes nothing about
-      how the agent behaves.</p>
-  </section>
+  </div>
 </div>
 
 <script>
+  // The three circles are ours, drawn in HTML. macOS draws its own in the native window, and
+  // two sets of lights is worse than none — mark the document and let app.css hide ours.
+  (function nativeChrome(){
+    const mark = () => document.documentElement.classList.add('native');
+    if (window.pywebview) mark();
+    window.addEventListener('pywebviewready', mark);
+  })();
+
   const T = new URLSearchParams(location.search).get('t') || '';
   const $ = id => document.getElementById(id);
   const esc = s => (s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
