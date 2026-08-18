@@ -110,19 +110,19 @@ def test_prompts() -> None:
     problems = prompts.check_all()
     ok("every template declares exactly the parameters it uses", not problems, "; ".join(problems))
 
-    text = prompts.render("asker-voice", owner_name="Stanley", pronoun="he/him")
+    text = prompts.render("asker-voice", owner="Stanley", pronoun="he/him")
     ok("the owner's name reaches the voice instruction", "Stanley" in text)
     ok("so does the configured pronoun", "he/him" in text)
 
     # The pronoun line must VANISH rather than render half-written: "Refer to X as ." is worse
     # than saying nothing, and an unset pronoun is the normal case.
-    bare = prompts.render("asker-voice", owner_name="Stanley", pronoun="")
+    bare = prompts.render("asker-voice", owner="Stanley", pronoun="")
     ok("an unset pronoun removes its line entirely", "Refer to" not in bare, bare[:120])
 
     # The value class that actually shipped: a call answered as "[Owner's Name]'s assistant".
     for bad in ("", "   ", "[Owner's Name]", "TODO"):
         try:
-            prompts.render("asker-voice", owner_name=bad)
+            prompts.render("asker-voice", owner=bad)
             ok(f"refused owner_name={bad!r}", False, "rendered anyway")
         except prompts.PromptError:
             ok(f"refused owner_name={bad!r}", True)

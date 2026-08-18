@@ -92,139 +92,124 @@
   details.dev .hint{font-size:.85rem;}
   .fieldset{margin-top:1.1rem;padding-top:1.1rem;border-top:1px solid var(--line);}
   .fieldset:first-of-type{border-top:0;padding-top:0;}
+
+  .foot{margin-top:1.6rem;text-align:center;font-family:var(--mono);font-size:.68rem;
+    letter-spacing:.06em;color:var(--faint);}
+  .num{margin-top:.4rem;font-family:var(--mono);font-size:1.05rem;color:var(--ink);}
+  .quit{margin-top:1.6rem;text-align:center;font-size:.82rem;color:var(--faint);}
+  .quit a{color:var(--faint);text-decoration:underline;}
+  .wrap{max-width:30rem;}          /* an app window, not a document */
 </style>
 
 </head>
 <body>
 <div class="wrap">
-  <h1>Welcome to AgentDuet</h1>
-  <p class="lede">Recording and transcription for your Power Mobile service, on this machine.</p>
-
-  <div class="steps">
-    <div id="s1" class="on">1 sign in</div>
-    <div id="s2">2 quick setup</div>
-  </div>
 
   <!-- ---------------- 1 · SIGN IN ----------------
-       The whole point of signing in is that there is then NOTHING TO TYPE: the account knows the
-       owner's number and which connector is theirs, which is the pair a person cannot invent and
-       currently has to be given out of band. Until that backend exists the buttons are stubs and
-       the manual path below them is the real one. They are shown anyway, deliberately — this is
-       what the product is, and a stub that is visible is a promise we can be held to. -->
+       Signing in is how the owner's number and connector arrive without anyone typing a uuid.
+       The backend does not exist yet, so the buttons are stubs — but they are shown exactly as
+       the design has them, with no "not wired" caption, because the design is what the product
+       is. What a stub must not do is lie: pressing one says plainly that it is not connected. -->
   <section class="card on" id="c1">
-    <h2>Sign in to link this Mac</h2>
-    <p class="hint">Your number and your connector come across with your account, so there is
-      nothing to copy by hand.</p>
+    <h1>Welcome to AgentDuet</h1>
+    <p class="lede">On-device AI engine for your Power Mobile service. Please sign in to link
+      your desktop AI hub.</p>
 
-    <button class="sso" data-p="Apple">Continue with Apple <span class="g" id="gApple"></span></button>
-    <button class="sso" data-p="Google">Continue with Google <span class="g" id="gGoogle"></span></button>
-    <button class="sso" data-p="Microsoft">Continue with Microsoft <span class="g" id="gMicrosoft"></span></button>
+    <button class="sso" data-p="Apple">Continue with Apple</button>
+    <button class="sso" data-p="Google">Continue with Google</button>
+    <button class="sso" data-p="Microsoft">Continue with Microsoft</button>
     <div id="mSso"></div>
 
-    <div class="acts">
-      <button class="ghost" id="goManual">Set it up by hand instead</button>
-    </div>
+    <p class="foot">B3Networks Power Mobile AI Protocol • v1.0</p>
   </section>
 
   <!-- ---------------- 2 · QUICK SETUP ---------------- -->
   <section class="card" id="c2">
-    <h2>Quick setup</h2>
-    <p class="hint">Where things are kept, and the one credential that cannot be guessed.</p>
+    <h1>Quick Application Setup</h1>
+    <p class="lede">Select where recordings &amp; logs will be stored.</p>
 
-    <div class="fieldset">
-      <label>Where recordings and transcripts are saved</label>
-      <div class="state" id="whereBox">…</div>
+    <label>Data Storage Folder</label>
+    <div class="row">
+      <input id="folder" readonly>
+      <button class="ghost" id="doBrowse" style="flex:0 0 auto">Browse</button>
     </div>
 
-    <div class="fieldset">
-      <label>Speech recognition</label>
-      <div class="state" id="sttBox" hidden>
-        <span id="sttWhat">…</span>
-        <div class="acts">
-          <button id="doStt">Download it now</button>
-          <span class="spin" id="spStt"></span>
-        </div>
-      </div>
-      <div class="hint" id="sttOff" hidden>A model key is attached, so calls are transcribed by
-        the hosted engine and nothing is downloaded.</div>
-    </div>
+    <label style="margin-top:1.4rem">Power Mobile</label>
+    <div class="num" id="num">—</div>
 
+    <div class="acts">
+      <button id="doDone">Complete Setup &amp; Open Hub &nbsp;→</button>
+      <span class="spin" id="spDone"></span>
+    </div>
+    <div id="mDone"></div>
+
+    <!-- EVERYTHING SIGN-ON WILL SUPPLY, typed until it does. Collapsed and last, so the page
+         above it is the design; open it and you are in scaffolding. It goes away, not moves. -->
     <details class="dev" id="devBox">
       <summary>Set up by hand</summary>
-      <p class="hint">Everything here comes from your account once signing in works. Until then
-        it is typed.</p>
 
       <div class="fieldset">
-        <label>Your B3 connector
-          <span class="sm">The uuid and key for the number this machine answers for.</span>
-        </label>
+        <label>Your B3 connector</label>
         <input id="cUuid" placeholder="connector uuid" autocomplete="off" spellcheck="false">
         <input id="cKey" placeholder="connector key" autocomplete="off" spellcheck="false">
-        <div class="acts">
-          <button id="doConn">Save and check</button>
-          <span class="spin" id="spConn"></span>
-        </div>
+        <div class="acts"><button id="doConn">Save and check</button>
+          <span class="spin" id="spConn"></span></div>
         <div id="mConn"></div>
+      </div>
+
+      <div class="fieldset">
+        <label>Your name
+          <span class="sm">Given to the speech engine so it hears names correctly.</span></label>
+        <input id="oName" placeholder="e.g. Stanley Leong" autocomplete="off">
+        <div class="acts"><button id="doName">Save</button>
+          <span class="spin" id="spName"></span></div>
+        <div id="mName"></div>
       </div>
 
       <div class="fieldset">
         <label>What should happen to a call?</label>
         <label class="pick"><input type="radio" name="calls" value="carry" checked>
           <b>Carry it to me</b>
-          <span class="sm">The call is bridged to your phone and both sides are recorded.
-            Nobody is answered. This is the product.</span></label>
+          <span class="sm">Bridged to your phone, both sides recorded. Nobody is answered.</span></label>
         <label class="pick"><input type="radio" name="calls" value="answer">
           <b>Answer it</b>
-          <span class="sm">The agent picks up and speaks for you. Needs a model key below.</span></label>
-      </div>
-
-      <div class="fieldset">
-        <label>Your name
-          <span class="sm">Used to sign replies, and given to the speech engine so it hears
-            names correctly — priming it with the owner's name beat moving to a bigger model.
-            Signing in will fill this in.</span>
-        </label>
-        <input id="oName" placeholder="e.g. Stanley Leong" autocomplete="off">
-        <div class="acts">
-          <button id="doName">Save</button>
-          <span class="spin" id="spName"></span>
-        </div>
-        <div id="mName"></div>
+          <span class="sm">The agent speaks for you. Needs a model key below.</span></label>
       </div>
 
       <div class="fieldset">
         <label>Model key
-          <span class="sm">Only for answering calls, or for summarising a transcript afterwards.
-            Leave empty and everything still records and transcribes.</span>
-        </label>
+          <span class="sm">Only for answering, or summarising a transcript afterwards.</span></label>
         <select id="model"></select>
         <input id="key" type="password" placeholder="paste a key" autocomplete="off">
-        <div class="acts">
-          <button id="doModel">Attach it</button>
-          <span class="spin" id="spModel"></span>
-        </div>
+        <div class="acts"><button id="doModel">Attach it</button>
+          <span class="spin" id="spModel"></span></div>
         <div id="mModel"></div>
       </div>
-    </details>
 
-    <div class="fieldset">
-      <div class="acts">
-        <button id="doDone">Finish</button>
-        <button class="ghost" id="doInstall">Install first</button>
-        <span class="sp"></span>
-        <span class="spin" id="spDone"></span>
+      <div class="fieldset">
+        <label>Speech recognition</label>
+        <div class="state" id="sttBox" hidden>
+          <span id="sttWhat">…</span>
+          <div class="acts"><button id="doStt">Download it now</button>
+            <span class="spin" id="spStt"></span></div>
+        </div>
+        <div class="hint" id="sttOff" hidden>A model key is attached, so the hosted engine
+          transcribes and nothing is downloaded.</div>
       </div>
-      <div id="mDone"></div>
-      <div id="mInst"></div>
-    </div>
+
+      <div class="fieldset">
+        <div class="acts"><button class="ghost" id="doInstall">Install this copy</button></div>
+        <div id="mInst"></div>
+      </div>
+    </details>
   </section>
 
-  <p class="hint" id="cancelWhat" style="margin-top:1.7rem">Nothing is running yet, so leaving
-    costs nothing.</p>
-  <button class="ghost" id="doCancel">Cancel</button>
+  <!-- A WAY OUT. Not in the design, kept because closing the tab leaves the process running
+       with nothing on screen to say so, and the url carries a per-machine token — a closed tab
+       is a lost tab. Deliberately the quietest thing on the page. -->
+  <p class="quit"><a href="#" id="doCancel">Quit</a> <span id="cancelWhat"></span></p>
   <div id="mCancel"></div>
 </div>
-
 <script>
   window.onerror = function (m, src, line, col) {
     try { new Image().src = '/__jserr?m=' + encodeURIComponent(m) + '&line=' + line; } catch (e) {}
@@ -234,16 +219,10 @@
   const $ = id => document.getElementById(id);
   const esc = s => (s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 
-  const STEPS = [1, 2];
   function show(n){
-    STEPS.forEach(i => {
-      $('c' + i).classList.toggle('on', i === n);
-      $('s' + i).classList.toggle('on', i === n);
-      $('s' + i).classList.toggle('done', i < n);
-    });
+    [1, 2].forEach(i => $('c' + i).classList.toggle('on', i === n));
     window.scrollTo({top: 0, behavior: 'smooth'});
   }
-  STEPS.forEach(i => { $('s' + i).onclick = () => show(i); });
 
   function say(el, ok, text){
     $(el).innerHTML = `<div class="msg ${ok ? 'ok' : 'no'}">${esc(text)}</div>`;
@@ -263,24 +242,23 @@
     b.onclick = () => {
       const who = b.dataset.p;
       if (OAUTH) { location.href = `/api/connector/signin?t=${T}&provider=` + encodeURIComponent(who); return; }
-      say('mSso', false, `Signing in with ${who} is not connected yet. `
-        + 'Use "Set it up by hand" below — the fields it opens are what signing in will fill in.');
-      $('devBox').open = true;
+      say('mSso', false, `Signing in with ${who} is not connected yet.`);
       show(2);
+      $('devBox').open = true;
     };
   });
-  $('goManual').onclick = () => { $('devBox').open = true; show(2); };
+
+  // Browsing for a folder needs a native picker this page does not have, and carry.RECORDINGS
+  // is a module constant besides — so it says so rather than opening nothing.
+  $('doBrowse').onclick = () => say('mDone', false,
+    'Choosing the folder is not built yet. It is set by AGENTDUET_HOME.');
 
   // ---- what the page already knows -----------------------------------------------------
   async function load(){
     const d = await fetch(`/api/setup/current?t=${T}`).then(r => r.json()).catch(() => ({}));
     OAUTH = !!d.oauth_available;
-    ['Apple', 'Google', 'Microsoft'].forEach(p => {
-      $('g' + p).textContent = OAUTH ? '' : 'not connected yet';
-    });
-    $('whereBox').innerHTML = 'Carried calls: <code>' + esc(d.carried_dir || '?') + '</code>'
-      + '<br>Answered calls: <code>' + esc(d.recordings_dir || '?') + '</code>'
-      + '<span class="note">Set by AGENTDUET_HOME. Choosing it here is not built yet.</span>';
+    $('folder').value = d.carried_dir || '';
+    $('num').textContent = d.phone || '—';
     if (d.connector_uuid) $('cUuid').value = d.connector_uuid;
     if (d.connector_configured) say('mConn', true, 'A connector is already configured.');
     const sel = $('model');
