@@ -179,8 +179,10 @@
     };
   });
 
+  let DONE = false;
   fetch(`/api/setup/current?t=${T}`).then(r => r.json()).then(d => {
     OAUTH = !!d.oauth_available;
+    DONE = !!d.setup_done;
     $('folder').value = d.carried_dir || '';
     $('num').textContent = d.phone || '—';
     if (d.phone) { $('lineNum').textContent = d.phone; $('lineBadge').classList.add('on'); }
@@ -190,6 +192,10 @@
     'Choosing the folder is not built yet. It is set by AGENTDUET_HOME.');
 
   $('doDone').onclick = async () => {
+    // A RE-RUN JUST GOES BACK. Handover promotes the installed copy and stands this one down,
+    // which is the right last act of an installer and nothing at all on a second walk through
+    // — there it is a daemon restart fired from a Settings button.
+    if (DONE) { location.href = '/?t=' + T; return; }
     $('doDone').disabled = true;
     const d = await post('/api/handover', {});
     $('doDone').disabled = false;
