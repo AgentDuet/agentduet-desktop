@@ -1,12 +1,47 @@
 # CLAUDE.md — agentduet-desktop
 
-The release package for **AgentDuet Desktop**: a secretary that runs on the owner's machine,
-answers external parties over WhatsApp and by phone, escalates what it should not decide, and
-can act only inside limits the owner declared.
+The release package for **AgentDuet Desktop**, which runs on the owner's machine.
 
 Split out of `../secretary-sample/` on 2026-07-30. That folder still exists and still runs the
 POC demo — **do not assume a change here is there, or vice versa.** They will diverge; this one
 is the deliverable.
+
+## TWO PRODUCTS, ONE BINARY — read this before planning anything (2026-08-17)
+
+**The RECORDER is the product. The SECRETARY is the ambitious one, and it does not gate the
+recorder.**
+
+- **The recorder** — the call is carried through to the owner, both sides are recorded, the
+  audio is transcribed on their machine, and a cloud model may summarise the transcript
+  afterwards. **Two humans talk. Nobody is answered. Nothing is decided.**
+- **The secretary** — the agent picks up, speaks for the owner, and may act. Everything under
+  *Invariants* exists for this, and applies only to this.
+
+**Why this is written down.** We spent months on the fence — disclosure, capabilities, bounds,
+escalation, the two-part tool split — and it was good work that is enforced in code and tested.
+It also stopped us shipping the simpler product, which needs none of it. Every one of those
+invariants governs what an agent may SAY or DO on the owner's behalf. A recorder says nothing
+and does nothing. Requiring it to satisfy a fence built for a different product is how a
+three-week feature becomes a three-month one.
+
+**The rule that follows:** when a change touches only the recorder, do not reach for the
+secretary's machinery, and do not ask a recorder feature to justify itself against invariants
+that have no subject. If a feature has an agent speaking or acting, the fence is mandatory and
+non-negotiable.
+
+**The entry point is the recorder**, per `agentduet_macos_app_ux_mockup.html`: sign in, choose a
+folder, and four services — record calls, transcribe them, record messages, connect a model for
+summaries. Setup asks nothing about a model or an agent. The secretary is configured later, by
+someone who wants it, and is not on the path of a new install.
+
+**What this does NOT mean.** The secretary is not deleted and the invariants are not relaxed.
+`tests/test_rules.py` still enforces them, and the day an agent speaks on a call they all apply
+exactly as written. This is about which product a new install is, and what a recorder change has
+to answer for.
+
+**The one place they genuinely collide:** `voice.register()` claims `on_incoming_call`, and one
+connector has one handler. Answering and carrying are therefore mutually exclusive per install,
+which is a MODE, not a preference — see the trunk-use-case section at the end.
 
 ## Layout
 
@@ -65,7 +100,12 @@ surface, found the day this decision was made. Anything added to one now goes in
 
 ## Invariants — enforced in code, not by convention
 
-Break one of these and the product is a different product.
+**These govern the SECRETARY.** They are about what an agent may say or do on the owner's
+behalf, so on the recorder path most of them have no subject at all — nothing is disclosed,
+nothing is committed, no bounds are checked, because nobody is answered. Do not treat them as a
+checklist a recording or transcription change must pass. See *Two products, one binary* above.
+
+Break one of these and the secretary is a different product.
 
 1. **Disclosure follows the folder grant, entirely.** No keyword filter second-guesses it.
 2. **Action is never granted by a document.** Committing, pricing, scheduling → `policy.COMMITMENT_RULES`.
@@ -167,6 +207,20 @@ Break one of these and the product is a different product.
   and escalates to SIGKILL; never report "stopped" on the strength of a signal sent.
 - **`chmod 0600` is a no-op on Windows.** The model key in `$AGENTDUET_HOME/.env` is unprotected there.
 - **Python ≥3.12** — the SDK requires it.
+
+- **Local STT is faster-whisper on the CPU, and the Apple Neural Engine is NOT reachable from
+  it** (checked 2026-08-17). CTranslate2, the runtime underneath, has CPU and CUDA backends
+  only — no Metal, no Core ML, no ANE. On a Mac it is CPU-only, so every measured number is a
+  CPU number and any UI claiming "Apple Neural Engine" is false. Reaching the ANE means
+  CHANGING ENGINE, not setting a flag: `whisper.cpp` with a Core ML encoder is the realistic
+  route, at the cost of a per-model `.mlmodelc` to generate and ship, a slow first-run compile
+  on the user's machine, and a C++ dependency in a binary whose packaging was just settled.
+  Apple's own `SpeechAnalyzer` uses the ANE with no download at all, but it is Apple's model
+  rather than Whisper, gated on macOS version, and Mac-only — Linux and Windows would still
+  need a second engine.
+  **Worth knowing when it is reconsidered:** we measured the ENCODER as the bottleneck on CPU,
+  which is why `large-v3-turbo` — decoder-pruned — bought nothing. Core ML accelerates the
+  encoder specifically, so this would target the real cost rather than the assumed one.
 
 ## Open — the checklist
 
