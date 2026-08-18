@@ -189,7 +189,7 @@
     .then(u => { $('debug').checked = !!u.debug; })
     .catch(() => {});
   $('debug').onchange = () => post('/api/ui', {debug: $('debug').checked});
-  $('rerun').onclick = () => { location.href = '/setup?t=' + T; };
+  $('rerun').onclick = () => { location.href = '/setup?t=' + T + '&from=settings'; };
 
   (async () => {
     const [cr, sr] = await Promise.all([
