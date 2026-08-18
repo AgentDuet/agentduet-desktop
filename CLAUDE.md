@@ -229,6 +229,19 @@ Break one of these and the secretary is a different product.
   well as to `.env`, so a startup-time snapshot makes the owner restart for no reason — or worse,
   shows a "not connected" state advising them to check a network that is fine. The channel loop
   polls `connector_ready()` every `CONNECTOR_POLL_SECONDS`.
+- **macOS `security import` cannot read a MODERN PKCS#12.** An AES-256/SHA-256 `.p12` — what
+  OpenSSL 3 produces by default — fails with `MAC verification failed during PKCS12 import
+  (wrong password?)`, and the password is fine. It needs the legacy shape. The trap is that the
+  obvious fix is wrong in the other direction: `openssl pkcs12 -export -legacy` uses **RC2-40**,
+  which OpenSSL 3 cannot read BACK without the legacy provider, so you cannot verify what you
+  built. The format that satisfies both is **3DES + SHA-1**
+  (`-keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1`): macOS accepts it, and 3DES is
+  still in OpenSSL 3's default provider so it reads back locally. Verify the `.p12` opens and
+  contains the leaf, the intermediate and one private key BEFORE uploading it as a secret.
+- **`gh workflow run` builds the REMOTE, not your working tree.** A dispatch build fires against
+  what is on `origin`, so a fix committed locally and not pushed is not in it. Caught after
+  triggering a build to prove `app.css` was packaged, from a commit that did not have the fix —
+  it would have gone green and proved the opposite of what was intended.
 - **`pkill -f` matches your own command line**, including the shell running it. It has killed
   test blocks and daemons mid-run. Kill by PID or port.
 - **SIGTERM is caught somewhere in the async stack** and does not always exit. `stop` verifies
