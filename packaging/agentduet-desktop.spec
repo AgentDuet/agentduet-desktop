@@ -46,7 +46,7 @@ if _sha:
         f'BUILT = "{_built}"\n')
 
 datas = collect_data_files("agentduet_desktop",
-                           includes=["*.html", "templates/**/*", "examples/**/*",
+                           includes=["*.html", "*.css", "templates/**/*", "examples/**/*",
                                      # Prompts are DATA. Without this the binary builds
                                      # clean and voice dies at render time on a real call.
                                      "prompts/**/*",

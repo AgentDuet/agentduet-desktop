@@ -989,6 +989,17 @@ def test_setup_mode() -> None:
        "/api/state" in page and "onAir" in page)
     # Both of these have unwired a whole page before: localStorage is a ReferenceError in
     # WebKitGTK, and an unwired form submits natively to `/`, dropping the token.
+    # EVERY FILE A PAGE ASKS FOR MUST BE PACKAGED. app.css shipped in neither glob when it was
+    # introduced, so the binary would have served every page unstyled while the source ran fine —
+    # the failure mode this repo keeps rediscovering. Checked as a glob, not a filename, so the
+    # next non-HTML asset is covered without anyone remembering.
+    spec = (pathlib.Path(__file__).parent.parent / "packaging"
+            / "agentduet-desktop.spec").read_text()
+    pyproject = (pathlib.Path(__file__).parent.parent / "pyproject.toml").read_text()
+    for asset in sorted(p.name for p in src.glob("*.css")):
+        ok(f"{asset} is collected by the PyInstaller spec", '"*.css"' in spec)
+        ok(f"{asset} is collected by the wheel", '"*.css"' in pyproject)
+
     ok("the setup page reports JS errors where they can be seen", "window.onerror" in page)
     ok("it touches no localStorage and has no form to submit natively",
        "localStorage" not in page and "<form" not in page)
