@@ -270,6 +270,13 @@ the product is.
       go. Today `carry.RECORDINGS` is a module constant under `$AGENTDUET_HOME`, so the page can
       only SHOW the resolved path. Making it settable means reading it at use time — the same
       read-at-use-time rule that `local_model()` already had to learn.
+- [ ] **Bundle Inter, JetBrains Mono and Material Symbols.** The pages now load all three from
+      Google Fonts, as the mockup does. On a machine with no network the text falls back to a
+      system font — fine — but **Material Symbols fails LOUDLY**: the ligature name renders as
+      literal text, so a sidebar reads "grid_view call graphic_eq". Offline is most of what this
+      product claims, so the font files belong in the binary. Not done yet because it is a
+      packaging change and the design fidelity was the ask.
+
 - [ ] **Per-service on/off toggles.** The mockup's overview switches each of the four services
       independently. We have one `## Calls` mode and a `## Record calls` boolean.
 

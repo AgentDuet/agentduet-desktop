@@ -4,240 +4,345 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AgentDuet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
 <style>
+  /* Values taken from the mockup's Tailwind config and classes, written out as plain CSS.
+     Tailwind arrives from a CDN there; this app has to open on a machine with no network. */
   :root{
-    --ink:#101418; --paper:#f6f7f8; --surface:#fff; --line:#e2e6ea; --line2:#eef1f4;
-    --muted:#5b6675; --faint:#8b96a3;
-    --accent:#00b2ff; --accent-ink:#0077b0; --coral:#f0523d;
-    --good:#1a7f5a; --good-bg:#e8f5ef; --bad:#b3261e; --bad-bg:#fff1ee;
-    --sans:"SF Pro Display",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
-  }
-  @media (prefers-color-scheme:dark){
-    :root{--ink:#eef3f7;--paper:#0f1419;--surface:#161d24;--line:#242e38;--line2:#1c242c;
-      --muted:#93a6b5;--faint:#6b7c8a;--accent-ink:#4cc7ff;--good:#4ade9e;--good-bg:#13322a;
-      --bad:#ffb4a8;--bad-bg:#2a1512;}
+    --bg:#18181b; --sidebar:#121215; --card:#242429; --line:#33333b; --accent:#2563eb;
+    --page:#020617; --slate900:#0f172a; --slate800:#1e293b; --slate700:#334155;
+    --ink:#f1f5f9; --ink2:#e2e8f0; --muted:#94a3b8; --faint:#64748b;
+    --blue300:#93c5fd; --blue400:#60a5fa; --emerald:#34d399;
+    --sans:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
   }
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:var(--sans);background:var(--paper);color:var(--ink);
-    -webkit-font-smoothing:antialiased;line-height:1.5;display:flex;min-height:100vh;}
+  ::-webkit-scrollbar{width:6px;height:6px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:9999px;}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.3);}
+  .material-symbols-rounded{font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24;
+    font-family:"Material Symbols Rounded";font-weight:normal;font-style:normal;
+    line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;
+    white-space:nowrap;word-wrap:normal;direction:ltr;-webkit-font-feature-settings:'liga';
+    -webkit-font-smoothing:antialiased;user-select:none;}
 
-  /* ---- sidebar ---- */
-  aside{width:14.5rem;flex:0 0 14.5rem;background:var(--surface);border-right:1px solid var(--line);
-    display:flex;flex-direction:column;padding:1.1rem .8rem;}
-  .who{display:flex;align-items:center;gap:.6rem;padding:0 .3rem 1rem;}
-  .av{width:2.1rem;height:2.1rem;flex:0 0 2.1rem;border-radius:50%;background:var(--accent-ink);
-    color:#fff;display:flex;align-items:center;justify-content:center;font-size:.72rem;
-    font-weight:700;letter-spacing:.02em;}
-  .who .n{font-size:.85rem;font-weight:680;line-height:1.25;}
-  .who .p{font-family:var(--mono);font-size:.7rem;color:var(--faint);}
-  .navlabel{font-family:var(--mono);font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;
-    color:var(--faint);padding:.5rem .3rem .35rem;}
-  nav button{display:flex;align-items:center;gap:.55rem;width:100%;text-align:left;font:inherit;
-    font-size:.83rem;font-weight:600;color:var(--muted);background:transparent;border:0;
-    border-radius:8px;padding:.45rem .55rem;cursor:pointer;}
-  .ic{width:1.05rem;height:1.05rem;flex:0 0 1.05rem;}
-  .rowic{width:1.15rem;height:1.15rem;flex:0 0 1.15rem;color:var(--accent-ink);}
-  h1 .ic{width:1.15rem;height:1.15rem;vertical-align:-.15em;margin-right:.4rem;
-    color:var(--accent-ink);}
-  nav button:hover{background:var(--line2);color:var(--ink);}
-  nav button.on{background:var(--line2);color:var(--accent-ink);}
-  .store{margin-top:auto;padding:.7rem .4rem 0;border-top:1px solid var(--line);
-    font-size:.7rem;color:var(--faint);}
-  .store code{font-family:var(--mono);font-size:.65rem;word-break:break-all;display:block;
-    margin-top:.2rem;color:var(--muted);}
-  .store a{color:var(--accent-ink);}
+  body{background:var(--page);color:var(--ink);font-family:var(--sans);height:100vh;
+    overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:1.5rem;user-select:none;-webkit-font-smoothing:antialiased;}
+  .window{width:100%;max-width:64rem;height:90vh;max-height:850px;background:var(--bg);
+    border-radius:1rem;border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;
+    overflow:hidden;position:relative;
+    box-shadow:0 25px 60px -15px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.08);}
 
-  /* ---- main ---- */
-  main{flex:1;padding:1.6rem 1.8rem 3rem;max-width:52rem;}
-  h1{font-size:1.15rem;font-weight:760;letter-spacing:-.01em;}
-  .lede{color:var(--muted);font-size:.88rem;margin-top:.25rem;}
-  section.panel{display:none;}
-  section.panel.on{display:block;}
+  .titlebar{height:2.75rem;background:var(--sidebar);border-bottom:1px solid var(--line);
+    padding:0 1rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+  .lights{display:flex;align-items:center;gap:.5rem;}
+  .lights i{width:.75rem;height:.75rem;border-radius:50%;display:block;}
+  .lights i:nth-child(1){background:#ef4444;} .lights i:nth-child(2){background:#eab308;}
+  .lights i:nth-child(3){background:#22c55e;}
+  .brand{margin-left:.75rem;padding-left:.5rem;border-left:1px solid rgba(255,255,255,.1);
+    display:flex;align-items:center;gap:.5rem;}
+  .brand .ad{width:1.25rem;height:1.25rem;border-radius:.375rem;background:var(--accent);
+    color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;
+    font-weight:900;}
+  .brand span{font-size:.75rem;font-weight:600;color:#cbd5e1;}
+  .linebadge{display:none;align-items:center;gap:.5rem;padding:.25rem .75rem;border-radius:999px;
+    background:var(--slate900);border:1px solid rgba(255,255,255,.1);font-size:.75rem;}
+  .linebadge.on{display:flex;}
+  .linebadge .dot{width:.5rem;height:.5rem;border-radius:50%;background:var(--emerald);
+    animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite;}
+  .linebadge .l{color:var(--muted);font-size:11px;}
+  .linebadge .v{font-family:var(--mono);color:var(--emerald);font-weight:600;font-size:11px;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .tbtn{font:inherit;font-size:.75rem;padding:.25rem .625rem;border-radius:.5rem;
+    background:var(--slate800);color:#cbd5e1;border:1px solid rgba(255,255,255,.1);
+    cursor:pointer;display:none;align-items:center;gap:.25rem;}
+  .tbtn.on{display:flex;}
+  .tbtn:hover{background:var(--slate700);}
 
-  .pill{display:inline-flex;align-items:center;gap:.4rem;font-size:.72rem;font-weight:700;
-    padding:.25rem .6rem;border-radius:999px;background:var(--good-bg);color:var(--good);}
-  .pill.off{background:var(--line2);color:var(--faint);}
-  .pill i{width:.45rem;height:.45rem;border-radius:50%;background:currentColor;display:block;}
+  .app{flex:1;display:flex;overflow:hidden;}
 
-  .rows{margin-top:1.2rem;border:1px solid var(--line);border-radius:12px;overflow:hidden;
-    background:var(--surface);}
-  .row{display:flex;align-items:center;gap:.9rem;padding:.85rem 1rem;
-    border-bottom:1px solid var(--line2);cursor:pointer;}
-  .row:last-child{border-bottom:0;}
-  .row:hover{background:var(--line2);}
-  .row .t{flex:1;}
-  .row .t b{display:block;font-size:.88rem;font-weight:680;}
-  .row .t span{font-size:.78rem;color:var(--faint);}
+  aside{width:14rem;flex:0 0 14rem;background:var(--sidebar);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;justify-content:space-between;padding:.75rem;}
+  .prof{padding:.75rem;border-radius:.75rem;background:var(--slate900);
+    border:1px solid rgba(255,255,255,.05);display:flex;align-items:center;gap:.75rem;}
+  .prof .av{width:2rem;height:2rem;flex:0 0 2rem;border-radius:50%;background:var(--accent);
+    color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;
+    font-size:.75rem;}
+  .prof .n{font-size:.75rem;font-weight:600;color:var(--ink2);overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;}
+  .prof .p{font-size:10px;font-family:var(--mono);color:var(--emerald);overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;}
+  .navlab{padding:.25rem .5rem;font-size:10px;text-transform:uppercase;font-weight:700;
+    letter-spacing:.05em;color:var(--faint);}
+  nav{display:flex;flex-direction:column;gap:.25rem;}
+  nav button{width:100%;display:flex;align-items:center;gap:.625rem;padding:.5rem .75rem;
+    border-radius:.5rem;font:inherit;font-size:.75rem;font-weight:500;color:var(--muted);
+    background:transparent;border:1px solid transparent;cursor:pointer;transition:.12s;}
+  nav button:hover{background:rgba(255,255,255,.05);color:var(--ink2);}
+  nav button.on{color:var(--blue400);background:rgba(37,99,235,.2);
+    border-color:rgba(59,130,246,.2);}
+  nav .material-symbols-rounded{font-size:1.125rem;}
+  .store{padding:.625rem;border-radius:.5rem;background:var(--slate900);
+    border:1px solid rgba(255,255,255,.05);font-size:11px;display:flex;flex-direction:column;
+    gap:.25rem;}
+  .store .r{display:flex;justify-content:space-between;align-items:center;color:var(--muted);}
+  .store a{color:var(--blue400);font-size:10px;text-decoration:none;}
+  .store a:hover{text-decoration:underline;}
+  .store .path{font-family:var(--mono);color:#cbd5e1;font-size:10px;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;}
 
-  /* The switch is a real checkbox, so it is keyboard reachable and its state is its state. */
-  .sw{position:relative;width:2.2rem;height:1.25rem;flex:0 0 2.2rem;}
-  .sw input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer;}
-  .sw i{position:absolute;inset:0;border-radius:999px;background:var(--line);
-    transition:background .15s;pointer-events:none;}
-  .sw i::after{content:"";position:absolute;top:.15rem;left:.15rem;width:.95rem;height:.95rem;
-    border-radius:50%;background:#fff;transition:transform .15s;}
-  .sw input:checked + i{background:var(--accent-ink);}
-  .sw input:checked + i::after{transform:translateX(.95rem);}
+  main{flex:1;background:var(--bg);overflow-y:auto;padding:1.5rem;}
+  .tab{display:none;flex-direction:column;gap:1.5rem;}
+  .tab.on{display:flex;}
+  .thead{display:flex;justify-content:space-between;align-items:center;}
+  h1{font-size:1.125rem;font-weight:700;color:var(--ink);}
+  .sub{font-size:.75rem;color:var(--muted);}
+  .pill{padding:.25rem .75rem;border-radius:999px;background:rgba(16,185,129,.2);
+    color:var(--emerald);font-size:.75rem;font-weight:500;border:1px solid rgba(16,185,129,.3);
+    display:flex;align-items:center;gap:.375rem;white-space:nowrap;}
+  .pill .dot{width:.5rem;height:.5rem;border-radius:50%;background:var(--emerald);
+    animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite;}
+  .pill.off{background:rgba(100,116,139,.2);color:var(--faint);border-color:rgba(100,116,139,.3);}
+  .pill.off .dot{background:var(--faint);animation:none;}
 
-  .card{margin-top:1.2rem;background:var(--surface);border:1px solid var(--line);
-    border-radius:12px;padding:1rem 1.1rem;}
-  .card h3{font-size:.8rem;font-weight:700;color:var(--muted);}
-  .dir{display:flex;align-items:center;gap:.6rem;margin-top:.5rem;}
-  .dir code{flex:1;font-family:var(--mono);font-size:.7rem;color:var(--muted);word-break:break-all;}
-  table{width:100%;border-collapse:collapse;margin-top:.7rem;font-size:.8rem;}
-  th{text-align:left;font-size:.65rem;letter-spacing:.08em;text-transform:uppercase;
-    color:var(--faint);font-weight:600;padding:.35rem .2rem;border-bottom:1px solid var(--line);}
-  td{padding:.45rem .2rem;border-bottom:1px solid var(--line2);}
-  td.f{font-family:var(--mono);font-size:.72rem;word-break:break-all;}
-  td.s{color:var(--faint);white-space:nowrap;}
-  .empty{padding:1.1rem .2rem;color:var(--faint);font-size:.82rem;}
+  .svcs{display:flex;flex-direction:column;gap:.75rem;}
+  .svc{padding:1rem;border-radius:.75rem;background:var(--card);border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:space-between;gap:1rem;transition:.12s;}
+  .svc:hover{border-color:rgba(59,130,246,.3);}
+  .svc .go{display:flex;align-items:center;gap:.875rem;flex:1;cursor:pointer;}
+  .tile{width:2.5rem;height:2.5rem;flex:0 0 2.5rem;border-radius:.75rem;
+    background:rgba(37,99,235,.15);color:var(--blue400);display:flex;align-items:center;
+    justify-content:center;}
+  .tile .material-symbols-rounded{font-size:1.25rem;}
+  .svc h3{font-size:.875rem;font-weight:600;color:var(--ink2);}
+  .tag{font-size:10px;font-family:var(--mono);padding:.125rem .5rem;border-radius:.25rem;
+    background:rgba(16,185,129,.2);color:var(--emerald);font-weight:500;}
+  .tag.off{background:rgba(100,116,139,.2);color:var(--faint);}
+  .titlerow{display:flex;align-items:center;gap:.5rem;}
 
-  label{display:block;margin-top:.9rem;font-size:.8rem;font-weight:650;}
-  select,input[type=password],input[type=text]{width:100%;font:inherit;font-size:.85rem;
-    margin-top:.3rem;padding:.5rem .6rem;border:1px solid var(--line);border-radius:8px;
-    background:var(--paper);color:var(--ink);}
-  button.act{font:inherit;font-size:.82rem;font-weight:700;padding:.5rem 1rem;border:0;
-    border-radius:8px;background:var(--accent-ink);color:#fff;cursor:pointer;margin-top:.8rem;}
-  button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);}
-  .badge{display:inline-block;margin-top:.8rem;font-size:.72rem;font-weight:700;color:var(--good);
-    background:var(--good-bg);border-radius:999px;padding:.22rem .6rem;}
-  .msg{margin-top:.8rem;padding:.6rem .75rem;border-radius:8px;font-size:.82rem;
+  /* the mockup's peer-checked switch, as plain css */
+  .sw{position:relative;display:inline-flex;align-items:center;cursor:pointer;flex-shrink:0;}
+  .sw input{position:absolute;opacity:0;width:0;height:0;}
+  .sw .track{width:2.25rem;height:1.25rem;background:var(--slate700);border-radius:999px;
+    position:relative;transition:background .15s;display:block;}
+  .sw .track::after{content:"";position:absolute;top:2px;left:2px;width:1rem;height:1rem;
+    background:#fff;border-radius:50%;transition:transform .15s;}
+  .sw input:checked + .track{background:var(--accent);}
+  .sw input:checked + .track::after{transform:translateX(1rem);}
+
+  .card{background:var(--card);border-radius:.75rem;border:1px solid var(--line);padding:1.25rem;
+    display:flex;flex-direction:column;gap:1rem;}
+  .card .row{display:flex;align-items:center;justify-content:space-between;}
+  .card .lbl{font-size:.75rem;font-weight:600;color:var(--ink2);}
+  .card .lbl3{font-size:.75rem;font-weight:600;color:#cbd5e1;}
+  .link{font-size:.75rem;color:var(--blue400);background:none;border:0;cursor:pointer;
+    font-family:inherit;}
+  .link:hover{text-decoration:underline;}
+  .files{padding:.75rem;background:var(--slate900);border-radius:.5rem;font-family:var(--mono);
+    font-size:.75rem;color:#cbd5e1;display:flex;flex-direction:column;gap:.5rem;
+    border:1px solid rgba(255,255,255,.05);}
+  .files .h{display:flex;justify-content:space-between;color:var(--muted);
+    border-bottom:1px solid rgba(255,255,255,.05);padding-bottom:.5rem;}
+  .files .f{display:flex;justify-content:space-between;align-items:center;color:var(--blue300);
+    gap:1rem;}
+  .files .f span:last-child{color:var(--faint);white-space:nowrap;}
+  .files .none{color:var(--faint);font-style:italic;}
+  label.fl{display:block;font-size:.75rem;font-weight:600;color:#cbd5e1;margin-bottom:.25rem;}
+  select,input[type=password]{width:100%;font:inherit;font-size:.75rem;background:var(--slate900);
+    border:1px solid var(--line);border-radius:.5rem;padding:.625rem;color:var(--ink2);}
+  .banner{padding:.75rem;border-radius:.5rem;background:rgba(59,130,246,.1);
+    border:1px solid rgba(59,130,246,.2);font-size:.75rem;color:var(--blue300);display:flex;
+    justify-content:space-between;align-items:center;}
+  .banner .m{font-family:var(--mono);font-size:11px;}
+  .btn{padding:.375rem .75rem;background:var(--accent);color:#fff;font:inherit;font-size:.75rem;
+    font-weight:500;border:0;border-radius:.5rem;cursor:pointer;}
+  .btn:hover{background:#3b82f6;}
+  .out{padding:.75rem;background:var(--slate900);border-radius:.5rem;font-family:var(--mono);
+    font-size:.75rem;color:var(--muted);min-height:8rem;border:1px solid rgba(255,255,255,.05);
     white-space:pre-wrap;}
-  .msg.ok{background:var(--good-bg);color:var(--good);border:1px solid var(--good);}
-  .msg.no{background:var(--bad-bg);color:var(--bad);border:1px solid var(--coral);}
-  .note{margin-top:.7rem;font-size:.75rem;color:var(--faint);}
-  a{color:var(--accent-ink);}
+  .out .i{font-style:italic;}
+  .msg{font-size:.75rem;padding:.625rem .75rem;border-radius:.5rem;white-space:pre-wrap;}
+  .msg.no{background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.3);}
+  .msg.ok{background:rgba(16,185,129,.12);color:var(--emerald);border:1px solid rgba(16,185,129,.3);}
 </style>
 </head>
 <body>
 
-<aside>
-  <div class="who">
-    <div class="av" id="av">–</div>
-    <div><div class="n" id="who">—</div><div class="p" id="num">—</div></div>
+<div class="window">
+  <div class="titlebar">
+    <div class="lights">
+      <i></i><i></i><i></i>
+      <div class="brand"><div class="ad">AD</div><span>AgentDuet</span></div>
+    </div>
+    <div class="linebadge" id="lineBadge">
+      <span class="dot"></span><span class="l">Power Mobile Line:</span>
+      <span class="v" id="lineNum">—</span>
+    </div>
+    <button class="tbtn on" id="toSettings">
+      <span class="material-symbols-rounded" style="font-size:.875rem">settings</span>
+      <span>Settings</span></button>
   </div>
 
-  <div class="navlabel">Main Control</div>
-  <nav>
-    <button data-v="overview" class="on"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>Overview</button>
-    <button data-v="record-call"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h3l1.5 4-2 1.5a12 12 0 0 0 6 6l1.5-2 4 1.5v3a2 2 0 0 1-2.2 2A17 17 0 0 1 3.5 5.7 2 2 0 0 1 5.5 3.5Z"/></svg>Record Call</button>
-    <button data-v="transcribe"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2M7 8v8M11 4v16M15 8v8M19 11v2"/></svg>Transcribe Call</button>
-    <button data-v="record-message"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a7 7 0 0 1-7 7H8l-4 3v-4.2A7 7 0 0 1 11 5h2a7 7 0 0 1 7 7Z"/></svg>Record Message</button>
-    <button data-v="connect-ai"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4"/><circle cx="12" cy="3" r="1.3"/><path d="M2 13v3M22 13v3"/><circle cx="9" cy="13.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="13.5" r="1.1" fill="currentColor" stroke="none"/><path d="M9.5 17h5"/></svg>Connect AI</button>
-  </nav>
+  <div class="app">
+    <aside>
+      <div style="display:flex;flex-direction:column;gap:1rem">
+        <div class="prof">
+          <div class="av" id="av">–</div>
+          <div style="min-width:0;flex:1">
+            <div class="n" id="who">—</div>
+            <div class="p" id="phone">—</div>
+          </div>
+        </div>
+        <div>
+          <div class="navlab">Main Control</div>
+          <nav>
+            <button data-v="overview" class="on">
+              <span class="material-symbols-rounded">grid_view</span><span>Overview</span></button>
+            <button data-v="record-call">
+              <span class="material-symbols-rounded">call</span><span>Record Call</span></button>
+            <button data-v="transcribe">
+              <span class="material-symbols-rounded">graphic_eq</span><span>Transcribe Call</span></button>
+            <button data-v="record-message">
+              <span class="material-symbols-rounded">chat_bubble</span><span>Record Message</span></button>
+            <button data-v="connect-ai">
+              <span class="material-symbols-rounded">smart_toy</span><span>Connect AI</span></button>
+          </nav>
+        </div>
+      </div>
+      <div class="store">
+        <div class="r"><span>Storage:</span><a href="#" id="toSettings2">Change</a></div>
+        <div class="path" id="store">—</div>
+      </div>
+    </aside>
 
-  <div class="store">
-    Storage
-    <code id="store">—</code>
-    <a href="#" id="toSettings">Change</a> ·
-    <a href="#" id="toSecretary">Secretary</a>
+    <main>
+      <!-- OVERVIEW -->
+      <div class="tab on" id="t-overview">
+        <div class="thead">
+          <div>
+            <h1>Service Status Overview</h1>
+            <p class="sub" id="ovSub">…</p>
+          </div>
+          <span class="pill" id="ovPill"><span class="dot"></span>…</span>
+        </div>
+        <div class="svcs" id="ovRows"></div>
+      </div>
+
+      <!-- RECORD CALL -->
+      <div class="tab" id="t-record-call">
+        <div>
+          <h1>Record Call</h1>
+          <p class="sub">Manage audio saving rules and browse locally recorded calls.</p>
+        </div>
+        <div class="card">
+          <div class="row">
+            <div class="lbl">Record Calls</div>
+            <label class="sw"><input type="checkbox" data-svc="record_call"><span class="track"></span></label>
+          </div>
+        </div>
+        <div class="card">
+          <div class="row">
+            <span class="lbl3">Recorded Calls Directory</span>
+            <button class="link" id="openCalls">Open in Finder ↗</button>
+          </div>
+          <div class="files" id="fCalls"></div>
+        </div>
+        <div id="mCalls"></div>
+      </div>
+
+      <!-- TRANSCRIBE -->
+      <div class="tab" id="t-transcribe">
+        <div>
+          <h1>Transcribe Call</h1>
+          <p class="sub">Runs speech-to-text directly on your Mac using Apple Neural Engine.</p>
+        </div>
+        <div class="card">
+          <div class="row" style="border-bottom:1px solid var(--line);padding-bottom:1rem">
+            <div class="lbl">Transcribe Calls</div>
+            <label class="sw"><input type="checkbox" data-svc="transcribe"><span class="track"></span></label>
+          </div>
+          <div>
+            <label class="fl">Select Local Whisper Model</label>
+            <select id="quality">
+              <option value="fast">Whisper Base (142 MB - Fastest)</option>
+              <option value="balanced">Whisper Small (464 MB - Fast &amp; Recommended)</option>
+              <option value="accurate">Whisper Medium (1.5 GB - Multilingual)</option>
+              <option value="max">Whisper Large v3 (2.9 GB - Best)</option>
+            </select>
+          </div>
+          <div class="banner" id="offline">
+            <span>● Offline Mode Guaranteed</span><span class="m">100% On-Device</span>
+          </div>
+          <div id="mStt"></div>
+        </div>
+        <div class="card">
+          <div class="row">
+            <span class="lbl3">Transcription Test Engine</span>
+            <button class="btn" id="doTest">Test Local Transcription</button>
+          </div>
+          <div class="out" id="testOut"><span class="i">Click "Test Local Transcription" to
+            check the engine…</span></div>
+        </div>
+      </div>
+
+      <!-- RECORD MESSAGE -->
+      <div class="tab" id="t-record-message">
+        <div>
+          <h1>Record Message</h1>
+          <p class="sub">Archive incoming and outgoing SMS &amp; mobile messages locally.</p>
+        </div>
+        <div class="card">
+          <div class="row">
+            <div class="lbl">Record Messages</div>
+            <label class="sw"><input type="checkbox" data-svc="record_message"><span class="track"></span></label>
+          </div>
+        </div>
+        <div class="card">
+          <div class="row">
+            <span class="lbl3">Message Logs Directory</span>
+            <button class="link" id="openMsgs">Open in Finder ↗</button>
+          </div>
+          <div class="files" id="fMsgs"></div>
+        </div>
+        <div id="mMsgs"></div>
+      </div>
+
+      <!-- CONNECT AI -->
+      <div class="tab" id="t-connect-ai">
+        <div>
+          <h1>Connect AI</h1>
+          <p class="sub">Pass call transcripts to cloud providers for smart action items &amp;
+            summaries.</p>
+        </div>
+        <div class="card">
+          <div class="row">
+            <div class="lbl">Connect AI Service</div>
+            <label class="sw"><input type="checkbox" data-svc="connect_ai"><span class="track"></span></label>
+          </div>
+          <div>
+            <label class="fl">AI Provider</label>
+            <select id="model"></select>
+          </div>
+          <div>
+            <label class="fl">Enter API Key</label>
+            <div style="display:flex;gap:.5rem">
+              <input id="key" type="password" placeholder="paste a key" autocomplete="off">
+              <button class="btn" id="doModel" style="flex-shrink:0">Verify Key</button>
+            </div>
+          </div>
+          <div id="mModel"></div>
+        </div>
+      </div>
+    </main>
   </div>
-</aside>
-
-<main>
-  <!-- ---- overview ---- -->
-  <section class="panel on" id="p-overview">
-    <h1><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>Service Status Overview</h1>
-    <p class="lede" id="ovLede">…</p>
-    <div style="margin-top:.7rem"><span class="pill" id="ovPill"><i></i>…</span></div>
-
-    <div class="rows" id="ovRows"></div>
-    <p class="note">A call is either carried to you or answered for you — never both. One
-      connector has one handler.</p>
-  </section>
-
-  <!-- ---- record call ---- -->
-  <section class="panel" id="p-record-call">
-    <h1><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h3l1.5 4-2 1.5a12 12 0 0 0 6 6l1.5-2 4 1.5v3a2 2 0 0 1-2.2 2A17 17 0 0 1 3.5 5.7 2 2 0 0 1 5.5 3.5Z"/></svg>Record Call</h1>
-    <p class="lede">Manage audio saving rules and browse locally recorded calls.</p>
-    <div class="card">
-      <div class="row" style="border:0;padding:0;cursor:default">
-        <div class="t"><b>Record Calls</b><span>Both sides are saved to this machine.</span></div>
-        <label class="sw"><input type="checkbox" data-svc="record_call"><i></i></label>
-      </div>
-    </div>
-    <div class="card">
-      <h3>Recorded Calls Directory</h3>
-      <div class="dir"><code id="dirCalls">—</code></div>
-      <table><thead><tr><th>File Name</th><th>Type &amp; Size</th></tr></thead>
-        <tbody id="tCalls"></tbody></table>
-      <div class="empty" id="eCalls" hidden>Nothing recorded yet.</div>
-    </div>
-    <div id="mCalls"></div>
-  </section>
-
-  <!-- ---- transcribe ---- -->
-  <section class="panel" id="p-transcribe">
-    <h1><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2M7 8v8M11 4v16M15 8v8M19 11v2"/></svg>Transcribe Call</h1>
-    <p class="lede">Runs speech-to-text directly on your Mac using Apple Neural Engine.</p>
-    <div class="card">
-      <div class="row" style="border:0;padding:0;cursor:default">
-        <div class="t"><b>Transcribe Calls</b><span>After the call, on a queue.</span></div>
-        <label class="sw"><input type="checkbox" data-svc="transcribe"><i></i></label>
-      </div>
-      <label>Select Local Whisper Model
-        <select id="quality">
-          <option value="fast">Whisper Base (142 MB — fastest)</option>
-          <option value="balanced">Whisper Small (464 MB — fast &amp; recommended)</option>
-          <option value="accurate">Whisper Medium (1.5 GB — multilingual)</option>
-          <option value="max">Whisper Large v3 (2.9 GB — best)</option>
-        </select></label>
-      <button class="act" id="saveQuality">Save</button>
-      <button class="act ghost" id="doStt" hidden>Download it now</button>
-      <div class="badge" id="offline">● Offline Mode Guaranteed — 100% On-Device</div>
-      <div id="mStt"></div>
-    </div>
-    <div class="card">
-      <h3>Transcription Test Engine</h3>
-      <button class="act" id="doTest">Test Local Transcription</button>
-      <div id="mTest"></div>
-    </div>
-  </section>
-
-  <!-- ---- record message ---- -->
-  <section class="panel" id="p-record-message">
-    <h1><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a7 7 0 0 1-7 7H8l-4 3v-4.2A7 7 0 0 1 11 5h2a7 7 0 0 1 7 7Z"/></svg>Record Message</h1>
-    <p class="lede">Archive incoming and outgoing SMS &amp; mobile messages locally.</p>
-    <div class="card">
-      <div class="row" style="border:0;padding:0;cursor:default">
-        <div class="t"><b>Record Messages</b><span>Saved as logs beside your calls.</span></div>
-        <label class="sw"><input type="checkbox" data-svc="record_message"><i></i></label>
-      </div>
-    </div>
-    <div class="card">
-      <h3>Message Logs Directory</h3>
-      <div class="dir"><code id="dirMsgs">—</code></div>
-      <table><thead><tr><th>File Name</th><th>Type &amp; Size</th></tr></thead>
-        <tbody id="tMsgs"></tbody></table>
-      <div class="empty" id="eMsgs" hidden>Nothing archived yet.</div>
-    </div>
-    <div id="mMsgs"></div>
-  </section>
-
-  <!-- ---- connect ai ---- -->
-  <section class="panel" id="p-connect-ai">
-    <h1><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4"/><circle cx="12" cy="3" r="1.3"/><path d="M2 13v3M22 13v3"/><circle cx="9" cy="13.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="13.5" r="1.1" fill="currentColor" stroke="none"/><path d="M9.5 17h5"/></svg>Connect AI</h1>
-    <p class="lede">Pass call transcripts to cloud providers for smart action items &amp;
-      summaries.</p>
-    <div class="card">
-      <div class="row" style="border:0;padding:0;cursor:default">
-        <div class="t"><b>Connect AI Service</b><span id="aiState">…</span></div>
-        <label class="sw"><input type="checkbox" data-svc="connect_ai"><i></i></label>
-      </div>
-      <label>AI Provider <select id="model"></select></label>
-      <label>Enter API Key <input id="key" type="password" placeholder="paste a key"
-        autocomplete="off"></label>
-      <button class="act" id="doModel">Verify Key</button>
-      <div id="mModel"></div>
-      <p class="note">The key is kept in this machine's .env, readable only by you.</p>
-    </div>
-  </section>
-</main>
+</div>
 
 <script>
-  // One early throw silently unwires every handler below it, and a webview has no console —
-  // so errors go to a path that does not exist and land in the access log.
   window.onerror = function (m, src, line, col) {
     try { new Image().src = '/__jserr?m=' + encodeURIComponent(m) + '&line=' + line; } catch (e) {}
   };
@@ -257,53 +362,47 @@
 
   function view(v){
     document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
-    document.querySelectorAll('section.panel').forEach(s => s.classList.toggle('on', s.id === 'p' + '-' + v));
-    window.scrollTo({top: 0});
+    document.querySelectorAll('.tab').forEach(s => s.classList.toggle('on', s.id === 't-' + v));
   }
   document.querySelectorAll('nav button').forEach(b => { b.onclick = () => view(b.dataset.v); });
-  $('toSettings').onclick = e => { e.preventDefault(); location.href = '/settings?t=' + T; };
-  $('toSecretary').onclick = e => { e.preventDefault(); location.href = '/secretary?t=' + T; };
+  const toSettings = e => { e.preventDefault(); location.href = '/settings?t=' + T; };
+  $('toSettings').onclick = toSettings;
+  $('toSettings2').onclick = toSettings;
 
-  // THE FOUR SERVICES, in the design's order. `real` says whether the switch does anything —
-  // two of them have nothing behind them yet, and a switch that lights up while changing
-  // nothing is the one thing a stub must never do.
-  const ICON = {
-    call: '<path d="M6.5 3.5h3l1.5 4-2 1.5a12 12 0 0 0 6 6l1.5-2 4 1.5v3a2 2 0 0 1-2.2 2A17 17 0 0 1 3.5 5.7 2 2 0 0 1 5.5 3.5Z"/>',
-    wave: '<path d="M3 11v2M7 8v8M11 4v16M15 8v8M19 11v2"/>',
-    chat: '<path d="M20 12a7 7 0 0 1-7 7H8l-4 3v-4.2A7 7 0 0 1 11 5h2a7 7 0 0 1 7 7Z"/>',
-    bot:  '<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4"/><circle cx="12" cy="3" r="1.3"/><path d="M2 13v3M22 13v3"/><circle cx="9" cy="13.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="13.5" r="1.1" fill="currentColor" stroke="none"/><path d="M9.5 17h5"/>',
-  };
-  const glyph = k => `<svg class="rowic" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-    stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
-
+  // The four services in the design's order. `real` says whether the switch does anything —
+  // two have nothing behind them yet, and a switch that lights up while changing nothing is
+  // the one thing a stub must never do.
   const SERVICES = [
-    ['record_call',    'Record Call',     'record-call',    'Both sides of a carried call.',   'call'],
-    ['transcribe',     'Transcribe Call', 'transcribe',     'Speech to text, on this machine.','wave'],
-    ['record_message', 'Record Message',  'record-message', 'SMS and mobile messages.',        'chat'],
-    ['connect_ai',     'Connect AI',      'connect-ai',     'Summaries from a cloud model.',   'bot'],
+    ['record_call',    'Record Call',     'record-call',    'call'],
+    ['transcribe',     'Transcribe Call', 'transcribe',     'graphic_eq'],
+    ['record_message', 'Record Message',  'record-message', 'chat_bubble'],
+    ['connect_ai',     'Connect AI',      'connect-ai',     'smart_toy'],
   ];
 
   let D = {};
   function rows(){
-    $('ovRows').innerHTML = SERVICES.map(([k, label, v, sub, ic]) => {
-      const s = (D.services || {})[k] || {};
-      return `<div class="row" data-go="${v}">
-        ${glyph(ic)}
-        <div class="t"><b>${label}</b><span>${esc(sub)}</span></div>
-        <label class="sw" data-stop="1">
-          <input type="checkbox" data-svc="${k}" ${s.on ? 'checked' : ''}><i></i></label>
+    $('ovRows').innerHTML = SERVICES.map(([k, label, v, ic]) => {
+      const on = (((D.services || {})[k]) || {}).on;
+      return `<div class="svc">
+        <div class="go" data-go="${v}">
+          <div class="tile"><span class="material-symbols-rounded">${ic}</span></div>
+          <div><div class="titlerow"><h3>${label}</h3>
+            <span class="tag ${on ? '' : 'off'}">${on ? 'Enabled' : 'Disabled'}</span></div></div>
+        </div>
+        <label class="sw"><input type="checkbox" data-svc="${k}" ${on ? 'checked' : ''}>
+          <span class="track"></span></label>
       </div>`;
     }).join('');
-    $('ovRows').querySelectorAll('.row').forEach(r => {
-      r.onclick = e => { if (!e.target.closest('[data-stop]')) view(r.dataset.go); };
+    $('ovRows').querySelectorAll('[data-go]').forEach(el => {
+      el.onclick = () => view(el.dataset.go);
     });
-    wireSwitches();
+    switches();
   }
 
-  function wireSwitches(){
+  function switches(){
     document.querySelectorAll('input[data-svc]').forEach(el => {
-      const k = el.dataset.svc, s = (D.services || {})[k] || {};
-      el.checked = !!s.on;
+      const k = el.dataset.svc;
+      el.checked = !!(((D.services || {})[k]) || {}).on;
       el.onchange = async () => {
         if (k === 'record_call') {
           const d = await post('/api/setup/setting',
@@ -312,8 +411,6 @@
           load();
           return;
         }
-        // NOT BUILT. Put the switch back rather than leaving it lit — see CLAUDE.md on
-        // reading the mockup as intent: the panel stays, the pretence does not.
         el.checked = !el.checked;
         const where = {transcribe: 'mStt', record_message: 'mMsgs', connect_ai: 'mModel'}[k];
         if (where) say(where, false, 'Switching this service on and off is not built yet.');
@@ -321,41 +418,34 @@
     });
   }
 
-  function table(tb, empty, files){
-    const rowsHtml = (files || []).map(f =>
-      `<tr><td class="f">${esc(f.name)}</td><td class="s">${esc(f.kind)} (${kb(f.bytes)})</td></tr>`
+  function files(box, list){
+    const rowsHtml = (list || []).map(f =>
+      `<div class="f"><span>${esc(f.name)}</span><span>${esc(f.kind)} (${kb(f.bytes)})</span></div>`
     ).join('');
-    $(tb).innerHTML = rowsHtml;
-    $(empty).hidden = !!rowsHtml;
+    $(box).innerHTML = '<div class="h"><span>File Name</span><span>Type &amp; Size</span></div>'
+      + (rowsHtml || '<div class="none">Nothing here yet.</div>');
   }
 
   async function load(){
     D = await fetch(`/api/panel?t=${T}`).then(r => r.json()).catch(() => ({}));
-    const nm = D.name || 'Not signed in';
-    $('who').textContent = nm;
-    $('av').textContent = (D.name || '?').split(/\s+/).map(w => w[0] || '').join('').slice(0, 2).toUpperCase() || '–';
-    $('num').textContent = D.phone || '—';
+    $('who').textContent = D.name || 'Not signed in';
+    $('av').textContent = (D.name || '?').split(/\s+/).map(w => w[0] || '')
+      .join('').slice(0, 2).toUpperCase() || '–';
+    $('phone').textContent = D.phone || '—';
     $('store').textContent = D.storage || '—';
-    $('dirCalls').textContent = (D.dirs || {}).calls || '—';
-    $('dirMsgs').textContent = (D.dirs || {}).calls || '—';
+    if (D.phone) { $('lineNum').textContent = D.phone; $('lineBadge').classList.add('on'); }
 
     const live = ['live', 'connecting', 'retrying'].indexOf(D.channel) >= 0;
     $('ovPill').className = 'pill' + (live ? '' : ' off');
-    $('ovPill').innerHTML = '<i></i>' + (live ? 'Service Active' : 'Not connected');
-    $('ovLede').textContent = live
+    $('ovPill').innerHTML = '<span class="dot"></span>' + (live ? 'Service Active' : 'Not connected');
+    $('ovSub').textContent = live
       ? 'AgentDuet is active and listening for Power Mobile call events.'
       : 'No connector yet, so no calls arrive. Add one in Settings.';
 
     rows();
-    // The answered folder is where an ANSWERED call lands; carried calls land beside it. Both
-    // are shown under Record Call because to the owner they are simply "my calls".
-    table('tCalls', 'eCalls', [...((D.files || {}).calls || []), ...((D.files || {}).answered || [])]);
-    table('tMsgs', 'eMsgs', (D.files || {}).messages);
-
+    files('fCalls', [...((D.files || {}).calls || []), ...((D.files || {}).answered || [])]);
+    files('fMsgs', (D.files || {}).messages);
     if ((D.stt || {}).quality) $('quality').value = D.stt.quality;
-    $('doStt').hidden = !!(D.stt || {}).cached || (D.stt || {}).engine !== 'local';
-    $('offline').hidden = (D.stt || {}).engine !== 'local';
-    $('aiState').textContent = (D.model || {}).describe || 'No key attached.';
 
     const sel = $('model');
     if (!sel.options.length) {
@@ -366,18 +456,30 @@
   }
   load();
 
-  $('saveQuality').onclick = async () => {
+  $('quality').onchange = async () => {
     const d = await post('/api/setup/setting', {field: 'transcription', value: $('quality').value});
     say('mStt', d.ok, d.message);
     load();
   };
-  $('doStt').onclick = async () => {
-    $('doStt').hidden = true;
-    await post('/api/setup/stt', {});
-    say('mStt', true, 'Downloading in the background. It keeps going if you leave this page.');
+  $('openCalls').onclick = () => say('mCalls', false,
+    'Opening the folder needs a native call this page cannot make yet. The path is in the sidebar.');
+  $('openMsgs').onclick = () => say('mMsgs', false,
+    'Opening the folder needs a native call this page cannot make yet.');
+
+  $('doTest').onclick = async () => {
+    $('testOut').textContent = 'Checking the engine…';
+    const d = await fetch(`/api/setup/stt?t=${T}`).then(r => r.json()).catch(() => ({}));
+    if (!d.installed) { $('testOut').textContent = 'The on-machine engine is not in this build.'; return; }
+    if (!d.needed) { $('testOut').textContent = 'A model key is attached, so the hosted engine transcribes.'; return; }
+    if (!d.cached) {
+      $('testOut').textContent = `${d.model} is not downloaded yet (about ${d.mb} MB).\n`
+        + 'It fetches itself at the first transcription. Downloading now…';
+      await post('/api/setup/stt', {});
+      return;
+    }
+    $('testOut').textContent = `${d.model} is downloaded and ready on this machine.\n`
+      + 'Running it on a sample is not built yet — it runs after a real call, on a queue.';
   };
-  $('doTest').onclick = () => say('mTest', false,
-    'The test engine is not built yet. Transcription itself runs after a real call.');
 
   $('doModel').onclick = async () => {
     const key = $('key').value.trim();

@@ -4,154 +4,200 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Set up AgentDuet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
 <style>
+  /* Values taken from the mockup's Tailwind config and classes, written out as plain CSS.
+     Tailwind arrives from a CDN there; this app has to open on a machine with no network. */
   :root{
-    --ink:#101418; --paper:#f6f7f8; --surface:#fff; --line:#e2e6ea; --line2:#eef1f4;
-    --muted:#5b6675; --faint:#8b96a3;
-    --accent:#00b2ff; --accent-ink:#0077b0; --coral:#f0523d;
-    --good:#1a7f5a; --good-bg:#e8f5ef; --bad:#b3261e; --bad-bg:#fff1ee;
-    --sans:"SF Pro Display",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
-  }
-  @media (prefers-color-scheme:dark){
-    :root{--ink:#eef3f7;--paper:#0f1419;--surface:#161d24;--line:#242e38;--line2:#1c242c;
-      --muted:#93a6b5;--faint:#6b7c8a;--accent-ink:#4cc7ff;--good:#4ade9e;--good-bg:#13322a;--bad:#ffb4a8;--bad-bg:#2a1512;}
+    --bg:#18181b; --sidebar:#121215; --card:#242429; --line:#33333b; --accent:#2563eb;
+    --page:#020617; --slate900:#0f172a; --slate800:#1e293b; --slate700:#334155;
+    --ink:#f1f5f9; --ink2:#e2e8f0; --muted:#94a3b8; --faint:#64748b;
+    --blue300:#93c5fd; --blue400:#60a5fa; --emerald:#34d399;
+    --sans:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
   }
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:var(--sans);background:var(--surface);color:var(--ink);
-    -webkit-font-smoothing:antialiased;line-height:1.5;
-    /* CENTRED, because setup is a short window and not a document. min-height rather than
-       height so a long message still scrolls instead of being clipped. */
-    display:flex;align-items:center;justify-content:center;min-height:100vh;}
-  .wrap{max-width:44rem;margin:0;padding:2.4rem 1.3rem;}
-  h1{font-size:1.6rem;font-weight:780;letter-spacing:-.02em;}
-  .lede{color:var(--muted);margin-top:.5rem;}
+  ::-webkit-scrollbar{width:6px;height:6px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:9999px;}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.3);}
+  .material-symbols-rounded{font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24;
+    font-family:"Material Symbols Rounded";font-weight:normal;font-style:normal;
+    line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;
+    white-space:nowrap;word-wrap:normal;direction:ltr;-webkit-font-feature-settings:'liga';
+    -webkit-font-smoothing:antialiased;user-select:none;}
 
-  .steps{display:flex;gap:.4rem;margin:1.7rem 0 1.7rem;font-family:var(--mono);font-size:.62rem;
-    letter-spacing:.1em;text-transform:uppercase;}
-  .steps div{flex:1;padding:.35rem .2rem .45rem;text-align:center;color:var(--faint);
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;
-    border-bottom:2px solid var(--line);transition:color .12s,border-color .12s;}
-  .steps div:hover{color:var(--muted);}
-  .steps div.on{color:var(--accent-ink);border-bottom-color:var(--accent);font-weight:700;}
-  .steps div.done{color:var(--good);border-bottom-color:var(--good);}
+  body{background:var(--page);color:var(--ink);font-family:var(--sans);height:100vh;
+    overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:1.5rem;user-select:none;-webkit-font-smoothing:antialiased;}
+  .window{width:100%;max-width:64rem;height:90vh;max-height:850px;background:var(--bg);
+    border-radius:1rem;border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;
+    overflow:hidden;position:relative;
+    box-shadow:0 25px 60px -15px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.08);}
 
-  section.card{background:transparent;border:0;padding:0;display:none;text-align:center;}
-  section.card.on{display:block;}
-  h2{font-size:1.24rem;font-weight:760;letter-spacing:-.01em;}
-  .hint{color:var(--muted);font-size:.9rem;margin-top:.4rem;}
-  label{display:block;margin-top:1.1rem;font-size:.88rem;font-weight:650;}
-  label .sm{display:block;font-weight:400;color:var(--muted);font-size:.83rem;margin-top:.15rem;}
-  input,textarea,select{width:100%;font:inherit;font-size:.94rem;margin-top:.4rem;
-    padding:.55rem .7rem;border:1px solid var(--line);border-radius:9px;
-    background:var(--paper);color:var(--ink);text-align:left;}
-  label{text-align:left;}
-  textarea{min-height:4.5rem;resize:vertical;}
-  .row{display:flex;gap:.6rem;align-items:flex-end;}
-  .row > *{flex:1;}
-  button{font:inherit;font-size:.92rem;font-weight:700;padding:.6rem 1.15rem;border:0;
-    border-radius:10px;background:var(--accent-ink);color:#fff;cursor:pointer;}
-  button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);}
-  button:disabled{opacity:.45;cursor:default;}
-  .acts{display:flex;gap:.6rem;align-items:center;margin-top:1.5rem;}
-  .acts .sp{flex:1;}
-  .state{margin-top:.9rem;padding:.75rem .9rem;border-radius:10px;background:var(--line2);
-    color:var(--muted);font-size:.88rem;line-height:1.55;}
-  .state code{font-family:var(--mono);font-size:.8rem;color:var(--ink);word-break:break-all;}
-  .state .note{display:block;margin-top:.35rem;color:var(--faint);font-size:.82rem;}
+  .titlebar{height:2.75rem;background:var(--sidebar);border-bottom:1px solid var(--line);
+    padding:0 1rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+  .lights{display:flex;align-items:center;gap:.5rem;}
+  .lights i{width:.75rem;height:.75rem;border-radius:50%;display:block;}
+  .lights i:nth-child(1){background:#ef4444;} .lights i:nth-child(2){background:#eab308;}
+  .lights i:nth-child(3){background:#22c55e;}
+  .brand{margin-left:.75rem;padding-left:.5rem;border-left:1px solid rgba(255,255,255,.1);
+    display:flex;align-items:center;gap:.5rem;}
+  .brand .ad{width:1.25rem;height:1.25rem;border-radius:.375rem;background:var(--accent);
+    color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;
+    font-weight:900;}
+  .brand span{font-size:.75rem;font-weight:600;color:#cbd5e1;}
+  .linebadge{display:none;align-items:center;gap:.5rem;padding:.25rem .75rem;border-radius:999px;
+    background:var(--slate900);border:1px solid rgba(255,255,255,.1);font-size:.75rem;}
+  .linebadge.on{display:flex;}
+  .linebadge .dot{width:.5rem;height:.5rem;border-radius:50%;background:var(--emerald);
+    animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite;}
+  .linebadge .l{color:var(--muted);font-size:11px;}
+  .linebadge .v{font-family:var(--mono);color:var(--emerald);font-weight:600;font-size:11px;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .tbtn{font:inherit;font-size:.75rem;padding:.25rem .625rem;border-radius:.5rem;
+    background:var(--slate800);color:#cbd5e1;border:1px solid rgba(255,255,255,.1);
+    cursor:pointer;display:none;align-items:center;gap:.25rem;}
+  .tbtn.on{display:flex;}
+  .tbtn:hover{background:var(--slate700);}
 
-  .pick{display:block;margin-top:.7rem;padding:.8rem .9rem;border:1px solid var(--line);
-    border-radius:11px;font-weight:400;font-size:.92rem;cursor:pointer;
-    transition:border-color .12s,background .12s;}
-  .pick:hover{border-color:var(--faint);}
-  .pick:has(input:checked){border-color:var(--accent-ink);background:var(--line2);}
-  .pick input{width:auto;margin:0 .5rem 0 0;accent-color:var(--accent-ink);}
-  .pick b{font-weight:680;}
-  .pick .sm{display:block;margin:.3rem 0 0 1.45rem;color:var(--faint);font-size:.82rem;}
+  /* ---- login ---- */
+  .view{flex:1;display:none;flex-direction:column;align-items:center;justify-content:center;
+    padding:2rem;}
+  .view.on{display:flex;}
+  #v-login{text-align:center;gap:1.5rem;}
+  .glyph{width:5rem;height:5rem;border-radius:1.5rem;background:rgba(37,99,235,.2);
+    color:var(--blue400);border:1px solid rgba(59,130,246,.3);display:flex;align-items:center;
+    justify-content:center;box-shadow:0 25px 50px -12px rgba(0,0,0,.25);}
+  .glyph .material-symbols-rounded{font-size:2.25rem;}
+  .head{max-width:24rem;display:flex;flex-direction:column;gap:.5rem;}
+  h1{font-size:1.5rem;font-weight:700;color:var(--ink);}
+  .sub{font-size:.75rem;color:var(--muted);line-height:1.625;}
+  .ssos{width:100%;max-width:20rem;display:flex;flex-direction:column;gap:.75rem;padding-top:.5rem;}
+  .sso{width:100%;padding:.625rem 1rem;border-radius:.75rem;font:inherit;font-size:.75rem;
+    font-weight:600;display:flex;align-items:center;justify-content:center;gap:.5rem;
+    cursor:pointer;border:1px solid rgba(255,255,255,.1);background:var(--slate900);
+    color:var(--ink2);transition:background .12s;}
+  .sso:hover{background:var(--slate800);}
+  .sso.apple{background:#fff;color:#000;border-color:transparent;
+    box-shadow:0 4px 6px -1px rgba(0,0,0,.1);}
+  .sso.apple:hover{background:#f1f5f9;}
+  .sso svg{width:1rem;height:1rem;flex:0 0 1rem;}
+  .foot{font-size:11px;color:var(--faint);padding-top:1rem;}
 
-  .msg{margin-top:1rem;padding:.7rem .85rem;border-radius:10px;font-size:.9rem;
-    white-space:pre-wrap;}
-  .msg.ok{background:var(--good-bg);color:var(--good);border:1px solid var(--good);}
-  .msg.no{background:var(--bad-bg);color:var(--bad);border:1px solid var(--coral);}
-  a{color:var(--accent-ink);}
-
-                      .spin{font-family:var(--mono);font-size:.8rem;color:var(--faint);}
+  /* ---- quick setup ---- */
+  .panel{width:100%;max-width:28rem;background:var(--card);border:1px solid var(--line);
+    border-radius:1rem;padding:1.5rem;display:flex;flex-direction:column;gap:1.25rem;
+    text-align:left;box-shadow:0 20px 25px -5px rgba(0,0,0,.3);}
+  .ptop{display:flex;align-items:center;gap:.75rem;border-bottom:1px solid var(--line);
+    padding-bottom:1rem;}
+  .ptop .tile{width:2.5rem;height:2.5rem;border-radius:.75rem;background:rgba(37,99,235,.2);
+    color:var(--blue400);border:1px solid rgba(59,130,246,.3);display:flex;align-items:center;
+    justify-content:center;flex:0 0 2.5rem;}
+  .ptop h2{font-size:1rem;font-weight:700;color:var(--ink);}
+  .ptop p{font-size:.75rem;color:var(--muted);}
+  .field{display:flex;flex-direction:column;gap:.5rem;}
+  label{font-size:.75rem;font-weight:600;color:#cbd5e1;}
+  .frow{display:flex;gap:.5rem;}
+  input[type=text]{flex:1;font-family:var(--mono);font-size:.75rem;background:var(--page);
+    border:1px solid var(--line);border-radius:.5rem;padding:.625rem;color:var(--ink2);}
+  .browse{padding:.5rem .75rem;background:var(--slate800);color:#fff;border-radius:.5rem;
+    font:inherit;font-size:.75rem;font-weight:500;border:1px solid rgba(255,255,255,.1);
+    display:flex;align-items:center;gap:.25rem;flex-shrink:0;cursor:pointer;}
+  .browse:hover{background:var(--slate700);}
+  .browse .material-symbols-rounded{font-size:.875rem;}
+  .numcard{padding:1rem;border-radius:.75rem;background:var(--slate900);border:1px solid var(--line);
+    display:flex;flex-direction:column;gap:.25rem;}
+  .numcard .k{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;
+    letter-spacing:.05em;}
+  .numcard .v{font-size:1.25rem;font-weight:700;font-family:var(--mono);color:var(--emerald);}
+  .go{width:100%;padding:.75rem;background:var(--accent);color:#fff;font:inherit;
+    font-size:.75rem;font-weight:600;border:0;border-radius:.75rem;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:.5rem;
+    box-shadow:0 10px 15px -3px rgba(0,0,0,.3);}
+  .go:hover{background:#3b82f6;}
+  .go .material-symbols-rounded{font-size:.875rem;}
+  .msg{font-size:.75rem;padding:.625rem .75rem;border-radius:.5rem;white-space:pre-wrap;}
+  .msg.no{background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.3);}
+  .msg.ok{background:rgba(16,185,129,.12);color:var(--emerald);border:1px solid rgba(16,185,129,.3);}
+  .quit{position:absolute;bottom:.6rem;left:0;right:0;text-align:center;font-size:11px;
+    color:var(--faint);}
+  .quit a{color:var(--faint);}
 </style>
-<style>
-  /* SIGN-IN is the first thing anyone sees, so the three providers are the page, not a row of
-     controls. Full width, stacked, equal weight — we do not know which one an owner has. */
-  .sso{display:flex;align-items:center;justify-content:center;gap:.55rem;width:100%;
-    margin-top:.6rem;padding:.75rem 1rem;background:var(--surface);color:var(--ink);
-    border:1px solid var(--line);font-weight:650;}
-  .sso:hover{border-color:var(--faint);}
-  .sso .g{font-family:var(--mono);font-size:.78rem;color:var(--faint);font-weight:400;}
-
-  /* THE CHEAT BLOCK. Visually separated because it is scaffolding, not product: everything in
-     here disappears the day sign-on works. Kept collapsed so it does not read as the main path.
-  */
-  details.dev{margin-top:1.6rem;border:1px dashed var(--line);border-radius:12px;
-    padding:.9rem 1rem;background:var(--line2);}
-  details.dev summary{cursor:pointer;font-weight:700;font-size:.9rem;color:var(--muted);}
-  details.dev .hint{font-size:.85rem;}
-  .fieldset{margin-top:1.1rem;padding-top:1.1rem;border-top:1px solid var(--line);}
-  .fieldset:first-of-type{border-top:0;padding-top:0;}
-
-  .mark{width:3.1rem;height:3.1rem;margin:0 auto 1rem;border-radius:16px;
-    background:var(--accent-ink);color:#fff;display:flex;align-items:center;justify-content:center;}
-  .mark svg{width:1.6rem;height:1.6rem;}
-  .sso svg{width:1.05rem;height:1.05rem;flex:0 0 1.05rem;}
-  .foot{margin-top:1.6rem;text-align:center;font-family:var(--mono);font-size:.68rem;
-    letter-spacing:.06em;color:var(--faint);}
-  .num{margin-top:.4rem;font-family:var(--mono);font-size:1.05rem;color:var(--ink);}
-  .quit{margin-top:1.6rem;text-align:center;font-size:.82rem;color:var(--faint);}
-  .quit a{color:var(--faint);text-decoration:underline;}
-  .wrap{max-width:30rem;}          /* an app window, not a document */
-</style>
-
 </head>
 <body>
-<div class="wrap">
 
-  <section class="card on" id="c1">
-    <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4"/><circle cx="12" cy="3" r="1.3"/><path d="M2 13v3M22 13v3"/><circle cx="9" cy="13.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="13.5" r="1.2" fill="currentColor" stroke="none"/><path d="M9.5 17h5"/></svg></div>
-    <h1>Welcome to AgentDuet</h1>
-    <p class="lede">On-device AI engine for your Power Mobile service. Please sign in to link
-      your desktop AI hub.</p>
+<div class="window">
+  <div class="titlebar">
+    <div class="lights">
+      <i></i><i></i><i></i>
+      <div class="brand"><div class="ad">AD</div><span>AgentDuet</span></div>
+    </div>
+    <div class="linebadge" id="lineBadge">
+      <span class="dot"></span><span class="l">Power Mobile Line:</span>
+      <span class="v" id="lineNum">—</span>
+    </div>
+    <div></div>
+  </div>
 
-    <button class="sso" data-p="Apple"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.3 12.8c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.8-3.5.8-.7 0-1.8-.8-3-.8-1.5 0-2.9.9-3.7 2.3-1.6 2.7-.4 6.8 1.1 9 .8 1.1 1.7 2.3 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7 2-1.1 2.8-2.2c.9-1.2 1.2-2.4 1.2-2.5 0 0-2.4-.9-2.4-3.6ZM14.2 5.9c.6-.8 1-1.9.9-3-.9 0-2 .6-2.7 1.4-.6.7-1.1 1.8-.9 2.9 1 .1 2-.5 2.7-1.3Z"/></svg>Continue with Apple</button>
-    <button class="sso" data-p="Google"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M21 12.2c0 5-3.6 8.3-8.7 8.3A8.5 8.5 0 1 1 12.3 3.5c2.3 0 4.2.85 5.7 2.24l-2.4 2.3a4.8 4.8 0 0 0-3.3-1.28 5.24 5.24 0 0 0 0 10.48c2.9 0 4.5-1.7 4.8-3.8h-4.8v-3h8.5c.1.5.2 1 .2 1.76Z"/></svg>Continue with Google</button>
-    <button class="sso" data-p="Microsoft"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/><rect x="13" y="13" width="8" height="8"/></svg>Continue with Microsoft</button>
+  <!-- VIEW 1 — sign in -->
+  <div class="view on" id="v-login">
+    <div class="glyph"><span class="material-symbols-rounded">smart_toy</span></div>
+    <div class="head">
+      <h1>Welcome to AgentDuet</h1>
+      <p class="sub">On-device AI engine for your Power Mobile service. Please sign in to link
+        your desktop AI hub.</p>
+    </div>
+    <div class="ssos">
+      <button class="sso apple" data-p="Apple">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 4.54c.64-.78 1.08-1.85.96-2.94-.93.04-2.09.62-2.75 1.4-.59.68-1.1 1.77-.96 2.84 1.04.08 2.11-.52 2.75-1.3"/></svg>
+        <span>Continue with Apple</span></button>
+      <button class="sso" data-p="Google">
+        <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+        <span>Continue with Google</span></button>
+      <button class="sso" data-p="Microsoft">
+        <svg viewBox="0 0 23 23"><path fill="#f35325" d="M1 1h10v10H1z"/><path fill="#81bc06" d="M12 1h10v10H12z"/><path fill="#05a6f0" d="M1 12h10v10H1z"/><path fill="#ffba08" d="M12 12h10v10H12z"/></svg>
+        <span>Continue with Microsoft</span></button>
+    </div>
     <div id="mSso"></div>
-
     <p class="foot">B3Networks Power Mobile AI Protocol • v1.0</p>
-  </section>
+  </div>
 
-  <section class="card" id="c2">
-    <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V6a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v1"/><path d="M3.4 10h17.2a1 1 0 0 1 .97 1.24l-1.8 7A1.5 1.5 0 0 1 18.3 19.5H5.2a1.5 1.5 0 0 1-1.46-1.14l-1.3-7A1 1 0 0 1 3.4 10Z"/></svg></div>
-    <h1>Quick Application Setup</h1>
-    <p class="lede">Select where recordings &amp; logs will be stored.</p>
+  <!-- VIEW 2 — quick setup -->
+  <div class="view" id="v-setup">
+    <div class="panel">
+      <div class="ptop">
+        <div class="tile"><span class="material-symbols-rounded">folder_open</span></div>
+        <div>
+          <h2>Quick Application Setup</h2>
+          <p>Select where recordings &amp; logs will be stored.</p>
+        </div>
+      </div>
 
-    <label>Data Storage Folder</label>
-    <div class="row">
-      <input id="folder" readonly>
-      <button class="ghost" id="doBrowse" style="flex:0 0 auto">Browse</button>
+      <div class="field">
+        <label>Data Storage Folder</label>
+        <div class="frow">
+          <input type="text" id="folder" readonly>
+          <button class="browse" id="doBrowse">
+            <span class="material-symbols-rounded">folder</span> Browse</button>
+        </div>
+      </div>
+
+      <div class="numcard">
+        <div class="k">Power Mobile</div>
+        <div class="v" id="num">—</div>
+      </div>
+
+      <button class="go" id="doDone"><span>Complete Setup &amp; Open Hub</span>
+        <span class="material-symbols-rounded">arrow_forward</span></button>
+      <div id="mDone"></div>
     </div>
+  </div>
 
-    <label style="margin-top:1.4rem">Power Mobile</label>
-    <div class="num" id="num">—</div>
-
-    <div class="acts">
-      <button id="doDone">Complete Setup &amp; Open Hub &nbsp;→</button>
-      <span class="spin" id="spDone"></span>
-    </div>
-    <div id="mDone"></div>
-  </section>
-
-  <!-- A WAY OUT. Not in the design, kept because closing the tab leaves the daemon running with
-       nothing on screen to say so, and the url carries a per-machine token — a closed tab is a
-       lost tab. Deliberately the quietest thing on the page. -->
   <p class="quit"><a href="#" id="doCancel">Quit</a> <span id="cancelWhat"></span></p>
-  <div id="mCancel"></div>
 </div>
 
 <script>
@@ -162,66 +208,54 @@
   const T = new URLSearchParams(location.search).get('t') || '';
   const $ = id => document.getElementById(id);
   const esc = s => (s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
-
-  function show(n){
-    [1, 2].forEach(i => $('c' + i).classList.toggle('on', i === n));
-    window.scrollTo({top: 0, behavior: 'smooth'});
-  }
-  function say(el, ok, text){
+  const say = (el, ok, text) =>
     $(el).innerHTML = `<div class="msg ${ok ? 'ok' : 'no'}">${esc(text)}</div>`;
-  }
   async function post(path, body){
-    const r = await fetch(`${path}?t=${T}`, {method: 'POST',
-      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    const r = await fetch(`${path}?t=${T}`, {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
     return r.json();
   }
+  function show(v){
+    ['login', 'setup'].forEach(k => $('v-' + k).classList.toggle('on', k === v));
+  }
 
-  // ---- sign in (stubbed) -------------------------------------------------------------------
-  // Everything sign-on will supply — connector, name, number — is configured in Settings, which
-  // is one screen inside the hub. Setup does NOT carry a copy of those fields: two places to
-  // type a connector is two places for it to be half-typed.
+  // Everything sign-on will supply — connector, name, number — is configured in Settings,
+  // inside the hub. Setup carries no copy: two places to type a connector is two places for
+  // it to be half-typed.
   let OAUTH = false;
   document.querySelectorAll('.sso').forEach(b => {
     b.onclick = () => {
       const who = b.dataset.p;
       if (OAUTH) { location.href = `/api/connector/signin?t=${T}&provider=` + encodeURIComponent(who); return; }
-      say('mSso', false, `Signing in with ${who} is not connected yet. `
-        + 'Continue, then finish in Settings.');
-      show(2);
+      say('mSso', false, `Signing in with ${who} is not connected yet. Continue, then finish in Settings.`);
+      show('setup');
     };
   });
 
-  async function load(){
-    const d = await fetch(`/api/setup/current?t=${T}`).then(r => r.json()).catch(() => ({}));
+  fetch(`/api/setup/current?t=${T}`).then(r => r.json()).then(d => {
     OAUTH = !!d.oauth_available;
     $('folder').value = d.carried_dir || '';
     $('num').textContent = d.phone || '—';
-  }
-  load();
+    if (d.phone) { $('lineNum').textContent = d.phone; $('lineBadge').classList.add('on'); }
+  }).catch(() => {});
 
-  // Choosing the folder needs a native picker this page does not have, and carry.RECORDINGS is
-  // a module constant besides. It says so rather than opening nothing.
   $('doBrowse').onclick = () => say('mDone', false,
     'Choosing the folder is not built yet. It is set by AGENTDUET_HOME.');
 
   $('doDone').onclick = async () => {
-    $('doDone').disabled = true; $('spDone').textContent = 'finishing…';
+    $('doDone').disabled = true;
     const d = await post('/api/handover', {});
-    $('spDone').textContent = '';
     $('doDone').disabled = false;
     if (d.ok) { location.href = '/?t=' + T; return; }
     say('mDone', false, d.message);
   };
 
-  // The same page is reachable on a CONFIGURED instance, where this process IS the daemon and
-  // stopping it takes it off the air. Read the channel and say which — a static "nothing is
-  // running yet" is a lie exactly when the consequence matters.
+  // The same page is reachable on a CONFIGURED instance, where this process IS the daemon.
   let onAir = false;
   fetch(`/api/state?t=${T}`).then(r => r.json()).then(st => {
     const c = (st && st.channel) || {};
     onAir = ['live', 'connecting', 'retrying'].indexOf(c.channel) >= 0;
-    $('cancelWhat').textContent = onAir
-      ? '— this machine is on the air.' : '';
+    $('cancelWhat').textContent = onAir ? '— this machine is on the air.' : '';
   }).catch(() => {});
 
   $('doCancel').onclick = async (e) => {
@@ -230,13 +264,8 @@
                        : 'Stop setup? Nothing is arriving yet.';
     if (!confirm(warn + '\n\nWhat you saved stays saved.')) return;
     try { await post('/api/quit', {}); } catch (e2) {}
-    document.body.innerHTML =
-      '<div style="font-family:var(--mono);font-size:.9rem;padding:2.5rem;color:var(--muted);'
-      + 'max-width:44rem;line-height:1.7">Stopped.<br><br>'
-      + (onAir ? 'Nothing reaches this machine until you start it again.<br><br>'
-               : 'Setup unfinished, so nothing reaches you yet.<br><br>')
-      + 'What you saved stays saved.<br>'
-      + 'Start again from the app icon, or <code>agentduet-desktop</code>.</div>';
+    document.body.innerHTML = '<div style="font-family:var(--mono);font-size:.8rem;'
+      + 'color:var(--muted);text-align:center">Stopped. What you saved stays saved.</div>';
   };
 </script>
 </body>
