@@ -34,6 +34,15 @@ folder, and four services — record calls, transcribe them, record messages, co
 summaries. Setup asks nothing about a model or an agent. The secretary is configured later, by
 someone who wants it, and is not on the path of a new install.
 
+**THE MOCKUP IS A SPEC OF INTENT, NOT A SET OF CLAIMS TO AUDIT.** When it shows something we
+have not built — single sign-on, SMS archiving, "Apple Neural Engine" — the answer is a STUB and
+a checklist item, not an edit to the design. **We are stub-first: the gap is the work, and the
+mockup is what says the work exists.** Quietly reworded to match today's implementation, the
+design stops being a target and becomes a description, and the thing we meant to build is lost
+without anyone deciding to drop it. A line comes out only when it is genuinely IMPOSSIBLE, and
+after a conversation with the team — never because one engineer found it inconvenient.
+(Written 2026-08-17 after I proposed rewording the Neural Engine claim to match faster-whisper.)
+
 **What this does NOT mean.** The secretary is not deleted and the invariants are not relaxed.
 `tests/test_rules.py` still enforces them, and the day an agent speaks on a call they all apply
 exactly as written. This is about which product a new install is, and what a recorder change has
@@ -208,19 +217,23 @@ Break one of these and the secretary is a different product.
 - **`chmod 0600` is a no-op on Windows.** The model key in `$AGENTDUET_HOME/.env` is unprotected there.
 - **Python ≥3.12** — the SDK requires it.
 
-- **Local STT is faster-whisper on the CPU, and the Apple Neural Engine is NOT reachable from
-  it** (checked 2026-08-17). CTranslate2, the runtime underneath, has CPU and CUDA backends
-  only — no Metal, no Core ML, no ANE. On a Mac it is CPU-only, so every measured number is a
-  CPU number and any UI claiming "Apple Neural Engine" is false. Reaching the ANE means
-  CHANGING ENGINE, not setting a flag: `whisper.cpp` with a Core ML encoder is the realistic
-  route, at the cost of a per-model `.mlmodelc` to generate and ship, a slow first-run compile
-  on the user's machine, and a C++ dependency in a binary whose packaging was just settled.
-  Apple's own `SpeechAnalyzer` uses the ANE with no download at all, but it is Apple's model
-  rather than Whisper, gated on macOS version, and Mac-only — Linux and Windows would still
-  need a second engine.
-  **Worth knowing when it is reconsidered:** we measured the ENCODER as the bottleneck on CPU,
-  which is why `large-v3-turbo` — decoder-pruned — bought nothing. Core ML accelerates the
-  encoder specifically, so this would target the real cost rather than the assumed one.
+- **Local STT is faster-whisper on the CPU. The Apple Neural Engine is an INTENTION, not yet
+  reachable** (checked 2026-08-17). CTranslate2, the runtime underneath, has CPU and CUDA
+  backends only — no Metal, no Core ML, no ANE — so on a Mac it is CPU-only today and every
+  measured number is a CPU number.
+  **The mockup says "Apple Neural Engine" and that stays.** It is a target we have not hit yet,
+  and it goes on the checklist rather than being edited out of the design. Removing it needs a
+  reason it is IMPOSSIBLE plus a conversation with the team — not one engineer deciding the
+  current implementation is the final one.
+  Reaching it means CHANGING ENGINE, not setting a flag: `whisper.cpp` with a Core ML encoder is
+  the realistic route, at the cost of a per-model `.mlmodelc` to generate and ship, a slow
+  first-run compile on the user's machine, and a C++ dependency in a binary whose packaging was
+  just settled. Apple's own `SpeechAnalyzer` uses the ANE with no download at all, but it is
+  Apple's model rather than Whisper, gated on macOS version, and Mac-only — Linux and Windows
+  would still need a second engine.
+  **The encouraging part:** we measured the ENCODER as the bottleneck on CPU, which is why
+  `large-v3-turbo` — decoder-pruned — bought nothing. Core ML accelerates the encoder
+  specifically, so this targets the real cost rather than the assumed one.
 
 ## Open — the checklist
 
@@ -231,6 +244,34 @@ the Cleared note at the end.
 **Deck alignment:** the August onboarding flow is tracked per-step in `docs/onboarding-gap.md`,
 which says which side of the line each gap sits on. This list carries only the parts that are
 ours to build.
+
+**The recorder — every gap between the mockup and what runs**
+
+From `agentduet_macos_app_ux_mockup.html`. Each of these is a STUB shipping now and a thing to
+build, not a design to trim. Nothing here is optional-by-default: the mockup is what we agreed
+the product is.
+
+- [ ] **Single sign-on** — Apple, Google and Microsoft, which is how the mockup gets the owner's
+      identity, phone number and connector without anyone typing a uuid. `connector.OAUTH_URL`
+      and `oauth_available()` already gate the page on a backend that does not exist yet. Until
+      it does, setup shows the three buttons and a manual path beside them.
+- [ ] **Record Call has nothing behind it** — `carry.py` bridges and the recorders start, but the
+      platform does not hand the app conference audio, so the directory the panel lists is empty.
+      This is the mockup's FIRST service. Being added on the AgentDuet side (Dat).
+- [ ] **Record Message (SMS) does not exist at all.** We have WhatsApp through the SDK, not SMS
+      archiving. This is a channel we do not ingest, not a screen we have not drawn.
+- [ ] **Connect AI is a SUMMARISER in the mockup** — transcripts go to a cloud model for action
+      items and summaries, after the call. That is not what `llm.py` does today, which is drive a
+      live agent. The providers and key handling carry over; the feature does not exist.
+      Its provider list also differs (OpenAI is offered, Qwen is not).
+- [ ] **Apple Neural Engine for transcription** — see the STT decision above. An engine change,
+      and the encoder is the right thing to accelerate.
+- [ ] **A chooseable storage folder.** The mockup lets the owner pick where recordings and logs
+      go. Today `carry.RECORDINGS` is a module constant under `$AGENTDUET_HOME`, so the page can
+      only SHOW the resolved path. Making it settable means reading it at use time — the same
+      read-at-use-time rule that `local_model()` already had to learn.
+- [ ] **Per-service on/off toggles.** The mockup's overview switches each of the four services
+      independently. We have one `## Calls` mode and a `## Record calls` boolean.
 
 **Release blockers**
 
