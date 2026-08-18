@@ -20,7 +20,7 @@ Never over-promise; if unsure, say the owner will follow up.
      cannot do. -->
 
 ## Calls
-<!-- answer  — the agent picks up and speaks for you. This is the default.
+<!-- answer  — the agent picks up and speaks for you. Needs a model key.
      carry   — the call is bridged onward to your phone system and BOTH SIDES ARE RECORDED
                to run/recordings/. Nobody is answered by the agent in this mode.
 

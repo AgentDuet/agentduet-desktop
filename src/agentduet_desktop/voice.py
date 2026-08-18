@@ -758,7 +758,7 @@ def register(sm, owner_name: str) -> bool:
         # reviewable file, and render() refuses blanks and placeholder-shaped values. That is
         # the class of bug that answered a real call as "[Owner's Name]'s assistant".
         from . import owner as owner_settings, prompts
-        instruction = prompts.render("asker-voice", owner_name=owner_name,
+        instruction = prompts.render("asker-voice", owner=owner_name,
                                      pronoun=owner_settings.pronoun_raw())
 
         # api_key passed EXPLICITLY: the adapter falls back to ~/.qwen on its own, so without
