@@ -352,8 +352,22 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
 
         `deep=True` because a page load can afford one real call to the model, and a key that is
         present but rejected must not be shown a dashboard.
+
+        THE MARKER EXISTS BECAUSE CARRYING NEEDS NOTHING. `setup_pending` answers "is anything
+        missing that would stop this working", and for the recorder the honest answer on a brand
+        new install is "no" — carrying needs no model, and since the name became answer-only it
+        needs no name either. So a fresh install went straight to the dashboard and the welcome
+        screen was unreachable. Finishing setup is now a thing the owner DID, not a state we
+        infer from configuration.
+
+        Still not a flag file alone: an instance that predates the marker, or one whose marker is
+        lost, falls back to the old question so an already-configured owner is not sent through
+        setup again. A connector is the test there, being the one thing nobody has by accident.
         """
-        return bool(owner.setup_pending(deep=True))
+        if (paths.RUN / "setup-done").exists():
+            return False
+        from . import connector
+        return bool(owner.setup_pending(deep=True)) or not connector.configured()
 
     async def index(request):
         if not authed(request):
@@ -377,6 +391,17 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         if not authed(request):
             return web.Response(status=401, text="bad or missing token")
         return web.Response(text=(HERE / "settings.html").read_text(), content_type="text/html")
+
+    async def secretary_page(request):
+        """The secretary's own view — people, threads, escalations.
+
+        Still here, and still the whole of the second product. `/` is the recorder's hub now
+        because that is what a new install IS (see CLAUDE.md, "Two products, one binary"), not
+        because this stopped working.
+        """
+        if not authed(request):
+            return web.Response(text="unauthorised", status=401)
+        return web.Response(text=(HERE / "secretary.html").read_text(), content_type="text/html")
 
     async def api_setup_about(request):
         """Who the owner is — WITHOUT needing a model.
@@ -575,6 +600,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         # so it can be pasted into a file manager.
         from . import carry, owner as _own, voice as _voice
         cur["calls"] = _own.calls()
+        cur["transcription"] = _own.transcription_quality()
         cur["record_calls"] = _own.record_calls()
         cur["recordings_dir"] = str(carry.RECORDINGS / _voice.ANSWERED)
         cur["carried_dir"] = str(carry.RECORDINGS)
@@ -695,6 +721,60 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response({"error": "unauthorised"}, status=401)
         return web.json_response(tools.state())
 
+    async def api_panel(request):
+        """Everything the hub renders, in ONE call.
+
+        Deliberately one endpoint rather than four. The panel shows the same few facts in
+        several places — the sidebar's number, the overview's four rows, each panel's own
+        header — and fetching them separately is how two parts of one screen come to disagree.
+
+        The file lists are BOUNDED and newest-first. A machine that has been carrying calls for
+        a year has thousands of files, and a page that lists them all is a page that stops
+        opening at exactly the point the owner most wants it.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import carry, llm as _llm, owner as _own, transcribe, voice as _voice
+
+        def _listing(folder, limit=25):
+            if not folder.is_dir():
+                return []
+            out = []
+            for f in sorted(folder.glob("*.*"), key=lambda x: x.stat().st_mtime, reverse=True):
+                if f.suffix.lower() not in (".wav", ".json", ".txt"):
+                    continue
+                out.append({"name": f.name, "kind": f.suffix.lstrip(".").upper(),
+                            "bytes": f.stat().st_size})
+                if len(out) >= limit:
+                    break
+            return out
+
+        local_ok, _ = transcribe.available()
+        return web.json_response({
+            "name": _own.name() if _own.name() != _own.DEFAULT_NAME else "",
+            "phone": _own.phone(),
+            "calls": _own.calls(),
+            "channel": (tools.state().get("channel") or {}).get("channel", ""),
+            "storage": str(carry.RECORDINGS),
+            "dirs": {"calls": str(carry.RECORDINGS),
+                     "answered": str(carry.RECORDINGS / _voice.ANSWERED)},
+            # WHAT IS ACTUALLY ON, not what the design shows switched on. Two of these have
+            # nothing behind them yet and say so rather than rendering a lit switch.
+            "services": {
+                "record_call": {"on": _own.record_calls(), "real": True},
+                "transcribe": {"on": local_ok, "real": False},
+                "record_message": {"on": False, "real": False},
+                "connect_ai": {"on": _llm.configured(), "real": False},
+            },
+            "stt": {"engine": transcribe.engine(), "model": transcribe.local_model(),
+                    "quality": _own.transcription_quality() or "balanced",
+                    "cached": transcribe.is_cached()},
+            "model": {"configured": _llm.configured(), "describe": _llm.describe()},
+            "files": {"calls": _listing(carry.RECORDINGS),
+                      "answered": _listing(carry.RECORDINGS / _voice.ANSWERED),
+                      "messages": []},
+        })
+
     async def api_ui(request):
         """View preferences. Server-side because the window has no localStorage — see
         tools.UI_PREFS."""
@@ -745,11 +825,24 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
     # `/api/launch` started a program on disk; keeping unreachable endpoints that do either, on a
     # server the whole product binds for the owner, is surface with nothing asking for it.
 
+    def _mark_setup_done():
+        """Record that the owner pressed the button. See needs_setup."""
+        try:
+            paths.RUN.mkdir(parents=True, exist_ok=True)
+            (paths.RUN / "setup-done").write_text("")
+        except OSError:
+            pass          # a dashboard the owner can reach matters more than the marker
+
     async def api_handover(request):
         """Start the installed daemon and stand down. The last act of the installer."""
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
         from . import service
+        # BEFORE handing over, not after: on the installed path this process is about to exit,
+        # and the marker has to be on disk for the copy that takes over — which reads it on its
+        # first page load. Written on both paths because pressing the button is what "finished"
+        # means, whether or not there was a second copy to promote.
+        _mark_setup_done()
         msg = service.handover()
         # NOTHING TO HAND OVER TO IS NOT A FAILURE. Handover promotes the INSTALLED copy and
         # stands this one down; with no install there is simply no second copy to promote, and
@@ -1053,6 +1146,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
     app.add_routes([
         web.get("/", index),
         web.get("/setup", setup_page),
+        web.get("/secretary", secretary_page),
         web.get("/settings", settings_page),
         web.post("/api/setup/setting", api_setup_setting),
         web.get("/api/setup/about", api_setup_about),
@@ -1068,6 +1162,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/api/setup/examples", api_setup_examples),
         web.post("/api/setup/example", api_setup_example),
         web.get("/api/state", api_state),
+        web.get("/api/panel", api_panel),
         web.post("/api/handover", api_handover),
         web.get("/api/install", api_install),
         web.post("/api/install", api_install),

@@ -105,11 +105,6 @@
 <body>
 <div class="wrap">
 
-  <!-- ---------------- 1 · SIGN IN ----------------
-       Signing in is how the owner's number and connector arrive without anyone typing a uuid.
-       The backend does not exist yet, so the buttons are stubs — but they are shown exactly as
-       the design has them, with no "not wired" caption, because the design is what the product
-       is. What a stub must not do is lie: pressing one says plainly that it is not connected. -->
   <section class="card on" id="c1">
     <h1>Welcome to AgentDuet</h1>
     <p class="lede">On-device AI engine for your Power Mobile service. Please sign in to link
@@ -123,7 +118,6 @@
     <p class="foot">B3Networks Power Mobile AI Protocol • v1.0</p>
   </section>
 
-  <!-- ---------------- 2 · QUICK SETUP ---------------- -->
   <section class="card" id="c2">
     <h1>Quick Application Setup</h1>
     <p class="lede">Select where recordings &amp; logs will be stored.</p>
@@ -142,74 +136,15 @@
       <span class="spin" id="spDone"></span>
     </div>
     <div id="mDone"></div>
-
-    <!-- EVERYTHING SIGN-ON WILL SUPPLY, typed until it does. Collapsed and last, so the page
-         above it is the design; open it and you are in scaffolding. It goes away, not moves. -->
-    <details class="dev" id="devBox">
-      <summary>Set up by hand</summary>
-
-      <div class="fieldset">
-        <label>Your B3 connector</label>
-        <input id="cUuid" placeholder="connector uuid" autocomplete="off" spellcheck="false">
-        <input id="cKey" placeholder="connector key" autocomplete="off" spellcheck="false">
-        <div class="acts"><button id="doConn">Save and check</button>
-          <span class="spin" id="spConn"></span></div>
-        <div id="mConn"></div>
-      </div>
-
-      <div class="fieldset">
-        <label>Your name
-          <span class="sm">Given to the speech engine so it hears names correctly.</span></label>
-        <input id="oName" placeholder="e.g. Stanley Leong" autocomplete="off">
-        <div class="acts"><button id="doName">Save</button>
-          <span class="spin" id="spName"></span></div>
-        <div id="mName"></div>
-      </div>
-
-      <div class="fieldset">
-        <label>What should happen to a call?</label>
-        <label class="pick"><input type="radio" name="calls" value="carry" checked>
-          <b>Carry it to me</b>
-          <span class="sm">Bridged to your phone, both sides recorded. Nobody is answered.</span></label>
-        <label class="pick"><input type="radio" name="calls" value="answer">
-          <b>Answer it</b>
-          <span class="sm">The agent speaks for you. Needs a model key below.</span></label>
-      </div>
-
-      <div class="fieldset">
-        <label>Model key
-          <span class="sm">Only for answering, or summarising a transcript afterwards.</span></label>
-        <select id="model"></select>
-        <input id="key" type="password" placeholder="paste a key" autocomplete="off">
-        <div class="acts"><button id="doModel">Attach it</button>
-          <span class="spin" id="spModel"></span></div>
-        <div id="mModel"></div>
-      </div>
-
-      <div class="fieldset">
-        <label>Speech recognition</label>
-        <div class="state" id="sttBox" hidden>
-          <span id="sttWhat">…</span>
-          <div class="acts"><button id="doStt">Download it now</button>
-            <span class="spin" id="spStt"></span></div>
-        </div>
-        <div class="hint" id="sttOff" hidden>A model key is attached, so the hosted engine
-          transcribes and nothing is downloaded.</div>
-      </div>
-
-      <div class="fieldset">
-        <div class="acts"><button class="ghost" id="doInstall">Install this copy</button></div>
-        <div id="mInst"></div>
-      </div>
-    </details>
   </section>
 
-  <!-- A WAY OUT. Not in the design, kept because closing the tab leaves the process running
-       with nothing on screen to say so, and the url carries a per-machine token — a closed tab
-       is a lost tab. Deliberately the quietest thing on the page. -->
+  <!-- A WAY OUT. Not in the design, kept because closing the tab leaves the daemon running with
+       nothing on screen to say so, and the url carries a per-machine token — a closed tab is a
+       lost tab. Deliberately the quietest thing on the page. -->
   <p class="quit"><a href="#" id="doCancel">Quit</a> <span id="cancelWhat"></span></p>
   <div id="mCancel"></div>
 </div>
+
 <script>
   window.onerror = function (m, src, line, col) {
     try { new Image().src = '/__jserr?m=' + encodeURIComponent(m) + '&line=' + line; } catch (e) {}
@@ -223,7 +158,6 @@
     [1, 2].forEach(i => $('c' + i).classList.toggle('on', i === n));
     window.scrollTo({top: 0, behavior: 'smooth'});
   }
-
   function say(el, ok, text){
     $(el).innerHTML = `<div class="msg ${ok ? 'ok' : 'no'}">${esc(text)}</div>`;
   }
@@ -233,151 +167,60 @@
     return r.json();
   }
 
-  // ---- sign in (stubbed) --------------------------------------------------------------
-  // oauth_available() is false until the backend has an endpoint, and the buttons say exactly
-  // that rather than failing silently or pretending to work. A stub that LIES is worse than no
-  // stub: it costs someone a support conversation to discover.
+  // ---- sign in (stubbed) -------------------------------------------------------------------
+  // Everything sign-on will supply — connector, name, number — is configured in Settings, which
+  // is one screen inside the hub. Setup does NOT carry a copy of those fields: two places to
+  // type a connector is two places for it to be half-typed.
   let OAUTH = false;
   document.querySelectorAll('.sso').forEach(b => {
     b.onclick = () => {
       const who = b.dataset.p;
       if (OAUTH) { location.href = `/api/connector/signin?t=${T}&provider=` + encodeURIComponent(who); return; }
-      say('mSso', false, `Signing in with ${who} is not connected yet.`);
+      say('mSso', false, `Signing in with ${who} is not connected yet. `
+        + 'Continue, then finish in Settings.');
       show(2);
-      $('devBox').open = true;
     };
   });
 
-  // Browsing for a folder needs a native picker this page does not have, and carry.RECORDINGS
-  // is a module constant besides — so it says so rather than opening nothing.
-  $('doBrowse').onclick = () => say('mDone', false,
-    'Choosing the folder is not built yet. It is set by AGENTDUET_HOME.');
-
-  // ---- what the page already knows -----------------------------------------------------
   async function load(){
     const d = await fetch(`/api/setup/current?t=${T}`).then(r => r.json()).catch(() => ({}));
     OAUTH = !!d.oauth_available;
     $('folder').value = d.carried_dir || '';
     $('num').textContent = d.phone || '—';
-    if (d.connector_uuid) $('cUuid').value = d.connector_uuid;
-    if (d.connector_configured) say('mConn', true, 'A connector is already configured.');
-    const sel = $('model');
-    (d.models || ['gemini', 'anthropic', 'qwen']).forEach(m => {
-      const o = document.createElement('option'); o.value = m; o.textContent = m; sel.appendChild(o);
-    });
-    if (d.name) $('oName').value = d.name;
-    if (d.model_name) sel.value = d.model_name;
-    if (d.model_configured) say('mModel', true, 'A model is already attached: ' + (d.model || ''));
-    const cur = (d.calls || 'carry').toLowerCase();
-    const r = document.querySelector(`input[name=calls][value="${cur}"]`);
-    if (r) r.checked = true;
   }
   load();
 
-  // ---- connector ------------------------------------------------------------------------
-  $('doConn').onclick = async () => {
-    const uuid = $('cUuid').value.trim(), key = $('cKey').value.trim();
-    if (!uuid || !key) { say('mConn', false, 'Both fields are needed.'); return; }
-    $('doConn').disabled = true; $('spConn').textContent = 'checking…';
-    const d = await post('/api/setup/connector', {uuid, key});
-    $('doConn').disabled = false; $('spConn').textContent = '';
-    say('mConn', d.ok, d.message);
-  };
+  // Choosing the folder needs a native picker this page does not have, and carry.RECORDINGS is
+  // a module constant besides. It says so rather than opening nothing.
+  $('doBrowse').onclick = () => say('mDone', false,
+    'Choosing the folder is not built yet. It is set by AGENTDUET_HOME.');
 
-  // ---- who the owner is -----------------------------------------------------------------
-  $('doName').onclick = async () => {
-    const v = $('oName').value.trim();
-    if (!v) { say('mName', false, 'Type a name first.'); return; }
-    $('doName').disabled = true; $('spName').textContent = 'saving…';
-    const d = await post('/api/setup/setting', {field: 'name', value: v});
-    $('doName').disabled = false; $('spName').textContent = '';
-    say('mName', d.ok, d.message);
-  };
-
-  // ---- model (optional) -----------------------------------------------------------------
-  $('doModel').onclick = async () => {
-    const key = $('key').value.trim();
-    if (!key) { say('mModel', false, 'Paste a key first.'); return; }
-    $('doModel').disabled = true; $('spModel').textContent = 'checking…';
-    const d = await post('/api/setup/model', {model: $('model').value, key});
-    $('doModel').disabled = false; $('spModel').textContent = '';
-    say('mModel', d.ok, d.message);
-    sttCheck();                       // a key attached means the download is no longer needed
-  };
-
-  // ---- speech model ---------------------------------------------------------------------
-  let sttPoll = null;
-  function sttRender(d){
-    const box = $('sttBox'), what = $('sttWhat');
-    if (!box || !d || d.error === 'unauthorised') return;
-    if (!d.needed) { box.hidden = true; $('sttOff').hidden = false; return; }
-    $('sttOff').hidden = true;
-    if (!d.installed) { box.hidden = true; return; }
-    box.hidden = false;
-    $('doStt').hidden = d.cached || d.running;
-    $('spStt').textContent = d.running ? 'downloading…' : '';
-    if (d.cached) {
-      what.innerHTML = 'Runs on this machine. <b>' + esc(d.model) + '</b> is ready.';
-    } else {
-      what.innerHTML = 'Calls are transcribed on this machine, so nothing is sent anywhere. '
-        + 'That needs a one-off download of about <b>' + d.mb + ' MB</b> (<code>'
-        + esc(d.model) + '</code>).<br><span class="note">Skip it and it downloads by itself '
-        + 'the first time a call is transcribed.</span>'
-        + (d.err ? '<br><span class="note">Last attempt failed: ' + esc(d.err) + '</span>' : '');
-    }
-    if (d.running && !sttPoll) sttPoll = setInterval(sttCheck, 3000);
-    if (!d.running && sttPoll) { clearInterval(sttPoll); sttPoll = null; }
-  }
-  function sttCheck(){
-    fetch(`/api/setup/stt?t=${T}`).then(r => r.json())
-      .then(d => sttRender({...d, err: d.error})).catch(() => {});
-  }
-  sttCheck();
-  $('doStt').onclick = async () => {
-    $('doStt').hidden = true; $('spStt').textContent = 'starting…';
-    await post('/api/setup/stt', {});
-    sttCheck();
-  };
-
-  // ---- install + finish -------------------------------------------------------------------
-  $('doInstall').onclick = async () => {
-    $('doInstall').disabled = true;
-    const d = await post('/api/install', {});
-    $('doInstall').disabled = false;
-    say('mInst', d.ok, d.message);
-  };
-
-  // The mode is written HERE rather than when the radio changes, so there is one moment where
-  // setup commits and it is the one the owner pressed. `carry` is the default because the
-  // recorder is the product — see "Two products, one binary" in CLAUDE.md.
   $('doDone').onclick = async () => {
-    $('doDone').disabled = true; $('spDone').textContent = 'saving…';
-    const mode = (document.querySelector('input[name=calls]:checked') || {}).value || 'carry';
-    await post('/api/setup/setting', {field: 'calls', value: mode});
-    $('spDone').textContent = '';
+    $('doDone').disabled = true; $('spDone').textContent = 'finishing…';
     const d = await post('/api/handover', {});
-    say('mDone', d.ok, d.message);
+    $('spDone').textContent = '';
     $('doDone').disabled = false;
+    if (d.ok) { location.href = '/?t=' + T; return; }
+    say('mDone', false, d.message);
   };
 
   // The same page is reachable on a CONFIGURED instance, where this process IS the daemon and
-  // stopping it takes it off the air. Read the channel and say which it is — a static "nothing is
+  // stopping it takes it off the air. Read the channel and say which — a static "nothing is
   // running yet" is a lie exactly when the consequence matters.
   let onAir = false;
   fetch(`/api/state?t=${T}`).then(r => r.json()).then(st => {
     const c = (st && st.channel) || {};
     onAir = ['live', 'connecting', 'retrying'].indexOf(c.channel) >= 0;
     $('cancelWhat').textContent = onAir
-      ? 'This machine is on the air. Stopping it stops calls arriving.'
-      : 'Nothing is on the air yet. Stops setup only; keeps what you saved.';
-  }).catch(() => { $('cancelWhat').textContent = ''; });
+      ? '— this machine is on the air.' : '';
+  }).catch(() => {});
 
-  $('doCancel').onclick = async () => {
+  $('doCancel').onclick = async (e) => {
+    e.preventDefault();
     const warn = onAir ? 'Stop it? Calls stop arriving until you start it again.'
                        : 'Stop setup? Nothing is arriving yet.';
     if (!confirm(warn + '\n\nWhat you saved stays saved.')) return;
-    $('doCancel').disabled = true;
-    try { await post('/api/quit', {}); } catch (e) {}
+    try { await post('/api/quit', {}); } catch (e2) {}
     document.body.innerHTML =
       '<div style="font-family:var(--mono);font-size:.9rem;padding:2.5rem;color:var(--muted);'
       + 'max-width:44rem;line-height:1.7">Stopped.<br><br>'
