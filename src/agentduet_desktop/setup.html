@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Set up your secretary</title>
+<title>Set up AgentDuet</title>
 <style>
   :root{
     --ink:#101418; --paper:#f6f7f8; --surface:#fff; --line:#e2e6ea; --line2:#eef1f4;
@@ -74,208 +74,158 @@
 
                       .spin{font-family:var(--mono);font-size:.8rem;color:var(--faint);}
 </style>
+<style>
+  /* SIGN-IN is the first thing anyone sees, so the three providers are the page, not a row of
+     controls. Full width, stacked, equal weight — we do not know which one an owner has. */
+  .sso{display:flex;align-items:center;justify-content:center;gap:.5rem;width:100%;
+    margin-top:.6rem;padding:.75rem 1rem;background:var(--surface);color:var(--ink);
+    border:1px solid var(--line);font-weight:650;}
+  .sso:hover{border-color:var(--faint);}
+  .sso .g{font-family:var(--mono);font-size:.78rem;color:var(--faint);font-weight:400;}
+
+  /* THE CHEAT BLOCK. Visually separated because it is scaffolding, not product: everything in
+     here disappears the day sign-on works. Kept collapsed so it does not read as the main path.
+  */
+  details.dev{margin-top:1.6rem;border:1px dashed var(--line);border-radius:12px;
+    padding:.9rem 1rem;background:var(--line2);}
+  details.dev summary{cursor:pointer;font-weight:700;font-size:.9rem;color:var(--muted);}
+  details.dev .hint{font-size:.85rem;}
+  .fieldset{margin-top:1.1rem;padding-top:1.1rem;border-top:1px solid var(--line);}
+  .fieldset:first-of-type{border-top:0;padding-top:0;}
+</style>
+
 </head>
 <body>
 <div class="wrap">
-  <h1>Set up your secretary</h1>
-  <p class="lede">Six steps. Then it works for you, whether or not this page is open.</p>
+  <h1>Welcome to AgentDuet</h1>
+  <p class="lede">Recording and transcription for your Power Mobile service, on this machine.</p>
 
   <div class="steps">
-    <div id="s1" class="on">1 install</div>
-    <div id="s2">2 mode</div>
-    <div id="s3">3 model</div>
-    <div id="s4">4 number</div>
-    <div id="s5">5 about you</div>
-    <div id="s6">6 finish</div>
+    <div id="s1" class="on">1 sign in</div>
+    <div id="s2">2 quick setup</div>
   </div>
 
-  <!-- ---------------- 1 · INSTALL ---------------- -->
+  <!-- ---------------- 1 · SIGN IN ----------------
+       The whole point of signing in is that there is then NOTHING TO TYPE: the account knows the
+       owner's number and which connector is theirs, which is the pair a person cannot invent and
+       currently has to be given out of band. Until that backend exists the buttons are stubs and
+       the manual path below them is the real one. They are shown anyway, deliberately — this is
+       what the product is, and a stub that is visible is a promise we can be held to. -->
   <section class="card on" id="c1">
-    <h2>Install it</h2>
-    <!-- STATUS FIRST, then buttons. The prose that used to be here explained WHY installing
-         matters (the assistant is told this path; moving the file breaks it). True, and nobody
-         reads it at step 1 of 4 — the state line is what they act on. -->
-    <div class="state" id="instState">…</div>
-    <button id="doInstall">Install</button>
-    <button class="ghost" id="skipInstall">Skip</button>
-    <div id="mInst"></div>
+    <h2>Sign in to link this Mac</h2>
+    <p class="hint">Your number and your connector come across with your account, so there is
+      nothing to copy by hand.</p>
+
+    <button class="sso" data-p="Apple">Continue with Apple <span class="g" id="gApple"></span></button>
+    <button class="sso" data-p="Google">Continue with Google <span class="g" id="gGoogle"></span></button>
+    <button class="sso" data-p="Microsoft">Continue with Microsoft <span class="g" id="gMicrosoft"></span></button>
+    <div id="mSso"></div>
+
+    <div class="acts">
+      <button class="ghost" id="goManual">Set it up by hand instead</button>
+    </div>
   </section>
 
-  <!-- ---------------- 2 · WHAT IT DOES ----------------
-       FIRST, because it decides whether a model is needed at all. Carrying a call answers
-       nobody: it bridges the caller to your phone and records both sides, which needs no LLM
-       and — with the local speech engine — no credential of any kind. Asking for a model before
-       asking what the thing is for is how an owner who only wants call recording ends up stuck
-       on a screen demanding an API key they will never use. -->
+  <!-- ---------------- 2 · QUICK SETUP ---------------- -->
   <section class="card" id="c2">
-    <h2>What should it do with a call?</h2>
-    <label class="pick"><input type="radio" name="calls" value="answer" checked>
-      <b>Answer for me.</b>
-      An assistant picks up, answers from what you tell it, and escalates the rest.
-      <span class="sm">Needs a model.</span></label>
-    <label class="pick"><input type="radio" name="calls" value="carry">
-      <b>Put it through to me, and record it.</b>
-      The call is bridged to your phone. Both sides are recorded and transcribed.
-      <span class="sm">No model needed. You are recording two people — check what you must tell them.</span></label>
-    <div class="acts"><button id="bMode">Continue</button><span class="sp"></span></div>
-    <div id="mMode"></div>
-  </section>
+    <h2>Quick setup</h2>
+    <p class="hint">Where things are kept, and the one credential that cannot be guessed.</p>
 
-  <!-- ---------------- 3 · MODEL ---------------- -->
-  <section class="card" id="c3">
-    <h2>Attach a model</h2>
-    <p class="hint">Checked before saving. Stored on this machine only.</p>
-    <div class="row">
-      <label>Model
-        <select id="model">
-          <option value="gemini-2.5-flash">gemini-2.5-flash — Google AI Studio</option>
-          <option value="claude-sonnet-5">claude-sonnet-5 — Anthropic console</option>
-          <option value="qwen3.6-flash">qwen3.6-flash — Alibaba Model Studio</option>
-        </select>
-      </label>
+    <div class="fieldset">
+      <label>Where recordings and transcripts are saved</label>
+      <div class="state" id="whereBox">…</div>
     </div>
-    <label>API key
-      <span class="sm" id="keyhint">From the provider's console.</span>
-      <input id="key" type="password" autocomplete="off" placeholder="…">
-    </label>
-    <div class="acts">
-      <button id="b1">Save</button>
-    <button class="ghost" id="b1keep" hidden>Keep current key</button>
-      <!-- Only when carrying. Skipping with "answer" selected would produce an agent with
-           nothing behind it: the daemon would hold the connector and never speak. -->
-      <button class="ghost" id="b1skip" hidden>Skip — I only want calls recorded</button>
-      <span class="sp"></span>
-      <span class="spin" id="sp1"></span>
-    </div>
-    <div id="m1"></div>
-  </section>
 
-  <!-- ---------------- 4 · CONNECTOR ---------------- -->
-  <section class="card" id="c4">
-    <h2>Your B3 connector</h2>
-    <p class="hint">Gives you a phone number and a message channel. Skip if you have none yet.</p>
-    <!-- SIGN IN, when there is somewhere to sign in to. Hidden unless the backend advertises an
-         OAuth endpoint, so no build ever shows a button that cannot work. -->
-    <div id="cOauth" hidden>
-      <button id="cSignIn">Sign in</button>
-      <button class="ghost" id="cManual">Enter key manually instead</button>
-      <div id="mOauth"></div>
-    </div>
-    <div id="cFields">
-      <label>API key
-        <input id="cKey" type="password" autocomplete="off" placeholder="AGENTDUET_API_KEY">
-      </label>
-      <label>Connector uuid
-        <input id="cUuid" autocomplete="off" placeholder="00000000-0000-0000-0000-000000000000">
-      </label>
-    </div>
-    <!-- Positive action LEFT, like every other step. Skip was on the left with Save pushed to
-         the far right, so the one destructive-ish choice sat where the confirm button is
-         everywhere else. It is also hidden once a connector exists: skipping is for someone who
-         has none, and "Skip" beside "Keep current connector" reads as two ways to do nothing. -->
-    <div class="acts" id="c3acts">
-      <button id="b3">Save</button>
-      <button class="ghost" id="b3keep" hidden>Keep current connector</button>
-      <button class="ghost" id="b3skip">Skip</button>
-      <span class="sp"></span>
-      <span class="spin" id="sp3"></span>
-    </div>
-    <div id="m3"></div>
-  </section>
-
-  <!-- ---------------- 5 · ABOUT YOU ----------------
-       This did not exist, and its absence was audible: a real call was answered as "the
-       personal assistant for the owner", and "what can you do?" got a generic answer because
-       knowledge/ held nothing but its own templates. The CLI interview covered this and the
-       page never did — fine while the owner was assumed to have a terminal, wrong for someone
-       handed a binary.
-
-       NO MODEL IS REQUIRED. Name, pronoun and phone go through set_setting, which writes
-       settings.md directly. Only the free-text "what you do" is improved by a model, and it is
-       written verbatim when there is none. -->
-  <section class="card" id="c5">
-    <h2>About you</h2>
-    <p class="hint">So it can say who it works for, and judge what is your kind of question.</p>
-    <label>Your name
-      <span class="sm">How it signs off and refers to you.</span>
-      <input id="oName" autocomplete="off" placeholder="…"></label>
-    <label>Pronoun <span class="sm">Optional. Blank means it uses your name rather than guessing.</span>
-      <input id="oPronoun" autocomplete="off" placeholder="he/him, she/her, they/them"></label>
-    <label>Your number <span class="sm">Optional, E.164. For it to RING YOU — never given out.
-      Blank and it will not offer a callback.</span>
-      <input id="oPhone" autocomplete="off" placeholder="+6591234567"></label>
-    <label>What do you do?
-      <span class="sm">A sentence or two, plus any other business you run. It has no other way
-      to judge whether a question is your kind of thing.</span>
-      <textarea id="oDoes" rows="3" placeholder="I service air-conditioners for homes and small offices on the east side. I also rent out two apartments."></textarea></label>
-    <!-- SHOWN, NOT PREFILLED, and deliberately not click-to-fill. design.md already settled
-         this for capabilities — "the pizza example is not installed; a new owner should not
-         inherit someone else's business" — and a one-click "I am a plumber" is the same
-         mistake in a smaller box. Someone in a hurry accepts it, and the agent then answers
-         a stranger about a trade its owner is not in.
-
-         Each example teaches something different rather than repeating one shape: the first
-         adds a service AREA, the second states a LIMIT (so the agent learns it may say no),
-         the third shows a SECOND business, which is the part people leave out. -->
-    <p class="hint">Examples, to show the shape — write your own:<br>
-      &middot; &ldquo;I am a plumber. Mostly emergency callouts, homes and small shops in the west.&rdquo;<br>
-      &middot; &ldquo;I run a two-chair barber shop. Walk-ins only, I do not take appointments.&rdquo;<br>
-      &middot; &ldquo;I sell and repair bicycles. I also do frame respraying, which takes about a week.&rdquo;</p>
-    <div class="acts">
-      <button id="bAbout">Save</button>
-      <button class="ghost" id="aboutSkip">Skip</button>
-      <span class="sp"></span><span class="spin" id="spAbout"></span>
-    </div>
-    <div id="mAbout"></div>
-  </section>
-
-  <!-- ---------------- 6 · FINISH ----------------
-       This step used to be "your AI assistant": detect one, offer to install Goose, register the
-       mcp, open it. That is gone (2026-08-11). The people this is being packaged for — small
-       vendors handed a binary — do not have a coding assistant and should not be asked to
-       install one to finish setting up a phone answering service. It was also the most fragile
-       part of the installer by a wide margin, and it downloaded third-party software.
-       Connecting an assistant is still supported, as an explicit `agentduet-desktop connect`
-       for whoever wants it. -->
-  <section class="card" id="c6">
-    <h2>Finish</h2>
-    <p class="hint">It keeps answering after you close this page.</p>
-    <!-- WHERE THE FILES GO. Filled from /api/setup/current, never written into this page:
-         the instance directory differs by platform and by install, and telling a Mac owner
-         to look in /home/... would have them conclude the recording never ran. -->
-    <div class="state" id="whereFiles">…</div>
-    <!-- THE SPEECH MODEL, shown ONLY when it is actually needed: no model key attached,
-         and recording on. With a key the hosted engine transcribes and nothing is ever
-         downloaded, so this would be a step shown and skipped. That is also why it lives
-         inside Finish rather than being a seventh chip — a step in the strip that half of
-         owners never see makes the strip lie about how long setup is. -->
-    <div class="state" id="sttBox" hidden>
-      <div id="sttWhat">…</div>
-      <div class="acts" style="margin-top:.7rem">
-        <button id="doStt">Download now</button>
-        <span class="sp"></span><span class="spin" id="spStt"></span>
+    <div class="fieldset">
+      <label>Speech recognition</label>
+      <div class="state" id="sttBox" hidden>
+        <span id="sttWhat">…</span>
+        <div class="acts">
+          <button id="doStt">Download it now</button>
+          <span class="spin" id="spStt"></span>
+        </div>
       </div>
+      <div class="hint" id="sttOff" hidden>A model key is attached, so calls are transcribed by
+        the hosted engine and nothing is downloaded.</div>
     </div>
-    <button id="doDone">Done</button>
-    <div id="mDone"></div>
+
+    <details class="dev" id="devBox">
+      <summary>Set up by hand</summary>
+      <p class="hint">Everything here comes from your account once signing in works. Until then
+        it is typed.</p>
+
+      <div class="fieldset">
+        <label>Your B3 connector
+          <span class="sm">The uuid and key for the number this machine answers for.</span>
+        </label>
+        <input id="cUuid" placeholder="connector uuid" autocomplete="off" spellcheck="false">
+        <input id="cKey" placeholder="connector key" autocomplete="off" spellcheck="false">
+        <div class="acts">
+          <button id="doConn">Save and check</button>
+          <span class="spin" id="spConn"></span>
+        </div>
+        <div id="mConn"></div>
+      </div>
+
+      <div class="fieldset">
+        <label>What should happen to a call?</label>
+        <label class="pick"><input type="radio" name="calls" value="carry" checked>
+          <b>Carry it to me</b>
+          <span class="sm">The call is bridged to your phone and both sides are recorded.
+            Nobody is answered. This is the product.</span></label>
+        <label class="pick"><input type="radio" name="calls" value="answer">
+          <b>Answer it</b>
+          <span class="sm">The agent picks up and speaks for you. Needs a model key below.</span></label>
+      </div>
+
+      <div class="fieldset">
+        <label>Your name
+          <span class="sm">Used to sign replies, and given to the speech engine so it hears
+            names correctly — priming it with the owner's name beat moving to a bigger model.
+            Signing in will fill this in.</span>
+        </label>
+        <input id="oName" placeholder="e.g. Stanley Leong" autocomplete="off">
+        <div class="acts">
+          <button id="doName">Save</button>
+          <span class="spin" id="spName"></span>
+        </div>
+        <div id="mName"></div>
+      </div>
+
+      <div class="fieldset">
+        <label>Model key
+          <span class="sm">Only for answering calls, or for summarising a transcript afterwards.
+            Leave empty and everything still records and transcribes.</span>
+        </label>
+        <select id="model"></select>
+        <input id="key" type="password" placeholder="paste a key" autocomplete="off">
+        <div class="acts">
+          <button id="doModel">Attach it</button>
+          <span class="spin" id="spModel"></span>
+        </div>
+        <div id="mModel"></div>
+      </div>
+    </details>
+
+    <div class="fieldset">
+      <div class="acts">
+        <button id="doDone">Finish</button>
+        <button class="ghost" id="doInstall">Install first</button>
+        <span class="sp"></span>
+        <span class="spin" id="spDone"></span>
+      </div>
+      <div id="mDone"></div>
+      <div id="mInst"></div>
+    </div>
   </section>
 
-  <!-- ---------------- LEAVING ---------------- -->
-  <!-- Reachable from every step, on purpose. Until this existed the only way out of this page
-       was to close the browser, which is the worst one: the process keeps running, nothing on
-       screen says so, and the url that reaches it carries a per-machine token — so a closed tab
-       is a lost tab. -->
-  <p class="hint" id="cancelWhat" style="margin-top:1.7rem">…</p>
+  <p class="hint" id="cancelWhat" style="margin-top:1.7rem">Nothing is running yet, so leaving
+    costs nothing.</p>
   <button class="ghost" id="doCancel">Cancel</button>
   <div id="mCancel"></div>
-
 </div>
 
 <script>
-  // Handlers are assigned as this script runs, so ONE early throw silently unwires every button
-  // below it — the failure that took out the quit button and a form's submit handler in
-  // web.html. There is no console to look at in a webview, so errors are reported to a path
-  // that deliberately does not exist: the 404 lands in the access log, which is daemon.log.
   window.onerror = function (m, src, line, col) {
     try { new Image().src = '/__jserr?m=' + encodeURIComponent(m) + '&line=' + line; } catch (e) {}
   };
@@ -284,24 +234,17 @@
   const $ = id => document.getElementById(id);
   const esc = s => (s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 
-  // THE STEPS ARE NAVIGATION. They looked like it and were not: every transition was
-  // forward-only, so there was no way back to a step already passed — and reloading /setup does
-  // not help either, because the resume below jumps straight to the connector once a model is
-  // configured. Asked how to return to step 1, the honest answer was "you cannot". Nothing here
-  // enforces order anyway: install, connector and about-you all have Skip, so free movement is
-  // what the wizard already meant.
-  function wireSteps(){
-    [1,2,3,4,5,6].forEach(i => { $('s' + i).onclick = () => show(i); });
-  }
-
+  const STEPS = [1, 2];
   function show(n){
-    [1,2,3,4,5,6].forEach(i => {
+    STEPS.forEach(i => {
       $('c' + i).classList.toggle('on', i === n);
       $('s' + i).classList.toggle('on', i === n);
       $('s' + i).classList.toggle('done', i < n);
     });
     window.scrollTo({top: 0, behavior: 'smooth'});
   }
+  STEPS.forEach(i => { $('s' + i).onclick = () => show(i); });
+
   function say(el, ok, text){
     $(el).innerHTML = `<div class="msg ${ok ? 'ok' : 'no'}">${esc(text)}</div>`;
   }
@@ -311,214 +254,99 @@
     return r.json();
   }
 
-  // ---- 1 · model -----------------------------------------------------------
-  $('b1').onclick = async () => {
+  // ---- sign in (stubbed) --------------------------------------------------------------
+  // oauth_available() is false until the backend has an endpoint, and the buttons say exactly
+  // that rather than failing silently or pretending to work. A stub that LIES is worse than no
+  // stub: it costs someone a support conversation to discover.
+  let OAUTH = false;
+  document.querySelectorAll('.sso').forEach(b => {
+    b.onclick = () => {
+      const who = b.dataset.p;
+      if (OAUTH) { location.href = `/api/connector/signin?t=${T}&provider=` + encodeURIComponent(who); return; }
+      say('mSso', false, `Signing in with ${who} is not connected yet. `
+        + 'Use "Set it up by hand" below — the fields it opens are what signing in will fill in.');
+      $('devBox').open = true;
+      show(2);
+    };
+  });
+  $('goManual').onclick = () => { $('devBox').open = true; show(2); };
+
+  // ---- what the page already knows -----------------------------------------------------
+  async function load(){
+    const d = await fetch(`/api/setup/current?t=${T}`).then(r => r.json()).catch(() => ({}));
+    OAUTH = !!d.oauth_available;
+    ['Apple', 'Google', 'Microsoft'].forEach(p => {
+      $('g' + p).textContent = OAUTH ? '' : 'not connected yet';
+    });
+    $('whereBox').innerHTML = 'Carried calls: <code>' + esc(d.carried_dir || '?') + '</code>'
+      + '<br>Answered calls: <code>' + esc(d.recordings_dir || '?') + '</code>'
+      + '<span class="note">Set by AGENTDUET_HOME. Choosing it here is not built yet.</span>';
+    if (d.connector_uuid) $('cUuid').value = d.connector_uuid;
+    if (d.connector_configured) say('mConn', true, 'A connector is already configured.');
+    const sel = $('model');
+    (d.models || ['gemini', 'anthropic', 'qwen']).forEach(m => {
+      const o = document.createElement('option'); o.value = m; o.textContent = m; sel.appendChild(o);
+    });
+    if (d.name) $('oName').value = d.name;
+    if (d.model_name) sel.value = d.model_name;
+    if (d.model_configured) say('mModel', true, 'A model is already attached: ' + (d.model || ''));
+    const cur = (d.calls || 'carry').toLowerCase();
+    const r = document.querySelector(`input[name=calls][value="${cur}"]`);
+    if (r) r.checked = true;
+  }
+  load();
+
+  // ---- connector ------------------------------------------------------------------------
+  $('doConn').onclick = async () => {
+    const uuid = $('cUuid').value.trim(), key = $('cKey').value.trim();
+    if (!uuid || !key) { say('mConn', false, 'Both fields are needed.'); return; }
+    $('doConn').disabled = true; $('spConn').textContent = 'checking…';
+    const d = await post('/api/setup/connector', {uuid, key});
+    $('doConn').disabled = false; $('spConn').textContent = '';
+    say('mConn', d.ok, d.message);
+  };
+
+  // ---- who the owner is -----------------------------------------------------------------
+  $('doName').onclick = async () => {
+    const v = $('oName').value.trim();
+    if (!v) { say('mName', false, 'Type a name first.'); return; }
+    $('doName').disabled = true; $('spName').textContent = 'saving…';
+    const d = await post('/api/setup/setting', {field: 'name', value: v});
+    $('doName').disabled = false; $('spName').textContent = '';
+    say('mName', d.ok, d.message);
+  };
+
+  // ---- model (optional) -----------------------------------------------------------------
+  $('doModel').onclick = async () => {
     const key = $('key').value.trim();
-    if (!key) { say('m1', false, 'Paste a key first.'); return; }
-    $('b1').disabled = true; $('sp1').textContent = 'checking…';
+    if (!key) { say('mModel', false, 'Paste a key first.'); return; }
+    $('doModel').disabled = true; $('spModel').textContent = 'checking…';
     const d = await post('/api/setup/model', {model: $('model').value, key});
-    $('b1').disabled = false; $('sp1').textContent = '';
-    say('m1', d.ok, d.message);
-    if (d.ok) setTimeout(() => show(4), 700);   // model done -> the connector
+    $('doModel').disabled = false; $('spModel').textContent = '';
+    say('mModel', d.ok, d.message);
+    sttCheck();                       // a key attached means the download is no longer needed
   };
 
-
-  // ---- 3 · the connector ---------------------------------------------------------------
-  $('b3skip').onclick = () => show(5);          // no connector yet is fine; about-you is not
-  $('b3').onclick = async () => {
-    const key = $('cKey').value.trim(), uuid = $('cUuid').value.trim();
-    if (!key || !uuid) { say('m3', false, 'Both fields are needed — or skip for now.'); return; }
-    $('b3').disabled = true; $('sp3').textContent = 'checking…';
-    const d = await post('/api/setup/connector', {key, uuid});
-    $('b3').disabled = false; $('sp3').textContent = '';
-    say('m3', d.ok, d.message);
-    if (d.ok) setTimeout(() => show(5), 900);
-  };
-
-  // EXISTING CREDENTIALS. Re-running setup should not demand a key the owner already gave —
-  // they usually came back for one other thing, and re-pasting is where they go and find it.
-  // The step still allows an override; it just stops insisting on one.
-  (async () => {
-    const r = await fetch(`/api/setup/current?t=${T}`);
-    if (!r.ok) return;
-    const cur = await r.json();
-    if (cur.model_configured) {
-      $('m1').innerHTML = `<div class="msg ok">Already attached: ${esc(cur.model)}</div>`;
-      $('b1keep').hidden = false;
-      $('b1keep').onclick = () => show(4);
-      $('key').placeholder = 'paste only if you are changing it';
-      if (cur.model_name) $('model').value = cur.model_name;
-    }
-    // SIGN-IN FIRST, when the backend has one. Until then step 3 is the manual form it always
-    // was — the alternative is shipping a Sign in button that fails, which teaches an owner that
-    // this installer's buttons do not work. `oauth_available` is false in every build today.
-    if (cur.oauth_available && !cur.connector_configured) {
-      $('cOauth').hidden = false;
-      $('cFields').hidden = true;
-      $('c3acts').hidden = true;
-      $('cManual').onclick = () => {
-        // One way only: revealing the fields also retires the sign-in offer, so there are never
-        // two live paths to the same credential on screen at once.
-        $('cFields').hidden = false;
-        $('c3acts').hidden = false;
-        $('cOauth').hidden = true;
-      };
-      $('cSignIn').onclick = async () => {
-        $('cSignIn').disabled = true;
-        const d = await post('/api/connector/signin', {});
-        say('mOauth', d.ok, d.message);
-        $('cSignIn').disabled = false;
-      };
-    }
-    if (cur.connector_configured) {
-      $('m3').innerHTML = `<div class="msg ok">Already configured — ${esc(cur.connector_uuid)}</div>`;
-      $('b3keep').hidden = false;
-      $('b3keep').onclick = () => show(5);
-      // Skip is for someone who has no connector. With one already saved it is a second button
-      // that does the same nothing as Keep, and the pair only invites a wrong guess.
-      $('b3skip').hidden = true;
-      $('cKey').placeholder = 'paste only if you are changing it';
-      if (cur.connector_uuid) $('cUuid').value = cur.connector_uuid;
-    }
-  })();
-
-  // A re-run: a model is already attached, so skip the steps that are already done. Who you
-  // are and what you do is no longer asked here — that moved to the assistant, where it is a
-  // conversation rather than a form.
-  (async () => {
-    const r = await fetch(`/api/setup/current?t=${T}`);
-    if (!r.ok) return;
-    const cur = await r.json();
-    // ?step=N WINS over the resume. Resuming a configured instance at the connector is right
-    // when someone opens setup cold, and wrong when they are being SENT to a particular step —
-    // "go back to step 1" would otherwise bounce them straight to 4 again, which is exactly
-    // what made the earlier version feel like a trap.
-    const want = parseInt(new URLSearchParams(location.search).get('step') || '', 10);
-    if (want >= 1 && want <= 6) { show(want); return; }
-    if (cur.configured) { show(4); [1,2,3].forEach(i => $('s'+i).classList.add('done')); }
-  })();
-
-  // ---- 1 · install ---------------------------------------------------------------------
-  fetch(`/api/install?t=${T}`).then(r => r.json()).then(s => {
-    if (!s.frozen) {
-      $('instState').textContent = 'Running from source. Nothing to install.';
-      $('doInstall').disabled = true;
-    } else if (s.current) {
-      $('instState').textContent = 'Installed and up to date.';
-      $('doInstall').disabled = true;
-    } else if (s.installed) {
-      // Present but a DIFFERENT build. This must stay actionable: treating it as done is how a
-      // hand-over came to launch code three commits older than the file just downloaded, with
-      // both reporting the same version number.
-      $('instState').textContent = 'Old version currently installed.';
-      $('doInstall').textContent = 'Install new';
-    } else {
-      $('instState').textContent = 'Not installed yet.';
-    }
-  }).catch(() => {});
-
-  $('doInstall').onclick = async () => {
-    $('doInstall').disabled = true;
-    const d = await post('/api/install', {});
-    say('mInst', d.ok, d.message);
-    setTimeout(() => show(2), 1200);
-  };
-  $('skipInstall').onclick = () => show(2);
-  wireSteps();
-
-  // ---- 2 · what it does ------------------------------------------------------------------
-  // The choice is SAVED, not just remembered in the page: the daemon reads `## Calls` from
-  // settings.md, and a mode that only existed in a browser tab would be lost on the first
-  // reload — leaving an owner who chose recording with an agent answering their calls.
-  $('bMode').onclick = async () => {
-    const mode = document.querySelector('input[name=calls]:checked').value;
-    $('bMode').disabled = true;
-    const d = await post('/api/setup/setting', {field: 'calls', value: mode});
-    $('bMode').disabled = false;
-    if (!d.ok) return say('mMode', false, d.message);
-    // Skipping the model is offered ONLY for carrying. With "answer" chosen it would produce an
-    // agent with nothing behind it: the daemon holds the connector and never speaks.
-    $('b1skip').hidden = (mode !== 'carry');
-    say('mMode', true, mode === 'carry'
-      ? 'Calls will be put through to you and recorded. A model is optional from here.'
-      : 'The assistant will answer. The next step attaches its model.');
-    setTimeout(() => show(3), 700);
-  };
-  $('b1skip').onclick = () => show(4);
-
-  // ---- 5 · about you ---------------------------------------------------------------------
-  // NO MODEL NEEDED. name/pronoun/phone go through set_setting, which edits settings.md by
-  // heading. `does` is the one free-text answer, and it is written to knowledge/owner.md as
-  // given — a model would phrase it better, and requiring one to record a sentence about
-  // yourself is exactly the tax this step exists to avoid.
-  $('bAbout').onclick = async () => {
-    const name = $('oName').value.trim();
-    if (!name) return say('mAbout', false, 'A name at least — otherwise it answers as "the owner".');
-    $('bAbout').disabled = true; $('spAbout').classList.add('go');
-    const d = await post('/api/setup/about', {
-      name, pronoun: $('oPronoun').value.trim(),
-      phone: $('oPhone').value.trim(), does: $('oDoes').value.trim()});
-    $('bAbout').disabled = false; $('spAbout').classList.remove('go');
-    say('mAbout', d.ok, d.message);
-    if (d.ok) setTimeout(() => show(6), 900);
-  };
-  $('aboutSkip').onclick = () => show(6);
-
-  // Prefill from what is already recorded, so a second run edits rather than duplicates.
-  fetch(`/api/setup/about?t=${T}`).then(r => r.json()).then(d => {
-    if (!d || d.error) return;
-    for (const [k, el] of [['name','oName'],['pronoun','oPronoun'],['phone','oPhone'],['does','oDoes']])
-      if (d[k]) $(el).value = d[k];
-    if (d.calls) {
-      const r = document.querySelector(`input[name=calls][value="${d.calls}"]`);
-      if (r) { r.checked = true; $('b1skip').hidden = (d.calls !== 'carry'); }
-    }
-  }).catch(() => {});
-
-  // ---- where the recordings land -------------------------------------------------------
-  // At the END because it is what an owner needs AFTER setup rather than during it: the first
-  // question once a call has actually happened is "where did it go?". The path is asked for,
-  // never written here — $AGENTDUET_HOME differs by platform and install.
-  fetch(`/api/setup/current?t=${T}`).then(r => r.json()).then(d => {
-    const el = $('whereFiles');
-    if (!el || !d || d.error) return;
-    if (d.calls === 'carry') {
-      el.innerHTML = 'Carried calls are recorded to<br><code>' + esc(d.carried_dir) + '</code>'
-        + '<br><span class="note">Both sides, and a transcript beside each one.</span>';
-    } else if (d.record_calls) {
-      el.innerHTML = 'Answered calls are recorded to<br><code>' + esc(d.recordings_dir) + '</code>'
-        + '<br><span class="note">Per call: the caller, the agent, the two mixed together, '
-        + 'and the transcript.</span>';
-    } else {
-      el.innerHTML = 'Calls are not recorded. The written transcript is kept either way, and '
-        + 'recording can be switched on in settings.';
-    }
-  }).catch(() => {});
-
-  // ---- the on-machine speech model ------------------------------------------------------
-  // Without this it arrives on the FIRST TRANSCRIPTION: hundreds of megabytes, or 2.9 GB at
-  // `max`, fetched silently from a background worker at whatever moment a call happens to end.
-  // Saying the number and letting the owner pick the moment is the whole point.
+  // ---- speech model ---------------------------------------------------------------------
   let sttPoll = null;
   function sttRender(d){
     const box = $('sttBox'), what = $('sttWhat');
     if (!box || !d || d.error === 'unauthorised') return;
-    if (!d.needed || !d.installed) { box.hidden = true; return; }   // hosted, or engine absent
+    if (!d.needed) { box.hidden = true; $('sttOff').hidden = false; return; }
+    $('sttOff').hidden = true;
+    if (!d.installed) { box.hidden = true; return; }
     box.hidden = false;
     $('doStt').hidden = d.cached || d.running;
     $('spStt').textContent = d.running ? 'downloading…' : '';
     if (d.cached) {
-      what.innerHTML = 'Speech recognition runs on this machine. '
-        + '<b>' + esc(d.model) + '</b> is ready.';
+      what.innerHTML = 'Runs on this machine. <b>' + esc(d.model) + '</b> is ready.';
     } else {
       what.innerHTML = 'Calls are transcribed on this machine, so nothing is sent anywhere. '
         + 'That needs a one-off download of about <b>' + d.mb + ' MB</b> (<code>'
-        + esc(d.model) + '</code>).<br><span class="note">If you skip it, it downloads by '
-        + 'itself the first time a call is transcribed.</span>'
+        + esc(d.model) + '</code>).<br><span class="note">Skip it and it downloads by itself '
+        + 'the first time a call is transcribed.</span>'
         + (d.err ? '<br><span class="note">Last attempt failed: ' + esc(d.err) + '</span>' : '');
     }
-    // Poll only WHILE running, and stop as soon as it is not. A timer left running behind a
-    // finished download is a page that keeps asking a question it already has the answer to.
     if (d.running && !sttPoll) sttPoll = setInterval(sttCheck, 3000);
     if (!d.running && sttPoll) { clearInterval(sttPoll); sttPoll = null; }
   }
@@ -533,55 +361,53 @@
     sttCheck();
   };
 
-  // ---- 4 · finish ----------------------------------------------------------------------
-  // The last act of the installer: start the INSTALLED copy detached and stand this one down.
-  // Until this exists, the daemon still running is the file they downloaded — so tidying the
-  // Downloads folder leaves a secretary that dies at the next reboot and says nothing.
-  $('doDone').onclick = async () => {
-    $('doDone').disabled = true;
-    const d = await post('/api/handover', {});
-    say('mDone', d.ok, d.message);
+  // ---- install + finish -------------------------------------------------------------------
+  $('doInstall').onclick = async () => {
+    $('doInstall').disabled = true;
+    const d = await post('/api/install', {});
+    $('doInstall').disabled = false;
+    say('mInst', d.ok, d.message);
   };
 
-  // ---- leaving without finishing -------------------------------------------------------
-  // Reuses /api/quit — the same stop the owner's view uses, which answers first and then exits
-  // with os._exit, so the page learns what happened instead of seeing a dropped connection.
-  //
-  // NOTHING IS ROLLED BACK. An installed binary is inert until someone runs it, a registered
-  // assistant points at a path that still works, and a saved credential is what the owner came
-  // to save. Undoing those silently would be the greater surprise, so the text says what stays.
-  //
-  // The same page is reachable on a CONFIGURED instance, where this process IS the secretary and
-  // stopping it takes it off the air. Not hidden there — a page whose only exit is closing the
-  // tab is the defect being fixed — so the consequence is read from the channel state and said
-  // plainly, before and after.
+  // The mode is written HERE rather than when the radio changes, so there is one moment where
+  // setup commits and it is the one the owner pressed. `carry` is the default because the
+  // recorder is the product — see "Two products, one binary" in CLAUDE.md.
+  $('doDone').onclick = async () => {
+    $('doDone').disabled = true; $('spDone').textContent = 'saving…';
+    const mode = (document.querySelector('input[name=calls]:checked') || {}).value || 'carry';
+    await post('/api/setup/setting', {field: 'calls', value: mode});
+    $('spDone').textContent = '';
+    const d = await post('/api/handover', {});
+    say('mDone', d.ok, d.message);
+    $('doDone').disabled = false;
+  };
+
+  // The same page is reachable on a CONFIGURED instance, where this process IS the daemon and
+  // stopping it takes it off the air. Read the channel and say which it is — a static "nothing is
+  // running yet" is a lie exactly when the consequence matters.
   let onAir = false;
   fetch(`/api/state?t=${T}`).then(r => r.json()).then(st => {
     const c = (st && st.channel) || {};
     onAir = ['live', 'connecting', 'retrying'].indexOf(c.channel) >= 0;
     $('cancelWhat').textContent = onAir
-      ? 'Your secretary is on the air. This stops it answering.'
+      ? 'This machine is on the air. Stopping it stops calls arriving.'
       : 'Nothing is on the air yet. Stops setup only; keeps what you saved.';
   }).catch(() => { $('cancelWhat').textContent = ''; });
 
   $('doCancel').onclick = async () => {
-    const warn = onAir
-      ? 'Stop the secretary? It stops answering until you start it again.'
-      : 'Stop setup? Nothing is answering yet.';
-    // The "nothing is undone" promise stays. It is the one thing they cannot check for
-    // themselves, and it is why pressing this is safe.
+    const warn = onAir ? 'Stop it? Calls stop arriving until you start it again.'
+                       : 'Stop setup? Nothing is arriving yet.';
     if (!confirm(warn + '\n\nWhat you saved stays saved.')) return;
     $('doCancel').disabled = true;
     try { await post('/api/quit', {}); } catch (e) {}
     document.body.innerHTML =
       '<div style="font-family:var(--mono);font-size:.9rem;padding:2.5rem;color:var(--muted);'
       + 'max-width:44rem;line-height:1.7">Stopped.<br><br>'
-      + (onAir ? 'Nobody can reach your secretary until you start it again.<br><br>'
-               : 'Setup unfinished, so nobody can reach you yet.<br><br>')
+      + (onAir ? 'Nothing reaches this machine until you start it again.<br><br>'
+               : 'Setup unfinished, so nothing reaches you yet.<br><br>')
       + 'What you saved stays saved.<br>'
       + 'Start again from the app icon, or <code>agentduet-desktop</code>.</div>';
   };
-
 </script>
 </body>
 </html>

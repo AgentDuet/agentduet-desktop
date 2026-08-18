@@ -478,13 +478,22 @@ def test_setup_without_a_model() -> None:
     # a browser tab would leave an owner who chose recording with an agent answering their calls.
     ok("the call mode can be set like any other setting", "calls" in tools.SETTING_FIELDS)
 
-    # And the page must offer the skip ONLY for the mode that may skip. Offering it under
-    # "answer" produces a daemon holding the connector with nothing behind it to speak.
+    # The page must say that ANSWERING needs a key, where the mode is chosen. It used to enforce
+    # this by hiding a skip button; setup is two screens now and the model is optional
+    # throughout, so the check moved with the design. What must not be lost is the WARNING:
+    # picking "answer" with no key leaves a daemon holding the connector with nothing to speak.
+    # That state is safe — cannot_answer() above makes it wait rather than run — but an owner who
+    # chose it silently would sit there wondering why nobody is ever answered.
     page = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
             / "setup.html").read_text()
-    ok("skipping the model is offered only when carrying",
-       "$('b1skip').hidden = (mode !== 'carry')" in page)
-    ok("and the page asks who the owner is at all", 'id="oName"' in page and "api/setup/about" in page)
+    ok("choosing to answer says it needs a model key",
+       'value="answer"' in page and "model key" in page.lower())
+    ok("and carrying is what a fresh setup writes", 'value="carry" checked' in page)
+    # The owner's NAME still has to be reachable. Setup no longer interviews — signing in will
+    # bring it across — but transcribe.py primes the speech model with "A call for <name>." and
+    # that measurably beat moving to a bigger model, so a page that cannot set it quietly
+    # degrades every transcript.
+    ok("and the page can still set the owner's name", 'id="oName"' in page)
 
 
 def test_answered_call_recording() -> None:
