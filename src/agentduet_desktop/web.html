@@ -3,776 +3,374 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- Distinguishing word first: browser tabs truncate the END, so a shared "Secretary — "
-     prefix would make both tabs read the same at tab width. -->
-<title>Owner's View</title>
+<title>AgentDuet</title>
 <style>
   :root{
-    --ink:#101418; --muted:#5b6675; --faint:#8b96a3;
-    --paper:#f6f7f8; --surface:#fff; --line:#e2e6ea; --line2:#eef1f4;
+    --ink:#101418; --paper:#f6f7f8; --surface:#fff; --line:#e2e6ea; --line2:#eef1f4;
+    --muted:#5b6675; --faint:#8b96a3;
     --accent:#00b2ff; --accent-ink:#0077b0; --coral:#f0523d;
-    --good:#1a7f5a; --good-bg:#e8f5ef;
-    --me-bg:#0077b0; --me-fg:#ffffff;
-    /* Owner-reply purple. Tokenised because hardcoding a light background with no
-       text colour made the text invisible in dark mode — it inherited --ink. */
-    --you-bg:#f2ecff; --you-ink:#2a1a4d; --you-line:#6b4bd4;
-    --acted-bg:#fff4d6; --acted-ink:#8a5b00;
-    --handled-bg:#eef4ff; --handled-ink:#3b6fd4;
+    --good:#1a7f5a; --good-bg:#e8f5ef; --bad:#b3261e; --bad-bg:#fff1ee;
     --sans:"SF Pro Display",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
   }
   @media (prefers-color-scheme:dark){
-    :root{--ink:#eef3f7;--muted:#93a6b5;--faint:#6b7c8a;--paper:#0f1419;--surface:#161d24;
-      --line:#242e38;--line2:#1c242c;--good:#4ade9e;--good-bg:#13322a;--accent-ink:#4cc7ff;
-      --me-bg:#134a66; --me-fg:#eaf6ff;
-      --you-bg:#241a3d; --you-ink:#e9e2ff; --you-line:#a78bfa;
-      --acted-bg:#3a2a05; --acted-ink:#ffd97a;
-      --handled-bg:#14243f; --handled-ink:#9dc0ff;}
+    :root{--ink:#eef3f7;--paper:#0f1419;--surface:#161d24;--line:#242e38;--line2:#1c242c;
+      --muted:#93a6b5;--faint:#6b7c8a;--accent-ink:#4cc7ff;--good:#4ade9e;--good-bg:#13322a;
+      --bad:#ffb4a8;--bad-bg:#2a1512;}
   }
   *{box-sizing:border-box;margin:0;padding:0;}
-  /* `display:flex` on a class beats the UA rule for [hidden], so an element styled as a
-     flex container ignores the attribute and stays visible. That is why the ordering pane
-     rendered as a blank box on load, and why the escalation nav would show with 0 items. */
-  [hidden]{display:none !important;}
   body{font-family:var(--sans);background:var(--paper);color:var(--ink);
-    -webkit-font-smoothing:antialiased;height:100vh;display:flex;flex-direction:column;}
-  header{display:flex;align-items:center;gap:.7rem;padding:.8rem 1.2rem;border-bottom:1px solid var(--line);}
-  header .dot{width:9px;height:9px;border-radius:50%;background:var(--good);}
-  header .dot.off{background:var(--coral);}
-  header h1{font-size:.98rem;font-weight:700;letter-spacing:-.01em;}
-  header .meta{margin-left:1rem;font-family:var(--mono);font-size:.7rem;color:var(--faint);}
-  /* Deliberately quiet: stopping the agent means it answers nobody until it is started again,
-     so it should not look like a primary action sitting next to the live indicator. */
-  /* Same quiet treatment as quit: neither is a thing the owner came here to do. */
-  header #settings{margin-left:auto;font-family:var(--mono);font-size:.66rem;
-    padding:.2rem .5rem;border:1px solid var(--line);border-radius:6px;color:var(--faint);
-    text-decoration:none;cursor:pointer;}
-  header #settings:hover{color:var(--accent-ink);border-color:var(--accent);}
-  header #quit{margin-left:.5rem;font:inherit;font-family:var(--mono);font-size:.66rem;
-    padding:.2rem .5rem;border:1px solid var(--line);border-radius:6px;background:transparent;
-    color:var(--faint);cursor:pointer;}
-  header #quit:hover{color:var(--coral);border-color:var(--coral);}
+    -webkit-font-smoothing:antialiased;line-height:1.5;display:flex;min-height:100vh;}
 
-  /* Three columns: WHO (people) | WHAT WAS SAID (thread + composer) | THINKING (llm chat).
-     The middle column is where the owner acts, so it gets the most room. */
-  main{flex:1;display:grid;grid-template-columns:minmax(190px,.8fr) minmax(0,1.5fr) minmax(0,1.1fr);
-    gap:0;overflow:hidden;}
-  @media (max-width:1100px){ main{grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);}
-    .col-llm{grid-column:1/-1;border-top:1px solid var(--line);max-height:38vh;} }
-  @media (max-width:760px){ main{grid-template-columns:1fr;grid-template-rows:auto 1fr auto;} }
-  /* NOTHING HAS HAPPENED YET. Three columns on a fresh install advertise two columns of
-     nothing, which reads as broken software rather than as new. So until there is any traffic
-     at all, only the assistant is shown — it is the one part that works on day one, and it can
-     explain the rest. The class is recomputed every refresh, so the queue reappears by itself
-     the moment someone writes: the empty state is optimised WITHOUT costing the working state,
-     which is where the product's value actually is.
-     Specificity (0,2,1) deliberately beats the responsive .col-llm rules below — without that,
-     a narrow window would cap the only visible column at 38vh. */
-  body.quiet main{grid-template-columns:minmax(0,1fr);}
-  body.quiet .col:not(.col-llm){display:none;}
-  body.quiet .col-llm{border-left:0;border-top:0;max-height:none;grid-column:1/-1;}
-  /* Centred and measured: full-width chat on a wide screen is a worse read than a column. */
-  body.quiet .col-llm>*{max-width:46rem;width:100%;margin-left:auto;margin-right:auto;}
-  .quietnote{font-size:.87rem;color:var(--muted);line-height:1.55;padding:.1rem 0 .5rem;}
-  .quietnote a{color:var(--accent-ink);border-bottom:1px solid var(--accent);
-    text-decoration:none;cursor:pointer;white-space:nowrap;}
-  .quietnote code{font-family:var(--mono);font-size:.82rem;}
-  /* The thread column scrolls its history and pins the composer, like any messaging app. */
-  .col{display:flex;flex-direction:column;overflow:hidden;}
-  .col+.col{border-left:1px solid var(--line);}
-  .col-head{padding:.9rem 1rem .3rem;}
-  .escnav{display:flex;align-items:center;gap:.4rem;margin:-.1rem 0 .4rem;}
-  .escnav button{font-size:.7rem;font-weight:650;padding:.2rem .5rem;border:1px solid var(--line);
-    border-radius:6px;background:var(--paper);color:var(--muted);cursor:pointer;}
-  .escnav button:hover{background:var(--line2);color:var(--ink);}
-  .escnav #escPos{font-family:var(--mono);font-size:.64rem;color:var(--faint);}
-  /* The escalation the queue walk landed on. Briefly ringed so the eye finds it in a long
-     thread — the point of navigating is arriving somewhere identifiable. */
-  .turn.spot .bub{outline:2px solid var(--coral);outline-offset:2px;}
-  .col-body{flex:1;overflow-y:auto;padding:.4rem 1rem 1rem;}
-  .pane{overflow-y:auto;padding:1.1rem 1.2rem;}
-  .pane+.pane{border-left:1px solid var(--line);}
-  @media (max-width:860px){ .pane+.pane{border-left:0;border-top:1px solid var(--line);} }
+  /* ---- sidebar ---- */
+  aside{width:14.5rem;flex:0 0 14.5rem;background:var(--surface);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;padding:1.1rem .8rem;}
+  .who{display:flex;align-items:center;gap:.6rem;padding:0 .3rem 1rem;}
+  .av{width:2.1rem;height:2.1rem;flex:0 0 2.1rem;border-radius:50%;background:var(--accent-ink);
+    color:#fff;display:flex;align-items:center;justify-content:center;font-size:.72rem;
+    font-weight:700;letter-spacing:.02em;}
+  .who .n{font-size:.85rem;font-weight:680;line-height:1.25;}
+  .who .p{font-family:var(--mono);font-size:.7rem;color:var(--faint);}
+  .navlabel{font-family:var(--mono);font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--faint);padding:.5rem .3rem .35rem;}
+  nav button{display:block;width:100%;text-align:left;font:inherit;font-size:.83rem;
+    font-weight:600;color:var(--muted);background:transparent;border:0;border-radius:8px;
+    padding:.45rem .55rem;cursor:pointer;}
+  nav button:hover{background:var(--line2);color:var(--ink);}
+  nav button.on{background:var(--line2);color:var(--accent-ink);}
+  .store{margin-top:auto;padding:.7rem .4rem 0;border-top:1px solid var(--line);
+    font-size:.7rem;color:var(--faint);}
+  .store code{font-family:var(--mono);font-size:.65rem;word-break:break-all;display:block;
+    margin-top:.2rem;color:var(--muted);}
+  .store a{color:var(--accent-ink);}
 
-  h2{font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;
-    color:var(--faint);margin:0 0 .6rem;font-weight:600;}
-  h2+h2{margin-top:1.5rem;}
-  .card{background:var(--surface);border:1px solid var(--line);border-radius:10px;
-    padding:.7rem .85rem;margin-bottom:.5rem;}
-  .card.esc{border-left:3px solid var(--coral);}
-  .card.esc .top{display:flex;align-items:flex-start;gap:.5rem;}
-  .card.esc .top .who{flex:1;}
-  .xbtn{font:inherit;font-size:.68rem;font-weight:650;padding:.2rem .5rem;border:1px solid var(--line);
-    border-radius:6px;background:var(--paper);color:var(--muted);cursor:pointer;flex:none;}
-  .xbtn:hover{background:var(--good-bg);color:var(--good);border-color:var(--good);}
-  .xbtn:disabled{opacity:.5;cursor:default;}
-  .brief{margin-top:.5rem;padding-top:.45rem;border-top:1px dashed var(--line);
-    font-size:.78rem;line-height:1.5;}
-  .brief div{margin-top:.15rem;}
-  .brief b{font-family:var(--mono);font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;
-    color:var(--faint);font-weight:700;margin-right:.35rem;}
-  .brief .draft{color:var(--muted);font-style:italic;}
-  .count{font-family:var(--mono);font-size:.62rem;background:var(--warn-bg,#fff6f4);color:var(--coral);
-    padding:.1rem .35rem;border-radius:4px;font-weight:700;}
-  .who{font-size:.85rem;font-weight:650;}
-  .q{font-size:.85rem;color:var(--ink);margin-top:.15rem;line-height:1.4;}
-  .why{font-family:var(--mono);font-size:.66rem;color:var(--coral);margin-top:.3rem;}
-  .ans{font-size:.8rem;color:var(--muted);margin-top:.3rem;line-height:1.4;}
-  .src{font-family:var(--mono);font-size:.62rem;color:var(--faint);margin-top:.25rem;}
-  /* Outcome badges — the log now holds answers, escalations, things the sender handled
-     themselves, withdrawals and the owner's own replies. All of it rendered as
-     question/answer, so a withdrawal looked like a normal exchange. */
-  .tag2{font-family:var(--mono);font-size:.6rem;letter-spacing:.05em;text-transform:uppercase;
-    padding:.1rem .32rem;border-radius:4px;font-weight:700;margin-right:.3rem;}
-  .t-answered{background:var(--good-bg);color:var(--good);}
-  .t-escalated{background:#fff1ee;color:var(--coral);}
-  .t-handled{background:var(--handled-bg);color:var(--handled-ink);}
-  /* An action taken on the owner's behalf. Loud on purpose — it is the one outcome that
-     changed something in the world without the owner being asked. */
-  .t-acted{background:var(--acted-bg);color:var(--acted-ink);font-weight:600;}
-  .op.claim{background:transparent;color:var(--faint);border:1px dashed var(--line);font-weight:400;}
-  /* Debug view. Default is the owner's view: what was asked, what we said, what needs them.
-     Reason codes, ids, source filenames and search traces are OUR diagnostics — useful while
-     building, noise when triaging. One class on <body> switches the whole page. */
-  body:not(.debug) .dbg{display:none;}
-  .t-withdrawn{background:var(--line2);color:var(--muted);}
-  .t-owner_reply{background:var(--you-bg);color:var(--you-line);}
-  /* The channel chip. Deliberately NOT red when unconfigured: on a fresh install having no
-     connector is the normal state, and an alarming header on first launch reads as broken
-     software rather than as a step not taken yet. Red is reserved for configured-but-failing,
-     which IS a fault. */
-  .chan{display:flex;align-items:center;gap:.4rem;font-family:var(--mono);font-size:.66rem;
-    color:var(--muted);text-decoration:none;padding:.22rem .5rem;border-radius:999px;
-    border:1px solid var(--line);cursor:pointer;white-space:nowrap;}
-  .chan:hover{border-color:var(--accent);color:var(--ink);}
-  .cdot{width:6px;height:6px;border-radius:50%;background:var(--faint);flex:none;}
-  .chan.live{color:var(--good);border-color:var(--good);}
-  .chan.live .cdot{background:var(--good);}
-  .chan.unset{border-style:dashed;color:var(--accent-ink);border-color:var(--accent);}
-  .chan.unset .cdot{background:var(--accent);}
-  .chan.bad{color:var(--coral);border-color:var(--coral);}
-  .chan.bad .cdot{background:var(--coral);}
-  .meta2{font-family:var(--mono);font-size:.6rem;color:var(--faint);margin-top:.2rem;}
-  .card.mine{border-left:3px solid var(--you-line);}
-  /* People list — the way into history. "What did we say to Pauline" is the question
-     the owner actually has; a flat chronological log answers a different one. */
-  .who-row{display:flex;align-items:center;gap:.5rem;padding:.45rem .6rem;border-radius:8px;
-    cursor:pointer;font-size:.83rem;}
-  .who-row:hover{background:var(--line2);}
-  .who-row.on{background:var(--line2);font-weight:650;}
-  .who-row .nm{flex:1;}
-  .who-row .ct{font-family:var(--mono);font-size:.63rem;color:var(--faint);}
-  .who-row .op{font-family:var(--mono);font-size:.63rem;color:var(--coral);font-weight:700;}
-  .backlink{font-size:.75rem;color:var(--accent-ink);cursor:pointer;font-weight:400;}
-  .turn{margin-bottom:.7rem;}
-  .bub{border-radius:11px;padding:.5rem .7rem;font-size:.85rem;line-height:1.45;
-    max-width:92%;margin-bottom:.25rem;}
-  .bub.them{background:var(--surface);border:1px solid var(--line);}
-  .bub.us{background:var(--line2);}
-  /* "You" and "Agent" are both the owner's side of the conversation, so they share the
-     indent — the visual split that matters is us vs them, not owner vs agent. */
-  .bub.us{margin-left:8%;}
-  .bub.you{background:var(--you-bg);color:var(--you-ink);
-    border-left:3px solid var(--you-line);margin-left:8%;}
-  .bub .xbtn{float:right;margin-left:.4rem;}
-  /* Who said it, named on every bubble. Colour and indent alone did not answer "is this
-     Pauline, or us answering as me?" — three voices in one thread (the sender, the agent
-     speaking for the owner, the owner speaking directly) need the caption spelled out. */
-  .from{font-family:var(--mono);font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;
-    font-weight:700;margin-bottom:.25rem;}
-  .bub.them .from{color:var(--accent-ink);}
-  .bub.us .from{color:var(--muted);}
-  .bub.you .from{color:var(--you-line);}
-  /* An unverified sender is captioned by raw identity, never by profile name; this marks
-     the caption itself as an unproven claim rather than hiding it in the meta line. */
-  .from .unv{color:var(--coral);font-weight:400;text-transform:none;letter-spacing:0;}
-  /* Debug lines are labelled as debug, so a reason code can never be mistaken for
-     something the agent actually said to the sender. */
-  .dbgline{font-family:var(--mono);font-size:.6rem;color:var(--faint);margin-top:.3rem;
-    padding-top:.25rem;border-top:1px dashed var(--line);}
-  .dbgline b{background:var(--line2);color:var(--muted);padding:.05rem .25rem;border-radius:3px;
-    font-weight:700;letter-spacing:.05em;margin-right:.35rem;}
-  .empty{font-size:.83rem;color:var(--faint);padding:.5rem 0;}
-  .stat{display:flex;gap:1.2rem;margin-bottom:1rem;}
-  .stat div b{display:block;font-size:1.35rem;font-weight:750;letter-spacing:-.02em;}
-  .stat div span{font-family:var(--mono);font-size:.63rem;color:var(--faint);letter-spacing:.06em;text-transform:uppercase;}
-  .perm{font-size:.78rem;color:var(--muted);line-height:1.6;}
-  .perm code{font-family:var(--mono);font-size:.72rem;color:var(--accent-ink);}
+  /* ---- main ---- */
+  main{flex:1;padding:1.6rem 1.8rem 3rem;max-width:52rem;}
+  h1{font-size:1.15rem;font-weight:760;letter-spacing:-.01em;}
+  .lede{color:var(--muted);font-size:.88rem;margin-top:.25rem;}
+  section.panel{display:none;}
+  section.panel.on{display:block;}
 
-  /* chat */
-  .chat{display:flex;flex-direction:column;height:100%;padding:0;}
-  .log{flex:1;overflow-y:auto;padding:1.1rem 1.2rem;display:flex;flex-direction:column;gap:.6rem;}
-  /* The thread scrolls itself, so the people list above it stays reachable and the
-     newest message can be pinned into view. Without this it grew inside the pane and
-     a long history pushed the latest reply below the fold. */
-  .thread{}  /* the column scrolls now, not the thread */
-  .msg{max-width:85%;font-size:.87rem;line-height:1.45;padding:.55rem .8rem;border-radius:11px;
-    white-space:pre-wrap;word-wrap:break-word;}
-  .msg.me{align-self:flex-end;background:var(--me-bg);color:var(--me-fg);border-bottom-right-radius:3px;}
-  .msg.bot{align-self:flex-start;background:var(--surface);border:1px solid var(--line);
-    border-bottom-left-radius:3px;}
+  .pill{display:inline-flex;align-items:center;gap:.4rem;font-size:.72rem;font-weight:700;
+    padding:.25rem .6rem;border-radius:999px;background:var(--good-bg);color:var(--good);}
+  .pill.off{background:var(--line2);color:var(--faint);}
+  .pill i{width:.45rem;height:.45rem;border-radius:50%;background:currentColor;display:block;}
 
-  /* thinking indicator — replies take ~6s (model call), and 15s+ when the retrieval
-     loop re-searches. Silence for that long reads as "broken", so show the wait. */
-  .thinking{display:flex;align-items:center;gap:.5rem;}
-  .dots{display:inline-flex;gap:3px;}
-  .dots i{width:5px;height:5px;border-radius:50%;background:var(--faint);
-    animation:bounce 1.2s infinite ease-in-out;}
-  .dots i:nth-child(2){animation-delay:.15s} .dots i:nth-child(3){animation-delay:.3s}
-  @keyframes bounce{0%,60%,100%{opacity:.25;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
-  @media (prefers-reduced-motion:reduce){.dots i{animation:none;opacity:.6}}
-  .elapsed{font-family:var(--mono);font-size:.66rem;color:var(--faint);}
-  .msg.tool{align-self:flex-start;font-family:var(--mono);font-size:.66rem;color:var(--faint);
-    background:transparent;border:0;padding:.1rem .2rem;}
-  form{display:flex;gap:.5rem;padding:.8rem 1.2rem;border-top:1px solid var(--line);}
-  input{flex:1;font:inherit;font-size:.9rem;padding:.6rem .8rem;border:1px solid var(--line);
-    border-radius:9px;background:var(--paper);color:var(--ink);}
-  input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent;}
-  button{font:inherit;font-size:.87rem;font-weight:650;padding:.6rem 1.1rem;border:0;
-    border-radius:9px;background:var(--ink);color:var(--paper);cursor:pointer;}
-  button:disabled{opacity:.45;cursor:not-allowed;}
-  /* Composer: sending AS the owner. Deliberately styled apart from the llm chat input so
-     the two are never confused — one talks to a person, the other talks about them. */
-  .composer{border-top:1px solid var(--line);background:var(--surface);}
-  .composer .hint{font-family:var(--mono);font-size:.6rem;color:var(--faint);
-    padding:.45rem 1rem 0;}
-  .composer form{border-top:0;padding:.5rem 1rem .8rem;}
-  .composer button{background:#6b4bd4;}
-  .sendnote{font-size:.74rem;color:var(--muted);padding:0 1rem .6rem;line-height:1.4;}
+  .rows{margin-top:1.2rem;border:1px solid var(--line);border-radius:12px;overflow:hidden;
+    background:var(--surface);}
+  .row{display:flex;align-items:center;gap:.9rem;padding:.85rem 1rem;
+    border-bottom:1px solid var(--line2);cursor:pointer;}
+  .row:last-child{border-bottom:0;}
+  .row:hover{background:var(--line2);}
+  .row .t{flex:1;}
+  .row .t b{display:block;font-size:.88rem;font-weight:680;}
+  .row .t span{font-size:.78rem;color:var(--faint);}
+
+  /* The switch is a real checkbox, so it is keyboard reachable and its state is its state. */
+  .sw{position:relative;width:2.2rem;height:1.25rem;flex:0 0 2.2rem;}
+  .sw input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer;}
+  .sw i{position:absolute;inset:0;border-radius:999px;background:var(--line);
+    transition:background .15s;pointer-events:none;}
+  .sw i::after{content:"";position:absolute;top:.15rem;left:.15rem;width:.95rem;height:.95rem;
+    border-radius:50%;background:#fff;transition:transform .15s;}
+  .sw input:checked + i{background:var(--accent-ink);}
+  .sw input:checked + i::after{transform:translateX(.95rem);}
+
+  .card{margin-top:1.2rem;background:var(--surface);border:1px solid var(--line);
+    border-radius:12px;padding:1rem 1.1rem;}
+  .card h3{font-size:.8rem;font-weight:700;color:var(--muted);}
+  .dir{display:flex;align-items:center;gap:.6rem;margin-top:.5rem;}
+  .dir code{flex:1;font-family:var(--mono);font-size:.7rem;color:var(--muted);word-break:break-all;}
+  table{width:100%;border-collapse:collapse;margin-top:.7rem;font-size:.8rem;}
+  th{text-align:left;font-size:.65rem;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--faint);font-weight:600;padding:.35rem .2rem;border-bottom:1px solid var(--line);}
+  td{padding:.45rem .2rem;border-bottom:1px solid var(--line2);}
+  td.f{font-family:var(--mono);font-size:.72rem;word-break:break-all;}
+  td.s{color:var(--faint);white-space:nowrap;}
+  .empty{padding:1.1rem .2rem;color:var(--faint);font-size:.82rem;}
+
+  label{display:block;margin-top:.9rem;font-size:.8rem;font-weight:650;}
+  select,input[type=password],input[type=text]{width:100%;font:inherit;font-size:.85rem;
+    margin-top:.3rem;padding:.5rem .6rem;border:1px solid var(--line);border-radius:8px;
+    background:var(--paper);color:var(--ink);}
+  button.act{font:inherit;font-size:.82rem;font-weight:700;padding:.5rem 1rem;border:0;
+    border-radius:8px;background:var(--accent-ink);color:#fff;cursor:pointer;margin-top:.8rem;}
+  button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);}
+  .badge{display:inline-block;margin-top:.8rem;font-size:.72rem;font-weight:700;color:var(--good);
+    background:var(--good-bg);border-radius:999px;padding:.22rem .6rem;}
+  .msg{margin-top:.8rem;padding:.6rem .75rem;border-radius:8px;font-size:.82rem;
+    white-space:pre-wrap;}
+  .msg.ok{background:var(--good-bg);color:var(--good);border:1px solid var(--good);}
+  .msg.no{background:var(--bad-bg);color:var(--bad);border:1px solid var(--coral);}
+  .note{margin-top:.7rem;font-size:.75rem;color:var(--faint);}
+  a{color:var(--accent-ink);}
 </style>
 </head>
 <body>
-<header>
-  <span class="dot" id="dot"></span>
-  <h1>Secretary</h1>
-  <span class="meta" id="meta" title="This page's link to the local daemon — not the DDUET channel, which is the chip on the right">connecting…</span>
-  <!-- What the outside world can reach. Empty columns look identical whether nobody has
-       written or nothing is connected, and only the second is the owner's to fix. Clicking
-       goes to the connector, which is the answer in every unhealthy state. -->
-  <a class="chan" id="chan" title="The DDUET channel — messages and calls">
-    <span class="cdot" id="cdot"></span><span id="ctext">…</span>
-  </a>
-  <a id="settings" title="Who you are, and the model it uses">settings</a>
-  <button id="quit" title="Stop the secretary on this machine">quit</button>
-</header>
+
+<aside>
+  <div class="who">
+    <div class="av" id="av">–</div>
+    <div><div class="n" id="who">—</div><div class="p" id="num">—</div></div>
+  </div>
+
+  <div class="navlabel">Main Control</div>
+  <nav>
+    <button data-v="overview" class="on">Overview</button>
+    <button data-v="record-call">Record Call</button>
+    <button data-v="transcribe">Transcribe Call</button>
+    <button data-v="record-message">Record Message</button>
+    <button data-v="connect-ai">Connect AI</button>
+  </nav>
+
+  <div class="store">
+    Storage
+    <code id="store">—</code>
+    <a href="#" id="toSettings">Change</a> ·
+    <a href="#" id="toSecretary">Secretary</a>
+  </div>
+</aside>
 
 <main>
-  <!-- 1 · WHO -->
-  <section class="col">
-    <div class="col-head">
-      <div class="stat">
-        <div><b id="s-today">0</b><span>today</span></div>
-        <div><b id="s-esc">0</b><span>need you</span></div>
-      </div>
-      <h2>People
-        <span id="onlyOpen" class="backlink">needs you only</span>
-        <span id="agedOut" style="color:var(--faint);font-weight:400"></span></h2>
-    </div>
-    <div class="col-body"><div id="people"></div></div>
+  <!-- ---- overview ---- -->
+  <section class="panel on" id="p-overview">
+    <h1>Service Status Overview</h1>
+    <p class="lede" id="ovLede">…</p>
+    <div style="margin-top:.7rem"><span class="pill" id="ovPill"><i></i>…</span></div>
+
+    <div class="rows" id="ovRows"></div>
+    <p class="note">A call is either carried to you or answered for you — never both. One
+      connector has one handler.</p>
   </section>
 
-  <!-- 2 · WHAT WAS SAID — history with the selected person, and a way to write to them -->
-  <section class="col">
-    <div class="col-head"><h2 id="logTitle">Pick someone</h2>
-      <!-- Walking the queue. Without this, finding the next thing that needs the owner means
-           clicking each person and scanning their thread. -->
-      <div class="escnav" id="escNav" hidden>
-        <button type="button" id="escPrev" title="previous open escalation">◀</button>
-        <span id="escPos">—</span>
-        <button type="button" id="escNext" title="next open escalation">next ▶</button>
+  <!-- ---- record call ---- -->
+  <section class="panel" id="p-record-call">
+    <h1>Record Call</h1>
+    <p class="lede">Manage audio saving rules and browse locally recorded calls.</p>
+    <div class="card">
+      <div class="row" style="border:0;padding:0;cursor:default">
+        <div class="t"><b>Record Calls</b><span>Both sides are saved to this machine.</span></div>
+        <label class="sw"><input type="checkbox" data-svc="record_call"><i></i></label>
       </div>
     </div>
-    <div class="col-body"><div id="thread" class="thread"></div></div>
-    <div class="composer">
-      <div class="hint" id="sendTo">select a person to write to them</div>
-      <!-- onsubmit="return false" is a FAILSAFE, not a duplicate of the JS handler: a native
-           submit navigates to the page URL without ?t=, which 401s and kills the session. That
-           is exactly what a single early script error caused. -->
-      <form id="sendForm" onsubmit="return false">
-        <input id="sendText" placeholder="Write as yourself…" autocomplete="off" disabled>
-        <button id="sendBtn" disabled>Send</button>
-      </form>
-      <div class="sendnote" id="sendNote"></div>
+    <div class="card">
+      <h3>Recorded Calls Directory</h3>
+      <div class="dir"><code id="dirCalls">—</code></div>
+      <table><thead><tr><th>File Name</th><th>Type &amp; Size</th></tr></thead>
+        <tbody id="tCalls"></tbody></table>
+      <div class="empty" id="eCalls" hidden>Nothing recorded yet.</div>
+    </div>
+    <div id="mCalls"></div>
+  </section>
+
+  <!-- ---- transcribe ---- -->
+  <section class="panel" id="p-transcribe">
+    <h1>Transcribe Call</h1>
+    <p class="lede">Runs speech-to-text directly on your Mac using Apple Neural Engine.</p>
+    <div class="card">
+      <div class="row" style="border:0;padding:0;cursor:default">
+        <div class="t"><b>Transcribe Calls</b><span>After the call, on a queue.</span></div>
+        <label class="sw"><input type="checkbox" data-svc="transcribe"><i></i></label>
+      </div>
+      <label>Select Local Whisper Model
+        <select id="quality">
+          <option value="fast">Whisper Base (142 MB — fastest)</option>
+          <option value="balanced">Whisper Small (464 MB — fast &amp; recommended)</option>
+          <option value="accurate">Whisper Medium (1.5 GB — multilingual)</option>
+          <option value="max">Whisper Large v3 (2.9 GB — best)</option>
+        </select></label>
+      <button class="act" id="saveQuality">Save</button>
+      <button class="act ghost" id="doStt" hidden>Download it now</button>
+      <div class="badge" id="offline">● Offline Mode Guaranteed — 100% On-Device</div>
+      <div id="mStt"></div>
+    </div>
+    <div class="card">
+      <h3>Transcription Test Engine</h3>
+      <button class="act" id="doTest">Test Local Transcription</button>
+      <div id="mTest"></div>
     </div>
   </section>
 
-  <!-- 3 · THINKING — the assistant that manages the queue, not the person -->
-  <section class="col chat col-llm">
-    <div class="col-head"><h2>Ask your secretary</h2>
-      <!-- Only rendered in the quiet state; explains where the other columns went and, more
-           usefully, whether anyone can reach this install at all. -->
-      <div class="quietnote" id="quietNote" hidden></div>
+  <!-- ---- record message ---- -->
+  <section class="panel" id="p-record-message">
+    <h1>Record Message</h1>
+    <p class="lede">Archive incoming and outgoing SMS &amp; mobile messages locally.</p>
+    <div class="card">
+      <div class="row" style="border:0;padding:0;cursor:default">
+        <div class="t"><b>Record Messages</b><span>Saved as logs beside your calls.</span></div>
+        <label class="sw"><input type="checkbox" data-svc="record_message"><i></i></label>
+      </div>
     </div>
-    <div class="log" id="log">
-      <div class="msg bot">Ask me anything about your queries — "what's waiting?", "grant Celine the partner folder", "has anyone asked about pricing?"</div>
+    <div class="card">
+      <h3>Message Logs Directory</h3>
+      <div class="dir"><code id="dirMsgs">—</code></div>
+      <table><thead><tr><th>File Name</th><th>Type &amp; Size</th></tr></thead>
+        <tbody id="tMsgs"></tbody></table>
+      <div class="empty" id="eMsgs" hidden>Nothing archived yet.</div>
     </div>
-    <form id="f" onsubmit="return false">
-      <input id="m" placeholder="Ask your secretary…" autocomplete="off">
-      <button id="send">Send</button>
-    </form>
+    <div id="mMsgs"></div>
+  </section>
+
+  <!-- ---- connect ai ---- -->
+  <section class="panel" id="p-connect-ai">
+    <h1>Connect AI</h1>
+    <p class="lede">Pass call transcripts to cloud providers for smart action items &amp;
+      summaries.</p>
+    <div class="card">
+      <div class="row" style="border:0;padding:0;cursor:default">
+        <div class="t"><b>Connect AI Service</b><span id="aiState">…</span></div>
+        <label class="sw"><input type="checkbox" data-svc="connect_ai"><i></i></label>
+      </div>
+      <label>AI Provider <select id="model"></select></label>
+      <label>Enter API Key <input id="key" type="password" placeholder="paste a key"
+        autocomplete="off"></label>
+      <button class="act" id="doModel">Verify Key</button>
+      <div id="mModel"></div>
+      <p class="note">The key is kept in this machine's .env, readable only by you.</p>
+    </div>
   </section>
 </main>
 
 <script>
-  // TEMP DIAGNOSTIC: report any script error to the server so it shows up in the access log.
-  // A webview has no console we can read.
-  // A native window has NO CONSOLE, so a script error is completely invisible — and because
-  // handlers are assigned as the script runs, one early throw silently unwires the whole page.
-  // This reports to a path that does not exist on purpose: the 404 lands in the access log,
-  // which is also daemon.log. Zero server code, and it is the only way to see a webview error.
+  // One early throw silently unwires every handler below it, and a webview has no console —
+  // so errors go to a path that does not exist and land in the access log.
   window.onerror = function (m, src, line, col) {
     try { new Image().src = '/__jserr?m=' + encodeURIComponent(m) + '&line=' + line; } catch (e) {}
   };
 
-  // localStorage DOES NOT EXIST in the pywebview/WebKitGTK window — referencing it throws a
-  // ReferenceError, not a SecurityError, so it cannot be feature-detected with `if
-  // (window.localStorage)` alone in every engine. These preferences are a nicety; losing them
-  // must never take the page down with them, which is exactly what happened: the throw
-  // stopped the settings link, the quit button and the chat form's submit handler from ever
-  // being wired, and an unwired form submits natively to `/`, dropping the access token.
-  const store = {
-    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
-    set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* no store: fine */ } },
-  };
-
   const T = new URLSearchParams(location.search).get('t') || '';
   const $ = id => document.getElementById(id);
-  const esc = s => (s||'').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
-
-  // Owner-facing briefing. Never shown to the asker — it exists so an escalation is
-  // actionable instead of "someone asked something and I said no".
-  function brief(b){
-    if(!b || !(b.wants||b.facts||b.decision||b.draft)) return '';
-    const row = (k,v,cls) => v ? `<div${cls?` class="${cls}"`:''}><b>${k}</b>${esc(v)}</div>` : '';
-    return `<div class="brief">${row('wants',b.wants)}${row('facts',b.facts)}`
-         + `${row('decide',b.decision)}${row('draft',b.draft,'draft')}</div>`;
+  const esc = s => (s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+  const say = (el, ok, text) =>
+    $(el).innerHTML = `<div class="msg ${ok ? 'ok' : 'no'}">${esc(text)}</div>`;
+  async function post(path, body){
+    const r = await fetch(`${path}?t=${T}`, {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    return r.json();
   }
+  const kb = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB'
+                               : Math.max(1, Math.round(n / 1024)) + ' KB';
 
-  let showAllEsc = false;
-  let viewing = null;          // whose conversation is open, null = flat log
+  function view(v){
+    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+    document.querySelectorAll('section.panel').forEach(s => s.classList.toggle('on', s.id === 'p' + '-' + v));
+    window.scrollTo({top: 0});
+  }
+  document.querySelectorAll('nav button').forEach(b => { b.onclick = () => view(b.dataset.v); });
+  $('toSettings').onclick = e => { e.preventDefault(); location.href = '/settings?t=' + T; };
+  $('toSecretary').onclick = e => { e.preventDefault(); location.href = '/secretary?t=' + T; };
 
-  // `live` = this is a background re-render of the thread already on screen, not a click.
-  // Then we must not yank someone who has scrolled up to read history: stay put unless
-  // they were already at the bottom, in which case follow the newest message.
-  async function openConversation(who, live = false){
-    // Opening a person directly is not "looking at an item". jumpEsc sets focusId AFTER it
-    // awaits this, so clearing here cannot wipe a focus the nav just established.
-    focusId = '';
-    // The SCROLLING element is the column body, not #thread — the three-column rebuild moved
-    // the overflow and left these writes landing on an element that no longer scrolls.
-    const box = $('thread').parentElement;
-    const wasAt = box.scrollHeight - box.scrollTop - box.clientHeight;
-    const stick = !live || wasAt < 80;
-    const keep  = box.scrollTop;
-    viewing = who;
-    $('logTitle').textContent = who;
-    // The composer belongs to whoever is open. Naming the recipient in the box matters:
-    // this sends AS the owner to a real person, and the llm chat next to it does not.
-    const person = (lastState.people || []).find(p => p.asker === who);
-    const nice = (person && person.name) ? `${person.name} (${who})` : who;
-    $('sendTo').textContent = `writing to ${nice}`;
-    $('sendText').disabled = false; $('sendBtn').disabled = false;
-    $('sendText').placeholder = `Message ${person && person.name ? person.name : who}…`;
-    const r = await fetch(`/api/conversation?t=${T}&asker=${encodeURIComponent(who)}`);
-    const d = await r.json();
-    // Name the thread once the rows arrive: the people list is keyed by identity, but the
-    // heading reads better as "Pauline · +65…". Taken from a VERIFIED row only, so an
-    // unverified claimant cannot retitle someone else's thread.
-    const named = (d.rows || []).find(x => x.verified && x.name);
-    if (named) $('logTitle').textContent = `${named.name} · ${who}`;
-    $('thread').innerHTML = (d.rows || []).map(row => renderRow(row)).join('')
-      || '<div class="empty">No messages.</div>';
-    box.scrollTop = stick ? 1e9 : keep;   // newest message in view, like any chat app
-    // Resolve straight from the conversation, where the context is.
-    document.querySelectorAll('#thread .xbtn').forEach(b => b.onclick = async () => {
-      b.disabled = true; b.textContent = '…';
-      await fetch('/api/resolve?t='+T, {method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({id: b.dataset.id})});
-      openConversation(who); refresh();
+  // THE FOUR SERVICES, in the design's order. `real` says whether the switch does anything —
+  // two of them have nothing behind them yet, and a switch that lights up while changing
+  // nothing is the one thing a stub must never do.
+  const SERVICES = [
+    ['record_call',    'Record Call',     'record-call',    'Both sides of a carried call.'],
+    ['transcribe',     'Transcribe Call', 'transcribe',     'Speech to text, on this machine.'],
+    ['record_message', 'Record Message',  'record-message', 'SMS and mobile messages.'],
+    ['connect_ai',     'Connect AI',      'connect-ai',     'Summaries from a cloud model.'],
+  ];
+
+  let D = {};
+  function rows(){
+    $('ovRows').innerHTML = SERVICES.map(([k, label, v, sub]) => {
+      const s = (D.services || {})[k] || {};
+      return `<div class="row" data-go="${v}">
+        <div class="t"><b>${label}</b><span>${esc(sub)}</span></div>
+        <label class="sw" data-stop="1">
+          <input type="checkbox" data-svc="${k}" ${s.on ? 'checked' : ''}><i></i></label>
+      </div>`;
+    }).join('');
+    $('ovRows').querySelectorAll('.row').forEach(r => {
+      r.onclick = e => { if (!e.target.closest('[data-stop]')) view(r.dataset.go); };
     });
-    document.querySelectorAll('#people .who-row').forEach(el =>
-      el.classList.toggle('on', el.dataset.who === who));
+    wireSwitches();
   }
 
-  function brief(b){
-    if(!b || !(b.wants||b.facts||b.decision||b.draft)) return '';
-    const row = (k,v,cls) => v ? `<div${cls?` class="${cls}"`:''}><b>${k}</b>${esc(v)}</div>` : '';
-    return `<div class="brief">${row('wants',b.wants)}${row('facts',b.facts)}`
-         + `${row('decide',b.decision)}${row('draft',b.draft,'draft')}</div>`;
-  }
-
-  // One message in a conversation. Their message and our answer are one exchange; the
-  // owner's own reply stands alone, attributed. The briefing belongs HERE, at the point
-  // the agent handed it over — not in a separate stack.
-  // Who to credit an incoming message to. The server authors the whole label: a verified
-  // row resolves to the profile name ("Pauline"), an unverified one to wording that says
-  // so ("unverified visitor (claims +65…)"). So render it verbatim and only colour it —
-  // appending our own "unverified" here would say it twice.
-  function sender(r){
-    const who = r.name || r.asker || 'unknown sender';
-    return r.verified ? esc(who) : `<span class="unv">${esc(who)}</span>`;
-  }
-
-  // Debug-only line: reason code plus which files the answer was grounded in. Prefixed with
-  // the word "debug" because these read like content otherwise ("not_grounded" is not
-  // something we said to Pauline). Hidden entirely unless the debug toggle is on.
-  function dbgline(r){
-    const bits = [];
-    if (r.reason) bits.push(esc(r.reason.replace('policy:','').replace('asker:','self: ')));
-    if (r.sources && r.sources.length)
-      // De-duplicated: retrieval hits the same file several times, and six repeats of
-      // "wiki.md" reads like six sources.
-      bits.push('from ' + esc([...new Set(r.sources.map(x=>x.split('/').pop()))].join(', ')));
-    return bits.length ? `<div class="dbgline dbg"><b>debug</b>${bits.join(' · ')}</div>` : '';
-  }
-
-  function renderRow(r){
-    const o = r.outcome || 'answered';
-    const badge = `<span class="tag2 t-${esc(o)}">${esc(o.replace('_',' '))}</span>`;
-    const time = esc((r.at||'').slice(11,16));
-    // Owner-facing meta only: the topic. Reason codes moved to the debug line.
-    const meta = `<div class="meta2">${time}${r.topic ? ' · ' + esc(r.topic) : ''}</div>`;
-
-    // The owner's own reply, sent from this site or over MCP. Stands alone: nobody asked
-    // it, so there is no incoming bubble to pair it with.
-    if (o === 'owner_reply')
-      return `<div class="turn"><div class="bub you"><div class="from">You</div>`
-           + `${badge}${esc(r.answer)}${meta}${dbgline(r)}</div></div>`;
-
-    const done = (o === 'escalated' && r.id)
-      ? `<button class="xbtn" data-id="${esc(r.id)}">done</button>` : '';
-
-    // A one-sided turn. On a CALL both happen: the agent greets before anyone has asked
-    // anything, and the caller can hang up on a question that never got answered. Pairing
-    // either with a neighbour would misattribute words someone actually said, so each is
-    // shown alone rather than against an empty bubble.
-    if (!r.question)
-      return `<div class="turn"><div class="bub us"><div class="from">Agent</div>`
-           + `${badge}${done}${esc(r.answer)}${meta}${dbgline(r)}</div></div>`;
-    if (!r.answer)
-      return `<div class="turn"><div class="bub them"><div class="from">${sender(r)}</div>`
-           + `${esc(r.question)}<div class="meta2">${time} · no answer</div></div></div>`;
-
-    return `<div class="turn">
-              <div class="bub them"><div class="from">${sender(r)}</div>
-                ${esc(r.question)}<div class="meta2">${time}</div></div>
-              <!-- Just "Agent": the badge beside it already says what the agent DID
-                   (answered / escalated / acted / withdrawn), and a caption asserting
-                   "answered for you" would be wrong on every non-answer outcome. -->
-              <div class="bub us"><div class="from">Agent</div>
-                ${badge}${done}${esc(r.answer)}${meta}${dbgline(r)}
-                ${o === 'escalated' ? brief(r.briefing) : ''}</div>
-            </div>`;
-  }
-
-
-  let onlyOpen = false;
-
-  let lastState = {};
-
-  function render(st){
-    lastState = st;
-    // Tolerant of an element being absent. Removing `s-total` from the markup during the
-    // three-column rebuild left this line setting .textContent on null — which threw HERE,
-    // before the people list was populated, so the whole left column silently rendered
-    // empty. A layout change should never be able to take out an unrelated panel.
-    const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
-    set('s-today', st.today_count);
-    set('s-esc', st.escalations.length);
-    set('s-total', st.total);
-    set('agedOut', st.aged_out ? `· ${st.aged_out} aged out` : '');
-    set('onlyOpen', onlyOpen ? 'show everyone' : 'needs you only');
-    renderEscNav();
-
-    // Debug shows the unverified identities too: they are diagnostics, not relationships.
-    let ppl = (document.body.classList.contains('debug') ? st.people_all : st.people)
-              || st.people || [];
-    if (onlyOpen) ppl = ppl.filter(p => p.open > 0);   // verified only — an impostor's claims aren't work
-    $('people').innerHTML = ppl.map(p => {
-      const label = p.name ? `${esc(p.name)} · ${esc(p.asker)}` : esc(p.asker);
-      // Verified asks are what the owner owes someone. Unverified claims of the same
-      // identity are shown apart and muted — they are not that person waiting.
-      const open = p.open ? `<span class="op">${p.open} open</span>` : '';
-      const claims = p.unverified ? `<span class="op claim" title="from an unverified claim of this identity">${p.unverified} unverified</span>` : '';
-      const on = viewing === p.asker ? ' on' : '';
-      return `<div class="who-row${on}" data-who="${esc(p.asker)}">
-                <span class="nm">${label}</span>${open}${claims}
-                <span class="ct">${p.messages}</span></div>`;
-    }).join('') || '<div class="empty">Nobody waiting.</div>';
-    document.querySelectorAll('#people .who-row').forEach(el =>
-      el.onclick = () => openConversation(el.dataset.who));
-
-    // Land on the newest conversation rather than an empty panel — and keep an ALREADY
-    // open one current. Previously this only fired when nothing was open, so a thread
-    // froze at whatever it held when clicked: replies sent from MCP or a script never
-    // appeared until you clicked away and back.
-    if (!viewing && ppl.length) openConversation(ppl[0].asker);
-    else if (viewing) openConversation(viewing, true);
-
-    const p = st.permissions;
-    let h = `Everyone: <code>${(p.default||[]).join('</code> <code>')||'none'}</code><br>`;
-    for (const [who, fs] of Object.entries(p.askers||{}))
-      h += `${esc(who)}: <code>${fs.join('</code> <code>')}</code><br>`;
-    if ($('perm')) $('perm').innerHTML = h;
-    renderChannel(st.channel || {});
-    renderQuiet(st);
-    // Server-side, so it is the same in the browser and in the native window.
-    document.body.classList.toggle('debug', !!(st.ui || {}).debug);
-  }
-
-  // Nothing has EVER come in — not "nothing today". Aged-out threads still count as traffic,
-  // because the owner has a history to look at and hiding it would lose them their own record.
-  function renderQuiet(st){
-    const quiet = !(st.total || (st.people_all || []).length);
-    document.body.classList.toggle('quiet', quiet);
-    // Remembered only to pick the right layout BEFORE the first /api/state returns. Without it
-    // every load flashes the layout it is about to leave — three empty columns on a fresh
-    // install, which is the exact thing this is here to avoid.
-    store.set('secretary.quiet', quiet ? '1' : '0');
-    const note = $('quietNote');
-    if (!note) return;
-    note.hidden = !quiet;
-    if (!quiet) return;
-    const c = st.channel || {};
-    const conn = `<a href="/settings?t=${T}#connector">connect a number</a>`;
-    // The useful question in an empty state is not "why is this empty" but "could anything
-    // have arrived at all" — so the answer is the channel state, not a welcome message.
-    if (!c.configured && c.channel !== 'off')
-      note.innerHTML = `Nothing has come in — and nothing can, yet. There is no number attached, `
-        + `so nobody outside can reach your secretary. ${conn} to open it up.`;
-    else if (c.channel === 'live' && c.number)
-      note.innerHTML = `Nothing has come in yet. DDUET messages arrive here, as do calls to `
-        + `<code>${esc(c.number)}</code> — and anything I should not decide alone comes to you.`;
-    else if (c.channel === 'live')
-      note.innerHTML = `Connected and waiting. Nothing has come in yet.`;
-    // Switched off deliberately, so do NOT send them to the connector page to "fix" it.
-    else if (c.channel === 'off')
-      note.innerHTML = `Nothing has come in. The channel was switched off at startup `
-        + `(<code>SECRETARY_CHANNEL=0</code>), so nothing will arrive until it is restarted `
-        + `without that.`;
-    // Unfinished setup, so the connector is deliberately not claimed. Same rule as `off`: do not
-    // send them to the connector page, the connector is not what is missing.
-    else if (c.channel === 'setup')
-      note.innerHTML = `Nothing has come in. Setup is not finished`
-        + (c.detail ? ` — ${esc(c.detail)}` : '') + `, so the channel is still closed.`;
-    else
-      note.innerHTML = `Nothing has come in. The channel is not connected right now, so nothing `
-        + `can arrive until it is — ${conn} to check the details.`;
-  }
-
-  // Says what the outside world can reach, in the owner's terms — a number they could give
-  // someone, not a connection state. "no number yet" is the honest reading of a connector
-  // whose subscriber we only learn from the first inbound event.
-  function renderChannel(c){
-    const chip = $('chan'), text = $('ctext');
-    if (!chip) return;
-    const num = c.number ? c.number : '';
-    let cls = '', label = '', tip = '';
-    if (!c.configured && c.channel !== 'off') {
-      // NOT "connect a number": settings takes a connector's key and uuid, and a phone number
-      // is provisioned by B3 onto that connector — this app cannot create one. Promising a
-      // number sent the owner to a page that could not deliver it.
-      cls = 'unset'; label = 'add your connector';
-      tip = 'No B3 connector yet — nobody outside can reach your secretary. Click to add one.';
-    } else if (c.channel === 'off') {
-      cls = ''; label = 'channel off';
-      tip = 'Started with SECRETARY_CHANNEL=0 — the owner view only, on purpose.';
-    } else if (c.channel === 'live') {
-      cls = 'live';
-      // No number is the NORMAL state, not a pending one: DDUET messages carry no phone number
-      // at all, so one appears only once a call arrives on a DID attached to this connector.
-      // "no number yet" implied it was on its way and that settings could hurry it along.
-      label = num ? `${num}${c.voice ? ' · voice' : ''}`
-                  : (c.voice ? 'connected · voice ready' : 'connected · messages');
-      tip = num
-        ? `Calls to ${num} reach your secretary, and DDUET messages arrive here too.`
-        : 'Connected — DDUET messages will arrive here. DDUET carries no phone number; one '
-          + 'appears only when a call comes in on a number B3 has attached to this connector.';
-    } else if (c.channel === 'setup') {
-      // Not an error and not a network problem: the daemon deliberately leaves the channel shut
-      // while setup is unfinished, so that the process serving the setup pages is not also
-      // holding the one client the connector allows. Seen here only in the seconds between
-      // finishing setup and the channel loop noticing.
-      cls = ''; label = 'finishing setup';
-      tip = 'The channel opens once setup is finished' + (c.detail ? ` — ${c.detail}` : '') + '.';
-    } else if (c.channel === 'connecting') {
-      cls = ''; label = 'connecting…'; tip = 'Opening the DDUET channel.';
-    } else {
-      cls = 'bad'; label = 'not connected';
-      tip = 'Configured but not connected' + (c.detail ? ` — ${c.detail}` : '') +
-            '. Check your network, or the connector details.';
-    }
-    chip.className = 'chan ' + cls;
-    text.textContent = label;
-    chip.title = tip;
-  }
-
-  $('onlyOpen').onclick = () => { onlyOpen = !onlyOpen; refresh(); };
-
-  // Remembered across reloads: someone debugging stays in debug, and an owner who never
-  // turns it on never sees a reason code. The switch itself lives in settings — it is a
-  // preference, and it was sitting in the People heading where it read like a filter.
-  if (store.get('secretary.quiet') === '1') document.body.classList.add('quiet');
-
-
-  // Shows a live bubble while waiting. After a few seconds it names what is most
-  // likely happening, so a 15s two-search answer doesn't look like a hang.
-  function startThinking(logEl){
-    const el = document.createElement('div');
-    el.className = 'msg bot thinking';
-    el.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>' +
-                   '<span class="what">thinking</span><span class="elapsed"></span>';
-    logEl.appendChild(el); logEl.scrollTop = 1e9;
-    const t0 = Date.now();
-    const tick = setInterval(() => {
-      const s = (Date.now() - t0) / 1000;
-      el.querySelector('.elapsed').textContent = s.toFixed(0) + 's';
-      const what = el.querySelector('.what');
-      if (s > 12)      what.textContent = 'still looking';
-      else if (s > 4)  what.textContent = 'searching the permitted folders';
-    }, 250);
-    return () => { clearInterval(tick); el.remove(); };
-  }
-
-  async function refresh(){
-    const r = await fetch('/api/state?t='+T);
-    if(r.ok) render(await r.json());
-  }
-
-  // live push — the alert channel a desktop notification only gestures at
-  function connect(){
-    const ws = new WebSocket(`ws://${location.host}/ws?t=${T}`);
-    // "site" not "live": this dot is the browser's link to the LOCAL page, which says nothing
-    // about whether the DDUET channel is up. Both said "live" side by side, so a connected
-    // channel and a disconnected one looked the same — the chip is the one that means reachable.
-    ws.onopen  = () => { $('dot').classList.remove('off'); $('meta').textContent = 'site';
-                         // A reconnect means the daemon restarted, or we were away while it
-                         // changed. Pushes only arrive on new activity, so without this the
-                         // whole page — chip included — keeps pre-restart values indefinitely.
-                         refresh(); };
-    ws.onclose = () => { $('dot').classList.add('off'); $('meta').textContent = 'site down';
-                         setTimeout(connect, 3000); };
-    ws.onmessage = e => { const d = JSON.parse(e.data); if(d.type==='state') render(d.state); };
-  }
-
-  // Queue walk. Order comes from state.escalations (already newest-first), so "next" means
-  // the next thing that needs the owner, ACROSS people — not the next person.
-  let escIdx = -1;
-  let focusId = '';            // the open item the owner navigated to; sent with each chat turn
-
-  function escList(){ return (lastState.escalations || []); }
-
-  function renderEscNav(){
-    const n = escList().length;
-    $('escNav').hidden = n === 0;
-    $('escPos').textContent = n ? (escIdx >= 0 ? `${escIdx + 1} of ${n}` : `${n} open`) : '';
-  }
-
-  async function jumpEsc(delta){
-    const list = escList();
-    if (!list.length) return;
-    escIdx = (escIdx + delta + list.length) % list.length;
-    const e = list[escIdx];
-    renderEscNav();
-    await openConversation(e.asker);
-    // Scroll to the item itself. Matching on the resolve button's id is how the thread
-    // exposes an escalation row; if it is not in the visible window we simply land on the
-    // conversation, which is still where the owner needs to be.
-    const id = (e.ids && e.ids[0]) || e.id;
-    focusId = id || '';
-    const btn = id && document.querySelector(`#thread .xbtn[data-id="${id}"]`);
-    const turn = btn && btn.closest('.turn');
-    document.querySelectorAll('#thread .turn.spot').forEach(x => x.classList.remove('spot'));
-    if (turn){ turn.classList.add('spot'); turn.scrollIntoView({block:'center'}); }
-  }
-
-  $('escPrev').onclick = () => jumpEsc(-1);
-  $('escNext').onclick = () => jumpEsc(1);
-
-  $('sendForm').onsubmit = async ev => {
-    ev.preventDefault();
-    const text = $('sendText').value.trim();
-    if (!text || !viewing) return;
-    $('sendText').value = ''; $('sendBtn').disabled = true;
-    const r = await fetch('/api/send?t=' + T, {method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({asker: viewing, text})});
-    const d = await r.json();
-    // Report what actually happened — whether it went out or is held for delivery, and which
-    // threads it closed. Sending is the one action here with consequences for someone else.
-    $('sendNote').textContent = d.result || d.error || '';
-    $('sendBtn').disabled = false;
-    if (d.state) render(d.state);
-    openConversation(viewing, true);
-    $('sendText').focus();
-  };
-
-  $('f').onsubmit = async ev => {
-    ev.preventDefault();
-    const text = $('m').value.trim(); if(!text) return;
-    $('m').value=''; $('send').disabled = true;
-    $('log').insertAdjacentHTML('beforeend', `<div class="msg me">${esc(text)}</div>`);
-    const stop = startThinking($('log'));
-    try{
-      const r = await fetch('/api/chat?t='+T, {method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({message:text, viewing, focus: focusId})});
-      const d = await r.json();
-      stop();
-      if(d.tools && d.tools.length)
-        $('log').insertAdjacentHTML('beforeend', `<div class="msg tool">used ${esc(d.tools.join(', '))}</div>`);
-      $('log').insertAdjacentHTML('beforeend', `<div class="msg bot">${esc(d.reply||d.error||'(no reply)')}</div>`);
-    }catch(err){
-      stop();
-      $('log').insertAdjacentHTML('beforeend', `<div class="msg bot">error: ${esc(String(err))}</div>`);
-    }
-    $('send').disabled = false; $('log').scrollTop = 1e9; refresh();
-  };
-
-  // Restore the owner's own chat before the first paint of the panel, so a reload continues
-  // the conversation instead of looking like it never happened.
-  async function restoreChat(){
-    const r = await fetch('/api/chat_history?t=' + T);
-    if (!r.ok) return;
-    const d = await r.json();
-    if (!(d.turns || []).length) return;
-    const log = $('log');
-    log.innerHTML = '';
-    d.turns.forEach(x => {
-      log.insertAdjacentHTML('beforeend', `<div class="msg me">${esc(x.q)}</div>`);
-      // A turn we drove on the owner's behalf (setup) shows as a short label; the instruction
-      // block that was actually sent is a diagnostic, so it appears only under debug.
-      if (x.q_full)
-        log.insertAdjacentHTML('beforeend',
-          `<div class="msg tool dbg">sent: ${esc(x.q_full)}</div>`);
-      if (x.tools && x.tools.length)
-        log.insertAdjacentHTML('beforeend',
-          `<div class="msg tool dbg">used ${esc(x.tools.join(', '))}</div>`);
-      log.insertAdjacentHTML('beforeend', `<div class="msg bot">${esc(x.a)}</div>`);
+  function wireSwitches(){
+    document.querySelectorAll('input[data-svc]').forEach(el => {
+      const k = el.dataset.svc, s = (D.services || {})[k] || {};
+      el.checked = !!s.on;
+      el.onchange = async () => {
+        if (k === 'record_call') {
+          const d = await post('/api/setup/setting',
+                               {field: 'record_calls', value: el.checked ? 'yes' : 'no'});
+          if (!d.ok) el.checked = !el.checked;
+          load();
+          return;
+        }
+        // NOT BUILT. Put the switch back rather than leaving it lit — see CLAUDE.md on
+        // reading the mockup as intent: the panel stays, the pretence does not.
+        el.checked = !el.checked;
+        const where = {transcribe: 'mStt', record_message: 'mMsgs', connect_ai: 'mModel'}[k];
+        if (where) say(where, false, 'Switching this service on and off is not built yet.');
+      };
     });
-    log.scrollTop = 1e9;
   }
 
-  refresh(); connect(); restoreChat();
+  function table(tb, empty, files){
+    const rowsHtml = (files || []).map(f =>
+      `<tr><td class="f">${esc(f.name)}</td><td class="s">${esc(f.kind)} (${kb(f.bytes)})</td></tr>`
+    ).join('');
+    $(tb).innerHTML = rowsHtml;
+    $(empty).hidden = !!rowsHtml;
+  }
 
-  // Stopping is a real consequence — the agent answers nobody until it is started again — so
-  // it asks first, and then says plainly that the page is now dead rather than leaving a
-  // dashboard that silently stops updating.
-  // Setup doubles as the settings screen — same page, reached deliberately rather than only
-  // on a first run.
-  $('settings').href = '/settings?t=' + T;
-  // The connector is the answer in every unhealthy channel state, so the chip goes straight
-  // to that section rather than to the top of the settings page.
-  $('chan').href = '/settings?t=' + T + '#connector';
+  async function load(){
+    D = await fetch(`/api/panel?t=${T}`).then(r => r.json()).catch(() => ({}));
+    const nm = D.name || 'Not signed in';
+    $('who').textContent = nm;
+    $('av').textContent = (D.name || '?').split(/\s+/).map(w => w[0] || '').join('').slice(0, 2).toUpperCase() || '–';
+    $('num').textContent = D.phone || '—';
+    $('store').textContent = D.storage || '—';
+    $('dirCalls').textContent = (D.dirs || {}).calls || '—';
+    $('dirMsgs').textContent = (D.dirs || {}).calls || '—';
 
-  $('quit').onclick = async () => {
-    if (!confirm('Stop the secretary?\n\nIt will stop answering until you start it again.')) return;
-    $('quit').disabled = true;
-    try { await fetch('/api/quit?t=' + T, {method: 'POST'}); } catch (e) {}
-    document.body.innerHTML =
-      '<div style="font-family:var(--mono);padding:2.5rem;color:var(--muted)">'
-      + 'Stopped. Start it again from the app icon, or <code>agentduet-desktop</code>.</div>';
+    const live = ['live', 'connecting', 'retrying'].indexOf(D.channel) >= 0;
+    $('ovPill').className = 'pill' + (live ? '' : ' off');
+    $('ovPill').innerHTML = '<i></i>' + (live ? 'Service Active' : 'Not connected');
+    $('ovLede').textContent = live
+      ? 'AgentDuet is active and listening for Power Mobile call events.'
+      : 'No connector yet, so no calls arrive. Add one in Settings.';
+
+    rows();
+    // The answered folder is where an ANSWERED call lands; carried calls land beside it. Both
+    // are shown under Record Call because to the owner they are simply "my calls".
+    table('tCalls', 'eCalls', [...((D.files || {}).calls || []), ...((D.files || {}).answered || [])]);
+    table('tMsgs', 'eMsgs', (D.files || {}).messages);
+
+    if ((D.stt || {}).quality) $('quality').value = D.stt.quality;
+    $('doStt').hidden = !!(D.stt || {}).cached || (D.stt || {}).engine !== 'local';
+    $('offline').hidden = (D.stt || {}).engine !== 'local';
+    $('aiState').textContent = (D.model || {}).describe || 'No key attached.';
+
+    const sel = $('model');
+    if (!sel.options.length) {
+      ['gemini', 'anthropic', 'qwen'].forEach(m => {
+        const o = document.createElement('option'); o.value = m; o.textContent = m; sel.appendChild(o);
+      });
+    }
+  }
+  load();
+
+  $('saveQuality').onclick = async () => {
+    const d = await post('/api/setup/setting', {field: 'transcription', value: $('quality').value});
+    say('mStt', d.ok, d.message);
+    load();
+  };
+  $('doStt').onclick = async () => {
+    $('doStt').hidden = true;
+    await post('/api/setup/stt', {});
+    say('mStt', true, 'Downloading in the background. It keeps going if you leave this page.');
+  };
+  $('doTest').onclick = () => say('mTest', false,
+    'The test engine is not built yet. Transcription itself runs after a real call.');
+
+  $('doModel').onclick = async () => {
+    const key = $('key').value.trim();
+    if (!key) { say('mModel', false, 'Paste a key first.'); return; }
+    const d = await post('/api/setup/model', {model: $('model').value, key});
+    say('mModel', d.ok, d.message);
+    load();
   };
 </script>
 </body>

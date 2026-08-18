@@ -41,6 +41,15 @@
     border-radius:9px;background:var(--accent-ink);color:#fff;cursor:pointer;margin-top:1.1rem;}
   button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);}
   button:disabled{opacity:.45;cursor:default;}
+  .pick{display:block;margin-top:.7rem;padding:.8rem .9rem;border:1px solid var(--line);
+    border-radius:11px;font-weight:400;font-size:.92rem;cursor:pointer;
+    transition:border-color .12s,background .12s;}
+  .pick:hover{border-color:var(--faint);}
+  .pick:has(input:checked){border-color:var(--accent-ink);background:var(--line2);}
+  .pick input{width:auto;margin:0 .5rem 0 0;accent-color:var(--accent-ink);}
+  .pick b{font-weight:680;}
+  .pick .sm{display:block;margin:.3rem 0 0 1.45rem;color:var(--faint);font-size:.82rem;}
+
   .msg{margin-top:.9rem;padding:.6rem .8rem;border-radius:9px;font-size:.88rem;
     white-space:pre-wrap;}
   .msg.ok{background:var(--good-bg);color:var(--good);border:1px solid var(--good);}
@@ -117,6 +126,43 @@
       connector, they will fight over inbound routing.</p>
   </section>
 
+  <section>
+    <h2>What happens to a call</h2>
+    <p class="hint">Only one applies. A call is either carried or answered, never both — one
+      connector has one handler.</p>
+    <label class="pick"><input type="radio" name="calls" value="carry">
+      <b>Carry it to me</b>
+      <span class="sm">Bridged to your phone, both sides recorded. Nobody is answered, and no
+        model key is needed.</span></label>
+    <label class="pick"><input type="radio" name="calls" value="answer">
+      <b>Answer it</b>
+      <span class="sm">The agent picks up and speaks for you. Needs a model above.</span></label>
+    <button id="saveCalls">Save</button><span class="spin" id="spCalls"></span>
+    <div id="mCalls"></div>
+    <p class="note">Carrying records two people talking. Whether they must be told, and by whom,
+      depends on where you and they are — this software does not announce it.</p>
+  </section>
+
+  <section>
+    <h2>Speech recognition</h2>
+    <p class="hint">How calls become text. With a model key above the hosted engine does it;
+      with no key it runs here, and nothing leaves the machine.</p>
+    <div class="state" id="sttState">…</div>
+    <label>How hard it tries
+      <select id="quality">
+        <option value="fast">fast — quickest, smallest download</option>
+        <option value="balanced">balanced — the default</option>
+        <option value="accurate">accurate — better</option>
+        <option value="max">max — best, and the largest</option>
+      </select></label>
+    <button id="saveQuality">Save</button><span class="spin" id="spQuality"></span>
+    <button id="doStt" class="ghost" hidden>Download it now</button><span class="spin" id="spStt"></span>
+    <div id="mStt"></div>
+    <p class="note">Transcribing happens after a call, on a queue, so nothing waits for it.
+      Set your name above too — it is given to the engine, and it measurably improves how
+      names are heard.</p>
+  </section>
+
   <!-- ---------------- the interview ---------------- -->
   <section>
     <h2>What you do</h2>
@@ -176,6 +222,9 @@
     $('pronoun').value = cur.pronoun || '';
     $('never').value = cur.never || '';
     $('phone').value = cur.phone || '';
+    const mode = document.querySelector(`input[name=calls][value="${cur.calls || 'carry'}"]`);
+    if (mode) mode.checked = true;
+    if (cur.transcription) $('quality').value = cur.transcription;
     $('doesState').textContent = cur.does
       ? cur.does.split('\n').length + ' fact(s) recorded: ' + cur.does.split('\n')[0]
       : 'nothing recorded yet';
@@ -216,6 +265,57 @@
     say('mConn', d.ok, d.message);
     if (d.ok) $('cKey').value = '';
   };
+
+  // ---- what happens to a call ------------------------------------------------------------
+  $('saveCalls').onclick = async () => {
+    const v = (document.querySelector('input[name=calls]:checked') || {}).value;
+    if (!v) { say('mCalls', false, 'Pick one.'); return; }
+    $('saveCalls').disabled = true; $('spCalls').textContent = 'saving…';
+    const d = await post('/api/setup/setting', {field: 'calls', value: v});
+    $('saveCalls').disabled = false; $('spCalls').textContent = '';
+    say('mCalls', d.ok, d.message);
+  };
+
+  // ---- speech recognition -----------------------------------------------------------------
+  let sttPoll = null;
+  function sttRender(d){
+    if (!d || d.error === 'unauthorised') return;
+    const st = $('sttState');
+    if (!d.needed) {
+      st.textContent = 'A model key is attached, so the hosted engine transcribes. '
+        + 'Nothing is downloaded.';
+      $('doStt').hidden = true;
+    } else if (!d.installed) {
+      st.textContent = 'The on-machine engine is not installed in this build.';
+      $('doStt').hidden = true;
+    } else if (d.cached) {
+      st.innerHTML = 'Runs on this machine. <b>' + esc(d.model) + '</b> is ready.';
+      $('doStt').hidden = true;
+    } else {
+      st.innerHTML = 'Runs on this machine. <b>' + esc(d.model) + '</b> is not downloaded yet '
+        + '(about <b>' + d.mb + ' MB</b>). It will fetch itself at the first transcription.';
+      $('doStt').hidden = !!d.running;
+    }
+    $('spStt').textContent = d.running ? 'downloading…' : '';
+    if (d.running && !sttPoll) sttPoll = setInterval(sttCheck, 3000);
+    if (!d.running && sttPoll) { clearInterval(sttPoll); sttPoll = null; }
+  }
+  function sttCheck(){
+    fetch(`/api/setup/stt?t=${T}`).then(r => r.json()).then(sttRender).catch(() => {});
+  }
+  $('doStt').onclick = async () => {
+    $('doStt').hidden = true; $('spStt').textContent = 'starting…';
+    await post('/api/setup/stt', {});
+    sttCheck();
+  };
+  $('saveQuality').onclick = async () => {
+    $('saveQuality').disabled = true; $('spQuality').textContent = 'saving…';
+    const d = await post('/api/setup/setting', {field: 'transcription', value: $('quality').value});
+    $('saveQuality').disabled = false; $('spQuality').textContent = '';
+    say('mStt', d.ok, d.message);
+    sttCheck();                       // the tier decides WHICH model, so the state line changes
+  };
+  sttCheck();
 </script>
 </body>
 </html>

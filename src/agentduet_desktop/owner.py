@@ -119,7 +119,14 @@ def setup_pending(deep: bool = False) -> str:
     """
     if why := cannot_answer(deep):
         return why
-    if name() == DEFAULT_NAME:
+    # THE NAME IS AN ANSWER-MODE REQUIREMENT. It is here because an agent that greets strangers
+    # as "the owner" has been seen to treat that as a template and say "[Owner's Name]"; nobody
+    # is greeted when the call is carried, so on the recorder path a blank name costs nothing
+    # that a person would notice. It still helps — the speech engine is primed with it — but
+    # "the transcript hears names slightly worse" is not a reason to hold someone on a setup
+    # page they have finished. Setup stopped asking for a name when it became two screens, so
+    # requiring one here would have made the hub unreachable on a fresh carry install.
+    if calls() != CALLS_CARRY and name() == DEFAULT_NAME:
         return "the owner has not said who they are"
     return ""
 
