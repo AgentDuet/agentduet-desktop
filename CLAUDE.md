@@ -342,7 +342,7 @@ the product is.
 - [x] ~~**Publish the SDK.**~~ **RESOLVED 2026-08-11, by dropping the requirement.** `agentduet`
       `1.0.0` shipped to PyPI on 2026-08-10 and still has **no DDUET at all** — its API is
       unchanged from `1.0.0b10`, so publishing did not help. DDUET lives only on
-      `B3Networks/wss-sdk-python` `feature/dduet-channel` (`1.0.1b1`), a PRIVATE repo, which is
+      `B3Networks/agentduet-sdk-python` `feature/dduet-channel` (`1.0.1b1`), a PRIVATE repo, which is
       why CI carried a committed wheel in `vendor/`.
       **So the channel was swapped to WhatsApp instead** — `Network.WA` + `SendWAMessage`, both
       in the released SDK. `vendor/` is deleted and `pyproject.toml` asks for `agentduet>=1.0.0`.
