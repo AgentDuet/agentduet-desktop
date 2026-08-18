@@ -392,6 +392,16 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.Response(status=401, text="bad or missing token")
         return web.Response(text=(HERE / "settings.html").read_text(), content_type="text/html")
 
+    async def app_css(request):
+        """The house style, shared by every page.
+
+        NO TOKEN. It is a stylesheet with nothing in it worth protecting, and requiring one
+        would mean the browser could not cache it across the pages that link it. The site binds
+        loopback only regardless.
+        """
+        return web.Response(text=(HERE / "app.css").read_text(), content_type="text/css",
+                            headers={"Cache-Control": "no-cache"})
+
     async def secretary_page(request):
         """The secretary's own view — people, threads, escalations.
 
@@ -1146,6 +1156,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
     app.add_routes([
         web.get("/", index),
         web.get("/setup", setup_page),
+        web.get("/app.css", app_css),
         web.get("/secretary", secretary_page),
         web.get("/settings", settings_page),
         web.post("/api/setup/setting", api_setup_setting),

@@ -97,6 +97,25 @@ without a model, so the no-key carry-only owner — the exact person Linux self-
 could not finish setup at all. That was the same bug `cannot_answer()` had, in the other
 surface, found the day this decision was made. Anything added to one now goes in both.
 
+## The house style — `app.css`
+
+**One stylesheet, served at `/app.css`, linked by every page.** It was pasted into each page and
+they drifted within a day, so a change now lands everywhere at once. Page-specific layout stays
+in the page; what lives in `app.css` is what more than one page needs — the window chrome, the
+tokens, and the controls.
+
+The values come from `agentduet_macos_app_ux_mockup.html` (its Tailwind config and the classes
+it uses), written out as plain CSS. **Nothing in it may be fetched at runtime** — Tailwind
+arrives from a CDN in the mockup and this app has to open on a machine with no network. The one
+exception is the two Google Fonts links in each page's `<head>`, which is a known gap and on the
+checklist.
+
+**The three traffic lights are ours, drawn in HTML.** In a browser they are the illusion the
+design intends. In the native window macOS draws its OWN in the real titlebar, and two sets of
+lights is worse than none — so `nativeChrome()` puts `.native` on `<html>` when
+`window.pywebview` exists and `app.css` hides ours. It listens for `pywebviewready` too, because
+the object is not always injected before the script runs.
+
 ## Working rules
 
 - **Never wipe `$AGENTDUET_HOME`.** No `rm -rf` on it to "start clean" — correct the specific
