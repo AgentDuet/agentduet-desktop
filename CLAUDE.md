@@ -297,6 +297,27 @@ the product is.
       go. Today `carry.RECORDINGS` is a module constant under `$AGENTDUET_HOME`, so the page can
       only SHOW the resolved path. Making it settable means reading it at use time — the same
       read-at-use-time rule that `local_model()` already had to learn.
+- [ ] **Apple's own STT on the Neural Engine — TRY IT, measure two things.** The alternative to
+      swapping Whisper's runtime is not using Whisper at all on a Mac: `SpeechAnalyzer` /
+      `SpeechTranscriber` (macOS 26, WWDC 2025) is free, on-device, built for LONG-FORM audio,
+      and uses the ANE fully with no model of ours to ship. The older `SFSpeechRecognizer` is
+      not a candidate — it caps a request near a minute, which is useless for a call.
+      **The blocker is the language, not the licence.** Using system frameworks in an app for
+      Apple platforms is the normal permitted case, and it costs nothing. But `SpeechAnalyzer`
+      is a Swift-first async API and this app is Python in a PyInstaller binary, so the shape is
+      a **small Swift helper we bundle** — hand it a `.wav`, get text back — built on the macOS
+      runner CI already has, and signed and notarized with the app.
+      **Two measurements decide it, and both need a Mac** (queue behind the notarization check):
+      1. **Accuracy on OUR audio.** Whisper called Singaporean English Malay at 0.95 confidence.
+         Apple's model may be better or worse and nobody knows. Same recordings, same test.
+      2. **Power and heat versus `medium` on CPU.** This is the real argument — transcription is
+         post-call on a queue, so wall-clock barely matters, but fans and battery on a MacBook
+         transcribing all day do.
+      **Scope to be honest about:** macOS 26+ and Apple Silicon only, so Whisper stays for Linux,
+      Windows and older Macs regardless. This is a second engine, not a replacement.
+      The UI already offers it: `transcribe.ane_support()` reports whether a machine COULD run
+      it, and the Transcribe panel disables the option with the reason where it could not.
+
 - [ ] **Bundle Inter, JetBrains Mono and Material Symbols.** The pages now load all three from
       Google Fonts, as the mockup does. On a machine with no network the text falls back to a
       system font — fine — but **Material Symbols fails LOUDLY**: the ligature name renders as

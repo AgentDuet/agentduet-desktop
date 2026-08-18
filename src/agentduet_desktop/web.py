@@ -486,13 +486,29 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response({"ok": False, "message": "; ".join(problems)})
         return web.json_response({"ok": True, "message": "Saved. It knows who it works for now."})
 
+    #: What a page calls each setting. `tools.set_setting` answers the ASSISTANT — its message
+    #: names the file and warns that settings are never quoted to anyone, which is guidance the
+    #: model needs and a person reading a form does not. Shown on screen it reads as debug
+    #: output leaking through, so the page gets its own sentence.
+    _SETTING_LABEL = {"name": "Your name", "pronoun": "Your pronoun", "phone": "Your phone",
+                      "never_say": "The never-say list", "calls": "What happens to a call",
+                      "record_calls": "Call recording", "language": "Language",
+                      "transcription": "Transcription quality"}
+
     async def api_setup_setting(request):
         """Set one owner setting directly — no model involved."""
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
         body = await request.json()
-        out = tools.set_setting((body.get("field") or "").strip(), body.get("value") or "")
-        return web.json_response({"ok": not out.lower().startswith("unknown"), "message": out})
+        field = (body.get("field") or "").strip()
+        value = body.get("value") or ""
+        out = tools.set_setting(field, value)
+        if out.lower().startswith("unknown"):
+            return web.json_response({"ok": False, "message": out})
+        label = _SETTING_LABEL.get(field.lower().replace(" ", "_").replace("-", "_"), field)
+        shown = value.strip().splitlines()[0][:60] if value.strip() else ""
+        return web.json_response({"ok": True, "message":
+                                  f"{label} saved" + (f" — {shown}." if shown else ".")})
 
     async def api_setup_connector(request):
         """Verify the B3 connector, then save it. Never reachable from the assistant."""
@@ -781,6 +797,9 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                 "record_message": {"on": False, "real": False},
                 "connect_ai": {"on": _llm.configured(), "real": False},
             },
+            # Whether the Apple Neural Engine option may be OFFERED. It is not built, so this
+            # only decides enabled-vs-disabled and the reason shown beside it.
+            "ane": dict(zip(("supported", "why"), transcribe.ane_support())),
             "stt": {"engine": transcribe.engine(), "model": transcribe.local_model(),
                     "quality": _own.transcription_quality() or "balanced",
                     "cached": transcribe.is_cached()},
