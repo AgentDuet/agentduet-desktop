@@ -250,9 +250,17 @@ Break one of these and the secretary is a different product.
   just settled. Apple's own `SpeechAnalyzer` uses the ANE with no download at all, but it is
   Apple's model rather than Whisper, gated on macOS version, and Mac-only — Linux and Windows
   would still need a second engine.
-  **The encouraging part:** we measured the ENCODER as the bottleneck on CPU, which is why
-  `large-v3-turbo` — decoder-pruned — bought nothing. Core ML accelerates the encoder
-  specifically, so this targets the real cost rather than the assumed one.
+  **CORRECTION (2026-08-18): the encoder is NOT the bottleneck, and the earlier version of this
+  entry said it was.** The claim came from `large-v3-turbo` not beating `medium`, which compares
+  two different encoders and settles nothing. The right comparison is turbo against `large-v3`,
+  since they share an encoder and turbo's decoder is cut from 32 layers to 4: on the clean 88s
+  call that is 20.7s → 11.2s, so the DECODER was 46% of the work. Encoder is a bit over half,
+  not dominant.
+  **What that does to the case for Core ML:** it accelerates the encoder only, so the ceiling is
+  roughly 1.3–1.5x overall, not the 3x an encoder-bound model would give. Weigh it against a
+  C++ dependency, a per-model artifact, and a Mac-only second engine — for a job that already
+  runs post-call on a queue where nothing waits for it. The honest argument for the ANE is
+  power and heat on a laptop, not wall-clock.
 
 ## Open — the checklist
 
