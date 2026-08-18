@@ -999,6 +999,17 @@ def test_setup_mode() -> None:
     for asset in sorted(p.name for p in src.glob("*.css")):
         ok(f"{asset} is collected by the PyInstaller spec", '"*.css"' in spec)
         ok(f"{asset} is collected by the wheel", '"*.css"' in pyproject)
+    # AND EVERY DATA DIRECTORY. The spec asked for wasm/**/* while pyproject did not, and
+    # collect_data_files reads the INSTALLED package — so CI's `pip install .` produced a
+    # package with no wasm/ in it and the spec collected nothing. javy-plugin.wasm, the engine a
+    # customer tool runs inside, was missing from every build while alpha 4's notes said the
+    # tool sandbox now shipped. Both lists have to agree, so both are checked.
+    for sub in sorted(d.name for d in src.iterdir()
+                      if d.is_dir() and not d.name.startswith(("_", "."))
+                      and d.name != "__pycache__"):
+        want = f'"{sub}/**/*"'
+        ok(f"{sub}/ is collected by the PyInstaller spec", want in spec)
+        ok(f"{sub}/ is collected by the wheel", want in pyproject)
 
     ok("the setup page reports JS errors where they can be seen", "window.onerror" in page)
     ok("it touches no localStorage and has no form to submit natively",

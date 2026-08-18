@@ -46,4 +46,4 @@ where = ["src"]
 version = {attr = "agentduet_desktop.__version__"}
 
 [tool.setuptools.package-data]
-agentduet_desktop = ["*.html", "*.css", "templates/**/*", "examples/**/*", "prompts/**/*"]
+agentduet_desktop = ["*.html", "*.css", "templates/**/*", "examples/**/*", "prompts/**/*", "wasm/**/*"]
