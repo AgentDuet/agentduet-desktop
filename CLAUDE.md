@@ -360,7 +360,10 @@ the product is.
       way to configure the product. `init` is the answer.
 - [ ] **Connector provisioning.** Every install needs its OWN `AGENTDUET_CONNECTOR_UUID` — one
       client per connector, and a second races `call.answer()`. A new user installs cleanly and
-      then stops dead waiting on a human. Still the biggest get-started gap.
+      then stops dead waiting on a human.
+      **An answer is designed, not built** (2026-08-18): wss-edge auto-provisions a connector on
+      first sign-in, keyed to the verified email, with no org involvement. So this closes when
+      OAuth lands rather than needing its own solution — see the OAuth item below.
 
 
 - [x] ~~**Publish the SDK.**~~ **RESOLVED 2026-08-11, by dropping the requirement.** `agentduet`
@@ -414,11 +417,30 @@ the product is.
       `wss-dev.internal.b3networks.com`, and this file names colleagues and vendor limits — it is
       written for us, not for the world. No secrets are tracked (checked: the only `sk-` match is
       the deliberate `sk-LEAKED-CANARY` in `test_wasm.py`, and the numbers are placeholders).
-- [ ] **OAuth for BOTH keys** — deck steps 3 and 4. Authorisation creates the AgentDuet key and
-      auto-links the model key, which is the flow's whole claim and the two things it does not
-      have. Ours is the receiving end only: anything read from `.env` is read from the
-      environment at use time, so a key that arrives later needs no restart. See
-      `docs/onboarding-gap.md`.
+- [ ] **OAuth sign-in — the backend contract is SETTLED, ours is not built.** Designed in
+      `B3Networks/wss-edge` (`docs/superpowers/specs/2026-08-18-client-agent-oauth-design.md`,
+      issue #52), agreed 2026-08-18. wss-edge is the authorization server and brokers Google and
+      Microsoft; **Apple is deferred**, so that button stays a stub.
+      **What it replaces:** a static `AGENTDUET_API_KEY` that only ops can mint. Sign-in returns
+      a ~30 min RS256 access token plus a rotating refresh token, and the token exchange carries
+      `connector_uuid` — **and a connector is auto-provisioned on first sign-in**, which is what
+      finally closes the "Connector provisioning" blocker above.
+      **The SDK contract, agreed and tracked in `agentduet-sdk-python#48`:** the SDK gets a
+      `token_provider()` callback. It calls it before EACH connect and sends the result as
+      `Authorization: Bearer`. The SDK knows nothing about OAuth — string in, header out — and
+      **the refresh token never enters it**. `api_key` stays for server-side use, and the
+      `x-api-key` handshake branch is untouched, so existing installs keep working.
+      **So the work on our side is the token store, not the protocol:** hold access + refresh,
+      return the cached access token while it has time left, refresh before expiry otherwise,
+      and on `invalid_grant` clear the store and show the sign-in screen.
+      **Two facts worth not re-deriving:** a still-valid access token is reusable across any
+      number of connects (the handshake checks signature, expiry and scope only), so refresh is
+      housekeeping rather than per-connect; and an expired token does NOT drop a live connection
+      — connections are tagged with `family_id` at connect and dropped only on revocation.
+      **Credential storage is the open risk.** `.env` at `0600` is fine on macOS and Linux and
+      means nothing on Windows. Tuan's fair counter is that a rotating, revocable token there is
+      already better than today's static key — so this is scheduled work, not a blocker.
+      See `docs/onboarding-gap.md`.
 - [ ] **A B3-proxied model would DELETE deck step 4.** One credential instead of two: the owner
       authorises once and there is no model key to link, because we are the provider. Also keeps
       the knowledge inside B3's boundary, which the current "bring your own key" does not. The
