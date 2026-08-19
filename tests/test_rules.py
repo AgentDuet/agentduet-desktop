@@ -989,6 +989,19 @@ def test_setup_mode() -> None:
        "/api/state" in page and "onAir" in page)
     # Both of these have unwired a whole page before: localStorage is a ReferenceError in
     # WebKitGTK, and an unwired form submits natively to `/`, dropping the token.
+    # INSTALLING MUST BE REACHABLE. It vanished from every surface at once when setup was cut
+    # to two screens: setup.html lost it and settings.html never gained it, so an owner could
+    # finish setup on any platform and never have the app installed — no PATH entry, nothing
+    # after a reboot, and init signing off with `agentduet-desktop run`, a command that did not
+    # exist. Checked on both surfaces because losing it on one is how it was lost at all.
+    root = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    ok("the settings page can install this build",
+       "/api/install" in (root / "settings.html").read_text())
+    ok("and the console offers it too", "def offer_install" in (root / "init.py").read_text())
+    # And having offered, it must not sign off with a command that may not be on the PATH.
+    ok("the console names a command that exists",
+       'how = "agentduet-desktop" if installed' in (root / "init.py").read_text())
+
     # ---- the two setup surfaces must stay level -------------------------------------------
     # macOS and Windows set up in the browser page, Linux in the console (CLAUDE.md). Both ship
     # everywhere, so a setting reachable from only one is a setting half the owners cannot

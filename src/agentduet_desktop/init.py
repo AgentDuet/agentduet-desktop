@@ -22,6 +22,7 @@ thing an interview must not be helpful about.
 
 import asyncio
 import os
+import pathlib
 import sys
 
 from . import llm, owner, paths, tools
@@ -349,6 +350,35 @@ def offer_speech_model(interactive: bool = True) -> None:
               "the first call.")
 
 
+def offer_install(interactive: bool = True) -> bool:
+    """Put this build on the PATH, so `agentduet-desktop` is a command that exists.
+
+    WHY THIS IS IN INIT AT ALL. The console is the documented path on Linux, and the last thing
+    init prints is `agentduet-desktop run`. Without installing, that name is not on the PATH and
+    the instruction is simply wrong — the owner has just been told to type something that
+    returns "command not found". It also means the copy they are running is wherever they
+    downloaded it, so tidying that folder later removes their agent.
+
+    Running from source (not frozen) there is nothing to install: the answer is the module
+    invocation, and saying so is more useful than offering a step that cannot work.
+    """
+    from . import install
+    st = install.status()
+    if not st.get("frozen"):
+        return False
+    if st.get("installed") and st.get("current"):
+        return True
+    if not interactive:
+        return False
+    print(f"\n  Install this build to {st.get('target')}?")
+    print("  Without it, `agentduet-desktop` is not a command, and the copy you are running is")
+    print("  wherever you downloaded it — moving or deleting that folder stops your agent.")
+    if input("  Install? [Y/n] ").strip().lower().startswith("n"):
+        return False
+    print("  " + install.install().replace("\n", "\n  "))
+    return install.status().get("installed", False)
+
+
 def main(interactive: bool = True) -> int:
     print("\n  AgentDuet Desktop — setup")
     ensure_instance()
@@ -401,6 +431,7 @@ def main(interactive: bool = True) -> int:
     choose_language(interactive)
     choose_quality(interactive)
     offer_speech_model(interactive)
+    installed = offer_install(interactive)
 
     # THE INTERVIEW IS THE DEFAULT NOW (2026-08-11). It used to be opt-in — "your AI assistant
     # can do this over the mcp, better than these prompts" with a (y/N) that defaulted to NO —
@@ -422,15 +453,24 @@ def main(interactive: bool = True) -> int:
         if not input("\n  > ").strip().lower().startswith("s"):
             print("\n  " + (interview() or "(no summary returned)").replace("\n", "\n  "))
 
-    print("""
-  Next:
-    agentduet-desktop run          start the daemon — it answers while you are away
-    agentduet-desktop status       what is running, and what this build can do
+    # NAME THE COMMAND THAT ACTUALLY WORKS. `agentduet-desktop` is only on the PATH once this
+    # build is installed; from source it never is. Printing it unconditionally told the owner
+    # to type something that returns "command not found" as the last thing setup ever said.
+    how = "agentduet-desktop" if installed else (
+        sys.executable + " -m agentduet_desktop.cli" if not getattr(sys, "frozen", False)
+        else str(pathlib.Path(sys.argv[0]).resolve()))
+    # ONE COMMAND PER BLOCK, description above it. From source `how` is a full interpreter
+    # path and a trailing aligned column runs off the terminal, wrapping every line.
+    print(f"""
+  Next — start it, and see what it can do:
 
-  It answers on its own from here. Nothing else has to be installed.
-
+    {how} run
+    {how} status
+""" + ("" if not installed else
+       "  Installed, so it comes back by itself after a reboot.\n") + f"""
   Optional, if you use a coding assistant (Claude Code, Goose):
-    agentduet-desktop connect      register the mcp, so you can ask it what is waiting
+
+    {how} connect
 """ + ("" if connected else
        "\n  No connector yet, so nobody outside can reach it. Run init again when you have one.\n"))
     return 0
