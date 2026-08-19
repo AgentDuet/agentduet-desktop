@@ -149,6 +149,18 @@
         <div class="state" id="doesState">…</div>
       </div>
 
+      <div class="card" id="installCard" hidden>
+        <div class="head">
+          <div class="tile"><span class="material-symbols-rounded">download</span></div>
+          <div><h2>Install</h2><p>Puts this build somewhere permanent so it starts again after
+            a reboot, and so the copy you downloaded can be moved.</p></div>
+        </div>
+        <div class="state" id="instState">…</div>
+        <div class="acts"><button class="btn" id="doInstall">Install</button>
+          <span class="spin" id="spInst"></span></div>
+        <div id="mInst"></div>
+      </div>
+
       <div class="card">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">restart_alt</span></div>
@@ -307,6 +319,31 @@
     sttCheck();                       // the tier decides WHICH model, so the state line changes
   };
   sttCheck();
+
+  // ---- install ---------------------------------------------------------------------------
+  // HIDDEN WHEN RUNNING FROM SOURCE. There is nothing to install then, and an Install button
+  // that cannot work is worse than no button. This card went missing entirely when setup was
+  // cut to two screens — every surface lost it at once, so an owner could finish setup on any
+  // platform and never have the app installed.
+  function instRender(d){
+    if (!d || !d.frozen) return;                       // source run: leave the card hidden
+    $('installCard').hidden = false;
+    const done = d.installed && d.current;
+    $('instState').innerHTML = done
+      ? 'Installed at <code>' + esc(d.target) + '</code>.'
+      : (d.installed ? 'An OLDER build is installed at <code>' + esc(d.target) + '</code>.'
+                     : 'Not installed. Running from <code>' + esc(d.running_from) + '</code>.');
+    $('doInstall').textContent = d.installed && !d.current ? 'Update it' : 'Install';
+    $('doInstall').hidden = done;
+  }
+  fetch(`/api/install?t=${T}`).then(r => r.json()).then(instRender).catch(() => {});
+  $('doInstall').onclick = async () => {
+    $('doInstall').disabled = true; $('spInst').textContent = 'installing…';
+    const d = await post('/api/install', {});
+    $('doInstall').disabled = false; $('spInst').textContent = '';
+    say('mInst', d.ok, d.message);
+    fetch(`/api/install?t=${T}`).then(r => r.json()).then(instRender).catch(() => {});
+  };
 </script>
 </body>
 </html>
