@@ -98,7 +98,12 @@ def _is_ours(pid: int) -> bool:
             return False
         if os.path.basename(argv[0]).startswith("agentduet-desktop"):
             return True
-        return any(a == "agentduet_desktop.cli" or a.endswith("/agentduet_desktop/cli.py") for a in argv)
+        return any(
+            a in ("agentduet_desktop", "agentduet_desktop.cli")
+            or a.endswith("/agentduet_desktop/cli.py")
+            or a.endswith("/agentduet_desktop/__main__.py")
+            for a in argv
+        )
 
     try:
         raw = pathlib.Path(f"/proc/{pid}/cmdline").read_bytes().decode("utf-8", "replace")
