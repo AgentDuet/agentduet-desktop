@@ -1,7 +1,7 @@
 """MCP face for the desktop secretary — a thin wrapper over tools.py.
 
 The daemon (`secretary_agent.py`) owns the socket and answers external parties. This is the
-OWNER's side: it lets your own AI app ("what's waiting for me?", "reply to Celine…", "grant her
+OWNER's side: it lets your own AI app ("what's waiting for me?", "reply to Ada…", "grant her
 the partner folder") read and drive the secretary's state.
 
 TWO PROCESSES, AND ONLY ONE OF THEM IS ALWAYS ON
