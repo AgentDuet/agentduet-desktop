@@ -64,6 +64,26 @@
     font-size:.75rem;color:var(--muted);min-height:8rem;border:1px solid rgba(255,255,255,.05);
     white-space:pre-wrap;}
   .out .i{font-style:italic;}
+
+  .split{display:grid;grid-template-columns:minmax(12rem,16rem) minmax(0,1fr);gap:1rem;
+    align-items:start;}
+  .who-list{display:flex;flex-direction:column;gap:.25rem;}
+  .who{display:flex;flex-direction:column;gap:.15rem;padding:.6rem .7rem;border-radius:.6rem;
+    background:var(--card);border:1px solid var(--line);cursor:pointer;transition:.12s;}
+  .who:hover{border-color:rgba(59,130,246,.3);}
+  .who.on{border-color:rgba(59,130,246,.5);background:rgba(37,99,235,.12);}
+  .who .n{font-family:var(--mono);font-size:.78rem;color:var(--ink2);}
+  .who .m{font-size:10px;color:var(--faint);}
+  .thread{display:flex;flex-direction:column;gap:.6rem;min-height:12rem;}
+  .call{background:var(--card);border:1px solid var(--line);border-radius:.75rem;padding:.9rem 1rem;
+    display:flex;flex-direction:column;gap:.5rem;}
+  .call .top{display:flex;justify-content:space-between;align-items:center;gap:1rem;}
+  .call .when{font-size:.78rem;color:var(--ink2);font-weight:600;}
+  .call .meta{font-family:var(--mono);font-size:10px;color:var(--faint);}
+  .call .text{font-size:.8rem;color:#cbd5e1;line-height:1.6;white-space:pre-wrap;
+    background:var(--slate900);border:1px solid rgba(255,255,255,.05);border-radius:.5rem;
+    padding:.7rem;max-height:14rem;overflow:auto;}
+  .call .none{font-size:.78rem;color:var(--faint);font-style:italic;}
 </style>
 </head>
 <body>
@@ -96,7 +116,9 @@
         <div>
           <div class="navlab">Main Control</div>
           <nav>
-            <button data-v="overview" class="on">
+            <button data-v="threads" class="on">
+              <span class="material-symbols-rounded">forum</span><span>Conversations</span></button>
+            <button data-v="overview">
               <span class="material-symbols-rounded">grid_view</span><span>Overview</span></button>
             <button data-v="record-call">
               <span class="material-symbols-rounded">call</span><span>Record Call</span></button>
@@ -116,8 +138,22 @@
     </aside>
 
     <main>
+      <!-- CONVERSATIONS — the front door. People on the left, what happened with each on the
+           right. Deliberately NOT secretary.html's shape: no escalations, no permission grants,
+           no agent chat, because none of those exist when two humans talk and we only listen. -->
+      <div class="tab on" id="t-threads">
+        <div>
+          <h1><span class="material-symbols-rounded ic">forum</span>Conversations</h1>
+          <p class="sub">Everyone who has called you, and what was recorded.</p>
+        </div>
+        <div class="split">
+          <div class="who-list" id="whoList"></div>
+          <div class="thread" id="thread"></div>
+        </div>
+      </div>
+
       <!-- OVERVIEW -->
-      <div class="tab on" id="t-overview">
+      <div class="tab" id="t-overview">
         <div class="thead">
           <div>
             <h1>Service Status Overview</h1>
@@ -316,6 +352,7 @@
                                {field: 'record_calls', value: el.checked ? 'yes' : 'no'});
           if (!d.ok) el.checked = !el.checked;
           load();
+  loadThreads();
           return;
         }
         el.checked = !el.checked;
@@ -331,6 +368,58 @@
     ).join('');
     $(box).innerHTML = '<div class="h"><span>File Name</span><span>Type &amp; Size</span></div>'
       + (rowsHtml || '<div class="none">Nothing here yet.</div>');
+  }
+
+  // ---- conversations ----------------------------------------------------------------------
+  let THREADS = {people: [], folder: ""}, PICKED = "";
+
+  const when = iso => {
+    if (!iso) return "";
+    const d = new Date(iso.replace(" ", "T"));
+    return isNaN(d) ? iso : d.toLocaleString(undefined,
+      {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"});
+  };
+
+  function drawWho(){
+    const list = THREADS.people || [];
+    if (!list.length) {
+      $('whoList').innerHTML = '<div class="call none">Nobody has called yet. Carried calls '
+        + 'appear here with their recording and transcript.</div>';
+      $('thread').innerHTML = '';
+      return;
+    }
+    if (!list.some(p => p.who === PICKED)) PICKED = list[0].who;
+    $('whoList').innerHTML = list.map(p => `
+      <div class="who ${p.who === PICKED ? 'on' : ''}" data-who="${esc(p.who)}">
+        <span class="n">${esc(p.who)}</span>
+        <span class="m">${p.calls.length} call${p.calls.length === 1 ? '' : 's'} · ${esc(when(p.last))}</span>
+      </div>`).join('');
+    $('whoList').querySelectorAll('.who').forEach(el => {
+      el.onclick = () => { PICKED = el.dataset.who; drawWho(); };
+    });
+    drawThread();
+  }
+
+  function drawThread(){
+    const p = (THREADS.people || []).find(x => x.who === PICKED);
+    if (!p) { $('thread').innerHTML = ''; return; }
+    $('thread').innerHTML = p.calls.map(c => `
+      <div class="call">
+        <div class="top">
+          <span class="when">${esc(when(c.at))}</span>
+          <span class="meta">${esc(c.mode)}${c.files ? ' · ' + c.files + ' file' + (c.files === 1 ? '' : 's') : ''}${c.bytes ? ' · ' + kb(c.bytes) : ''}</span>
+        </div>
+        ${c.silent
+          ? '<div class="none">Recorded nothing — the platform did not hand over the audio for this call.</div>'
+          : (c.transcript
+              ? `<div class="text">${esc(c.transcript)}</div>`
+              : '<div class="none">Transcript pending — it is written beside the audio once the queue reaches it.</div>')}
+      </div>`).join('') || '<div class="call none">No calls yet.</div>';
+  }
+
+  async function loadThreads(){
+    THREADS = await fetch(`/api/threads?t=${T}`).then(r => r.json()).catch(() => ({people: []}));
+    drawWho();
   }
 
   async function load(){
