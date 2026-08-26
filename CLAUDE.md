@@ -308,7 +308,7 @@ the product is.
       it does, setup shows the three buttons and a manual path beside them.
 - [ ] **Record Call has nothing behind it** — `carry.py` bridges and the recorders start, but the
       platform does not hand the app conference audio, so the directory the panel lists is empty.
-      This is the mockup's FIRST service. Being added on the AgentDuet side (Dat).
+      This is the mockup's FIRST service. Being added on the AgentDuet side.
 - [ ] **Record Message (SMS) does not exist at all.** We have WhatsApp through the SDK, not SMS
       archiving. This is a channel we do not ingest, not a screen we have not drawn.
 - [ ] **Connect AI is a SUMMARISER in the mockup** — transcripts go to a cloud model for action
@@ -388,9 +388,9 @@ the product is.
       changed for today's builds. `packaging/entitlements.plist` carries the hardened-runtime
       holes, of which `allow-jit` is the one to keep: **wasmtime JITs**, so without it the tool
       sandbox dies when a customer tool is first called.
-      Blocked on three things from the Apple account (asked in `#Apple-Developer-Account`, and
-      the account holder is now Luk): a **Developer ID Application** certificate, an App Store
-      Connect API key (issuer id + key id + `.p8`), and the Team ID. A CSR is already generated
+      Blocked on three things only the account holder can produce: a **Developer ID
+      Application** certificate, an App Store Connect API key (issuer id + key id + `.p8`),
+      and the Team ID. A CSR is already generated
       at `~/.apple-signing/devid.csr`; the private key beside it never leaves this machine.
       **We are NOT going to the Mac App Store** — it requires the sandbox, which this app's
       loopback server, home-directory writes and model download would all have to be granted
@@ -413,10 +413,14 @@ the product is.
       substitute. NOTE the first framing here was wrong: `design.md` never claimed this was a
       fence, it OMITTED the limit. Its stated property — the tool cannot choose a destination at
       call time — is real and enforced in `resolve_url`.
-- [ ] **Pre-public scrub.** Going public leaks `stg.dduet.com` (×3) and
-      `wss-dev.internal.b3networks.com`, and this file names colleagues and vendor limits — it is
-      written for us, not for the world. No secrets are tracked (checked: the only `sk-` match is
-      the deliberate `sk-LEAKED-CANARY` in `test_wasm.py`, and the numbers are placeholders).
+- [x] ~~**Pre-public scrub.**~~ **DONE 2026-08-26.** The two internal hostnames lived in a
+      README that still described `secretary-sample` and the dropped DDUET channel, so it was
+      rewritten rather than patched. No credentials were ever tracked — the only `sk-` match is
+      the deliberate `sk-LEAKED-CANARY` in `test_wasm.py`, and the uuid and phone numbers are
+      placeholders. A real colleague used as sample data is now a made-up one; `Pauline` stays,
+      being fictional and the canonical example across five files. **This file is tracked on
+      purpose:** ~99% of it is why-the-code-is-like-this, which is what a contributor needs.
+      Only live identifiers are withheld.
 - [ ] **OAuth sign-in — the backend contract is SETTLED, ours is not built.** Designed in
       `B3Networks/wss-edge` (`docs/superpowers/specs/2026-08-18-client-agent-oauth-design.md`,
       issue #52), agreed 2026-08-18. wss-edge is the authorization server and brokers Google and
@@ -438,8 +442,8 @@ the product is.
       housekeeping rather than per-connect; and an expired token does NOT drop a live connection
       — connections are tagged with `family_id` at connect and dropped only on revocation.
       **Credential storage is the open risk.** `.env` at `0600` is fine on macOS and Linux and
-      means nothing on Windows. Tuan's fair counter is that a rotating, revocable token there is
-      already better than today's static key — so this is scheduled work, not a blocker.
+      means nothing on Windows. The fair counter raised in review: a rotating, revocable token
+      there is already better than today's static key — so this is scheduled work, not a blocker.
       See `docs/onboarding-gap.md`.
 - [ ] **A B3-proxied model would DELETE deck step 4.** One credential instead of two: the owner
       authorises once and there is no model key to link, because we are the provider. Also keeps
@@ -471,16 +475,16 @@ the product is.
       `_first_text` now accepts Meta flat (`text.body`), Meta wrapped (`messages[].text.body`) and
       the old Nexus `parts`, and **logs any payload it cannot read, in full**. Narrow it once a
       real message has been seen; not before.
-- [ ] **Per-owner WABA.** **Shared sandbox number** — fine to test, unusable as product until it
-      lands (~September, Cedric's release). Known ids: participant `6596918851`, subscriber (the
-      WABA `phone_number_id`) `1151661421362480`.
+- [ ] **Per-owner WABA.** **Shared sandbox number** — fine to test, unusable as product until
+      per-owner numbers land (~September, on the platform side). The sandbox participant and
+      `phone_number_id` are live identifiers and are kept out of this file; ask the platform team.
 - [ ] Outbound initiate: messaging is reactive, so held replies are delivered only when the
       person next writes. On WhatsApp there is a second limit — Meta's 24h customer-service
       window, after which a free-form reply needs an approved template we do not have.
 - [ ] Unverified askers: `knowledge/` is flat and public. Decide the disclosure tier before
       strangers are in scope.
 - [ ] **DashScope caps concurrent realtime connections per ACCOUNT** ("max_connections 100").
-      It presents as SILENCE on the call. Raised with luk 2026-08-03.
+      It presents as SILENCE on the call — no error, the caller just hears nothing.
 
 **Voice**
 
@@ -496,7 +500,7 @@ the product is.
       not prevention, and the honest substitute for the cascade below.
 - [ ] **Measure a hosted cascade.** Rejected 2026-07-31, but the recorded reason rejects a LOCAL
       cascade. It is the only option that restores every invariant.
-      **NOT YET, decided 2026-08-14.** `AgentDuet/agentduet-pipecat` (Tuan, public) makes a
+      **NOT YET, decided 2026-08-14.** `AgentDuet/agentduet-pipecat` (public) makes a
       cascade cheap to build — `AgentDuetTransport` drops a live Call into a Pipecat pipeline.
       But nothing today wants one: agent mode is speech-to-speech on a single realtime stream,
       and carry mode is STT only, post-call, on a queue. A cascade is the only thing Pipecat
