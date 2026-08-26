@@ -208,6 +208,13 @@ async def handle(sm, noti) -> None:
         for t in legs:
             t.cancel()
         await asyncio.gather(*legs, return_exceptions=True)
+        # WRITE THE INDEX LAST, once the files are closed and their sizes are final. Recording
+        # filenames carry a CALL ID, not a person, so without this row there is no way back from
+        # a .wav to whoever was on it — which is the whole basis of a per-person view. The
+        # caller is known here and was only being logged.
+        from . import calls as _calls
+        _calls.record(call_id, caller, "carried", recordings=sorted(
+            str(p.name) for p in RECORDINGS.glob(f"*{call_id}*.wav")))
         # THE TRANSCRIPT IS NOT THIS FUNCTION'S JOB. Carrying a call ends when the audio is
         # closed on disk; a `.wav` with no sibling `.txt` is the queue, and the worker in
         # `transcribe` picks it up within a poll. That keeps the call path free of a network
