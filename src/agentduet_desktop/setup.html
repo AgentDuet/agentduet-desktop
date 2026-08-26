@@ -174,8 +174,15 @@
   document.querySelectorAll('.sso').forEach(b => {
     b.onclick = () => {
       const who = b.dataset.p;
-      if (OAUTH) { location.href = `/api/connector/signin?t=${T}&provider=` + encodeURIComponent(who); return; }
-      say('mSso', false, `Signing in with ${who} is not connected yet. Continue, then finish in Settings.`);
+      // GOOGLE IS THE ONLY WORKING PROVIDER. Microsoft is refused upstream because Entra does
+      // not issue `email_verified`, and Apple was never in v1 — both stay visible per the
+      // mockup, and say so when pressed rather than failing at the provider.
+      if (OAUTH && who === 'Google') {
+        location.href = `/api/connector/signin?t=${T}&provider=google`; return;
+      }
+      say('mSso', false, OAUTH
+        ? `${who} sign-in is not available yet — only Google is. Continue, then finish in Settings.`
+        : `Signing in with ${who} is not connected yet. Continue, then finish in Settings.`);
       show('setup');
     };
   });

@@ -830,35 +830,83 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response(install.status())
         return web.json_response({"ok": True, "message": install.install()})
 
+    #: One sign-in attempt in flight: the state and verifier that began it. In memory only —
+    #: a PKCE verifier is single-use and worthless after the callback, so persisting it would
+    #: store a secret with no purpose past the next few seconds.
+    _pending_signin: dict = {}
+
     async def api_connector_signin(request):
-        """Begin an OAuth sign-in for the connector. NOT IMPLEMENTED — the seam, not the flow.
+        """Begin an OAuth sign-in, and send the browser to the provider.
 
-        Deliberately a stub. The flow is Authorization Code + PKCE with a loopback redirect back
-        to this very server, which is the right shape for a distributed desktop app — but its
-        details (authorize url, scopes, whether the channel takes a token at all) are the subject
-        of an open request to the backend, and guessing them would mean writing code against an
-        endpoint shape that does not exist yet.
-
-        What is real is the decision this encodes: the button is only reachable when
-        `connector.oauth_available()` is true, which requires AGENTDUET_OAUTH_URL to be set. No
-        shipped build offers it, so nobody meets this message.
+        A GET that redirects, rather than an API call returning a URL: the browser has to end up
+        at the provider either way, and a redirect keeps the whole flow in the address bar where
+        the owner can see who is asking for their credentials.
         """
         if not authed(request):
-            return web.json_response({"error": "unauthorised"}, status=401)
-        from . import connector
-        if not connector.oauth_available():
+            return web.Response(status=401, text="bad or missing token")
+        from . import oauth
+        if not oauth.available():
             return web.json_response(
                 {"ok": False, "message": "Sign-in is not available yet. Enter the key manually."})
-        return web.json_response(
-            {"ok": False, "message": "Sign-in is configured but not implemented in this build. "
-                                     "Use 'Enter key manually instead'."})
 
-    # `/api/hosts` and `/api/launch` USED TO LIVE HERE. They backed setup's "your AI assistant"
-    # step — detect, register the mcp, install Goose, open it — and that step is gone: connecting
-    # an assistant is optional and belongs to `agentduet-desktop connect`, not to first-run setup.
-    # Removed rather than left dormant. `/api/hosts` ran an installer that downloads ~200 MB, and
-    # `/api/launch` started a program on disk; keeping unreachable endpoints that do either, on a
-    # server the whole product binds for the owner, is surface with nothing asking for it.
+        provider = (request.query.get("provider") or "").lower()
+        # ONLY GOOGLE WORKS UPSTREAM. Microsoft is refused because Entra does not issue
+        # `email_verified`, and that flag is the identity-linking key — accepting an unverified
+        # address is an account-takeover path. Apple was never in v1. Say which, rather than
+        # letting the provider return an error the owner cannot act on.
+        if provider and provider != oauth.PROVIDER:
+            return web.json_response({"ok": False, "message":
+                f"{provider.title()} sign-in is not available yet — only Google is. "
+                "Use 'Set it up by hand' for now."})
+
+        url, state, verifier = oauth.begin(PORT)
+        _pending_signin.clear()
+        _pending_signin.update(state=state, verifier=verifier)
+        raise web.HTTPFound(url)
+
+    async def oauth_callback(request):
+        """Where the provider sends the browser back. Exchanges the code and stores the tokens.
+
+        NO TOKEN ON THIS ROUTE, and it cannot have one: the redirect is built by us but performed
+        by the provider, which will not carry our site token. What authenticates it instead is
+        `state` — a value we generated moments ago and kept in memory, which an attacker inducing
+        this request cannot know. The path and host are pinned upstream too: the server only
+        accepts `http://127.0.0.1:{port}/callback`.
+        """
+        from . import oauth
+        err = request.query.get("error")
+        if err:
+            return web.Response(content_type="text/html", text=_signin_page(
+                "Sign-in was refused", request.query.get("error_description") or err))
+
+        state, code = request.query.get("state", ""), request.query.get("code", "")
+        want = _pending_signin.get("state")
+        if not want or not secrets.compare_digest(state, want):
+            # Either nothing is in flight, or this redirect belongs to a different attempt.
+            return web.Response(status=400, content_type="text/html", text=_signin_page(
+                "That sign-in did not match", "Start again from the setup page."))
+        verifier = _pending_signin.get("verifier", "")
+        _pending_signin.clear()          # single use, whatever happens next
+
+        try:
+            who = await asyncio.to_thread(oauth.complete, code, verifier, PORT)
+        except Exception as exc:
+            logger.warning("sign-in exchange failed: %s", exc)
+            return web.Response(status=400, content_type="text/html", text=_signin_page(
+                "Sign-in could not be completed", str(exc)))
+        return web.Response(content_type="text/html", text=_signin_page(
+            f"Signed in as {who}", "You can close this tab and go back to setup.", ok=True))
+
+    def _signin_page(title: str, detail: str, ok: bool = False) -> str:
+        """A plain result page. Deliberately not one of the app pages: this route has no site
+        token, so it must not render anything that would try to call the API with one."""
+        colour = "#34d399" if ok else "#fca5a5"
+        return (f'<!doctype html><meta charset="utf-8"><title>{title}</title>'
+                f'<body style="background:#020617;color:#f1f5f9;font-family:system-ui;'
+                f'display:flex;align-items:center;justify-content:center;height:100vh;margin:0">'
+                f'<div style="text-align:center;max-width:28rem;padding:2rem">'
+                f'<h1 style="font-size:1.25rem;color:{colour}">{title}</h1>'
+                f'<p style="font-size:.85rem;color:#94a3b8;line-height:1.6">{detail}</p></div>')
 
     def _mark_setup_done():
         """Record that the owner pressed the button. See needs_setup."""
@@ -1202,7 +1250,9 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/handover", api_handover),
         web.get("/api/install", api_install),
         web.post("/api/install", api_install),
+        web.get("/api/connector/signin", api_connector_signin),
         web.post("/api/connector/signin", api_connector_signin),
+        web.get("/callback", oauth_callback),
         web.get("/api/ui", api_ui),
         web.post("/api/ui", api_ui),
         web.post("/api/chat", api_chat),
