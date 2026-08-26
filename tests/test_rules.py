@@ -989,6 +989,24 @@ def test_setup_mode() -> None:
        "/api/state" in page and "onAir" in page)
     # Both of these have unwired a whole page before: localStorage is a ReferenceError in
     # WebKitGTK, and an unwired form submits natively to `/`, dropping the token.
+    # ---- signing in from the console ------------------------------------------------------
+    # Linux sets up in the console, so sign-in has to be reachable there or a self-hosting owner
+    # cannot use it at all. A headless box FAILS CLEANLY instead: it cannot show a consent
+    # screen, and the workarounds are worse than the connector key it falls back to.
+    init_src = (src / "init.py").read_text()
+    oauth_src = (src / "oauth.py").read_text()
+    ok("the console offers sign-in", "def sign_in(" in init_src)
+    ok("and tries it before asking for a connector by hand",
+       "sign_in(interactive) or connect(interactive)" in init_src)
+    ok("headless is refused rather than degraded", "browser_available" in init_src)
+    # The display check is the real one on Linux: a browser with no display opens nothing and
+    # still reports success.
+    ok("and the display is what decides it", "WAYLAND_DISPLAY" in oauth_src)
+    # The terminal flow must not leave a listener behind — init may run with no daemon, and a
+    # surviving one would be a second unauthenticated surface.
+    ok("the console listener serves one request and stops",
+       "handle_request" in oauth_src and "server_close" in oauth_src)
+
     # ---- one connector, one call handler ---------------------------------------------------
     # The only place the two products in this binary genuinely collide. Carrying and answering
     # both register `on_incoming_call`, the SDK accepts a second one, and then both attach and

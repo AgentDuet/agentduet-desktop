@@ -251,3 +251,90 @@ def token_provider() -> str:
     if access and stored.get("expires_at", 0) - time.time() > REFRESH_MARGIN_SECONDS:
         return access
     return refresh()
+
+
+# ---- signing in from a terminal ----------------------------------------------------------
+
+def browser_available() -> bool:
+    """Whether this machine can show a consent screen at all.
+
+    HEADLESS IS A HARD NO, DELIBERATELY. The alternatives for a box with no browser — pasting a
+    code back from a page that failed to load, or an ssh tunnel — are either confusing or assume
+    the reader is comfortable forwarding ports. Neither is worth building while a connector key
+    still works: an owner on a headless machine has a route, it is just not this one.
+
+    The pleasant answer for headless is the device authorization grant (RFC 8628): show a code,
+    approve it on a phone, poll until it is granted. That needs server support we do not have.
+    """
+    import shutil
+    import sys
+    import webbrowser
+
+    if sys.platform in ("darwin", "win32"):
+        return True
+    # On Linux a browser without a display opens nothing and reports success, so the display is
+    # the real test — `webbrowser` alone will happily hand back a console browser or lie.
+    if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        return False
+    try:
+        webbrowser.get()
+        return True
+    except webbrowser.Error:
+        return bool(shutil.which("xdg-open"))
+
+
+def sign_in_interactive(timeout: int = 180) -> str:
+    """Run the whole flow from a terminal. Returns the email, or raises.
+
+    Serves ONE request on an ephemeral port and stops. `init` may run with no daemon, so it
+    cannot borrow the site's `/callback` — and a listener that outlives the sign-in would be a
+    second, unauthenticated surface for no reason.
+    """
+    import http.server
+    import threading
+    import webbrowser
+
+    got: dict = {}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):                                     # noqa: N802 - stdlib's spelling
+            from urllib.parse import parse_qs, urlparse
+            q = parse_qs(urlparse(self.path).query)
+            got.update({k: v[0] for k, v in q.items()})
+            body = (b"<meta charset='utf-8'><body style='font-family:system-ui;padding:3rem'>"
+                    b"<h2>You can close this tab.</h2><p>Go back to the terminal.</p>")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):                            # keep the terminal clean
+            pass
+
+    # Port 0: the OS picks a free one. The server accepts any loopback port, so there is nothing
+    # to reserve and nothing to collide with a running daemon.
+    httpd = http.server.HTTPServer((REDIRECT_HOST, 0), Handler)
+    port = httpd.server_address[1]
+    url, state, verifier = begin(port)
+
+    threading.Thread(target=httpd.handle_request, daemon=True).start()
+    print("\n  Opening your browser to sign in with Google.")
+    print(f"  If nothing opens, paste this into a browser ON THIS MACHINE:\n\n    {url}\n")
+    try:
+        webbrowser.open(url, new=2)
+    except Exception:
+        pass
+
+    deadline = time.time() + timeout
+    while not got and time.time() < deadline:
+        time.sleep(0.3)
+    httpd.server_close()
+
+    if not got:
+        raise RuntimeError("timed out waiting for the browser")
+    if got.get("error"):
+        raise RuntimeError(got.get("error_description") or got["error"])
+    if not secrets.compare_digest(got.get("state", ""), state):
+        raise RuntimeError("the sign-in did not match the request that started it")
+    return complete(got.get("code", ""), verifier, port)
