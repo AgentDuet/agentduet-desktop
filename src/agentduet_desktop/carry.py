@@ -137,7 +137,7 @@ async def handle(sm, noti) -> None:
         # DO NOT ANSWER FIRST. Connect straight away.
         #
         # This was answer() -> connect() for a day, taken from the platform docs' call-monitoring
-        # page, which shows answer -> hold message -> connect -> spy. Tuan (2026-08-12) says that
+        # page, which shows answer -> hold message -> connect -> spy. the SDK author confirmed (2026-08-12) that
         # is scenario 2 and the comm side has never implemented it; scenario 1, connecting without
         # answering, is the one that works. The SDK's own connect_spy_isolated.py example does it
         # this way too, and I changed away from it on the strength of a doc page.

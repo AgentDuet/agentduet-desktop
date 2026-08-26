@@ -166,7 +166,7 @@ act of approval, rather than in a separate config that drifts away from the tool
 
 ### Tools are a granted resource, per caller
 
-KC's proposal, 2026-08-04, accepted: *"Folder A can have tools XYZ. Folder B can only have tool
+A colleague's proposal, 2026-08-04, accepted: *"Folder A can have tools XYZ. Folder B can only have tool
 Z."* Disclosure already follows a per-caller grant. Authority follows the same grant.
 
 `permissions.json` is already per-asker with a default, so this is `"tools"` beside `"folders"`.

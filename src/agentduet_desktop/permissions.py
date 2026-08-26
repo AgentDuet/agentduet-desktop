@@ -109,7 +109,7 @@ ALWAYS_TOOLS = ["escalate"]
 def tools_for(asker: str, verified: bool = False) -> list[str]:
     """Which asker-side tools this caller may invoke.
 
-    The second half of KC's proposal (2026-08-04): disclosure already follows a per-caller grant,
+    The second half of that proposal (2026-08-04): disclosure already follows a per-caller grant,
     so authority follows the same one. Same shape as `folders_for`, and the same rule — a grant
     reaches an identity only once it is VERIFIED, because an unverified address is a claim.
 
