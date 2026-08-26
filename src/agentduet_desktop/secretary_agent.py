@@ -401,6 +401,27 @@ async def main() -> None:
     try:
         from . import web
         logger.info("Owner site: %s", await web.start())
+    except OSError as exc:
+        # THE PORT BEING TAKEN IS A DIFFERENT FAILURE, and it must not be shrugged off. It means
+        # ANOTHER DAEMON IS ALREADY RUNNING, and one connector has one client — a second racing
+        # `call.answer()` is the documented way to break inbound. Carrying on also corrupts the
+        # only way to manage them: this process has already written its pid to the pid file, so
+        # `stop` now targets the impostor and leaves the real daemon serving stale code.
+        #
+        # Cost of getting this wrong, observed 2026-08-26: every `./dev.sh` for an hour started a
+        # second daemon that could not bind, took over the pid file, and left the original
+        # serving code from two hours earlier. Edits appeared to do nothing; tests of those edits
+        # were meaningless.
+        if getattr(exc, "errno", None) in (98, 48) or "address already in use" in str(exc).lower():
+            logger.error("Port %s is already in use — another AgentDuet daemon is running. "
+                         "Not starting a second one: one connector has one client, and two "
+                         "would race for every call. Stop the other one first "
+                         "(`agentduet-desktop stop`), or set SECRETARY_WEB_PORT.",
+                         os.getenv("SECRETARY_WEB_PORT", "8899"))
+            raise SystemExit(1)
+        logger.warning("Owner site did not start (%s: %s) — carrying on. Inbound is unaffected; "
+                       "reach this daemon through the mcp, or `agentduet-desktop status`.",
+                       type(exc).__name__, exc)
     except Exception as exc:
         logger.warning("Owner site did not start (%s: %s) — carrying on. Inbound is unaffected; "
                        "reach this daemon through the mcp, or `agentduet-desktop status`.",

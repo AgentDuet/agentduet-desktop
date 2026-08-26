@@ -810,6 +810,50 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                       "messages": []},
         })
 
+    async def api_threads(request):
+        """People, and what happened with each of them.
+
+        The recorder's view of the world: someone rang, we carried it, and there is audio and a
+        transcript. No escalations, no grants, no agent conversation — those are objects that
+        only exist when an agent is answering, and nobody is answered here.
+
+        Built from `calls.jsonl` rather than the query log, and joined to the files on disk so a
+        row can only claim a recording that is actually there.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import calls, carry, transcribe
+
+        folder = carry.RECORDINGS
+        people = []
+        for who, rows in calls.by_person().items():
+            items = []
+            for r in rows:
+                names = [n for n in r.get("recordings", []) if (folder / n).is_file()]
+                # A .wav with no sibling .txt is still in the transcription queue — that is the
+                # queue, so the UI can say "pending" without a second source of truth.
+                text = ""
+                for n in names:
+                    t = (folder / n).with_suffix(".txt")
+                    if t.is_file():
+                        try:
+                            text = t.read_text()[:4000]
+                            break
+                        except OSError:
+                            pass
+                audio = sum((folder / n).stat().st_size for n in names) if names else 0
+                items.append({
+                    "at": r.get("at", ""), "call_id": r.get("call_id", ""),
+                    "mode": r.get("mode", ""), "files": len(names), "bytes": audio,
+                    "transcript": text,
+                    # Empty WAVs are what an unbridged call leaves behind; saying so beats
+                    # showing a call that looks recorded and plays nothing.
+                    "silent": bool(names) and audio <= len(names) * transcribe.EMPTY_WAV_BYTES,
+                })
+            people.append({"who": who, "calls": items, "last": items[0]["at"] if items else ""})
+        people.sort(key=lambda p: p["last"], reverse=True)
+        return web.json_response({"people": people, "folder": str(folder)})
+
     async def api_ui(request):
         """View preferences. Server-side because the window has no localStorage — see
         tools.UI_PREFS."""
@@ -1247,6 +1291,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/setup/example", api_setup_example),
         web.get("/api/state", api_state),
         web.get("/api/panel", api_panel),
+        web.get("/api/threads", api_threads),
         web.post("/api/handover", api_handover),
         web.get("/api/install", api_install),
         web.post("/api/install", api_install),
