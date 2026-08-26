@@ -33,7 +33,7 @@ import logging
 import wave
 from datetime import datetime
 
-from . import paths
+from . import callmode, paths
 
 logger = logging.getLogger("secretary")
 
@@ -222,6 +222,9 @@ def register(sm) -> bool:
     handler, so the daemon calls one of these and never both — the choice is the owner's
     `## Calls` setting, and the daemon logs which one it took.
     """
+    # TAKE THE SLOT FIRST. One connector has one on_incoming_call, so a second
+    # registration does not fail on its own — both attach and race for the call.
+    callmode.claim("carry")
     @sm.on_incoming_call
     async def _handler(noti) -> None:
         # Its own task, for the same reason the voice path does it: blocking the SDK's event
