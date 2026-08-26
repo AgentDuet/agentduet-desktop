@@ -43,7 +43,7 @@ customer without an assistant would have bought nothing — and they have not.
 ```
    stranger ─phone/WhatsApp─>  ASKER DAEMON  <──MCP──  owner's assistant
                               always on               (Claude Code / Goose)
-                              5 tools                  33 tools
+                              5 tools                  38 tools
                               no OS reach
 ```
 
@@ -388,9 +388,9 @@ the product; nothing about an owner surface should be able to end it.
 
 ## Part 2 — the owner mcp
 
-### 33 operations, derived not enumerated
+### 38 operations, derived not enumerated
 
-Registered from `tools.OWNER_TOOLS`, never listed by hand. Hand-listing drifted to 16 of 33 —
+Registered from `tools.OWNER_TOOLS`, never listed by hand. Hand-listing drifted to 16 of them —
 and worse, imported a module `mcp` 2.x had renamed, so the face exposed nothing at all.
 
 ### Two servers, split by lifetime, not audience
@@ -401,7 +401,7 @@ stopped over its own endpoint.**
 | | transport | lifetime | what it does |
 |---|---|---|---|
 | **service tools** | stdio, spawned by the host | per session | `service_status`, `service_start`, `service_stop`, login-item toggle |
-| **secretary tools** | the 33 registry operations | see below | read and drive the instance |
+| **secretary tools** | the registry operations | see below | read and drive the instance |
 
 On 2026-08-03 the daemon stopped and nobody noticed for twelve minutes — the log ends cleanly on
 `inbound is live`. It was found by accident. Service tools are the fix, and with no UI they are
@@ -414,7 +414,7 @@ and per-session stdio may be sufficient and simpler. Decide before building.
 If it does become HTTP, one thing is not optional: **stdio is implicitly access-controlled and
 HTTP is not.** Only the spawning process can talk to a stdio server; a loopback HTTP endpoint is
 reachable by anything running as the same user, including a script or a package `postinstall`.
-Unauthenticated, that hands 33 owner operations to any local process.
+Unauthenticated, that hands 38 owner operations to any local process.
 
 ### Starting at login, without building a persistence primitive
 
@@ -500,7 +500,7 @@ So the attack is not "convince the fenced agent". It is:
 > asks "what's waiting?" → the privileged agent reads it.
 
 **This design makes it worse, not better**, because the owner agent is now a general-purpose
-assistant with shell access rather than a purpose-built chat with 33 scoped tools. "A human is
+assistant with shell access rather than a purpose-built chat with 38 scoped tools. "A human is
 present" is thinner than it sounds: the human is reading a summary produced by the model that
 just read the injection.
 

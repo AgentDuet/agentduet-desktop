@@ -54,7 +54,7 @@ Two parts, and they are separate processes.
 There is no `read_file`. There is no shell. So the message above produces a knowledge search that
 finds nothing, and an escalation. The attack has nowhere to land.
 
-**The owner MCP server** has 37 tools and does reach the machine — files, the service, the
+**The owner MCP server** has 38 tools and does reach the machine — files, the service, the
 knowledge base. Only the owner talks to it. A stranger never gets a turn in that context.
 
 MCP (Model Context Protocol) is the standard for plugging tools into an AI assistant. Note that
@@ -160,9 +160,11 @@ agent — which does have machine access — reads them later. That is the same 
 above, one step removed. Marking asker-authored content as untrusted is open work.
 
 **Nuisance.** `request_callback` and `transfer_to_owner` make the owner's phone ring. A stranger
-cannot steal anything with them, but can ring repeatedly — and there is **no rate limit**, checked
-and confirmed on 2026-08-04. This is the cheapest real abuse of the five tools, and the only one
-available without any injection at all: a caller simply asks to be put through, repeatedly.
+cannot steal anything with them, but can ring repeatedly — the cheapest real abuse of the five
+tools, and the only one available without any injection at all. It is **rate-limited now**
+(`_may_ring`), and deliberately in a way that does not silence anyone: a caller past the limit
+still gets their escalation recorded, so the owner hears about them — their phone just does not
+ring again. Refusing to ring is not refusing the caller.
 
 ## The rule
 
