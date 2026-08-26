@@ -57,11 +57,21 @@
       <div class="card">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">smart_toy</span></div>
-          <div><h2>Model</h2><p>Only needed to answer calls, or to summarise a transcript.</p></div>
+          <div><h2>Model</h2><p>Local open-source models run on-device; hosted models use cloud APIs.</p></div>
         </div>
         <div class="state" id="modelState">…</div>
-        <div class="grp"><label class="fl">Provider</label><input type="text" id="model"></div>
-        <div class="grp"><label class="fl">API key</label><input type="password" id="key"
+        <div class="state" id="hwLlmState" style="margin-top:.5rem">Analyzing machine resources…</div>
+        <div class="state" id="llmMemBox" style="margin-top:.5rem;display:flex;justify-content:space-between;align-items:center">
+          <span id="llmMemText">Resident memory: 0 MB</span>
+          <div style="display:flex;gap:.5rem">
+            <button class="btn sm" id="btnLoadSettingsLlm" style="display:none">Load into RAM</button>
+            <button class="btn danger sm" id="btnUnloadSettingsLlm" style="display:none">Unload from RAM</button>
+          </div>
+        </div>
+        <div class="grp"><label class="fl">AI Model (Local Open-Source First)</label>
+          <select id="modelSelect"></select>
+        </div>
+        <div class="grp" id="keyGrp"><label class="fl">API key</label><input type="password" id="key"
           placeholder="paste a key" autocomplete="off"></div>
         <div class="acts"><button class="btn" id="saveModel">Check and save</button>
           <span class="spin" id="spModel"></span></div>
@@ -220,6 +230,109 @@
   $('debug').onchange = () => post('/api/ui', {debug: $('debug').checked});
   $('rerun').onclick = () => { location.href = '/setup?t=' + T + '&from=settings'; };
 
+  let currentHw = {};
+  async function refreshModelInfo() {
+    const [cr, hr] = await Promise.all([
+      fetch(`/api/setup/current?t=${T}`).then(r => r.json()).catch(() => ({})),
+      fetch(`/api/hardware?t=${T}`).then(r => r.json()).catch(() => ({})),
+    ]);
+    currentHw = hr;
+    $('modelState').textContent = cr.model || 'unknown';
+
+    const hwInfo = hr.hardware || {};
+    const mem = hwInfo.memory || {};
+    const disk = hwInfo.disk || {};
+    const llmHw = hr.llm || {};
+    const llmRec = llmHw.recommended_model || 'llama-3.2-1b';
+
+    $('hwLlmState').innerHTML = `<b>Host Resources:</b> ${esc(hwInfo.chip_name || 'CPU')} · `
+      + `<b>${mem.total_gb || '?'} GB RAM</b> (${mem.available_gb || '?'} GB Available) · `
+      + `<b>${disk.free_gb || '?'} GB Free Disk</b><br>`
+      + `<span style="color:var(--emerald);display:inline-block;margin-top:.25rem">⭐ <b>Adviser Recommendation:</b> <b>${esc(llmHw.recommended_name || llmRec)}</b> is optimal for your machine.</span>`;
+
+    const localModels = (llmHw.models && Object.keys(llmHw.models).length) ? llmHw.models : {
+      'llama-3.2-1b': {name: 'Llama 3.2 1B', dl_gb: 1.3, ram_gb: 1.8, status: 'capable'},
+      'qwen-2.5-1.5b': {name: 'Qwen 2.5 1.5B', dl_gb: 1.2, ram_gb: 1.9, status: 'capable'},
+      'llama-3.2-3b': {name: 'Llama 3.2 3B', dl_gb: 2.0, ram_gb: 3.2, status: 'capable'},
+      'qwen-2.5-3b': {name: 'Qwen 2.5 3B', dl_gb: 2.2, ram_gb: 3.5, status: 'capable'},
+      'phi-3.5-mini': {name: 'Phi 3.5 Mini (3.8B)', dl_gb: 2.4, ram_gb: 3.6, status: 'capable'},
+      'qwen-2.5-7b': {name: 'Qwen 2.5 7B', dl_gb: 4.7, ram_gb: 6.5, status: 'capable'},
+      'mistral-7b': {name: 'Mistral 7B v0.3', dl_gb: 4.8, ram_gb: 6.8, status: 'capable'}
+    };
+    const cloudModels = (llmHw.cloud_models && Object.keys(llmHw.cloud_models).length) ? llmHw.cloud_models : {
+      'gemini': {name: 'Google Gemini (Hosted Cloud)', key_name: 'GEMINI_API_KEY'},
+      'anthropic': {name: 'Anthropic Claude (Hosted Cloud)', key_name: 'ANTHROPIC_API_KEY'},
+      'dashscope': {name: 'Qwen DashScope (Hosted Cloud)', key_name: 'DASHSCOPE_API_KEY'}
+    };
+
+    const sel = $('modelSelect');
+    const prevVal = sel.value;
+    sel.innerHTML = '';
+    const grpLocal = document.createElement('optgroup');
+    grpLocal.label = '— Local Open-Source Models (No API Key) —';
+    Object.entries(localModels).forEach(([mid, minfo]) => {
+      const opt = document.createElement('option');
+      opt.value = mid;
+      const isRec = (mid === llmRec);
+      if (minfo.status === 'blocked') {
+        opt.disabled = true;
+        opt.textContent = `⛔ ${minfo.name} (~${minfo.ram_gb || '?'} GB RAM) [Blocked: Exceeds RAM/Disk]`;
+      } else if (isRec) {
+        opt.textContent = `⭐ ${minfo.name} (~${minfo.ram_gb || '?'} GB RAM) [Recommended]`;
+      } else {
+        opt.textContent = `${minfo.name} (~${minfo.ram_gb || '?'} GB RAM)`;
+      }
+      grpLocal.appendChild(opt);
+    });
+    sel.appendChild(grpLocal);
+
+    const grpCloud = document.createElement('optgroup');
+    grpCloud.label = '— Hosted Cloud Models (API Key Required) —';
+    Object.entries(cloudModels).forEach(([mid, minfo]) => {
+      const opt = document.createElement('option');
+      opt.value = mid;
+      opt.textContent = minfo.name;
+      grpCloud.appendChild(opt);
+    });
+    sel.appendChild(grpCloud);
+
+    let chosen = prevVal || cr.model_name || '';
+    if (!chosen && cr.model) {
+      for (let i = 0; i < sel.options.length; i++) {
+        if (cr.model.toLowerCase().includes(sel.options[i].value.toLowerCase())) {
+          chosen = sel.options[i].value;
+          break;
+        }
+      }
+    }
+    if (!chosen) chosen = llmRec;
+    sel.value = chosen;
+
+    function updateModelUI() {
+      const val = sel.value;
+      const isLocal = !['gemini', 'anthropic', 'dashscope'].includes(val);
+      $('keyGrp').style.display = isLocal ? 'none' : 'flex';
+      $('saveModel').textContent = isLocal ? 'Attach Local Model' : 'Check and save';
+    }
+    sel.onchange = updateModelUI;
+    updateModelUI();
+
+    // LLM resident RAM state
+    const loaded = hr.loaded_llm || {};
+    const btnUnload = $('btnUnloadSettingsLlm');
+    const btnLoad = $('btnLoadSettingsLlm');
+    const memText = $('llmMemText');
+    if (loaded.loaded) {
+      memText.innerHTML = `Resident in RAM: <b>${esc(loaded.name || loaded.model)}</b> (~${loaded.ram_mb || 0} MB active RAM)`;
+      btnUnload.style.display = 'inline-block';
+      btnLoad.style.display = 'none';
+    } else {
+      memText.innerHTML = 'Resident in RAM: <b>Not loaded</b> · 0 MB active RAM';
+      btnUnload.style.display = 'none';
+      btnLoad.style.display = 'inline-block';
+    }
+  }
+
   (async () => {
     const [cr, sr] = await Promise.all([
       fetch(`/api/setup/current?t=${T}`), fetch(`/api/state?t=${T}`)]);
@@ -235,10 +348,9 @@
     $('doesState').textContent = cur.does
       ? cur.does.split('\n').length + ' fact(s) recorded: ' + cur.does.split('\n')[0]
       : 'nothing recorded yet';
-    $('modelState').textContent = cur.model || 'unknown';
-    $('model').placeholder = cur.model_name || 'qwen3.6-flash';
     $('connState').textContent = cur.connector || 'unknown';
     if (cur.connector_uuid) $('cUuid').value = cur.connector_uuid;
+    await refreshModelInfo();
   })();
 
   $('saveYou').onclick = async () => {
@@ -253,14 +365,36 @@
     say('mYou', true, out.join('\n'));
   };
 
+  $('btnUnloadSettingsLlm').onclick = async () => {
+    $('btnUnloadSettingsLlm').disabled = true;
+    const d = await post('/api/llm/unload', {});
+    $('btnUnloadSettingsLlm').disabled = false;
+    say('mModel', d.ok, d.message);
+    await refreshModelInfo();
+  };
+
+  $('btnLoadSettingsLlm').onclick = async () => {
+    $('btnLoadSettingsLlm').disabled = true;
+    const d = await post('/api/llm/load', {model: $('modelSelect').value});
+    $('btnLoadSettingsLlm').disabled = false;
+    say('mModel', d.ok, d.message || d.error);
+    await refreshModelInfo();
+  };
+
   $('saveModel').onclick = async () => {
-    const key = $('key').value.trim();
-    if (!key) { say('mModel', false, 'Paste a key to change the model.'); return; }
-    $('saveModel').disabled = true; $('spModel').textContent = 'checking with the provider…';
-    const d = await post('/api/setup/model', {model: $('model').value.trim(), key});
+    const modelVal = $('modelSelect').value.trim();
+    const isLocal = !['gemini', 'anthropic', 'dashscope'].includes(modelVal);
+    let key = '';
+    if (!isLocal) {
+      key = $('key').value.trim();
+      if (!key) { say('mModel', false, 'Paste a key to change the cloud model.'); return; }
+    }
+    $('saveModel').disabled = true; $('spModel').textContent = isLocal ? 'validating capability…' : 'checking with the provider…';
+    const d = await post('/api/setup/model', {model: modelVal, key});
     $('saveModel').disabled = false; $('spModel').textContent = '';
     say('mModel', d.ok, d.message);
-    if (d.ok) { $('key').value = ''; $('modelState').textContent = 'just changed'; }
+    if (d.ok) { $('key').value = ''; }
+    await refreshModelInfo();
   };
 
   $('saveConn').onclick = async () => {

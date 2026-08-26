@@ -1107,7 +1107,8 @@ SETTING_FIELDS = {"name": "Name", "pronoun": "Pronoun", "voice": "Voice",
                   # `carry` starts recording two people. owner.calls() only accepts an exact
                   # match and treats everything else as `answer`, so a typo cannot switch
                   # recording on by accident.
-                  "calls": "Calls", "record_calls": "Record calls", "language": "Language", "transcription": "Transcription"}
+                  "calls": "Calls", "record_calls": "Record calls", "language": "Language",
+                  "transcription": "Transcription", "connect_ai": "Connect AI", "model": "Model"}
 
 
 def _section_bullets(doc: pathlib.Path, heading: str) -> list[str]:
@@ -1454,28 +1455,48 @@ def model_status() -> str:
 
 
 def attach_model(key: str, model: str = "") -> str:
-    """Attach a model by API key: verify it works, then save it to this instance.
+    """Attach a model by API key or select a local model: verify it works, then save it to this instance.
 
     Removes the need for any external CLI — the framework owns the credential step, which
     is what makes `init` possible on a machine with nothing installed but AgentDuet Desktop.
 
-    Verify BEFORE writing. A credential that is saved and broken produces the worst failure
-    this agent has: it starts, connects, and silently escalates every single message,
-    because "no working model" and "nothing to answer" look the same from outside.
-
-    The key is written to $AGENTDUET_HOME/.env at 0600 and is never echoed, logged, or returned
-    — the confirmation reports its length and last four characters only.
+    For local open-source models (Llama, Qwen 2.5, Phi 3.5, Mistral), no API key is needed.
     """
     key = (key or "").strip()
-    if not key:
-        return "Give the API key to attach."
     m = (model or "").strip() or os.getenv("SECRETARY_MODEL") or ""
     if not m:
-        return "Say which model to attach (e.g. claude-sonnet-5, gemini-3.6-flash)."
+        return "Say which model to attach (e.g. llama-3.2-1b, claude-sonnet-5, gemini-3.1-flash)."
+
+    prov = llm.provider(m)
+    if prov == "local":
+        before_model = os.environ.get("SECRETARY_MODEL")
+        before_prov = os.environ.get("SECRETARY_PROVIDER")
+        os.environ["SECRETARY_MODEL"] = m
+        os.environ["SECRETARY_PROVIDER"] = "local"
+        llm.forget()
+        ok, why = llm.verify(m)
+        if not ok:
+            if before_model is None:
+                os.environ.pop("SECRETARY_MODEL", None)
+            else:
+                os.environ["SECRETARY_MODEL"] = before_model
+            if before_prov is None:
+                os.environ.pop("SECRETARY_PROVIDER", None)
+            else:
+                os.environ["SECRETARY_PROVIDER"] = before_prov
+            llm.forget()
+            return f"NOT saved — {why}"
+        _write_env({"SECRETARY_MODEL": m, "SECRETARY_PROVIDER": "local"})
+        return (f"Attached local model {m}. {why}\n"
+                f"  saved SECRETARY_MODEL={m} to {paths.ENV_FILE} (on-device local inference)")
+
+    if not key:
+        return "Give the API key to attach."
 
     var = llm.key_name(m)
     before = os.environ.get(var)
     os.environ[var], os.environ["SECRETARY_MODEL"] = key, m
+    os.environ.pop("SECRETARY_PROVIDER", None)
     llm.forget()                       # drop any client cached under the old credential
     ok, why = llm.verify(m)
     if not ok:

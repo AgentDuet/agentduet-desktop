@@ -637,9 +637,10 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         """Hardware capabilities profile, dynamic model recommendations, and loaded model status."""
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
-        from . import hardware, transcribe
+        from . import hardware, llm, transcribe
         rec = hardware.recommend_models()
         rec["loaded_model"] = transcribe.loaded_info()
+        rec["loaded_llm"] = llm.loaded_info()
         return web.json_response(rec)
 
     async def api_model_unload(request):
@@ -647,16 +648,19 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
         from . import hardware, llm, transcribe
-        stt_was_loaded, stt_model, freed_mb = transcribe.unload()
-        llm.unload()
+        stt_was_loaded, stt_model, stt_freed_mb = transcribe.unload()
+        llm_was_loaded, llm_model, llm_freed_mb = llm.unload()
         _forget_chat()
         hw = hardware.get_hardware_profile()
-        msg = f"Unloaded {stt_model} from memory (~{freed_mb} MB RAM freed)." if stt_was_loaded else "No model was loaded in memory."
+        freed_mb = stt_freed_mb + llm_freed_mb
+        unloaded_names = [m for m in (stt_model, llm_model) if m]
+        msg = f"Unloaded {', '.join(unloaded_names)} from memory (~{freed_mb} MB RAM freed)." if (stt_was_loaded or llm_was_loaded) else "No model was loaded in memory."
         return web.json_response({
             "ok": True,
             "message": msg,
             "stt_unloaded": stt_was_loaded,
-            "model_unloaded": stt_model,
+            "llm_unloaded": llm_was_loaded,
+            "model_unloaded": ", ".join(unloaded_names),
             "freed_ram_mb": freed_mb,
             "hardware": hw,
         })
@@ -684,6 +688,46 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             })
         except Exception as exc:
             return web.json_response({"ok": False, "error": f"Failed to load: {exc}"}, status=500)
+
+    async def api_llm_load(request):
+        """Explicitly pre-load the configured or requested local LLM into memory."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import hardware, llm
+        body = await request.json() if request.can_read_body else {}
+        want = (body.get("model") or "").strip() or os.getenv("SECRETARY_MODEL", "llama-3.2-1b")
+
+        cap = hardware.check_llm_capability(want)
+        if not cap.get("can_load", True):
+            return web.json_response({"ok": False, "error": cap["reason"], "blocked": True}, status=400)
+
+        try:
+            info = await asyncio.to_thread(llm.load, want)
+            return web.json_response({
+                "ok": True,
+                "message": f"Successfully loaded {info['name']} into memory (~{info['ram_mb']} MB RAM resident).",
+                "loaded_info": info,
+            })
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": f"Failed to load: {exc}"}, status=500)
+
+    async def api_llm_unload(request):
+        """Explicitly unload the local LLM from memory."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import hardware, llm
+        was_loaded, model_name, freed_mb = llm.unload()
+        _forget_chat()
+        hw = hardware.get_hardware_profile()
+        msg = f"Unloaded {model_name} from memory (~{freed_mb} MB RAM freed)." if was_loaded else "No local LLM was loaded in memory."
+        return web.json_response({
+            "ok": True,
+            "message": msg,
+            "llm_unloaded": was_loaded,
+            "model_unloaded": model_name,
+            "freed_ram_mb": freed_mb,
+            "hardware": hw,
+        })
 
     async def api_setup_current(request):
         if not authed(request):
@@ -870,13 +914,12 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             "storage": str(carry.RECORDINGS),
             "dirs": {"calls": str(carry.RECORDINGS),
                      "answered": str(carry.RECORDINGS / _voice.ANSWERED)},
-            # WHAT IS ACTUALLY ON, not what the design shows switched on. Two of these have
-            # nothing behind them yet and say so rather than rendering a lit switch.
+            # WHAT IS ACTUALLY ON, not what the design shows switched on.
             "services": {
                 "record_call": {"on": _own.record_calls(), "real": True},
                 "transcribe": {"on": local_ok, "real": False},
                 "record_message": {"on": False, "real": False},
-                "connect_ai": {"on": _llm.configured(), "real": False},
+                "connect_ai": {"on": _own.connect_ai(), "real": True},
             },
             # Whether the Apple Neural Engine option may be OFFERED. It is not built, so this
             # only decides enabled-vs-disabled and the reason shown beside it.
@@ -886,7 +929,14 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                     "cached": transcribe.is_cached(),
                     "loaded_info": transcribe.loaded_info()},
             "hardware": hardware.recommend_models(),
-            "model": {"configured": _llm.configured(), "describe": _llm.describe()},
+            "model": {
+                "configured": _llm.configured(),
+                "describe": _llm.describe(),
+                "provider": _llm.provider(),
+                "model": os.getenv("SECRETARY_MODEL", ""),
+                "loaded_info": _llm.loaded_info(),
+                "is_local": _llm.provider() == "local",
+            },
             "files": {"calls": _listing(carry.RECORDINGS),
                       "answered": _listing(carry.RECORDINGS / _voice.ANSWERED),
                       "messages": []},
@@ -1321,6 +1371,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/api/hardware", api_hardware),
         web.post("/api/model/unload", api_model_unload),
         web.post("/api/model/load", api_model_load),
+        web.post("/api/llm/load", api_llm_load),
+        web.post("/api/llm/unload", api_llm_unload),
         web.post("/api/setup/about", api_setup_about),
         web.post("/api/setup/connector", api_setup_connector),
         web.post("/api/quit", api_quit),

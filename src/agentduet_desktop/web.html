@@ -231,8 +231,18 @@
       <div class="tab" id="t-connect-ai">
         <div>
           <h1>Connect AI</h1>
-          <p class="sub">Pass call transcripts to cloud providers for smart action items &amp;
-            summaries.</p>
+          <p class="sub">Pass call transcripts to local open-source models or cloud providers for smart action items &amp; summaries.</p>
+        </div>
+        <div class="card">
+          <div class="head" style="display:flex;align-items:center;justify-content:space-between">
+            <div class="row" style="margin-bottom:0">
+              <span class="lbl3">Hardware Profiler &amp; Model Adviser</span>
+              <span class="tag" id="hwLlmChipTag" style="font-size:10px">CPU / GPU</span>
+            </div>
+          </div>
+          <div class="hw-adviser-box" id="hwLlmAdviserState" style="margin-top:.5rem">
+            Analyzing machine hardware &amp; memory…
+          </div>
         </div>
         <div class="card">
           <div class="row">
@@ -240,15 +250,28 @@
             <label class="sw"><input type="checkbox" data-svc="connect_ai"><span class="track"></span></label>
           </div>
           <div>
-            <label class="fl">AI Provider</label>
+            <label class="fl">AI Model Selection (Local Open-Source First)</label>
             <select id="model"></select>
           </div>
-          <div>
+          <div id="localLlmControls" style="display:none;margin-top:.75rem">
+            <div class="row" style="margin-bottom:.5rem">
+              <span class="lbl3" id="llmMemStatus"><span class="tag off">Not in RAM</span> Stored on host · 0 MB resident RAM</span>
+              <div style="display:flex;gap:.5rem">
+                <button class="btn sm" id="btnLoadLlm" style="display:none">Load into RAM</button>
+                <button class="btn danger sm" id="btnUnloadLlm" style="display:none">Unload from RAM</button>
+              </div>
+            </div>
+            <div style="font-size:11px;color:var(--faint)">On-device open source LLM. No cloud API key required, data stays 100% on this machine.</div>
+          </div>
+          <div id="cloudLlmControls" style="margin-top:.75rem">
             <label class="fl">Enter API Key</label>
             <div style="display:flex;gap:.5rem">
               <input id="key" type="password" placeholder="paste a key" autocomplete="off">
-              <button class="btn" id="doModel" style="flex-shrink:0">Verify Key</button>
             </div>
+          </div>
+          <div style="margin-top:1rem;display:flex;gap:.5rem;align-items:center">
+            <button class="btn" id="doModel" style="flex-shrink:0">Verify &amp; Attach Model</button>
+            <span class="spin" id="spLlm"></span>
           </div>
           <div id="mModel"></div>
         </div>
@@ -337,6 +360,13 @@
           load();
           return;
         }
+        if (k === 'connect_ai') {
+          const d = await post('/api/setup/setting',
+                               {field: 'connect_ai', value: el.checked ? 'yes' : 'no'});
+          if (!d.ok) el.checked = !el.checked;
+          load();
+          return;
+        }
         el.checked = !el.checked;
         const where = {transcribe: 'mStt', record_message: 'mMsgs', connect_ai: 'mModel'}[k];
         if (where) say(where, false, 'Switching this service on and off is not built yet.');
@@ -372,7 +402,7 @@
     files('fCalls', [...((D.files || {}).calls || []), ...((D.files || {}).answered || [])]);
     files('fMsgs', (D.files || {}).messages);
 
-    // Hardware adviser
+    // Hardware adviser - Speech Recognition
     const hw = D.hardware || {};
     const hwInfo = hw.hardware || {};
     const mem = hwInfo.memory || {};
@@ -419,7 +449,7 @@
       + (ane.supported ? '' : ' — ' + (ane.why || 'not available here'));
     if ((D.stt || {}).quality) $('quality').value = D.stt.quality;
 
-    // Model memory state
+    // Model memory state - STT
     const stt = D.stt || {};
     const loaded = stt.loaded_info || {};
     const isLoaded = !!loaded.loaded;
@@ -437,11 +467,113 @@
       btnLoad.style.display = stt.cached ? 'inline-block' : 'none';
     }
 
+    // Hardware adviser - Connect AI / LLM
+    const llmHw = hw.llm || {};
+    const llmRec = llmHw.recommended_model || 'llama-3.2-1b';
+
+    if (hwInfo.chip_name && $('hwLlmChipTag')) {
+      $('hwLlmChipTag').textContent = hwInfo.chip_name;
+    }
+    if ($('hwLlmAdviserState')) {
+      $('hwLlmAdviserState').innerHTML = `<b>Host Resources:</b> ${esc(hwInfo.chip_name || 'CPU')} · `
+        + `<b>${mem.total_gb || '?'} GB RAM</b> (${mem.available_gb || '?'} GB Available) · `
+        + `<b>${disk.free_gb || '?'} GB Free Storage</b><br>`
+        + `<span style="color:var(--emerald);display:inline-block;margin-top:.25rem">⭐ <b>Adviser Recommendation:</b> <b>${esc(llmHw.recommended_name || llmRec)}</b> is optimal for your hardware capability.</span>`;
+    }
+
+    // Connect AI Model Dropdown (Local models first, then Cloud models)
     const sel = $('model');
-    if (!sel.options.length) {
-      ['gemini', 'anthropic', 'qwen'].forEach(m => {
-        const o = document.createElement('option'); o.value = m; o.textContent = m; sel.appendChild(o);
-      });
+    const currentModel = (D.model || {}).model || (D.model || {}).describe || '';
+    const localModels = (llmHw.models && Object.keys(llmHw.models).length) ? llmHw.models : {
+      'llama-3.2-1b': {name: 'Llama 3.2 1B', dl_gb: 1.3, ram_gb: 1.8, status: 'capable'},
+      'qwen-2.5-1.5b': {name: 'Qwen 2.5 1.5B', dl_gb: 1.2, ram_gb: 1.9, status: 'capable'},
+      'llama-3.2-3b': {name: 'Llama 3.2 3B', dl_gb: 2.0, ram_gb: 3.2, status: 'capable'},
+      'qwen-2.5-3b': {name: 'Qwen 2.5 3B', dl_gb: 2.2, ram_gb: 3.5, status: 'capable'},
+      'phi-3.5-mini': {name: 'Phi 3.5 Mini (3.8B)', dl_gb: 2.4, ram_gb: 3.6, status: 'capable'},
+      'qwen-2.5-7b': {name: 'Qwen 2.5 7B', dl_gb: 4.7, ram_gb: 6.5, status: 'capable'},
+      'mistral-7b': {name: 'Mistral 7B v0.3', dl_gb: 4.8, ram_gb: 6.8, status: 'capable'}
+    };
+    const cloudModels = (llmHw.cloud_models && Object.keys(llmHw.cloud_models).length) ? llmHw.cloud_models : {
+      'gemini': {name: 'Google Gemini (Hosted Cloud)', key_name: 'GEMINI_API_KEY'},
+      'anthropic': {name: 'Anthropic Claude (Hosted Cloud)', key_name: 'ANTHROPIC_API_KEY'},
+      'dashscope': {name: 'Qwen DashScope (Hosted Cloud)', key_name: 'DASHSCOPE_API_KEY'}
+    };
+
+    const prevSelVal = sel.value;
+    sel.innerHTML = '';
+    const optGroupLocal = document.createElement('optgroup');
+    optGroupLocal.label = '— Local Open-Source Models (No API Key) —';
+    Object.entries(localModels).forEach(([mid, minfo]) => {
+      const opt = document.createElement('option');
+      opt.value = mid;
+      const isRec = (mid === llmRec);
+      if (minfo.status === 'blocked') {
+        opt.disabled = true;
+        opt.textContent = `⛔ ${minfo.name} (~${minfo.ram_gb || '?'} GB RAM) [Blocked: Exceeds RAM/Disk]`;
+      } else if (isRec) {
+        opt.textContent = `⭐ ${minfo.name} (~${minfo.ram_gb || '?'} GB RAM) [Recommended]`;
+      } else {
+        opt.textContent = `${minfo.name} (~${minfo.ram_gb || '?'} GB RAM)`;
+      }
+      optGroupLocal.appendChild(opt);
+    });
+    sel.appendChild(optGroupLocal);
+
+    const optGroupCloud = document.createElement('optgroup');
+    optGroupCloud.label = '— Hosted Cloud Models (API Key Required) —';
+    Object.entries(cloudModels).forEach(([mid, minfo]) => {
+      const opt = document.createElement('option');
+      opt.value = mid;
+      opt.textContent = minfo.name;
+      optGroupCloud.appendChild(opt);
+    });
+    sel.appendChild(optGroupCloud);
+
+    // Determine selection: keep user selection, or current config, or recommendation
+    let chosenVal = prevSelVal || '';
+    if (!chosenVal && currentModel) {
+      for (let i = 0; i < sel.options.length; i++) {
+        if (currentModel.toLowerCase().includes(sel.options[i].value.toLowerCase())) {
+          chosenVal = sel.options[i].value;
+          break;
+        }
+      }
+    }
+    if (!chosenVal) chosenVal = llmRec;
+    sel.value = chosenVal;
+
+    // Toggle local vs cloud controls
+    function updateLlmUI() {
+      const val = sel.value;
+      const isLocal = !['gemini', 'anthropic', 'dashscope'].includes(val);
+      if (isLocal) {
+        $('localLlmControls').style.display = 'block';
+        $('cloudLlmControls').style.display = 'none';
+        $('doModel').textContent = 'Attach Local Model';
+      } else {
+        $('localLlmControls').style.display = 'none';
+        $('cloudLlmControls').style.display = 'block';
+        $('doModel').textContent = 'Verify & Attach Key';
+      }
+    }
+    sel.onchange = updateLlmUI;
+    updateLlmUI();
+
+    // LLM resident RAM state
+    const llmLoaded = (D.model || {}).loaded_info || {};
+    const isLlmLoaded = !!llmLoaded.loaded;
+    const btnUnloadLlm = $('btnUnloadLlm');
+    const btnLoadLlm = $('btnLoadLlm');
+    const llmMemStatus = $('llmMemStatus');
+
+    if (isLlmLoaded) {
+      llmMemStatus.innerHTML = `<span class="tag">Loaded in RAM</span> <b style="color:var(--ink2)">${esc(llmLoaded.name || llmLoaded.model)}</b> resident (~${llmLoaded.ram_mb || 0} MB RAM)`;
+      btnUnloadLlm.style.display = 'inline-block';
+      btnLoadLlm.style.display = 'none';
+    } else {
+      llmMemStatus.innerHTML = `<span class="tag off">Not in RAM</span> Stored on host · 0 MB resident RAM`;
+      btnUnloadLlm.style.display = 'none';
+      btnLoadLlm.style.display = 'inline-block';
     }
   }
   load();
@@ -478,6 +610,22 @@
     load();
   };
 
+  $('btnUnloadLlm').onclick = async () => {
+    $('btnUnloadLlm').disabled = true;
+    const d = await post('/api/llm/unload', {});
+    $('btnUnloadLlm').disabled = false;
+    say('mModel', d.ok, d.message);
+    load();
+  };
+
+  $('btnLoadLlm').onclick = async () => {
+    $('btnLoadLlm').disabled = true;
+    const d = await post('/api/llm/load', {model: $('model').value});
+    $('btnLoadLlm').disabled = false;
+    say('mModel', d.ok, d.message || d.error);
+    load();
+  };
+
   $('doTest').onclick = async () => {
     $('testOut').textContent = 'Checking the engine…';
     const d = await fetch(`/api/setup/stt?t=${T}`).then(r => r.json()).catch(() => ({}));
@@ -497,10 +645,20 @@
   };
 
   $('doModel').onclick = async () => {
-    const key = $('key').value.trim();
-    if (!key) { say('mModel', false, 'Paste a key first.'); return; }
-    const d = await post('/api/setup/model', {model: $('model').value, key});
+    const modelVal = $('model').value;
+    const isLocal = !['gemini', 'anthropic', 'dashscope'].includes(modelVal);
+    let key = '';
+    if (!isLocal) {
+      key = $('key').value.trim();
+      if (!key) { say('mModel', false, 'Paste an API key first for cloud models.'); return; }
+    }
+    $('doModel').disabled = true;
+    $('spLlm').textContent = 'verifying & attaching…';
+    const d = await post('/api/setup/model', {model: modelVal, key});
+    $('doModel').disabled = false;
+    $('spLlm').textContent = '';
     say('mModel', d.ok, d.message);
+    if (d.ok && !isLocal) $('key').value = '';
     load();
   };
 </script>

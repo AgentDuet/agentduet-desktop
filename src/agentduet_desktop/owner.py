@@ -235,6 +235,15 @@ def record_calls() -> bool:
     return first not in ("no", "off", "false")
 
 
+def connect_ai() -> bool:
+    """Whether Connect AI service is enabled."""
+    val = os.getenv("SECRETARY_CONNECT_AI") or _first_line(_strip_guidance(_sections().get("Connect AI", ""))).strip().lower()
+    if val:
+        return val not in ("no", "off", "false", "0")
+    from . import llm
+    return llm.configured()
+
+
 def never_say() -> list[str]:
     """Topics the owner never wants stated on their behalf, however readable.
 
