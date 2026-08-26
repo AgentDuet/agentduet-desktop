@@ -846,7 +846,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         """
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
-        from . import carry, llm as _llm, owner as _own, transcribe, voice as _voice
+        from . import carry, hardware, llm as _llm, owner as _own, transcribe, voice as _voice
 
         def _listing(folder, limit=25):
             if not folder.is_dir():

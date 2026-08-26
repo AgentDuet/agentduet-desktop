@@ -306,6 +306,17 @@ class TestWebAPIHardwareAndUnload(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(data["ok"])
                 self.assertIn("Hardware capability exceeded", data["message"])
 
+    async def test_api_panel_endpoint(self):
+        from aiohttp.test_utils import TestClient, TestServer
+
+        async with TestClient(TestServer(self.app)) as client:
+            resp = await client.get(f"/api/panel?t={self.token}")
+            self.assertEqual(resp.status, 200)
+            data = await resp.json()
+            self.assertIn("hardware", data)
+            self.assertIn("stt", data)
+            self.assertIn("loaded_info", data["stt"])
+
 
 if __name__ == "__main__":
     unittest.main()
