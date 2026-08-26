@@ -38,6 +38,15 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);height:100v
   overflow:hidden;position:relative;
   box-shadow:0 25px 60px -15px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.08);}
 
+/* IN A NATIVE WINDOW THERE IS NOTHING TO SIMULATE. The card above draws a rounded, shadowed
+ * window floating on a desktop — which is the illusion the design wants in a BROWSER, where
+ * there is no real frame. Inside a real window the OS already drew one, so ours is a second
+ * frame inset from the first: the same doubling as two sets of traffic lights, and the reason
+ * both are gated on the same flag rather than chosen once. */
+html.native body{background:var(--bg);padding:0;align-items:stretch;justify-content:flex-start;}
+html.native .window{max-width:none;height:100%;max-height:none;flex:1;
+  border-radius:0;border:0;box-shadow:none;}
+
 /* ---- titlebar -------------------------------------------------------------------------- */
 /* THE THREE CIRCLES ARE DRAWN BY US. In a browser they are the illusion the design intends; in
  * the native window macOS draws its own, and two sets of lights is worse than none. `.native`
@@ -49,7 +58,7 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);height:100v
 .lights i:nth-child(1){background:#ef4444;}
 .lights i:nth-child(2){background:#eab308;}
 .lights i:nth-child(3){background:#22c55e;}
-html.native .lights i{display:none;}
+html.native .lights{display:none;}
 html.native .brand{margin-left:0;padding-left:0;border-left:0;}
 .brand{margin-left:.75rem;padding-left:.5rem;border-left:1px solid rgba(255,255,255,.1);
   display:flex;align-items:center;gap:.5rem;}
