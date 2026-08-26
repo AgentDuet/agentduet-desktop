@@ -34,7 +34,7 @@ import uuid
 import wave
 from datetime import datetime
 
-from . import (brain, capabilities, identity, memory, paths, people, permissions, policy,
+from . import (brain, callmode, capabilities, identity, memory, paths, people, permissions, policy,
                schedule, status)
 
 logger = logging.getLogger("dduet.voice")
@@ -737,6 +737,9 @@ def _make_recorder(caller: str, verified: bool, convo: str):
 
 def register(sm, owner_name: str) -> bool:
     """Register a call handler on the daemon's existing SessionManager. True if voice is on."""
+    # TAKE THE SLOT FIRST. One connector has one on_incoming_call, so a second registration does
+    # not fail on its own — both attach and race for the call.
+    callmode.claim("answer")
     ok, why = available()
     if not ok:
         logger.info("voice not enabled: %s", why)

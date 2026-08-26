@@ -989,6 +989,29 @@ def test_setup_mode() -> None:
        "/api/state" in page and "onAir" in page)
     # Both of these have unwired a whole page before: localStorage is a ReferenceError in
     # WebKitGTK, and an unwired form submits natively to `/`, dropping the token.
+    # ---- one connector, one call handler ---------------------------------------------------
+    # The only place the two products in this binary genuinely collide. Carrying and answering
+    # both register `on_incoming_call`, the SDK accepts a second one, and then both attach and
+    # race — which presents as a call that answers intermittently, or connects and drops.
+    # Neither points at its cause, so the second claim raises instead.
+    from agentduet_desktop import callmode
+    callmode.release()
+    callmode.claim("carry")
+    ok("re-claiming the same mode is allowed (a reconnect must not crash)",
+       (callmode.claim("carry"), callmode.holder())[1] == "carry")
+    try:
+        callmode.claim("answer")
+        ok("the other mode is refused the slot", False)
+    except callmode.CallHandlerConflict:
+        ok("the other mode is refused the slot", True)
+    callmode.release()
+    ok("and releasing frees it", callmode.holder() == "")
+    # Both register() functions must actually take the slot, or the guard protects nothing.
+    for mod, mode in (("voice.py", "answer"), ("carry.py", "carry")):
+        src_txt = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+                   / mod).read_text()
+        ok(f"{mod} claims the call slot", f'callmode.claim("{mode}")' in src_txt)
+
     # INSTALLING MUST BE REACHABLE. It vanished from every surface at once when setup was cut
     # to two screens: setup.html lost it and settings.html never gained it, so an owner could
     # finish setup on any platform and never have the app installed — no PATH entry, nothing
