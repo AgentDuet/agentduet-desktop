@@ -108,6 +108,20 @@ For the three above, do not duplicate:
 """
 
 
+def _prompt(text: str) -> str:
+    """`input()` that leaves politely instead of dumping a traceback.
+
+    Ctrl-C during setup, or a closed stdin, is not an error worth a stack trace — it is somebody
+    changing their mind, or a script piping fewer answers than there are questions. Sixteen
+    prompts each raising a bare EOFError made the second look like a crash in the product.
+    """
+    try:
+        return input(text).strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\n  cancelled — nothing further was written.")
+        sys.exit(1)
+
+
 def _ask(prompt: str, allow_blank: bool) -> str:
     while True:
         try:
@@ -136,8 +150,8 @@ def attach(interactive: bool = True) -> bool:
     print("\n  No model attached yet. Paste an API key for Gemini, Claude or Qwen.")
     print("  It is verified before it is saved, and stored only in "
           f"{paths.ENV_FILE} (owner-readable only).")
-    model = input("\n  Model name (e.g. gemini-2.5-flash, claude-sonnet-5, qwen3.6-flash)\n  > ").strip()
-    key = input("  API key (not echoed back)\n  > ").strip()
+    model = _prompt("\n  Model name (e.g. gemini-2.5-flash, claude-sonnet-5, qwen3.6-flash)\n  > ").strip()
+    key = _prompt("  API key (not echoed back)\n  > ").strip()
     out = tools.attach_model(key, model)
     print("  " + out.replace("\n", "\n  "))
     return not out.lower().startswith(("could not", "that key"))
@@ -165,7 +179,7 @@ def sign_in(interactive: bool = True) -> bool:
 
     print("\n  You can sign in with Google instead of typing a connector.")
     print("  Signing in creates your connector for you; there is nothing to copy.")
-    if input("  Sign in now? [Y/n] ").strip().lower().startswith("n"):
+    if _prompt("  Sign in now? [Y/n] ").strip().lower().startswith("n"):
         return False
     try:
         who = oauth.sign_in_interactive()
@@ -199,11 +213,11 @@ def connect(interactive: bool = True) -> bool:
     print("  Without one everything local still works — it just never hears from anyone.")
     print("  Ask B3 for your OWN connector: only one machine may hold a connector at a time,")
     print("  and a second one fights the first for the same number.")
-    uuid_in = input("\n  Connector uuid (blank to skip)\n  > ").strip()
+    uuid_in = _prompt("\n  Connector uuid (blank to skip)\n  > ").strip()
     if not uuid_in:
         print("  Skipped. Add one later with `agentduet-desktop init` again.")
         return False
-    key = input("  Connector API key\n  > ").strip()
+    key = _prompt("  Connector API key\n  > ").strip()
 
     print("  checking with B3…")
     ok, why = asyncio.run(connector.verify(key, uuid_in))
@@ -242,14 +256,17 @@ def choose_mode(interactive: bool = True) -> str:
     current = owner.calls()
     if not interactive:
         return current
+    # CARRYING IS FIRST AND IS THE DEFAULT, because it is the product a new install is — see
+    # "Two products, one daemon" in docs/design.md. It also matches the order Settings lists
+    # them in, so the console and the page do not disagree about which is the ordinary choice.
     print("\n  What should it do with a call?")
-    print("    1  answer it for you — an assistant picks up.  Needs a model.")
-    print("    2  put it through to your phone, and record both sides.  No model needed.")
+    print("    1  put it through to your phone, and record both sides.  No model needed.")
     print("       You are recording two people; check what you must tell them.")
-    pick = input(f"\n  1 or 2 [{'2' if current == owner.CALLS_CARRY else '1'}]: ").strip()
+    print("    2  answer it for you — an assistant picks up.  Needs a model.")
+    pick = _prompt(f"\n  1 or 2 [{'1' if current == owner.CALLS_CARRY else '2'}]: ").strip()
     if pick not in ("1", "2"):
         return current
-    mode = owner.CALLS_CARRY if pick == "2" else owner.CALLS_ANSWER
+    mode = owner.CALLS_ANSWER if pick == "2" else owner.CALLS_CARRY
     tools.set_setting("calls", mode)
     print(f"  -> calls will be {'carried and recorded' if mode == owner.CALLS_CARRY else 'answered'}")
     return mode
@@ -274,7 +291,7 @@ def who_you_are(interactive: bool = True) -> None:
     print("\n  Who you are.")
     if have:
         print(f"  name: {current}")
-    name = input(f"\n  Your name{' [' + current + ']' if have else ''}\n  > ").strip()
+    name = _prompt(f"\n  Your name{' [' + current + ']' if have else ''}\n  > ").strip()
     if name:
         tools.set_setting("name", name)
         print(f"  -> {name}")
@@ -284,7 +301,7 @@ def who_you_are(interactive: bool = True) -> None:
     print("\n  How should it refer to you to OUTSIDERS? Blank uses your name rather than")
     print("  guessing — it once inferred 'he' from a name, to a stranger, with nobody there")
     print("  to correct it.")
-    pronoun = input("  he/him, she/her, they/them [blank]\n  > ").strip()
+    pronoun = _prompt("  he/him, she/her, they/them [blank]\n  > ").strip()
     if pronoun:
         tools.set_setting("pronoun", pronoun)
         print(f"  -> {pronoun}")
@@ -315,11 +332,11 @@ def choose_language(interactive: bool = True) -> None:
     for i, (code, label) in enumerate(LANGUAGES, 1):
         print(f"    {i}  {label} ({code})")
     print("    6  something else — type the code")
-    pick = input(f"\n  1-6{f' [{current}]' if current else ''}: ").strip()
+    pick = _prompt(f"\n  1-6{f' [{current}]' if current else ''}: ").strip()
     if not pick:
         return
     if pick == "6":
-        code = input("  Language code (e.g. id, ta, hi)\n  > ").strip().lower()
+        code = _prompt("  Language code (e.g. id, ta, hi)\n  > ").strip().lower()
     elif pick.isdigit() and 1 <= int(pick) <= len(LANGUAGES):
         code = LANGUAGES[int(pick) - 1][0]
     else:
@@ -348,7 +365,7 @@ def choose_quality(interactive: bool = True) -> None:
         mb = transcribe.MODEL_MB.get(transcribe.QUALITY[tier], 0)
         mark = " <- current" if tier == current else ""
         print(f"    {i}  {tier:9} {mb:>5} MB   {why}{mark}")
-    pick = input(f"\n  1-4 [{current}]: ").strip()
+    pick = _prompt(f"\n  1-4 [{current}]: ").strip()
     if pick.isdigit() and 1 <= int(pick) <= len(tiers):
         tools.set_setting("transcription", tiers[int(pick) - 1][0])
         print(f"  -> {tiers[int(pick) - 1][0]}")
@@ -370,7 +387,7 @@ def offer_speech_model(interactive: bool = True) -> None:
     mb = transcribe.MODEL_MB.get(model, 0)
     print("\n  Calls are transcribed on this machine, so nothing is sent anywhere.")
     print(f"  That needs a one-off download of about {mb} MB ({model}).")
-    if input("  Download it now? [Y/n] ").strip().lower().startswith("n"):
+    if _prompt("  Download it now? [Y/n] ").strip().lower().startswith("n"):
         print("  Skipped — it downloads by itself the first time a call is transcribed.")
         return
     try:
@@ -407,7 +424,7 @@ def offer_install(interactive: bool = True) -> bool:
     print(f"\n  Install this build to {st.get('target')}?")
     print("  Without it, `agentduet-desktop` is not a command, and the copy you are running is")
     print("  wherever you downloaded it — moving or deleting that folder stops your agent.")
-    if input("  Install? [Y/n] ").strip().lower().startswith("n"):
+    if _prompt("  Install? [Y/n] ").strip().lower().startswith("n"):
         return False
     print("  " + install.install().replace("\n", "\n  "))
     return install.status().get("installed", False)
@@ -446,7 +463,7 @@ def main(interactive: bool = True) -> int:
         # calls later and this is the moment they have the terminal open.
         if not llm.configured():
             print("\n  Carrying a call needs no model, so this step is optional.")
-            if input("  Attach one anyway, to answer calls later? [y/N] ").strip().lower()\
+            if _prompt("  Attach one anyway, to answer calls later? [y/N] ").strip().lower()\
                     .startswith("y"):
                 attach(interactive)
         else:
@@ -486,7 +503,7 @@ def main(interactive: bool = True) -> int:
         print("\n  One more, and this one uses your model: what do you do?")
         print("  It writes the answer into your knowledge, in the third person.")
         print("  Press Enter to answer, or type s to skip.")
-        if not input("\n  > ").strip().lower().startswith("s"):
+        if not _prompt("\n  > ").strip().lower().startswith("s"):
             print("\n  " + (interview() or "(no summary returned)").replace("\n", "\n  "))
 
     # NAME THE COMMAND THAT ACTUALLY WORKS. `agentduet-desktop` is only on the PATH once this
