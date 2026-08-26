@@ -48,14 +48,25 @@ OAUTH_URL = "AGENTDUET_OAUTH_URL"
 
 
 def oauth_available() -> bool:
-    """Whether a sign-in path exists to offer. False until the backend provides one."""
-    return bool(os.getenv(OAUTH_URL))
+    """Whether a sign-in path exists to offer. False until an endpoint is configured."""
+    from . import oauth
+    return oauth.available()
 
 #: Long enough to fail a bad credential, short enough that a page is not left hanging.
 VERIFY_TIMEOUT = 20
 
 
 def configured() -> bool:
+    """Can this install reach the platform at all — by either route.
+
+    SIGNING IN COUNTS. It provisions the connector server-side and returns a rotating token, so a
+    signed-in install has no `AGENTDUET_API_KEY` and no `AGENTDUET_CONNECTOR_UUID` and is
+    nonetheless fully configured. Checking only the two environment variables would have shown
+    such an owner a setup page they had already finished.
+    """
+    from . import oauth
+    if oauth.signed_in():
+        return True
     return bool(os.getenv(API_KEY) and os.getenv(UUID))
 
 

@@ -187,11 +187,24 @@ async def run_channel() -> None:
     # was played 1.5x too slowly with the pitch dropped about a fifth. Symptom on a real call:
     # an agent that "speaks verrrry slowly" and sounds male even though the voice is female.
     # If the voice model is ever changed, this has to match ITS output rate.
-    config = SessionManagerConfig.create(
-        api_key=os.getenv("AGENTDUET_API_KEY"),
-        connector_uuid=os.getenv("AGENTDUET_CONNECTOR_UUID"),
-        call_audio=CallAudioConfig(sample_rate=voice.CALL_SAMPLE_RATE),
-    )
+    # TOKEN FIRST, API KEY SECOND. Signing in provisions the connector server-side and hands
+    # back a rotating token, so a signed-in install needs neither value in .env. The api_key path
+    # is untouched for installs that predate sign-in, and the SDK's `x-api-key` handshake branch
+    # is likewise untouched upstream — so both work, and neither has to be migrated.
+    #
+    # The provider is passed as a CALLABLE, not a token: the SDK calls it before every connect
+    # attempt, which is the only moment that knows whether the cached one is still good. Handing
+    # over a string here would freeze a credential that expires in thirty minutes into a daemon
+    # that runs for weeks.
+    from . import oauth
+    kwargs = dict(call_audio=CallAudioConfig(sample_rate=voice.CALL_SAMPLE_RATE))
+    if oauth.signed_in():
+        kwargs["token_provider"] = oauth.token_provider
+        kwargs["connector_uuid"] = oauth.connector_uuid()
+    else:
+        kwargs["api_key"] = os.getenv("AGENTDUET_API_KEY")
+        kwargs["connector_uuid"] = os.getenv("AGENTDUET_CONNECTOR_UUID")
+    config = SessionManagerConfig.create(**kwargs)
 
     async with SessionManager(config) as sm:
         sessions: dict[str, Session] = {}
