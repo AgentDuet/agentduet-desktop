@@ -37,7 +37,10 @@
   .mrow .act{font-size:10px;padding:.2rem .5rem;border-radius:.35rem;border:1px solid var(--line);
     background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;}
   .mrow .act:hover{border-color:var(--coral,#f0523d);color:#fca5a5;}
-  .mrow .act.get:hover{border-color:rgba(59,130,246,.5);color:var(--blue400);}
+  .mrow .act.get:hover,.mrow .act.use:hover{border-color:rgba(59,130,246,.5);color:var(--blue400);}
+  .mrow .act.use{border-color:rgba(59,130,246,.35);color:var(--blue400);}
+  .inuse{font-size:10px;font-weight:700;color:var(--emerald);
+    background:rgba(16,185,129,.18);padding:.15rem .5rem;border-radius:999px;}
 </style>
 </head>
 <body>
@@ -59,17 +62,15 @@
       <div class="card">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">person</span></div>
-          <div><h2>You</h2><p>Used to sign replies, and given to the speech engine so it hears
-            names correctly.</p></div>
+          <div><h2>You</h2><p>Given to the speech engine so it hears names correctly — priming
+            it with your name measurably beat moving to a bigger model.</p></div>
         </div>
         <div class="grp"><label class="fl">Name</label><input type="text" id="name"></div>
-        <div class="grp"><label class="fl">Pronoun</label><input type="text" id="pronoun"
-          placeholder="he/him, she/her, they/them — leave empty to use your name"></div>
-        <div class="grp"><label class="fl">Phone</label><input type="text" id="phone"
-          placeholder="+6591234567 — for the agent to ring YOU on, never given out"></div>
-        <div class="grp"><label class="fl">Never say</label><textarea id="never"
-          placeholder="one topic per line"></textarea></div>
         <div class="acts"><button class="btn" id="saveYou">Save</button></div>
+        <p class="note">Pronoun, callback number and the never-say list belong to the answering
+          agent — how it refers to you to a caller, where it rings you back, what it must not
+          repeat. Nobody is answered here, so they are not on this page. They still live in
+          <code>settings.md</code> for anyone running that mode.</p>
         <div id="mYou"></div>
       </div>
 
@@ -83,6 +84,8 @@
 
         <div class="grp">
           <label class="fl">On this machine</label>
+          <p class="mwhy" style="margin:0 0 .2rem">Already downloaded. Switching is instant —
+            there is nothing to fetch and no key to check.</p>
           <div class="state" id="machineState">…</div>
           <div id="localList"></div>
           <label class="fl" style="margin-top:1rem">Download another</label>
@@ -288,9 +291,6 @@
       fetch(`/api/setup/current?t=${T}`), fetch(`/api/state?t=${T}`)]);
     const cur = cr.ok ? await cr.json() : {};
     $('name').value = cur.name || '';
-    $('pronoun').value = cur.pronoun || '';
-    $('never').value = cur.never || '';
-    $('phone').value = cur.phone || '';
     const mode = document.querySelector(`input[name=calls][value="${cur.calls || 'carry'}"]`);
     if (mode) mode.checked = true;
     if (cur.transcription) $('quality').value = cur.transcription;
@@ -307,8 +307,7 @@
   $('saveYou').onclick = async () => {
     $('saveYou').disabled = true;
     const out = [];
-    for (const [field, el] of [['name','name'], ['pronoun','pronoun'], ['phone','phone'],
-                               ['never_say','never']]) {
+    for (const [field, el] of [['name', 'name']]) {
       const d = await post('/api/setup/setting', {field, value: $(el).value});
       out.push(d.message);
     }
@@ -463,13 +462,18 @@
     }
     // ALREADY ON DISK — clicking one swaps to it immediately, because there is nothing to
     // download and nothing to verify beyond that Ollama still has it.
+    // EVERY ACTION IS A BUTTON. Selection used to be a click on the model NAME, which nothing
+    // announced — the only thing that looked pressable in a row was "delete", so the one
+    // destructive action was the discoverable one.
     $('localList').innerHTML = d.local.map(x => `
       <div class="mrow ${x.name === d.current ? 'on' : ''}">
-        <span class="nm" data-pick="${esc(x.name)}">${esc(x.name)}</span>
+        <span class="nm">${x.name === d.current ? '● ' : ''}${esc(x.name)}</span>
         <span class="sz">${x.size_gb} GB</span>
         <span class="fitpill ${x.fit}">${x.fit === 'no' ? 'too big' : x.fit}</span>
-        ${x.name === d.current ? '<span class="sz">in use</span>'
-                               : `<button class="act" data-del="${esc(x.name)}">delete</button>`}
+        ${x.name === d.current
+          ? '<span class="inuse">in use</span>'
+          : `<button class="act use" data-pick="${esc(x.name)}">use this</button>
+             <button class="act" data-del="${esc(x.name)}">delete</button>`}
       </div>
       <p class="mwhy">${esc(x.why)}${x.now_ok ? '' :
           ' <span style="color:#facc15">' + esc(x.now_why) + '</span>'}</p>`).join('');

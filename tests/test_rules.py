@@ -1060,8 +1060,12 @@ def test_setup_mode() -> None:
     # The interview drives the MODEL. The owner this console path serves is the one carrying
     # calls with no key, so offering it unconditionally meant it failed at the first question —
     # and the name it would have set is what primes the speech engine.
-    ok("the interview is offered only when a model is attached",
-       "llm.configured() and not knows_what_they_do" in init_src)
+    # Narrowed 2026-08-26: a model is no longer sufficient. The interview writes knowledge for
+    # an agent explaining the owner to a stranger, so it belongs to answer mode — and local
+    # models made "has a model" stop implying "wants a secretary", since a recorder owner can
+    # now attach one in two clicks.
+    ok("the interview is offered only in answer mode, with a model",
+       "mode != owner.CALLS_CARRY and llm.configured()" in init_src)
     ok("and the name can be set without one", "def who_you_are" in init_src)
 
     # EVERY FILE A PAGE ASKS FOR MUST BE PACKAGED. app.css shipped in neither glob when it was
