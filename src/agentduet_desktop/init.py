@@ -273,11 +273,16 @@ def choose_mode(interactive: bool = True) -> str:
 
 
 def who_you_are(interactive: bool = True) -> None:
-    """Name and pronoun, WITHOUT a model.
+    """The owner's name, WITHOUT a model.
 
     The interview below does this better — but it drives the model, and the owner this whole
     console path exists for is the one carrying calls with no key at all. For them the interview
     cannot run, and until this existed their name stayed unset.
+
+    ONLY THE NAME. Pronoun used to be asked here too, and it is answering-agent configuration:
+    how the agent refers to the owner to a CALLER. Nobody is answered on the recorder path, so
+    it has no subject — and it came off the settings page for the same reason. Both surfaces
+    agree that this product needs a name, which is what keeps them from drifting apart.
 
     That is not cosmetic. transcribe.py primes the speech engine with "A call for <name>.", and
     on a real recording that turned "Spandy Leong" into "Stanley Leong" — it beat moving to a
@@ -298,13 +303,7 @@ def who_you_are(interactive: bool = True) -> None:
     elif not have:
         print("  -> left blank. Transcripts will hear names less well; set it later in settings.md.")
 
-    print("\n  How should it refer to you to OUTSIDERS? Blank uses your name rather than")
-    print("  guessing — it once inferred 'he' from a name, to a stranger, with nobody there")
-    print("  to correct it.")
-    pronoun = _prompt("  he/him, she/her, they/them [blank]\n  > ").strip()
-    if pronoun:
-        tools.set_setting("pronoun", pronoun)
-        print(f"  -> {pronoun}")
+
 
 
 #: The languages the speech engine is told about. Blank means guess, and guessing is the thing
@@ -499,7 +498,16 @@ def main(interactive: bool = True) -> int:
     # "does" is the Who section of owner.md — the thing the interview writes and the only one
     # of its outputs who_you_are() does not already cover.
     knows_what_they_do = bool(tools.current_setup().get("does", "").strip())
-    if interactive and llm.configured() and not knows_what_they_do:
+    # ANSWER MODE ONLY. The interview asks what the owner does and writes it into knowledge —
+    # material for an agent explaining them to a stranger. Nobody is explained to anybody on the
+    # recorder path, so for a carrying owner it is three questions with no consumer.
+    #
+    # This used to be gated on a model alone, which was nearly the same thing while a model
+    # meant a paid key. Local models changed that: a recorder owner can now attach qwen2.5:3b in
+    # two clicks and would have been interviewed about their business for an agent that never
+    # speaks.
+    if (interactive and mode != owner.CALLS_CARRY and llm.configured()
+            and not knows_what_they_do):
         print("\n  One more, and this one uses your model: what do you do?")
         print("  It writes the answer into your knowledge, in the third person.")
         print("  Press Enter to answer, or type s to skip.")
