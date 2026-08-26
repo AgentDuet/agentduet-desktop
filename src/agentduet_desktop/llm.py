@@ -53,7 +53,7 @@ _PROVIDERS = {
     "gemini": ("gemini",),
     "anthropic": ("claude",),
     "dashscope": ("dashscope", "qwen3", "qwen-max", "qwen-plus", "qwen-flash"),
-    "local": ("local", "llama", "qwen-2.5", "qwen2.5", "mistral", "phi", "ollama"),
+    "local": ("local", "llama", "qwen-2.5", "qwen2.5", "qwen-0.5", "qwen-1.5", "qwen-3b", "qwen-7b", "mistral", "phi", "ollama", "smollm", "gemma"),
 }
 
 #: Gemini honours it; the Claude 5 family rejects any non-default value with a 400, so the

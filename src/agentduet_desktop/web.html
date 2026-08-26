@@ -531,14 +531,16 @@
           <div class="model-status-indicator active">● Active in RAM (~${esc(llmLoaded.ram_mb || m.ram_mb || 0)} MB)</div>
           <div class="model-btn-group">
             <button class="btn danger sm" onclick="window.unloadLlm('${mid}')">Unload Model</button>
-            <button class="btn ghost sm" onclick="window.deleteLlm('${mid}')" title="Delete model files from disk">🗑️ Delete</button>
           </div>
         `;
       } else if (isDownloaded) {
         actionHtml = `
           <div class="model-status-indicator downloaded">✓ Downloaded</div>
           <div class="model-btn-group">
-            <button class="btn sm" onclick="window.loadLlm('${mid}')">Load Model</button>
+            ${m.can_load ?
+              `<button class="btn sm" onclick="window.loadLlm('${mid}')">Load Model</button>` :
+              `<button class="btn sm" disabled title="${esc(m.reason || 'Insufficient available RAM')}">⛔ Cannot Load (Low RAM)</button>`
+            }
             <button class="btn ghost sm" onclick="window.deleteLlm('${mid}')" title="Delete model files from disk">🗑️ Delete</button>
           </div>
         `;
@@ -547,7 +549,7 @@
           <div class="model-status-indicator not-downloaded">Not Downloaded</div>
           <div class="model-btn-group">
             ${m.can_download ?
-              `<button class="btn sm" onclick="window.downloadLlm('${mid}', true)">Download &amp; Load (${esc(m.dl_display || (m.dl_gb + ' GB'))})</button>` :
+              `<button class="btn sm" onclick="window.downloadLlm('${mid}', false)">Download (${esc(m.dl_display || (m.dl_gb + ' GB'))})</button>` :
               `<button class="btn sm" disabled title="${esc(m.reason || 'Hardware Insufficient')}">⛔ Insufficient Hardware</button>`
             }
           </div>
@@ -603,7 +605,7 @@
   load();
 
   // Model Lifecycle Global Callbacks
-  window.downloadLlm = async (mid, autoLoad = true) => {
+  window.downloadLlm = async (mid, autoLoad = false) => {
     say('mModel', true, `Downloading ${mid}… verifying disk and RAM headroom.`);
     const d = await post('/api/llm/download', {model: mid, auto_load: autoLoad});
     say('mModel', d.ok, d.message || d.error);

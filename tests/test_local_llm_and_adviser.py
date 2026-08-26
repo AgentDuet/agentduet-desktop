@@ -43,7 +43,7 @@ class TestHardwareLLMAdviser(unittest.TestCase):
         spec = hardware.resolve_llm_spec("llama-3.2-1b")
         self.assertIsNotNone(spec)
         self.assertIn("Llama 3.2 1B", spec["name"])
-        self.assertEqual(spec["ram_mb"], 1800)
+        self.assertEqual(spec["ram_mb"], 1150)
 
         # Inferred / partial match
         spec2 = hardware.resolve_llm_spec("mistral-7b-instruct")
@@ -51,7 +51,7 @@ class TestHardwareLLMAdviser(unittest.TestCase):
         self.assertEqual(spec2["key"], "mistral-7b")
 
     def test_recommend_llm_low_ram(self):
-        # 4 GB system RAM -> should recommend 1B model, block 7B models
+        # 4 GB system RAM -> should recommend a fitting model (<=2.5GB), block 7B models
         low_hw = {
             "chip_name": "Apple M1",
             "cpu_count": 8,
@@ -60,7 +60,7 @@ class TestHardwareLLMAdviser(unittest.TestCase):
             "accelerator": {"type": "apple_silicon", "available": True},
         }
         res = hardware.recommend_llm_models(low_hw)
-        self.assertIn(res["recommended_model"], ("llama-3.2-1b", "qwen-2.5-1.5b"))
+        self.assertIn(res["recommended_model"], ("gemma-2-2b", "smollm2-1.7b", "qwen-2.5-1.5b", "llama-3.2-1b"))
         self.assertEqual(res["models"]["mistral-7b"]["status"], "blocked")
         self.assertEqual(res["models"]["qwen-2.5-7b"]["status"], "blocked")
 
@@ -135,7 +135,7 @@ class TestLocalLLMLifecycle(unittest.TestCase):
         was_loaded, model_name, freed_mb = llm.unload()
         self.assertTrue(was_loaded)
         self.assertEqual(model_name, "llama-3.2-1b")
-        self.assertGreaterEqual(freed_mb, 1800)
+        self.assertGreaterEqual(freed_mb, 1000)
         self.assertFalse(llm.is_loaded())
 
     def test_local_llm_download_and_delete(self):

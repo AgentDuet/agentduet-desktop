@@ -80,53 +80,37 @@ TIER_TO_MODEL: dict[str, str] = {
 
 #: Open-source Local LLM resource specifications catalog
 LLM_MODELS: dict[str, dict[str, Any]] = {
-    "qwen-2.5-1.5b": {
-        "id": "qwen-2.5-1.5b",
+    "smollm2-360m": {
+        "id": "smollm2-360m",
+        "brand": "SMOLLM",
+        "brand_color": "#10b981",
+        "name": "SmolLM2 360M Instruct",
+        "provider": "local",
+        "params": "360M",
+        "dl_mb": 230,
+        "dl_display": "230 MB",
+        "ram_mb": 450,
+        "ram_display": "0.4 GB",
+        "min_ram_gb": 2,
+        "speed_rating": "⚡⚡⚡⚡⚡",
+        "speed_tok": "~110-150 tok/s",
+        "description": "Ultra-lightweight featherweight model. Fits easily in under 500 MB RAM, perfect for fast transcription summaries.",
+    },
+    "qwen-2.5-0.5b": {
+        "id": "qwen-2.5-0.5b",
         "brand": "QWEN",
         "brand_color": "#7c3aed",
-        "name": "Qwen2.5 1.5B Instruct",
+        "name": "Qwen2.5 0.5B Instruct",
         "provider": "local",
-        "params": "1.5B",
-        "dl_mb": 982,
-        "dl_display": "982 MB",
-        "ram_mb": 1800,
-        "ram_display": "1.2 GB",
-        "min_ram_gb": 4,
-        "speed_rating": "⚡⚡⚡⚡",
-        "speed_tok": "~65-80 tok/s",
-        "description": "Top recommendation for 8GB Macs. Instant streaming with strong multilingual, reasoning, and summarization skills.",
-    },
-    "qwen-2.5-3b": {
-        "id": "qwen-2.5-3b",
-        "brand": "QWEN",
-        "brand_color": "#7c3aed",
-        "name": "Qwen2.5 3B Instruct",
-        "provider": "local",
-        "params": "3.1B",
-        "dl_mb": 1980,
-        "dl_display": "1.93 GB",
-        "ram_mb": 3500,
-        "ram_display": "2.2 GB",
-        "min_ram_gb": 8,
-        "speed_rating": "⚡⚡⚡",
-        "speed_tok": "~35-50 tok/s",
-        "description": "Exceptional depth for complex creative writing, precise multi-turn dialogues, and in-depth reasoning.",
-    },
-    "llama-3.2-3b": {
-        "id": "llama-3.2-3b",
-        "brand": "META",
-        "brand_color": "#2563eb",
-        "name": "Llama 3.2 3B Instruct",
-        "provider": "local",
-        "params": "3.2B",
-        "dl_mb": 1920,
-        "dl_display": "1.88 GB",
-        "ram_mb": 3400,
-        "ram_display": "2.3 GB",
-        "min_ram_gb": 8,
-        "speed_rating": "⚡⚡⚡",
-        "speed_tok": "~35-48 tok/s",
-        "description": "Meta's highly capable 3B edge model for multilingual dialogue, agentic tasks, and creative workflows.",
+        "params": "0.49B",
+        "dl_mb": 398,
+        "dl_display": "398 MB",
+        "ram_mb": 650,
+        "ram_display": "0.6 GB",
+        "min_ram_gb": 2,
+        "speed_rating": "⚡⚡⚡⚡⚡",
+        "speed_tok": "~95-125 tok/s",
+        "description": "Sub-1GB edge model. Extremely fast with strong multilingual understanding and low latency triage.",
     },
     "llama-3.2-1b": {
         "id": "llama-3.2-1b",
@@ -135,14 +119,94 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
         "name": "Llama 3.2 1B Instruct",
         "provider": "local",
         "params": "1.2B",
-        "dl_mb": 1280,
-        "dl_display": "1.25 GB",
-        "ram_mb": 1800,
+        "dl_mb": 750,
+        "dl_display": "750 MB",
+        "ram_mb": 1150,
         "ram_display": "1.1 GB",
         "min_ram_gb": 4,
         "speed_rating": "⚡⚡⚡⚡",
         "speed_tok": "~70-90 tok/s",
-        "description": "Meta's ultra-lightweight 1B edge model for fast summarization, triage, and low-latency agent tasks.",
+        "description": "Meta's ultra-efficient 1B model. Excellent balance of speed, summarization, and low-latency agent tasks.",
+    },
+    "qwen-2.5-1.5b": {
+        "id": "qwen-2.5-1.5b",
+        "brand": "QWEN",
+        "brand_color": "#7c3aed",
+        "name": "Qwen2.5 1.5B Instruct",
+        "provider": "local",
+        "params": "1.5B",
+        "dl_mb": 986,
+        "dl_display": "986 MB",
+        "ram_mb": 1350,
+        "ram_display": "1.3 GB",
+        "min_ram_gb": 4,
+        "speed_rating": "⚡⚡⚡⚡",
+        "speed_tok": "~65-80 tok/s",
+        "description": "Top recommendation for 8GB Macs. Instant streaming with strong multilingual, reasoning, and summarization skills.",
+    },
+    "smollm2-1.7b": {
+        "id": "smollm2-1.7b",
+        "brand": "SMOLLM",
+        "brand_color": "#10b981",
+        "name": "SmolLM2 1.7B Instruct",
+        "provider": "local",
+        "params": "1.7B",
+        "dl_mb": 1050,
+        "dl_display": "1.05 GB",
+        "ram_mb": 1400,
+        "ram_display": "1.4 GB",
+        "min_ram_gb": 4,
+        "speed_rating": "⚡⚡⚡⚡",
+        "speed_tok": "~65-85 tok/s",
+        "description": "Compact powerhouse outperforming earlier 3B models in multi-turn reasoning and instruction following.",
+    },
+    "gemma-2-2b": {
+        "id": "gemma-2-2b",
+        "brand": "GOOGLE",
+        "brand_color": "#ea4335",
+        "name": "Gemma 2 2B Instruct",
+        "provider": "local",
+        "params": "2.6B",
+        "dl_mb": 1650,
+        "dl_display": "1.61 GB",
+        "ram_mb": 2100,
+        "ram_display": "2.1 GB",
+        "min_ram_gb": 4,
+        "speed_rating": "⚡⚡⚡",
+        "speed_tok": "~45-60 tok/s",
+        "description": "Google's class-leading compact model with exceptional knowledge retrieval and dialogue capabilities.",
+    },
+    "llama-3.2-3b": {
+        "id": "llama-3.2-3b",
+        "brand": "META",
+        "brand_color": "#2563eb",
+        "name": "Llama 3.2 3B Instruct",
+        "provider": "local",
+        "params": "3.2B",
+        "dl_mb": 1980,
+        "dl_display": "1.93 GB",
+        "ram_mb": 2600,
+        "ram_display": "2.5 GB",
+        "min_ram_gb": 8,
+        "speed_rating": "⚡⚡⚡",
+        "speed_tok": "~35-48 tok/s",
+        "description": "Meta's highly capable 3B edge model for multilingual dialogue, agentic tasks, and creative workflows.",
+    },
+    "qwen-2.5-3b": {
+        "id": "qwen-2.5-3b",
+        "brand": "QWEN",
+        "brand_color": "#7c3aed",
+        "name": "Qwen2.5 3B Instruct",
+        "provider": "local",
+        "params": "3.1B",
+        "dl_mb": 1930,
+        "dl_display": "1.88 GB",
+        "ram_mb": 2600,
+        "ram_display": "2.5 GB",
+        "min_ram_gb": 8,
+        "speed_rating": "⚡⚡⚡",
+        "speed_tok": "~35-50 tok/s",
+        "description": "Exceptional depth for complex creative writing, precise multi-turn dialogues, and in-depth reasoning.",
     },
     "phi-3.5-mini": {
         "id": "phi-3.5-mini",
@@ -151,10 +215,10 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
         "name": "Phi 3.5 Mini 3.8B",
         "provider": "local",
         "params": "3.8B",
-        "dl_mb": 2400,
-        "dl_display": "2.34 GB",
-        "ram_mb": 3600,
-        "ram_display": "2.6 GB",
+        "dl_mb": 2300,
+        "dl_display": "2.25 GB",
+        "ram_mb": 3100,
+        "ram_display": "3.0 GB",
         "min_ram_gb": 8,
         "speed_rating": "⚡⚡⚡",
         "speed_tok": "~30-45 tok/s",
@@ -169,8 +233,8 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
         "params": "7.6B",
         "dl_mb": 4700,
         "dl_display": "4.59 GB",
-        "ram_mb": 6500,
-        "ram_display": "5.2 GB",
+        "ram_mb": 5500,
+        "ram_display": "5.4 GB",
         "min_ram_gb": 16,
         "speed_rating": "⚡⚡",
         "speed_tok": "~20-30 tok/s",
@@ -183,10 +247,10 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
         "name": "Mistral 7B Instruct v0.3",
         "provider": "local",
         "params": "7.2B",
-        "dl_mb": 4800,
-        "dl_display": "4.69 GB",
-        "ram_mb": 6800,
-        "ram_display": "5.5 GB",
+        "dl_mb": 4400,
+        "dl_display": "4.30 GB",
+        "ram_mb": 5300,
+        "ram_display": "5.2 GB",
         "min_ram_gb": 16,
         "speed_rating": "⚡⚡",
         "speed_tok": "~20-30 tok/s",
@@ -678,6 +742,7 @@ def check_llm_capability(model_id: str, profile: dict[str, Any] | None = None) -
 
     disk_req = spec.get("disk_mb", 1500)
     ram_req = spec.get("ram_mb", 2000)
+    min_ram_gb = spec.get("min_ram_gb", 2)
 
     # Storage check
     disk_free_mb = disk.get("free_mb", int(disk.get("free_gb", 0) * 1024))
@@ -687,9 +752,16 @@ def check_llm_capability(model_id: str, profile: dict[str, Any] | None = None) -
     # Memory check
     total_ram = mem.get("total_mb", int(mem.get("total_gb", 0) * 1024))
     avail_ram = mem.get("available_mb", int(mem.get("available_gb", 0) * 1024))
+    total_ram_gb = round(total_ram / 1024, 1)
+    avail_ram_gb = round(avail_ram / 1024, 2)
+    ram_needed_gb = round(ram_req / 1024, 1)
+    ram_free_gb = avail_ram_gb
 
-    has_total_ram = total_ram >= (ram_req + SYSTEM_RAM_RESERVE_MB)
-    has_avail_ram = avail_ram >= (ram_req * 0.7)
+    # Hardware total RAM check (does the physical machine fit this model tier?)
+    has_total_ram = (total_ram >= (ram_req + SYSTEM_RAM_RESERVE_MB)) and (total_ram_gb >= (min_ram_gb * 0.75))
+
+    # Available RAM headroom check (can it load right now?)
+    has_avail_ram = avail_ram >= int(ram_req * 0.85)
 
     can_download = has_disk and has_total_ram
     can_load = has_total_ram and has_avail_ram
@@ -697,22 +769,16 @@ def check_llm_capability(model_id: str, profile: dict[str, Any] | None = None) -
     status = "compatible"
     reason = f"Runs locally on your device hardware ({spec.get('params', 'N/A')} parameters)."
 
-    # Format needed vs free RAM for pills
-    ram_needed_gb = round(ram_req / 1024, 1)
-    ram_free_gb = round(avail_ram / 1024, 2)
-    total_ram_gb = round(total_ram / 1024, 1)
-
     if not has_total_ram:
         status = "blocked"
         can_download = False
         can_load = False
         ram_badge = "blocked"
         ram_pill_color = "danger"
-        ram_pill_text = f"Low RAM warning ({ram_needed_gb} GB needed · {ram_free_gb} GB free)"
+        ram_pill_text = f"Insufficient Hardware ({ram_needed_gb} GB needed · {total_ram_gb} GB total)"
         reason = (
-            f"Blocked: {spec['name']} requires ~{ram_req} MB RAM ({spec.get('min_ram_gb', 8)}GB+ RAM recommended), "
-            f"but your machine has {total_ram} MB total RAM ({total_ram_gb} GB). Running this model would exceed "
-            f"hardware capabilities."
+            f"Blocked: {spec['name']} requires {min_ram_gb}GB+ system RAM (~{ram_needed_gb} GB needed), "
+            f"but your machine has only {total_ram_gb} GB total RAM. Does not fit on this system; exceeds hardware capabilities."
         )
     elif not has_disk:
         status = "blocked"
@@ -722,27 +788,32 @@ def check_llm_capability(model_id: str, profile: dict[str, Any] | None = None) -
         ram_pill_text = f"Insufficient Disk ({disk_req/1024:.1f} GB needed · {disk_free_mb/1024:.1f} GB free)"
         reason = (
             f"Blocked: Insufficient free storage ({disk.get('free_gb', disk_free_mb/1024):.1f} GB free). "
-            f"Downloading {spec['name']} requires ~{disk_req} MB."
+            f"Downloading {spec['name']} requires ~{disk_req} MB with safety buffer."
         )
     elif not has_avail_ram:
         status = "warning"
+        can_load = False
         ram_badge = "low_warning"
         ram_pill_color = "danger"
         ram_pill_text = f"Low RAM warning ({ram_needed_gb} GB needed · {ram_free_gb} GB free)"
         reason = (
             f"Low memory headroom: {avail_ram} MB available RAM vs ~{ram_req} MB needed. "
-            f"Close heavy applications before running."
+            f"Close heavy applications before loading into memory."
         )
-    elif avail_ram < (ram_req * 1.3):
-        status = "warning"
+    elif avail_ram < int(ram_req * 1.25):
+        status = "compatible"
+        can_load = True
         ram_badge = "high_usage"
         ram_pill_color = "warning"
         ram_pill_text = f"High RAM usage ({ram_needed_gb} GB needed · {ram_free_gb} GB free)"
-        reason = f"High RAM usage: model will take up a significant portion of free RAM."
+        reason = f"High RAM usage: model will occupy {ram_needed_gb} GB of {ram_free_gb} GB available RAM."
     else:
+        status = "compatible"
+        can_load = True
         ram_badge = "optimal"
         ram_pill_color = "success"
         ram_pill_text = f"Optimal headroom ({ram_needed_gb} GB needed · {ram_free_gb} GB free)"
+        reason = f"Runs smoothly with optimal memory headroom on your device."
 
     model_downloaded = is_downloaded(spec["id"])
 
@@ -779,28 +850,58 @@ def check_llm_capability(model_id: str, profile: dict[str, Any] | None = None) -
 
 
 def recommend_llm_models(profile: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Analyze host resources and dynamically recommend the optimal local LLM."""
+    """Analyze host resources and dynamically recommend the optimal local LLM that fits available RAM."""
     hw = profile or get_hardware_profile()
-    total_gb = hw["memory"]["total_gb"]
-    is_apple_silicon = hw.get("is_apple_silicon", False) or hw.get("accelerator", {}).get("type") == "apple_silicon"
+    mem = hw.get("memory", {})
+    avail_mb = mem.get("available_mb", 4096)
+    avail_gb = round(avail_mb / 1024, 1)
 
-    # Choose optimal local model based on RAM
-    if total_gb >= 16:
-        recommended_id = "qwen-2.5-7b" if is_apple_silicon else "llama-3.2-3b"
-    elif total_gb >= 8:
-        recommended_id = "llama-3.2-3b"
-    elif total_gb >= 4:
-        recommended_id = "llama-3.2-1b"
-    else:
-        recommended_id = "llama-3.2-1b"
+    # Evaluate capabilities for all local models
+    evaluations: dict[str, dict[str, Any]] = {}
+    for key in LLM_MODELS:
+        evaluations[key] = check_llm_capability(key, hw)
 
-    evaluations = {}
-    for key, spec in LLM_MODELS.items():
-        eval_info = check_llm_capability(key, hw)
-        if key == recommended_id and eval_info["status"] in ("compatible", "warning"):
-            eval_info["status"] = "recommended"
-            eval_info["reason"] = f"⭐ Recommended Local LLM: Optimal quality and performance for your {total_gb} GB system."
-        evaluations[key] = eval_info
+    # Candidate models ranked by capability / parameter quality
+    ranked_candidates = [
+        "qwen-2.5-7b",
+        "mistral-7b",
+        "phi-3.5-mini",
+        "llama-3.2-3b",
+        "qwen-2.5-3b",
+        "gemma-2-2b",
+        "smollm2-1.7b",
+        "qwen-2.5-1.5b",
+        "llama-3.2-1b",
+        "qwen-2.5-0.5b",
+        "smollm2-360m",
+    ]
+
+    # Select the highest-quality candidate that CAN load comfortably in currently available RAM
+    recommended_id = None
+    for cand in ranked_candidates:
+        if cand not in evaluations:
+            continue
+        ev = evaluations[cand]
+        if ev["can_download"] and ev["can_load"] and ev.get("ram_badge") == "optimal":
+            recommended_id = cand
+            break
+
+    if not recommended_id:
+        for cand in ranked_candidates:
+            if cand not in evaluations:
+                continue
+            ev = evaluations[cand]
+            if ev["can_download"] and ev["can_load"]:
+                recommended_id = cand
+                break
+
+    if not recommended_id:
+        recommended_id = "smollm2-360m"
+
+    if recommended_id in evaluations:
+        ev = evaluations[recommended_id]
+        ev["status"] = "recommended"
+        ev["reason"] = f"⭐ Recommended Local LLM: Optimal quality and performance for your {avail_gb} GB available RAM."
 
     cloud_models = {}
     for key, spec in CLOUD_LLM_MODELS.items():
@@ -816,11 +917,12 @@ def recommend_llm_models(profile: dict[str, Any] | None = None) -> dict[str, Any
             "reason": "Cloud API model (requires API key).",
         }
 
+    rec_spec = LLM_MODELS.get(recommended_id, {})
     return {
         "hardware": hw,
         "recommended_model": recommended_id,
-        "recommended_name": LLM_MODELS.get(recommended_id, {}).get("name", recommended_id),
-        "recommended_spec": LLM_MODELS.get(recommended_id, {}),
+        "recommended_name": rec_spec.get("name", recommended_id),
+        "recommended_spec": rec_spec,
         "models": evaluations,
         "local_models": evaluations,
         "cloud_models": cloud_models,

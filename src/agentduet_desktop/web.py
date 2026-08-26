@@ -719,6 +719,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response({"error": "unauthorised"}, status=401)
         from . import hardware, llm
         was_loaded, model_name, freed_mb = llm.unload()
+        msg = f"Unloaded {model_name} from memory (reclaimed ~{freed_mb} MB RAM)." if was_loaded else "No local model was loaded in memory."
+        hw = hardware.hardware_adviser_report()
         return web.json_response({
             "ok": True,
             "message": msg,
