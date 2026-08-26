@@ -19,6 +19,8 @@ ends with a broken credential leaves the owner with an agent that appears instal
 nothing. And nothing here declares a capability the owner did not ask for: authority is the one
 thing an interview must not be helpful about.
 """
+from __future__ import annotations
+
 
 import asyncio
 import os

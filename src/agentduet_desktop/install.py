@@ -21,6 +21,8 @@ WHY NOT /usr/local/bin
 That needs root. Nothing here needs root, and asking for it during a first run is both alarming
 and unnecessary — ~/.local/bin is on PATH for most desktop Linux and is the XDG convention.
 """
+from __future__ import annotations
+
 
 import os
 import pathlib

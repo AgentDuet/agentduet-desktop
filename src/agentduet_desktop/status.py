@@ -23,6 +23,8 @@ identified by email and no phone number exists in the conversation.
 So: no number until a real call arrives on a DID attached to this connector. `set_number` enforces
 that shape, because displaying a uuid under the word "number" is worse than displaying nothing.
 """
+from __future__ import annotations
+
 
 import json
 import logging

@@ -21,6 +21,8 @@ So we refuse to live-test the uuid the running daemon is already holding — the
 report that it takes effect on restart. A DIFFERENT uuid is safe to test, which is the case that
 matters: the owner is adding or changing one.
 """
+from __future__ import annotations
+
 
 import asyncio
 import logging

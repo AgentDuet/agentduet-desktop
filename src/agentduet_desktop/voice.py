@@ -25,6 +25,7 @@ server-side so the two configs would overwrite each other. So this module does N
 A VoiceAgent is built PER CALL, because its tool and transcript handlers take no call context —
 binding them to the caller in a closure is how a tool knows whose booking it is making.
 """
+from __future__ import annotations
 
 import asyncio
 import logging

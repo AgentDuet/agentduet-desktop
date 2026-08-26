@@ -61,21 +61,32 @@
         </div>
         <div class="state" id="modelState">…</div>
         <div class="state" id="hwLlmState" style="margin-top:.5rem">Analyzing machine resources…</div>
-        <div class="state" id="llmMemBox" style="margin-top:.5rem;display:flex;justify-content:space-between;align-items:center">
-          <span id="llmMemText">Resident memory: 0 MB</span>
-          <div style="display:flex;gap:.5rem">
-            <button class="btn sm" id="btnLoadSettingsLlm" style="display:none">Load into RAM</button>
-            <button class="btn danger sm" id="btnUnloadSettingsLlm" style="display:none">Unload from RAM</button>
+        
+        <div style="display:flex;gap:.5rem;margin-top:.5rem">
+          <button class="btn sm" id="tabSettingsLocal" style="flex:1">💻 Local Open-Source Models</button>
+          <button class="btn ghost sm" id="tabSettingsCloud" style="flex:1">☁️ Hosted Cloud APIs</button>
+        </div>
+
+        <div id="settingsLocalView" style="margin-top:.5rem">
+          <div style="font-size:11px;color:var(--faint);margin-bottom:.5rem">
+            On-device private models dynamically recommended by the hardware adviser based on your available RAM and storage.
+          </div>
+          <div class="model-list" id="settingsLocalCards">
+            <div style="font-size:12px;color:var(--muted)">Analyzing available hardware and models…</div>
           </div>
         </div>
-        <div class="grp"><label class="fl">AI Model (Local Open-Source First)</label>
-          <select id="modelSelect"></select>
+
+        <div id="settingsCloudView" style="display:none;margin-top:.5rem">
+          <div class="grp"><label class="fl">Cloud AI Provider</label>
+            <select id="cloudModelSelect"></select>
+          </div>
+          <div class="grp" id="keyGrp"><label class="fl">API key</label><input type="password" id="key"
+            placeholder="paste a key" autocomplete="off"></div>
+          <div class="acts"><button class="btn" id="saveModel">Verify &amp; Attach Key</button>
+            <span class="spin" id="spModel"></span></div>
         </div>
-        <div class="grp" id="keyGrp"><label class="fl">API key</label><input type="password" id="key"
-          placeholder="paste a key" autocomplete="off"></div>
-        <div class="acts"><button class="btn" id="saveModel">Check and save</button>
-          <span class="spin" id="spModel"></span></div>
-        <div id="mModel"></div>
+
+        <div id="mModel" style="margin-top:.5rem"></div>
       </div>
 
       <div class="card">
@@ -247,91 +258,151 @@
 
     $('hwLlmState').innerHTML = `<b>Host Resources:</b> ${esc(hwInfo.chip_name || 'CPU')} · `
       + `<b>${mem.total_gb || '?'} GB RAM</b> (${mem.available_gb || '?'} GB Available) · `
-      + `<b>${disk.free_gb || '?'} GB Free Disk</b><br>`
-      + `<span style="color:var(--emerald);display:inline-block;margin-top:.25rem">⭐ <b>Adviser Recommendation:</b> <b>${esc(llmHw.recommended_name || llmRec)}</b> is optimal for your machine.</span>`;
+    // Tab switching between Local and Cloud
+    const tabLocal = $('tabSettingsLocal');
+    const tabCloud = $('tabSettingsCloud');
+    const viewLocal = $('settingsLocalView');
+    const viewCloud = $('settingsCloudView');
 
-    const localModels = (llmHw.models && Object.keys(llmHw.models).length) ? llmHw.models : {
-      'llama-3.2-1b': {name: 'Llama 3.2 1B', dl_gb: 1.3, ram_gb: 1.8, status: 'capable'},
-      'qwen-2.5-1.5b': {name: 'Qwen 2.5 1.5B', dl_gb: 1.2, ram_gb: 1.9, status: 'capable'},
-      'llama-3.2-3b': {name: 'Llama 3.2 3B', dl_gb: 2.0, ram_gb: 3.2, status: 'capable'},
-      'qwen-2.5-3b': {name: 'Qwen 2.5 3B', dl_gb: 2.2, ram_gb: 3.5, status: 'capable'},
-      'phi-3.5-mini': {name: 'Phi 3.5 Mini (3.8B)', dl_gb: 2.4, ram_gb: 3.6, status: 'capable'},
-      'qwen-2.5-7b': {name: 'Qwen 2.5 7B', dl_gb: 4.7, ram_gb: 6.5, status: 'capable'},
-      'mistral-7b': {name: 'Mistral 7B v0.3', dl_gb: 4.8, ram_gb: 6.8, status: 'capable'}
+    tabLocal.onclick = () => {
+      tabLocal.className = 'btn sm';
+      tabCloud.className = 'btn ghost sm';
+      viewLocal.style.display = 'block';
+      viewCloud.style.display = 'none';
     };
+    tabCloud.onclick = () => {
+      tabCloud.className = 'btn sm';
+      tabLocal.className = 'btn ghost sm';
+      viewLocal.style.display = 'none';
+      viewCloud.style.display = 'block';
+    };
+
+    // Render Rich Local Model Cards
+    const cardsContainer = $('settingsLocalCards');
+    const localModels = (llmHw.models && Object.keys(llmHw.models).length) ? llmHw.models : {};
+    const loaded = hr.loaded_llm || {};
+    const activeLoadedModel = loaded.loaded ? (loaded.model || '') : '';
+
+    cardsContainer.innerHTML = '';
+    Object.entries(localModels).forEach(([mid, m]) => {
+      const isLoaded = loaded.loaded && (activeLoadedModel === mid || activeLoadedModel === m.id);
+      const isDownloaded = !!m.is_downloaded;
+      const isBlocked = (m.status === 'blocked') || (!m.can_download && !isDownloaded);
+      const isRec = (mid === llmRec);
+
+      const card = document.createElement('div');
+      card.className = 'model-card' + (isLoaded ? ' active-ram' : '') + (isBlocked ? ' blocked' : '');
+
+      let pillIcon = '🟢';
+      if (m.ram_pill_color === 'danger') pillIcon = '🔴';
+      else if (m.ram_pill_color === 'warning') pillIcon = '🟡';
+
+      let actionHtml = '';
+      if (isLoaded) {
+        actionHtml = `
+          <div class="model-status-indicator active">● Active in RAM (~${esc(loaded.ram_mb || m.ram_mb || 0)} MB)</div>
+          <div class="model-btn-group">
+            <button class="btn danger sm" onclick="window.unloadSettingsLlm('${mid}')">Unload Model</button>
+            <button class="btn ghost sm" onclick="window.deleteSettingsLlm('${mid}')" title="Delete model files from disk">🗑️ Delete</button>
+          </div>
+        `;
+      } else if (isDownloaded) {
+        actionHtml = `
+          <div class="model-status-indicator downloaded">✓ Downloaded</div>
+          <div class="model-btn-group">
+            <button class="btn sm" onclick="window.loadSettingsLlm('${mid}')">Load Model</button>
+            <button class="btn ghost sm" onclick="window.deleteSettingsLlm('${mid}')" title="Delete model files from disk">🗑️ Delete</button>
+          </div>
+        `;
+      } else {
+        actionHtml = `
+          <div class="model-status-indicator not-downloaded">Not Downloaded</div>
+          <div class="model-btn-group">
+            ${m.can_download ?
+              `<button class="btn sm" onclick="window.downloadSettingsLlm('${mid}', true)">Download &amp; Load (${esc(m.dl_display || (m.dl_gb + ' GB'))})</button>` :
+              `<button class="btn sm" disabled title="${esc(m.reason || 'Hardware Insufficient')}">⛔ Insufficient Hardware</button>`
+            }
+          </div>
+        `;
+      }
+
+      card.innerHTML = `
+        <div class="model-card-head">
+          <div class="model-card-title-wrap">
+            <span class="brand-badge" style="background:${esc(m.brand_color || '#7c3aed')}">${esc(m.brand || 'LOCAL')}</span>
+            <span class="model-title">${esc(m.name || mid)} ${isRec ? '<span title="Hardware Adviser Recommended">⭐</span>' : ''}</span>
+          </div>
+          <span class="model-size-badge">${esc(m.dl_display || (m.dl_gb + ' GB'))}</span>
+        </div>
+        <div class="model-card-meta">
+          <span class="ram-pill ${esc(m.ram_pill_color || 'warning')}">
+            ${pillIcon} ${esc(m.ram_pill_text || ('~' + (m.ram_needed_gb || m.ram_gb || '?') + ' GB RAM'))}
+          </span>
+          <span class="speed-badge">
+            ${esc(m.speed_rating || '⚡⚡⚡')} ${esc(m.speed_tok || '')}
+          </span>
+        </div>
+        <div class="model-desc">${esc(m.description || '')}</div>
+        <div class="model-card-actions">
+          ${actionHtml}
+        </div>
+      `;
+      cardsContainer.appendChild(card);
+    });
+
+    // Populate Cloud Models
+    const cloudSel = $('cloudModelSelect');
     const cloudModels = (llmHw.cloud_models && Object.keys(llmHw.cloud_models).length) ? llmHw.cloud_models : {
       'gemini': {name: 'Google Gemini (Hosted Cloud)', key_name: 'GEMINI_API_KEY'},
       'anthropic': {name: 'Anthropic Claude (Hosted Cloud)', key_name: 'ANTHROPIC_API_KEY'},
       'dashscope': {name: 'Qwen DashScope (Hosted Cloud)', key_name: 'DASHSCOPE_API_KEY'}
     };
-
-    const sel = $('modelSelect');
-    const prevVal = sel.value;
-    sel.innerHTML = '';
-    const grpLocal = document.createElement('optgroup');
-    grpLocal.label = '— Local Open-Source Models (No API Key) —';
-    Object.entries(localModels).forEach(([mid, minfo]) => {
-      const opt = document.createElement('option');
-      opt.value = mid;
-      const isRec = (mid === llmRec);
-      if (minfo.status === 'blocked') {
-        opt.disabled = true;
-        opt.textContent = `⛔ ${minfo.name} (~${minfo.ram_gb || '?'} GB RAM) [Blocked: Exceeds RAM/Disk]`;
-      } else if (isRec) {
-        opt.textContent = `⭐ ${minfo.name} (~${minfo.ram_gb || '?'} GB RAM) [Recommended]`;
-      } else {
-        opt.textContent = `${minfo.name} (~${minfo.ram_gb || '?'} GB RAM)`;
-      }
-      grpLocal.appendChild(opt);
-    });
-    sel.appendChild(grpLocal);
-
-    const grpCloud = document.createElement('optgroup');
-    grpCloud.label = '— Hosted Cloud Models (API Key Required) —';
+    cloudSel.innerHTML = '';
     Object.entries(cloudModels).forEach(([mid, minfo]) => {
       const opt = document.createElement('option');
       opt.value = mid;
       opt.textContent = minfo.name;
-      grpCloud.appendChild(opt);
+      cloudSel.appendChild(opt);
     });
-    sel.appendChild(grpCloud);
 
-    let chosen = prevVal || cr.model_name || '';
-    if (!chosen && cr.model) {
-      for (let i = 0; i < sel.options.length; i++) {
-        if (cr.model.toLowerCase().includes(sel.options[i].value.toLowerCase())) {
-          chosen = sel.options[i].value;
-          break;
-        }
-      }
-    }
-    if (!chosen) chosen = llmRec;
-    sel.value = chosen;
-
-    function updateModelUI() {
-      const val = sel.value;
-      const isLocal = !['gemini', 'anthropic', 'dashscope'].includes(val);
-      $('keyGrp').style.display = isLocal ? 'none' : 'flex';
-      $('saveModel').textContent = isLocal ? 'Attach Local Model' : 'Check and save';
-    }
-    sel.onchange = updateModelUI;
-    updateModelUI();
-
-    // LLM resident RAM state
-    const loaded = hr.loaded_llm || {};
-    const btnUnload = $('btnUnloadSettingsLlm');
-    const btnLoad = $('btnLoadSettingsLlm');
-    const memText = $('llmMemText');
-    if (loaded.loaded) {
-      memText.innerHTML = `Resident in RAM: <b>${esc(loaded.name || loaded.model)}</b> (~${loaded.ram_mb || 0} MB active RAM)`;
-      btnUnload.style.display = 'inline-block';
-      btnLoad.style.display = 'none';
-    } else {
-      memText.innerHTML = 'Resident in RAM: <b>Not loaded</b> · 0 MB active RAM';
-      btnUnload.style.display = 'none';
-      btnLoad.style.display = 'inline-block';
+    const curModel = cr.model || '';
+    if (curModel && ['gemini', 'anthropic', 'dashscope'].some(c => curModel.includes(c))) {
+      tabCloud.onclick();
+      cloudSel.value = curModel;
     }
   }
+
+  // Model Lifecycle Global Callbacks for Settings
+  window.downloadSettingsLlm = async (mid, autoLoad = true) => {
+    say('mModel', true, `Downloading ${mid}… verifying disk and RAM headroom.`);
+    const d = await post('/api/llm/download', {model: mid, auto_load: autoLoad});
+    say('mModel', d.ok, d.message || d.error);
+    await refreshModelInfo();
+  };
+
+  window.loadSettingsLlm = async (mid) => {
+    say('mModel', true, `Loading ${mid} into resident memory…`);
+    const d = await post('/api/llm/load', {model: mid});
+    say('mModel', d.ok, d.message || d.error);
+    await refreshModelInfo();
+  };
+
+  window.unloadSettingsLlm = async (mid) => {
+    say('mModel', true, 'Unloading local LLM from memory…');
+    const d = await post('/api/llm/unload', {model: mid});
+    say('mModel', d.ok, d.message || d.error);
+    await refreshModelInfo();
+  };
+
+  window.deleteSettingsLlm = async (mid) => {
+    if (!confirm(`Are you sure you want to delete ${mid} from disk? This will reclaim storage space.`)) {
+      return;
+    }
+    say('mModel', true, `Deleting ${mid} from disk…`);
+    const d = await post('/api/llm/delete', {model: mid});
+    say('mModel', d.ok, d.message || d.error);
+    await refreshModelInfo();
+  };
 
   (async () => {
     const [cr, sr] = await Promise.all([
@@ -365,31 +436,11 @@
     say('mYou', true, out.join('\n'));
   };
 
-  $('btnUnloadSettingsLlm').onclick = async () => {
-    $('btnUnloadSettingsLlm').disabled = true;
-    const d = await post('/api/llm/unload', {});
-    $('btnUnloadSettingsLlm').disabled = false;
-    say('mModel', d.ok, d.message);
-    await refreshModelInfo();
-  };
-
-  $('btnLoadSettingsLlm').onclick = async () => {
-    $('btnLoadSettingsLlm').disabled = true;
-    const d = await post('/api/llm/load', {model: $('modelSelect').value});
-    $('btnLoadSettingsLlm').disabled = false;
-    say('mModel', d.ok, d.message || d.error);
-    await refreshModelInfo();
-  };
-
   $('saveModel').onclick = async () => {
-    const modelVal = $('modelSelect').value.trim();
-    const isLocal = !['gemini', 'anthropic', 'dashscope'].includes(modelVal);
-    let key = '';
-    if (!isLocal) {
-      key = $('key').value.trim();
-      if (!key) { say('mModel', false, 'Paste a key to change the cloud model.'); return; }
-    }
-    $('saveModel').disabled = true; $('spModel').textContent = isLocal ? 'validating capability…' : 'checking with the provider…';
+    const modelVal = $('cloudModelSelect').value.trim();
+    const key = $('key').value.trim();
+    if (!key) { say('mModel', false, 'Paste a key to attach the cloud model.'); return; }
+    $('saveModel').disabled = true; $('spModel').textContent = 'checking with the provider…';
     const d = await post('/api/setup/model', {model: modelVal, key});
     $('saveModel').disabled = false; $('spModel').textContent = '';
     say('mModel', d.ok, d.message);

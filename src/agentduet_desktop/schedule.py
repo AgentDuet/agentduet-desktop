@@ -13,6 +13,7 @@ The three-layer split this sits in (see README):
 Deliberately not a calendar. No recurrence, no timezones, no invitees: a POC needs to
 answer one question — is this slot free — and to answer it the same way twice.
 """
+from __future__ import annotations
 
 import json
 import pathlib

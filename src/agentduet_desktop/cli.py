@@ -8,6 +8,7 @@ SIGTERM is caught somewhere in the async stack and does not always exit, so `sto
 escalates rather than reporting success on a signal it merely sent. A stop that lies leaves two
 daemons sharing one connector, and the survivor may be running the older code.
 """
+from __future__ import annotations
 
 import argparse
 import os

@@ -22,6 +22,8 @@ because DDUET needed a dev endpoint while voice needs prod, and one client has o
 To reverse this, DDUET has to be merged into the SDK's main line and released — at which
 point the guard below takes a second network rather than swapping back.
 """
+from __future__ import annotations
+
 
 import asyncio
 import json
@@ -31,20 +33,22 @@ import sys
 import pathlib
 from datetime import datetime
 
-from dotenv import load_dotenv
 
-from agentduet import (
-    CallAudioConfig,
-    IncomingMessage,
-    InboundCallMode,
-    TriggerConditionsBuilder,
-    Network,
-    SendWAMessage,
-    Session,
-    SessionManager,
-    SessionManagerConfig,
-    new_session_id,
-)
+try:
+    from agentduet import (
+        CallAudioConfig,
+        IncomingMessage,
+        InboundCallMode,
+        TriggerConditionsBuilder,
+        Network,
+        SendWAMessage,
+        Session,
+        SessionManager,
+        SessionManagerConfig,
+        new_session_id,
+    )
+except ImportError:
+    CallAudioConfig = IncomingMessage = InboundCallMode = TriggerConditionsBuilder = Network = SendWAMessage = Session = SessionManager = SessionManagerConfig = new_session_id = None
 
 from . import brain
 from . import people
@@ -58,11 +62,15 @@ LOG = RUN / "queries.jsonl"
 SESSIONS = RUN / "sessions.json"   # asker -> who we may reply to (read by secretary_mcp)
 OUTBOX = RUN / "outbox.jsonl"      # owner replies queued by secretary_mcp.reply_to
 
-# Explicitly the INSTANCE file. A bare load_dotenv() searches the CWD and found the
-# install-dir .env left behind by the migration — and since load_dotenv never overrides an
-# already-set variable, that stale copy won every race against the real config. The daemon
-# then ran a model the owner had already replaced, reporting nothing wrong.
-load_dotenv(paths.ENV_FILE)
+try:
+    from dotenv import load_dotenv
+    # Explicitly the INSTANCE file. A bare load_dotenv() searches the CWD and found the
+    # install-dir .env left behind by the migration — and since load_dotenv never overrides an
+    # already-set variable, that stale copy won every race against the real config. The daemon
+    # then ran a model the owner had already replaced, reporting nothing wrong.
+    load_dotenv(paths.ENV_FILE)
+except ImportError:
+    pass
 # Log to a FILE as well as stdout. Launched from Finder as a .app — the way the owner will
 # actually start it — stdout goes nowhere, so without this a failed start is completely
 # silent: no window, no error, nothing to send anyone. This file is the first thing to ask

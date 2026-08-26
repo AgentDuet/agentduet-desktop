@@ -14,6 +14,7 @@ Escalation reason is asserted, not just answered-vs-escalated: "we don't documen
 and "not our subject" are different owner actions, so collapsing them would hide the
 regression that matters.
 """
+from __future__ import annotations
 
 import json
 import os

@@ -32,6 +32,8 @@ cannot fall behind.
 
 Run as a MODULE, not a file path: the imports are package-relative.
 """
+from __future__ import annotations
+
 
 from mcp.server import MCPServer
 

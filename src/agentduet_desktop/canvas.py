@@ -34,6 +34,7 @@ capability it serves (`pizza_delivery` -> `pizza-delivery.md`). A second structu
 have been easier and would have drifted the first time a price changed — the agent quoting $24
 while the form charges $26 is exactly the class of bug this project keeps finding.
 """
+from __future__ import annotations
 
 import json
 import pathlib

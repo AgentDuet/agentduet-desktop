@@ -4,6 +4,8 @@ DDUET is passive — there is no way to *send* the owner a message on it. But th
 runs on the owner's own machine, so a desktop notification is both the simplest and the
 most appropriate channel. Falls back to stdout when notify-send is unavailable.
 """
+from __future__ import annotations
+
 
 import shutil
 import subprocess

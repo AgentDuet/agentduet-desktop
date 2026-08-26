@@ -23,6 +23,7 @@ No pywebview, no system webview, or a headless machine: fall back to the default
 that fails, print the URL. The site is the primary owner surface now, so it has to come up by
 some route on every platform rather than depending on one library being importable.
 """
+from __future__ import annotations
 
 import logging
 import threading

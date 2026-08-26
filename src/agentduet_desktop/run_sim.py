@@ -9,16 +9,18 @@ with the bank demo's "one client per connector" rule).
 
 Real daemon (needs the connector): ./start.sh
 """
+from __future__ import annotations
+
 
 import asyncio
 import logging
 import os
 
-from dotenv import load_dotenv
-
-from . import paths
-
-load_dotenv(paths.ENV_FILE)   # instance, never a CWD .env — see secretary_agent.py
+try:
+    from dotenv import load_dotenv
+    load_dotenv(paths.ENV_FILE)   # instance, never a CWD .env — see secretary_agent.py
+except ImportError:
+    pass
 os.environ.setdefault("SECRETARY_SIM", "1")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")

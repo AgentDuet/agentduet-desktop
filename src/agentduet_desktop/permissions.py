@@ -16,6 +16,8 @@ Permissions grow over time: every escalation is a prompt to grant a bit more
 (`grant_folder` in secretary_mcp.py). Per-asker scoping is only meaningful because
 the inbound identity is verified — that's the whole point.
 """
+from __future__ import annotations
+
 
 import json
 import pathlib

@@ -35,6 +35,7 @@ we DETECT and print the exact thing to paste. Silently rewriting someone's Goose
 config, in a format we have never exercised, is how an installer breaks a working setup — and
 the owner would blame the thing they just installed. Detection is honest; blind writes are not.
 """
+from __future__ import annotations
 
 import json
 import os

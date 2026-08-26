@@ -18,6 +18,8 @@ Two conditions:
 - **Never deletes.** A withdrawal is recorded, so the owner sees "withdrawn by the
   sender" rather than an item vanishing, and the earlier turns stay in the thread.
 """
+from __future__ import annotations
+
 
 import json
 import pathlib

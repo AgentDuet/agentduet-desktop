@@ -7,6 +7,7 @@ SECURITY: this module is the OWNER's tool registry — it can grant folder acces
 send messages as the owner. The external-facing path (`secretary_agent.on_message`)
 must never import or reach it. `test_isolation.py` asserts that.
 """
+from __future__ import annotations
 
 import hashlib
 import json

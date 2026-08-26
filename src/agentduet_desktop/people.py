@@ -22,6 +22,8 @@ TWO HARD RULES
 The profile is injected into the prompt to change BEHAVIOUR. The agent must never quote
 it back — see policy.SYSTEM_PROMPT.
 """
+from __future__ import annotations
+
 
 import json
 import pathlib

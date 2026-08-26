@@ -26,6 +26,7 @@ audio so it stops being retried; deleting that re-queues it.
 Slow is fine here. This runs after the call, off the event loop, and the audio — the part that
 cannot be recreated — is already closed on disk before any of it starts.
 """
+from __future__ import annotations
 
 import asyncio
 import base64

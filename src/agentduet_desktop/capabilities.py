@@ -16,6 +16,7 @@ Four mechanisms, all generic — nothing here knows about pizza:
 Config, not state: this file is per-owner and hand/MCP-editable, which is why it sits
 beside owner.md rather than under .run/. The BOOKINGS a capability creates are state.
 """
+from __future__ import annotations
 
 import json
 import pathlib

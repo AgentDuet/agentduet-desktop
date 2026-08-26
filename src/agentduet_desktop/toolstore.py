@@ -20,6 +20,7 @@ is asserted by a test rather than left to memory.
 Same reasoning as secrets, different risk. A credential must not enter a model's CONTEXT; a tool
 must not be granted by a model's DECISION.
 """
+from __future__ import annotations
 
 import json
 import pathlib

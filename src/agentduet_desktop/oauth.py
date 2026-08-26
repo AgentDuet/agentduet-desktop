@@ -36,6 +36,8 @@ CONTRACT NOTES worth not re-deriving (wss-edge#52, as shipped 2026-08-25):
   `email_verified`, and the verified email is the identity-linking key — an unflagged one is an
   account-takeover path. Apple was never in v1. Both stay stubs in the UI.
 """
+from __future__ import annotations
+
 
 import json
 import logging

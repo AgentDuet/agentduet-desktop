@@ -6,6 +6,8 @@ If those ever share a code path, a prompt-injected message becomes privilege esc
 
     python test_isolation.py
 """
+from __future__ import annotations
+
 
 import ast
 import os

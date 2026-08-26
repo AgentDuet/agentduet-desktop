@@ -22,6 +22,8 @@ MIGRATION is by COPY, not move: the originals stay put as a backup until the own
 them. A one-way move of a live instance — 250+ logged queries, live bookings, profiles —
 is not something a refactor should do on import.
 """
+from __future__ import annotations
+
 
 import os
 import pathlib
@@ -75,6 +77,7 @@ PERMISSIONS = HOME / "permissions.json"
 CAPABILITIES = HOME / "capabilities.json"
 ENV_FILE = HOME / ".env"
 INDEX = HOME / "index"
+MODELS = HOME / "models"                 # downloaded on-device model weights and manifests
 
 #: (instance path, legacy path inside the install dir). Order matters only for readability.
 # Seed files that ship WITH the code and are copied into the instance once. Kept in their own

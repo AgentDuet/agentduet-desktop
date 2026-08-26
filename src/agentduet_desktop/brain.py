@@ -5,6 +5,7 @@ local simulator (`web.py /sim`) both call `handle_query()`, so **the simulator e
 the real path** rather than a parallel copy that can quietly drift. Whatever you see in
 the simulator is what a real inbound message would get.
 """
+from __future__ import annotations
 
 import asyncio
 import json
@@ -14,16 +15,18 @@ import pathlib
 import uuid
 from datetime import datetime
 
-from dotenv import load_dotenv
-
 from . import llm
 from . import paths
 
-# brain owns the model client, so it loads the env itself. Only the daemon used to call
-# load_dotenv(), which meant anything importing brain another way — the MCP server, a
-# script — got no API key and silently degraded: replies then closed no threads at all.
-# The key lives with the INSTANCE, not the install — an upgrade must not take it away.
-load_dotenv(paths.ENV_FILE)
+try:
+    from dotenv import load_dotenv
+    # brain owns the model client, so it loads the env itself. Only the daemon used to call
+    # load_dotenv(), which meant anything importing brain another way — the MCP server, a
+    # script — got no API key and silently degraded: replies then closed no threads at all.
+    # The key lives with the INSTANCE, not the install — an upgrade must not take it away.
+    load_dotenv(paths.ENV_FILE)
+except ImportError:
+    pass
 
 from . import identity
 from . import folder_index

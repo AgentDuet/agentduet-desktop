@@ -1,16 +1,32 @@
-"""Automated unit and integration tests for Local Open-Source LLMs, Hardware Profiler,
-Dynamic Adviser, Capability Gating, and Memory Load/Unload Lifecycle.
-"""
+from __future__ import annotations
 
 import os
+import pathlib
+import shutil
+import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
-from aiohttp import web
-from aiohttp.test_utils import AioHTTPTestCase
+# Ensure agentduet_desktop is on sys.path
+HERE = pathlib.Path(__file__).parent
+ROOT = HERE.parent
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+try:
+    from aiohttp import web
+    from aiohttp.test_utils import AioHTTPTestCase
+    from agentduet_desktop import web as web_module
+    HAS_AIOHTTP = True
+except ImportError:
+    HAS_AIOHTTP = False
+    web_module = None  # type: ignore
+    class AioHTTPTestCase(unittest.TestCase):  # type: ignore
+        pass
 
 from agentduet_desktop import hardware, llm, owner, paths, tools
-from agentduet_desktop import web as web_module
 
 
 class TestHardwareLLMAdviser(unittest.TestCase):
@@ -122,6 +138,19 @@ class TestLocalLLMLifecycle(unittest.TestCase):
         self.assertGreaterEqual(freed_mb, 1800)
         self.assertFalse(llm.is_loaded())
 
+    def test_local_llm_download_and_delete(self):
+        model_id = "qwen-2.5-1.5b"
+        # Download
+        res = llm.download(model_id)
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["model"], model_id)
+        self.assertTrue(llm.is_downloaded(model_id))
+
+        # Delete
+        del_res = llm.delete(model_id)
+        self.assertTrue(del_res["ok"])
+        self.assertFalse(llm.is_downloaded(model_id))
+
     def test_tools_attach_local_model(self):
         with patch.object(tools, "_write_env") as mock_write:
             out = tools.attach_model("", "llama-3.2-1b")
@@ -136,6 +165,7 @@ class TestLocalLLMLifecycle(unittest.TestCase):
             self.assertFalse(owner.connect_ai())
 
 
+@unittest.skipUnless(HAS_AIOHTTP, "aiohttp required for Web API tests")
 class TestWebAPIEndpoints(AioHTTPTestCase):
     """Test REST API endpoints in web.py for Hardware Profiler, Local LLM Load/Unload, and Connect AI."""
 
@@ -151,6 +181,21 @@ class TestWebAPIEndpoints(AioHTTPTestCase):
         self.assertIn("llm", data)
         self.assertIn("loaded_llm", data)
         self.assertIn("loaded_model", data)
+
+    async def test_api_llm_download_and_delete_endpoints(self):
+        # 1. Download
+        resp = await self.client.post(f"/api/llm/download?t={self.token}", json={"model": "qwen-2.5-1.5b", "auto_load": False})
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertTrue(data["ok"])
+        self.assertIn("Downloaded", data["message"])
+
+        # 2. Delete
+        del_resp = await self.client.post(f"/api/llm/delete?t={self.token}", json={"model": "qwen-2.5-1.5b"})
+        self.assertEqual(del_resp.status, 200)
+        del_data = await del_resp.json()
+        self.assertTrue(del_data["ok"])
+        self.assertIn("Deleted", del_data["message"])
 
     async def test_api_llm_load_and_unload_endpoints(self):
         # 1. Load local LLM

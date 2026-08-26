@@ -17,6 +17,8 @@ Deliberately module state rather than a parameter threaded through: the thing be
 a process-wide resource — the single callback slot on the session manager — so the guard belongs
 where anything that could take it can see it.
 """
+from __future__ import annotations
+
 
 #: Who holds the slot: "carry", "answer", or "" when nothing has claimed it yet.
 _holder = ""

@@ -13,6 +13,8 @@ SECURITY
 The owner assistant is a DIFFERENT agent from the external-facing one: different system
 prompt, full access, and the owner tool registry. Never share that code path.
 """
+from __future__ import annotations
+
 
 import asyncio
 import json
@@ -717,9 +719,6 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response({"error": "unauthorised"}, status=401)
         from . import hardware, llm
         was_loaded, model_name, freed_mb = llm.unload()
-        _forget_chat()
-        hw = hardware.get_hardware_profile()
-        msg = f"Unloaded {model_name} from memory (~{freed_mb} MB RAM freed)." if was_loaded else "No local LLM was loaded in memory."
         return web.json_response({
             "ok": True,
             "message": msg,
@@ -728,6 +727,47 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             "freed_ram_mb": freed_mb,
             "hardware": hw,
         })
+
+    async def api_llm_download(request):
+        """Explicitly download the requested local LLM after capability verification."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import hardware, llm
+        body = await request.json() if request.can_read_body else {}
+        want = (body.get("model") or "").strip() or "qwen-2.5-1.5b"
+
+        cap = hardware.check_llm_capability(want)
+        if not cap.get("can_download", True):
+            return web.json_response({"ok": False, "error": cap["reason"], "blocked": True}, status=400)
+
+        try:
+            res = await asyncio.to_thread(llm.download, want)
+            auto_load = body.get("auto_load", False)
+            if auto_load and cap.get("can_load", True):
+                load_res = await asyncio.to_thread(llm.load, want)
+                res["loaded_info"] = load_res
+                res["message"] += f" Loaded {load_res['name']} into RAM."
+            return web.json_response(res)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": f"Failed to download: {exc}"}, status=500)
+
+    async def api_llm_delete(request):
+        """Delete a downloaded local LLM from disk."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import hardware, llm
+        body = await request.json() if request.can_read_body else {}
+        want = (body.get("model") or "").strip()
+        if not want:
+            return web.json_response({"ok": False, "error": "No model specified."}, status=400)
+
+        try:
+            res = await asyncio.to_thread(llm.delete, want)
+            _forget_chat()
+            return web.json_response(res)
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": f"Failed to delete: {exc}"}, status=500)
+
 
     async def api_setup_current(request):
         if not authed(request):
@@ -1371,8 +1411,10 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/api/hardware", api_hardware),
         web.post("/api/model/unload", api_model_unload),
         web.post("/api/model/load", api_model_load),
+        web.post("/api/llm/download", api_llm_download),
         web.post("/api/llm/load", api_llm_load),
         web.post("/api/llm/unload", api_llm_unload),
+        web.post("/api/llm/delete", api_llm_delete),
         web.post("/api/setup/about", api_setup_about),
         web.post("/api/setup/connector", api_setup_connector),
         web.post("/api/quit", api_quit),

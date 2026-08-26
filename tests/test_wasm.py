@@ -16,6 +16,8 @@ engine REQUIRES `environ_get` to load at all — so "grant nothing" is not avail
 that quietly passes the real environment through is the realistic mistake. It would leak the
 owner's credentials to whoever asked a question, and no other check would notice.
 """
+from __future__ import annotations
+
 
 import json
 import os

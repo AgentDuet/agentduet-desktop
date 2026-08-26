@@ -16,6 +16,8 @@ ISOLATION: every module store is redirected into a temp directory before anythin
 Without that this suite would overwrite the real capabilities.json and delete live bookings —
 which is precisely the kind of destructive surprise a "safe" unit test should never spring.
 """
+from __future__ import annotations
+
 
 import json
 import pathlib
@@ -831,8 +833,13 @@ def test_login_item() -> None:
         ok(f"{fn.__name__} takes no arguments", params == [], f"takes {params}")
 
     tmp = pathlib.Path(tempfile.mkdtemp())
-    real_unit, real_target = loginitem.LINUX_UNIT, loginitem._target
-    loginitem.LINUX_UNIT = tmp / "agentduet-desktop.service"
+    real_unit, real_mac, real_win, real_target = (
+        loginitem.LINUX_UNIT, loginitem.MAC_PLIST, loginitem.WIN_STARTUP, loginitem._target
+    )
+    test_unit = tmp / ("agentduet-desktop.plist" if sys.platform == "darwin" else "agentduet-desktop.service")
+    loginitem.LINUX_UNIT = test_unit
+    loginitem.MAC_PLIST = test_unit
+    loginitem.WIN_STARTUP = test_unit
     exe = tmp / "bin"; exe.write_text("#!/bin/sh\n"); exe.chmod(0o755)
     link = tmp / "link"; link.symlink_to(exe)
     loginitem._target = lambda: link
@@ -840,12 +847,12 @@ def test_login_item() -> None:
         ok("nothing is registered to begin with",
            "Does not start at login" in loginitem.login_item_status())
         out = loginitem.install_login_item()
-        ok("installing writes a unit and says which file", str(loginitem.LINUX_UNIT) in out)
-        ok("it starts the daemon headless", "--headless" in loginitem.LINUX_UNIT.read_text())
+        ok("installing writes a unit and says which file", str(test_unit) in out)
+        ok("it starts the daemon headless", "--headless" in test_unit.read_text())
         # A crash loop relaunching every second while answering a phone line is worse than a
         # daemon that is down and visible in `status`.
         ok("and does not restart it forever",
-           "Restart=always" not in loginitem.LINUX_UNIT.read_text())
+           "Restart=always" not in test_unit.read_text())
         ok("installing twice is idempotent",
            "Already registered" in loginitem.install_login_item())
 
@@ -857,10 +864,13 @@ def test_login_item() -> None:
         loginitem._target = lambda: link
 
         ok("removing it says which file went",
-           str(loginitem.LINUX_UNIT) in loginitem.remove_login_item())
-        ok("and the file is gone", not loginitem.LINUX_UNIT.exists())
+           str(test_unit) in loginitem.remove_login_item())
+        ok("and the file is gone", not test_unit.exists())
     finally:
-        loginitem.LINUX_UNIT, loginitem._target = real_unit, real_target
+        loginitem.LINUX_UNIT = real_unit
+        loginitem.MAC_PLIST = real_mac
+        loginitem.WIN_STARTUP = real_win
+        loginitem._target = real_target
 
     # It registers the SYMLINK. A versioned path would keep launching the old build after an
     # update, silently, because the new one is never started.

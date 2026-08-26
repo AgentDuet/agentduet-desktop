@@ -39,6 +39,7 @@ Until the channel issues transient ids, an unverified sender is namespaced by wh
 claimed, so it can never collide with the verified identity of the same name. When DDUET
 starts issuing ids, `claimed` simply becomes that id and the prefix falls away.
 """
+from __future__ import annotations
 
 #: Namespace for identities the channel has not verified. Chosen so it cannot occur in a
 #: real address or phone number, and so `verified` is derivable from the id alone — the

@@ -25,6 +25,7 @@ Model self-assessment is still not trusted for any of this: LLMs are confidently
 exactly when a handoff matters. Rules decide; the model only fills the answerable middle
 and may abstain.
 """
+from __future__ import annotations
 
 import os
 import re

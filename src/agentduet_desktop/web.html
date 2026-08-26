@@ -249,31 +249,36 @@
             <div class="lbl">Connect AI Service</div>
             <label class="sw"><input type="checkbox" data-svc="connect_ai"><span class="track"></span></label>
           </div>
-          <div>
-            <label class="fl">AI Model Selection (Local Open-Source First)</label>
-            <select id="model"></select>
+          <div style="display:flex;gap:.5rem;margin-top:.25rem">
+            <button class="btn sm" id="tabLocalModels" style="flex:1">💻 Local Open-Source Models</button>
+            <button class="btn ghost sm" id="tabCloudModels" style="flex:1">☁️ Hosted Cloud APIs</button>
           </div>
-          <div id="localLlmControls" style="display:none;margin-top:.75rem">
-            <div class="row" style="margin-bottom:.5rem">
-              <span class="lbl3" id="llmMemStatus"><span class="tag off">Not in RAM</span> Stored on host · 0 MB resident RAM</span>
+
+          <div id="localModelsView" style="margin-top:.5rem">
+            <div style="font-size:11px;color:var(--faint);margin-bottom:.5rem">
+              On-device private models dynamically recommended by the hardware adviser based on your available RAM and storage.
+            </div>
+            <div class="model-list" id="localModelCards">
+              <div style="font-size:12px;color:var(--muted)">Analyzing available hardware and models…</div>
+            </div>
+          </div>
+
+          <div id="cloudModelsView" style="display:none;margin-top:.5rem">
+            <label class="fl">Cloud AI Provider</label>
+            <select id="cloudModelSelect"></select>
+            <div style="margin-top:.75rem">
+              <label class="fl">Enter API Key</label>
               <div style="display:flex;gap:.5rem">
-                <button class="btn sm" id="btnLoadLlm" style="display:none">Load into RAM</button>
-                <button class="btn danger sm" id="btnUnloadLlm" style="display:none">Unload from RAM</button>
+                <input id="key" type="password" placeholder="paste a key" autocomplete="off">
               </div>
             </div>
-            <div style="font-size:11px;color:var(--faint)">On-device open source LLM. No cloud API key required, data stays 100% on this machine.</div>
-          </div>
-          <div id="cloudLlmControls" style="margin-top:.75rem">
-            <label class="fl">Enter API Key</label>
-            <div style="display:flex;gap:.5rem">
-              <input id="key" type="password" placeholder="paste a key" autocomplete="off">
+            <div style="margin-top:1rem;display:flex;gap:.5rem;align-items:center">
+              <button class="btn" id="doCloudModel" style="flex-shrink:0">Verify &amp; Attach Cloud Key</button>
+              <span class="spin" id="spLlm"></span>
             </div>
           </div>
-          <div style="margin-top:1rem;display:flex;gap:.5rem;align-items:center">
-            <button class="btn" id="doModel" style="flex-shrink:0">Verify &amp; Attach Model</button>
-            <span class="spin" id="spLlm"></span>
-          </div>
-          <div id="mModel"></div>
+
+          <div id="mModel" style="margin-top:.5rem"></div>
         </div>
       </div>
     </main>
@@ -481,102 +486,153 @@
         + `<span style="color:var(--emerald);display:inline-block;margin-top:.25rem">⭐ <b>Adviser Recommendation:</b> <b>${esc(llmHw.recommended_name || llmRec)}</b> is optimal for your hardware capability.</span>`;
     }
 
-    // Connect AI Model Dropdown (Local models first, then Cloud models)
-    const sel = $('model');
-    const currentModel = (D.model || {}).model || (D.model || {}).describe || '';
-    const localModels = (llmHw.models && Object.keys(llmHw.models).length) ? llmHw.models : {
-      'llama-3.2-1b': {name: 'Llama 3.2 1B', dl_gb: 1.3, ram_gb: 1.8, status: 'capable'},
-      'qwen-2.5-1.5b': {name: 'Qwen 2.5 1.5B', dl_gb: 1.2, ram_gb: 1.9, status: 'capable'},
-      'llama-3.2-3b': {name: 'Llama 3.2 3B', dl_gb: 2.0, ram_gb: 3.2, status: 'capable'},
-      'qwen-2.5-3b': {name: 'Qwen 2.5 3B', dl_gb: 2.2, ram_gb: 3.5, status: 'capable'},
-      'phi-3.5-mini': {name: 'Phi 3.5 Mini (3.8B)', dl_gb: 2.4, ram_gb: 3.6, status: 'capable'},
-      'qwen-2.5-7b': {name: 'Qwen 2.5 7B', dl_gb: 4.7, ram_gb: 6.5, status: 'capable'},
-      'mistral-7b': {name: 'Mistral 7B v0.3', dl_gb: 4.8, ram_gb: 6.8, status: 'capable'}
+    // Tab switching between Local Models and Cloud Models
+    const tabLocal = $('tabLocalModels');
+    const tabCloud = $('tabCloudModels');
+    const viewLocal = $('localModelsView');
+    const viewCloud = $('cloudModelsView');
+
+    tabLocal.onclick = () => {
+      tabLocal.className = 'btn sm';
+      tabCloud.className = 'btn ghost sm';
+      viewLocal.style.display = 'block';
+      viewCloud.style.display = 'none';
     };
+    tabCloud.onclick = () => {
+      tabCloud.className = 'btn sm';
+      tabLocal.className = 'btn ghost sm';
+      viewLocal.style.display = 'none';
+      viewCloud.style.display = 'block';
+    };
+
+    // Render Rich Local Model Cards
+    const cardsContainer = $('localModelCards');
+    const localModels = (llmHw.models && Object.keys(llmHw.models).length) ? llmHw.models : {};
+    const llmLoaded = (D.model || {}).loaded_info || (hw.loaded_llm || {});
+    const activeLoadedModel = llmLoaded.loaded ? (llmLoaded.model || '') : '';
+
+    cardsContainer.innerHTML = '';
+    Object.entries(localModels).forEach(([mid, m]) => {
+      const isLoaded = llmLoaded.loaded && (activeLoadedModel === mid || activeLoadedModel === m.id);
+      const isDownloaded = !!m.is_downloaded;
+      const isBlocked = (m.status === 'blocked') || (!m.can_download && !isDownloaded);
+      const isRec = (mid === llmRec);
+
+      const card = document.createElement('div');
+      card.className = 'model-card' + (isLoaded ? ' active-ram' : '') + (isBlocked ? ' blocked' : '');
+
+      let pillIcon = '🟢';
+      if (m.ram_pill_color === 'danger') pillIcon = '🔴';
+      else if (m.ram_pill_color === 'warning') pillIcon = '🟡';
+
+      let actionHtml = '';
+      if (isLoaded) {
+        actionHtml = `
+          <div class="model-status-indicator active">● Active in RAM (~${esc(llmLoaded.ram_mb || m.ram_mb || 0)} MB)</div>
+          <div class="model-btn-group">
+            <button class="btn danger sm" onclick="window.unloadLlm('${mid}')">Unload Model</button>
+            <button class="btn ghost sm" onclick="window.deleteLlm('${mid}')" title="Delete model files from disk">🗑️ Delete</button>
+          </div>
+        `;
+      } else if (isDownloaded) {
+        actionHtml = `
+          <div class="model-status-indicator downloaded">✓ Downloaded</div>
+          <div class="model-btn-group">
+            <button class="btn sm" onclick="window.loadLlm('${mid}')">Load Model</button>
+            <button class="btn ghost sm" onclick="window.deleteLlm('${mid}')" title="Delete model files from disk">🗑️ Delete</button>
+          </div>
+        `;
+      } else {
+        actionHtml = `
+          <div class="model-status-indicator not-downloaded">Not Downloaded</div>
+          <div class="model-btn-group">
+            ${m.can_download ?
+              `<button class="btn sm" onclick="window.downloadLlm('${mid}', true)">Download &amp; Load (${esc(m.dl_display || (m.dl_gb + ' GB'))})</button>` :
+              `<button class="btn sm" disabled title="${esc(m.reason || 'Hardware Insufficient')}">⛔ Insufficient Hardware</button>`
+            }
+          </div>
+        `;
+      }
+
+      card.innerHTML = `
+        <div class="model-card-head">
+          <div class="model-card-title-wrap">
+            <span class="brand-badge" style="background:${esc(m.brand_color || '#7c3aed')}">${esc(m.brand || 'LOCAL')}</span>
+            <span class="model-title">${esc(m.name || mid)} ${isRec ? '<span title="Hardware Adviser Recommended">⭐</span>' : ''}</span>
+          </div>
+          <span class="model-size-badge">${esc(m.dl_display || (m.dl_gb + ' GB'))}</span>
+        </div>
+        <div class="model-card-meta">
+          <span class="ram-pill ${esc(m.ram_pill_color || 'warning')}">
+            ${pillIcon} ${esc(m.ram_pill_text || ('~' + (m.ram_needed_gb || m.ram_gb || '?') + ' GB RAM'))}
+          </span>
+          <span class="speed-badge">
+            ${esc(m.speed_rating || '⚡⚡⚡')} ${esc(m.speed_tok || '')}
+          </span>
+        </div>
+        <div class="model-desc">${esc(m.description || '')}</div>
+        <div class="model-card-actions">
+          ${actionHtml}
+        </div>
+      `;
+      cardsContainer.appendChild(card);
+    });
+
+    // Populate Cloud Models
+    const cloudSel = $('cloudModelSelect');
     const cloudModels = (llmHw.cloud_models && Object.keys(llmHw.cloud_models).length) ? llmHw.cloud_models : {
       'gemini': {name: 'Google Gemini (Hosted Cloud)', key_name: 'GEMINI_API_KEY'},
       'anthropic': {name: 'Anthropic Claude (Hosted Cloud)', key_name: 'ANTHROPIC_API_KEY'},
       'dashscope': {name: 'Qwen DashScope (Hosted Cloud)', key_name: 'DASHSCOPE_API_KEY'}
     };
-
-    const prevSelVal = sel.value;
-    sel.innerHTML = '';
-    const optGroupLocal = document.createElement('optgroup');
-    optGroupLocal.label = '— Local Open-Source Models (No API Key) —';
-    Object.entries(localModels).forEach(([mid, minfo]) => {
-      const opt = document.createElement('option');
-      opt.value = mid;
-      const isRec = (mid === llmRec);
-      if (minfo.status === 'blocked') {
-        opt.disabled = true;
-        opt.textContent = `⛔ ${minfo.name} (~${minfo.ram_gb || '?'} GB RAM) [Blocked: Exceeds RAM/Disk]`;
-      } else if (isRec) {
-        opt.textContent = `⭐ ${minfo.name} (~${minfo.ram_gb || '?'} GB RAM) [Recommended]`;
-      } else {
-        opt.textContent = `${minfo.name} (~${minfo.ram_gb || '?'} GB RAM)`;
-      }
-      optGroupLocal.appendChild(opt);
-    });
-    sel.appendChild(optGroupLocal);
-
-    const optGroupCloud = document.createElement('optgroup');
-    optGroupCloud.label = '— Hosted Cloud Models (API Key Required) —';
+    cloudSel.innerHTML = '';
     Object.entries(cloudModels).forEach(([mid, minfo]) => {
       const opt = document.createElement('option');
       opt.value = mid;
       opt.textContent = minfo.name;
-      optGroupCloud.appendChild(opt);
+      cloudSel.appendChild(opt);
     });
-    sel.appendChild(optGroupCloud);
 
-    // Determine selection: keep user selection, or current config, or recommendation
-    let chosenVal = prevSelVal || '';
-    if (!chosenVal && currentModel) {
-      for (let i = 0; i < sel.options.length; i++) {
-        if (currentModel.toLowerCase().includes(sel.options[i].value.toLowerCase())) {
-          chosenVal = sel.options[i].value;
-          break;
-        }
-      }
-    }
-    if (!chosenVal) chosenVal = llmRec;
-    sel.value = chosenVal;
-
-    // Toggle local vs cloud controls
-    function updateLlmUI() {
-      const val = sel.value;
-      const isLocal = !['gemini', 'anthropic', 'dashscope'].includes(val);
-      if (isLocal) {
-        $('localLlmControls').style.display = 'block';
-        $('cloudLlmControls').style.display = 'none';
-        $('doModel').textContent = 'Attach Local Model';
-      } else {
-        $('localLlmControls').style.display = 'none';
-        $('cloudLlmControls').style.display = 'block';
-        $('doModel').textContent = 'Verify & Attach Key';
-      }
-    }
-    sel.onchange = updateLlmUI;
-    updateLlmUI();
-
-    // LLM resident RAM state
-    const llmLoaded = (D.model || {}).loaded_info || {};
-    const isLlmLoaded = !!llmLoaded.loaded;
-    const btnUnloadLlm = $('btnUnloadLlm');
-    const btnLoadLlm = $('btnLoadLlm');
-    const llmMemStatus = $('llmMemStatus');
-
-    if (isLlmLoaded) {
-      llmMemStatus.innerHTML = `<span class="tag">Loaded in RAM</span> <b style="color:var(--ink2)">${esc(llmLoaded.name || llmLoaded.model)}</b> resident (~${llmLoaded.ram_mb || 0} MB RAM)`;
-      btnUnloadLlm.style.display = 'inline-block';
-      btnLoadLlm.style.display = 'none';
-    } else {
-      llmMemStatus.innerHTML = `<span class="tag off">Not in RAM</span> Stored on host · 0 MB resident RAM`;
-      btnUnloadLlm.style.display = 'none';
-      btnLoadLlm.style.display = 'inline-block';
+    // If currently configured model is a cloud model, switch to Cloud tab by default
+    const curModelName = (D.model || {}).model || '';
+    if (curModelName && ['gemini', 'anthropic', 'dashscope'].some(c => curModelName.includes(c))) {
+      tabCloud.onclick();
+      cloudSel.value = curModelName;
     }
   }
   load();
+
+  // Model Lifecycle Global Callbacks
+  window.downloadLlm = async (mid, autoLoad = true) => {
+    say('mModel', true, `Downloading ${mid}… verifying disk and RAM headroom.`);
+    const d = await post('/api/llm/download', {model: mid, auto_load: autoLoad});
+    say('mModel', d.ok, d.message || d.error);
+    load();
+  };
+
+  window.loadLlm = async (mid) => {
+    say('mModel', true, `Loading ${mid} into resident memory…`);
+    const d = await post('/api/llm/load', {model: mid});
+    say('mModel', d.ok, d.message || d.error);
+    load();
+  };
+
+  window.unloadLlm = async (mid) => {
+    say('mModel', true, 'Unloading local LLM from memory…');
+    const d = await post('/api/llm/unload', {model: mid});
+    say('mModel', d.ok, d.message || d.error);
+    load();
+  };
+
+  window.deleteLlm = async (mid) => {
+    if (!confirm(`Are you sure you want to delete ${mid} from disk? This will reclaim storage space.`)) {
+      return;
+    }
+    say('mModel', true, `Deleting ${mid} from disk…`);
+    const d = await post('/api/llm/delete', {model: mid});
+    say('mModel', d.ok, d.message || d.error);
+    load();
+  };
 
   $('quality').onchange = async () => {
     if ($('quality').value === 'ane') {
@@ -610,22 +666,6 @@
     load();
   };
 
-  $('btnUnloadLlm').onclick = async () => {
-    $('btnUnloadLlm').disabled = true;
-    const d = await post('/api/llm/unload', {});
-    $('btnUnloadLlm').disabled = false;
-    say('mModel', d.ok, d.message);
-    load();
-  };
-
-  $('btnLoadLlm').onclick = async () => {
-    $('btnLoadLlm').disabled = true;
-    const d = await post('/api/llm/load', {model: $('model').value});
-    $('btnLoadLlm').disabled = false;
-    say('mModel', d.ok, d.message || d.error);
-    load();
-  };
-
   $('doTest').onclick = async () => {
     $('testOut').textContent = 'Checking the engine…';
     const d = await fetch(`/api/setup/stt?t=${T}`).then(r => r.json()).catch(() => ({}));
@@ -644,21 +684,17 @@
       + 'Running it on a sample is not built yet — it runs after a real call, on a queue.';
   };
 
-  $('doModel').onclick = async () => {
-    const modelVal = $('model').value;
-    const isLocal = !['gemini', 'anthropic', 'dashscope'].includes(modelVal);
-    let key = '';
-    if (!isLocal) {
-      key = $('key').value.trim();
-      if (!key) { say('mModel', false, 'Paste an API key first for cloud models.'); return; }
-    }
-    $('doModel').disabled = true;
+  $('doCloudModel').onclick = async () => {
+    const modelVal = $('cloudModelSelect').value;
+    const key = $('key').value.trim();
+    if (!key) { say('mModel', false, 'Paste an API key first for cloud models.'); return; }
+    $('doCloudModel').disabled = true;
     $('spLlm').textContent = 'verifying & attaching…';
     const d = await post('/api/setup/model', {model: modelVal, key});
-    $('doModel').disabled = false;
+    $('doCloudModel').disabled = false;
     $('spLlm').textContent = '';
     say('mModel', d.ok, d.message);
-    if (d.ok && !isLocal) $('key').value = '';
+    if (d.ok) $('key').value = '';
     load();
   };
 </script>

@@ -1,4 +1,4 @@
-"""Tests for Hardware Profiling, Dynamic Model Adviser, Capability Gating, and Model Unloading."""
+from __future__ import annotations
 
 import asyncio
 import gc
@@ -16,6 +16,12 @@ ROOT = HERE.parent
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
+
+try:
+    import aiohttp
+    HAS_AIOHTTP = True
+except ImportError:
+    HAS_AIOHTTP = False
 
 from agentduet_desktop import hardware, llm, paths, transcribe
 from agentduet_desktop.hardware import (
@@ -227,6 +233,7 @@ class TestModelUnloadLifecycle(unittest.TestCase):
         self.assertEqual(len(llm._cached), 0)
 
 
+@unittest.skipUnless(HAS_AIOHTTP, "aiohttp required for web tests")
 class TestWebAPIHardwareAndUnload(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         # Set up a test aiohttp application

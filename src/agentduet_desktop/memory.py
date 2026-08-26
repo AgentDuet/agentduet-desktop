@@ -23,6 +23,7 @@ What the MODEL sees is short-lived on purpose: an hours-old exchange resurfacing
 question is noise, not context. What is RETAINED is longer, because the asker's own transcript
 is restored from it — see the two windows below.
 """
+from __future__ import annotations
 
 import json
 import os

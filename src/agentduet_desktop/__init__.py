@@ -3,6 +3,8 @@
 The framework. Everything the owner can change lives in $AGENTDUET_HOME (default ~/.dduet),
 seeded once from `templates/`; working capabilities to copy are in `examples/`.
 """
+from __future__ import annotations
+
 
 __version__ = "0.1.0a5"
 

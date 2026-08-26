@@ -25,6 +25,8 @@ Not a service manager. It asks the operating system to run one command at login;
 whether the daemon is healthy stays with `service_status`. A login item that lies about the
 daemon being up would be worse than none.
 """
+from __future__ import annotations
+
 
 import os
 import pathlib
@@ -176,16 +178,19 @@ def remove_login_item() -> str:
 
 def login_item_status() -> str:
     """Whether the daemon is registered to start at login — and NOT whether it is running."""
-    path = _unit_path()
-    if not path.is_file():
+    try:
+        path = _unit_path()
+        if not path.is_file():
+            return "Does not start at login. `install_login_item` sets that up."
+        exe = _target()
+        body = path.read_text()
+        stale = exe is not None and str(exe) not in body
+        out = [f"Starts at login — {path}"]
+        if stale:
+            # The failure that would otherwise be silent: an old path still registered, so every
+            # login launches a binary that has moved or been replaced.
+            out.append(f"  BUT it points somewhere else, not {exe}. Run install_login_item to fix.")
+        out.append("  whether it is running right now is a separate question — see service_status")
+        return "\n".join(out)
+    except OSError:
         return "Does not start at login. `install_login_item` sets that up."
-    exe = _target()
-    body = path.read_text()
-    stale = exe is not None and str(exe) not in body
-    out = [f"Starts at login — {path}"]
-    if stale:
-        # The failure that would otherwise be silent: an old path still registered, so every
-        # login launches a binary that has moved or been replaced.
-        out.append(f"  BUT it points somewhere else, not {exe}. Run install_login_item to fix.")
-    out.append("  whether it is running right now is a separate question — see service_status")
-    return "\n".join(out)

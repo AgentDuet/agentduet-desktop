@@ -21,6 +21,7 @@ session ends. A child of that would die with it. So the daemon is started fully 
 its own session, with its output going to a file — not inherited pipes, which would also tie it
 to the parent.
 """
+from __future__ import annotations
 
 import logging
 import os

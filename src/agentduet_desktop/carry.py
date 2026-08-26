@@ -27,6 +27,8 @@ CONSENT IS NOT HANDLED HERE, and cannot be. Whether the parties must be told, an
 depends on where each of them is. This module records what it is told to record; the setting
 that switches it on says so in the file the owner reads.
 """
+from __future__ import annotations
+
 
 import asyncio
 import logging

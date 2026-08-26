@@ -4,6 +4,8 @@ The third leg of the POC. Run it on a cron/timer; for now, run it by hand.
     python digest.py            # today
     python digest.py 2026-07-27 # a specific day
 """
+from __future__ import annotations
+
 
 import json
 import pathlib

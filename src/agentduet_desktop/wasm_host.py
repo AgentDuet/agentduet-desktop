@@ -18,6 +18,7 @@ exactly the test that manufactures confidence, so the shim is pinned by a source
 
 See docs/wasm-host-brief.md and the WASM section of docs/design.md.
 """
+from __future__ import annotations
 
 import json
 import logging

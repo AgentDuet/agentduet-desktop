@@ -22,6 +22,8 @@ not the win. The defects that actually shipped were:
 So this checks VALUES, not just presence: blank, bracketed, or still-unrendered text is refused
 at render time. That is the class of bug that reached a real caller.
 """
+from __future__ import annotations
+
 
 import pathlib
 import re

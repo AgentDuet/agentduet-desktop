@@ -21,6 +21,7 @@ Staleness is tracked two ways, deliberately:
 A folder can be freshly scanned but long-since indexed; that's the healthy case and the
 two timestamps make it legible.
 """
+from __future__ import annotations
 
 import hashlib
 import json
@@ -63,6 +64,7 @@ def root_of(folder: str) -> pathlib.Path:
 def files_under(root: pathlib.Path):
     """Readable files genuinely inside `root`. Symlinks pointing out are rejected —
     the allowlist is only a boundary if it cannot be walked out of."""
+    root = root.resolve()
     if not root.is_dir():
         return
     for p in sorted(root.rglob("*")):

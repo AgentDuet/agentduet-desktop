@@ -16,6 +16,8 @@ for Stanley) and the owner is not present to correct a wrong guess made to a thi
 
 `.env` still wins where set, so an existing setup keeps working.
 """
+from __future__ import annotations
+
 
 import os
 import pathlib

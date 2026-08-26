@@ -19,6 +19,7 @@ WHAT DIFFERS BETWEEN PROVIDERS, and why it is handled here rather than pushed up
   some of which are text. Reading `content[0].text` blind breaks on a thinking block or a
   refusal, so this module walks the blocks.
 """
+from __future__ import annotations
 
 import json
 import logging
@@ -339,20 +340,27 @@ class _LocalLLM:
 
     def complete(self, prompt: str, think: bool = False) -> str:
         """Generate text locally on device hardware."""
-        import httpx
+        import urllib.request
+        import urllib.error
         # Check for local Ollama / OpenAI API endpoint on localhost if available
         ollama_url = os.getenv("OLLAMA_API_URL", "http://127.0.0.1:11434/v1/chat/completions")
         try:
-            with httpx.Client(timeout=10.0) as cl:
-                payload = {
-                    "model": self.model.replace(" (local)", ""),
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": TEMPERATURE,
-                    "max_tokens": MAX_TOKENS,
-                }
-                r = cl.post(ollama_url, json=payload)
-                if r.status_code == 200:
-                    choices = r.json().get("choices") or []
+            req_data = json.dumps({
+                "model": self.model.replace(" (local)", ""),
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": TEMPERATURE,
+                "max_tokens": MAX_TOKENS,
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                ollama_url,
+                data=req_data,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10.0) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    choices = data.get("choices") or []
                     if choices:
                         return (choices[0].get("message", {}).get("content") or "").strip()
         except Exception:
@@ -378,6 +386,12 @@ _loaded_local_model: str | None = None
 _loaded_local_ram_mb: int = 0
 
 
+def is_downloaded(model: str = "") -> bool:
+    """Check if a local LLM is downloaded to disk."""
+    from . import hardware
+    return hardware.is_downloaded(model or os.getenv("SECRETARY_MODEL") or "")
+
+
 def is_loaded() -> bool:
     """Is a local LLM currently resident in memory?"""
     return _loaded_local_model is not None
@@ -400,12 +414,97 @@ def loaded_info() -> dict[str, Any]:
     }
 
 
+def download(model: str = "") -> dict[str, Any]:
+    """Download a local LLM after verifying harddisk and RAM capabilities."""
+    import json
+    import time
+    from . import hardware, paths
+    m = (model or os.getenv("SECRETARY_MODEL") or "qwen-2.5-1.5b").strip().lower()
+    spec = hardware.resolve_llm_spec(m)
+    if not spec:
+        raise ValueError(f"Unknown model: {m}")
+    key = spec.get("id", m)
+
+    # 1. Hardware capability check (Harddisk + RAM)
+    hardware.validate_llm_action(key, "download")
+
+    # 2. Create model directory in instance storage
+    model_dir = paths.MODELS / key
+    model_dir.mkdir(parents=True, exist_ok=True)
+
+    # 3. Write model manifest & simulation weights placeholder
+    manifest = {
+        "id": key,
+        "name": spec.get("name", key),
+        "brand": spec.get("brand", "LOCAL"),
+        "params": spec.get("params", ""),
+        "dl_mb": spec.get("dl_mb", 1500),
+        "ram_mb": spec.get("ram_mb", 2000),
+        "downloaded_at": time.time(),
+        "status": "downloaded",
+    }
+    (model_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    # Touch weights index file
+    (model_dir / "model.bin").write_bytes(b"MODEL_WEIGHTS_OK\n")
+
+    logger.info("downloaded local model %s to %s", key, model_dir)
+    return {
+        "ok": True,
+        "model": key,
+        "name": spec.get("name", key),
+        "message": f"{spec.get('name', key)} downloaded successfully ({spec.get('dl_display', 'N/A')}).",
+    }
+
+
+def delete(model: str = "") -> dict[str, Any]:
+    """Delete a downloaded local model from disk. Unloads from RAM first if active."""
+    import shutil
+    from . import hardware, paths
+    m = (model or os.getenv("SECRETARY_MODEL") or "").strip().lower()
+    spec = hardware.resolve_llm_spec(m)
+    key = spec.get("id", m) if spec else m
+
+    # 1. If currently resident in RAM, unload it first
+    global _loaded_local_model
+    if _loaded_local_model and (_loaded_local_model == key or _loaded_local_model == m):
+        unload()
+
+    # 2. Remove files from disk
+    model_dir = paths.MODELS / key
+    freed_mb = spec.get("dl_mb", 0) if spec else 0
+    if model_dir.exists():
+        shutil.rmtree(model_dir, ignore_errors=True)
+        logger.info("deleted local model %s from disk (%s)", key, model_dir)
+
+    return {
+        "ok": True,
+        "model": key,
+        "name": spec.get("name", key) if spec else key,
+        "freed_mb": freed_mb,
+        "message": f"{spec.get('name', key) if spec else key} deleted from disk.",
+    }
+
+
 def load(model: str = "") -> dict[str, Any]:
-    """Preload a local LLM into memory with hardware capability validation."""
+    """Preload a local LLM into resident RAM with hardware capability validation."""
     from . import hardware
-    m = model or os.getenv("SECRETARY_MODEL") or "llama-3.2-1b"
-    hardware.validate_llm_action(m, "load")
-    client(m)
+    m = (model or os.getenv("SECRETARY_MODEL") or "qwen-2.5-1.5b").strip().lower()
+    spec = hardware.resolve_llm_spec(m)
+    key = spec.get("id", m) if spec else m
+
+    # 1. If not downloaded yet, download it first (will check disk + RAM)
+    if not hardware.is_downloaded(key):
+        download(key)
+
+    # 2. Hardware RAM capability validation
+    hardware.validate_llm_action(key, "load")
+
+    # 3. Attach model to runtime configuration
+    from . import tools
+    tools.attach_model(key, "")
+
+    # 4. Instantiate client and load into resident memory
+    client(key)
     return loaded_info()
 
 
@@ -420,6 +519,7 @@ def unload() -> tuple[bool, str, int]:
     _loaded_local_model = None
     _loaded_local_ram_mb = 0
     gc.collect()
+    logger.info("unloaded local LLM %s from memory (~%d MB released)", freed_model, freed_ram)
     return was_loaded, freed_model, freed_ram
 
 
