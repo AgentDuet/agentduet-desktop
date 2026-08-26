@@ -20,15 +20,17 @@
   .head p{font-size:11px;color:var(--muted);margin-top:.1rem;}
   .spin{font-family:var(--mono);font-size:11px;color:var(--faint);margin-left:.5rem;}
   .acts{display:flex;align-items:center;}
-  .dbg{display:flex;align-items:center;gap:.6rem;font-size:.75rem;color:#cbd5e1;cursor:pointer;}
-  .dbg input{width:auto;accent-color:var(--accent);}
+  .card .row + .row{margin-top:.75rem;padding-top:.75rem;
+    border-top:1px solid rgba(255,255,255,.05);}
   .mrow{display:flex;align-items:center;gap:.7rem;padding:.6rem .7rem;border-radius:.6rem;
     border:1px solid var(--line);background:var(--slate900);margin-top:.4rem;cursor:pointer;}
   .mrow:hover{border-color:rgba(59,130,246,.35);}
   .mrow.on{border-color:rgba(59,130,246,.55);background:rgba(37,99,235,.12);}
   .mrow .nm{font-family:var(--mono);font-size:.78rem;color:var(--ink2);flex:1;}
-  .mrow .sz{font-family:var(--mono);font-size:11px;color:var(--faint);}
-  .fitpill{font-size:10px;font-weight:700;padding:.15rem .5rem;border-radius:999px;}
+  .mrow .sz{font-family:var(--mono);font-size:11px;color:var(--faint);
+    min-width:4.2rem;text-align:right;font-variant-numeric:tabular-nums;}
+  .fitpill{font-size:10px;font-weight:700;padding:.15rem .5rem;border-radius:999px;
+    min-width:3.9rem;text-align:center;}
   .fitpill.fits{background:rgba(16,185,129,.2);color:var(--emerald);}
   .fitpill.tight{background:rgba(234,179,8,.18);color:#facc15;}
   .fitpill.no{background:rgba(239,68,68,.16);color:#fca5a5;}
@@ -41,6 +43,34 @@
   .mrow .act.use{border-color:rgba(59,130,246,.35);color:var(--blue400);}
   .inuse{font-size:10px;font-weight:700;color:var(--emerald);
     background:rgba(16,185,129,.18);padding:.15rem .5rem;border-radius:999px;}
+
+  /* One choice, two shapes. The hosted fields are not "extra" — they are the OTHER
+     branch, and showing both at once asked the owner to read past the half that did
+     not apply to them. */
+  .seg{display:inline-flex;background:var(--slate900);border:1px solid var(--line);
+    border-radius:.6rem;padding:.2rem;gap:.2rem;align-self:flex-start;}
+  .seg button{font:inherit;font-size:.75rem;padding:.35rem .85rem;border-radius:.45rem;
+    border:0;background:transparent;color:var(--muted);cursor:pointer;}
+  .seg button.on{background:var(--accent);color:#fff;font-weight:600;}
+  .pickrow{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;}
+
+  /* Managing models is a DETOUR, not a setting. It only happens when someone is changing
+     one, and it needs a lot of room to say why each model does or does not fit — so it
+     lives in a panel over the page rather than in the page. */
+  .ovl{position:fixed;inset:0;background:rgba(2,6,23,.75);display:flex;
+    align-items:center;justify-content:center;padding:1.5rem;z-index:50;}
+  .ovl[hidden]{display:none;}
+  .sheet{background:var(--card);border:1px solid var(--line);border-radius:.9rem;
+    width:100%;max-width:38rem;max-height:100%;display:flex;flex-direction:column;
+    box-shadow:0 24px 60px rgba(0,0,0,.55);}
+  .shead{display:flex;align-items:center;justify-content:space-between;gap:1rem;
+    padding:1rem 1.25rem;border-bottom:1px solid var(--line);}
+  .shead h2{font-size:.95rem;}
+  .shead p{font-size:11px;color:var(--muted);margin-top:.1rem;}
+  .sbody{padding:1.25rem;overflow-y:auto;display:flex;flex-direction:column;gap:.5rem;}
+  .x{background:none;border:0;color:var(--muted);cursor:pointer;font:inherit;
+    display:flex;align-items:center;padding:.25rem;border-radius:.4rem;}
+  .x:hover{color:var(--ink2);background:var(--slate800);}
 </style>
 </head>
 <body>
@@ -62,54 +92,49 @@
       <div class="card">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">person</span></div>
-          <div><h2>You</h2><p>Given to the speech engine so it hears names correctly — priming
-            it with your name measurably beat moving to a bigger model.</p></div>
+          <div><h2>You</h2></div>
         </div>
         <div class="grp"><label class="fl">Name</label><input type="text" id="name"></div>
         <div class="acts"><button class="btn" id="saveYou">Save</button></div>
-        <p class="note">Pronoun, callback number and the never-say list belong to the answering
-          agent — how it refers to you to a caller, where it rings you back, what it must not
-          repeat. Nobody is answered here, so they are not on this page. They still live in
-          <code>settings.md</code> for anyone running that mode.</p>
+
         <div id="mYou"></div>
       </div>
 
       <div class="card">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">smart_toy</span></div>
-          <div><h2>Model</h2><p>Used to answer calls, and to summarise a transcript
-            afterwards.</p></div>
+          <div><h2>Model</h2></div>
         </div>
         <div class="state" id="modelState">…</div>
 
         <div class="grp">
-          <label class="fl">On this machine</label>
-          <p class="mwhy" style="margin:0 0 .2rem">Already downloaded. Switching is instant —
-            there is nothing to fetch and no key to check.</p>
-          <div class="state" id="machineState">…</div>
-          <div id="localList"></div>
-          <label class="fl" style="margin-top:1rem">Download another</label>
-          <div id="pullList"></div>
-          <div id="mPull"></div>
+          <div class="seg" id="modelWhere">
+            <button type="button" class="on" data-where="local">On this machine</button>
+            <button type="button" data-where="hosted">Hosted provider</button>
+          </div>
+
+          <div class="pickrow" id="paneLocal">
+            <button class="btn ghost" id="openModels">Choose a model…</button>
+          </div>
+
+          <div class="grp" id="paneHosted" hidden>
+            <div><label class="fl">Model name</label>
+              <input type="text" id="model"
+                     placeholder="gemini-3.1-flash, claude-sonnet-5, qwen3.6-flash"></div>
+            <div><label class="fl">API key</label>
+              <input type="password" id="key" autocomplete="off"></div>
+            <div class="acts"><button class="btn" id="saveModel">Check and save</button>
+              <span class="spin" id="spModel"></span></div>
+          </div>
         </div>
 
-        <div class="grp">
-          <label class="fl">Or a hosted provider</label>
-          <input type="text" id="model" placeholder="gemini-3.1-flash, claude-sonnet-5, qwen3.6-flash">
-          <input type="password" id="key" placeholder="API key" autocomplete="off">
-        </div>
-        <div class="acts"><button class="btn" id="saveModel">Check and save</button>
-          <span class="spin" id="spModel"></span></div>
         <div id="mModel"></div>
-        <p class="note">A local model keeps transcripts on this machine. A hosted one is faster
-          and sends them to that provider.</p>
       </div>
 
       <div class="card">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">dialpad</span></div>
-          <div><h2>B3 connector</h2><p>Gives this install its number and message channel.
-            Without it everything local still works — it just never hears from anyone.</p></div>
+          <div><h2>AgentDuet account</h2></div>
         </div>
         <div class="state" id="connState">…</div>
         <div class="grp"><label class="fl">API key</label><input type="password" id="cKey"
@@ -119,15 +144,12 @@
         <div class="acts"><button class="btn" id="saveConn">Check and save</button>
           <span class="spin" id="spConn"></span></div>
         <div id="mConn"></div>
-        <p class="note">One client per connector: if another copy is running against the same
-          connector, they will fight over inbound routing.</p>
       </div>
 
       <div class="card">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">call</span></div>
-          <div><h2>What happens to a call</h2><p>Only one applies — a call is either carried or
-            answered, never both. One connector has one handler.</p></div>
+          <div><h2>What happens to a call</h2></div>
         </div>
         <label class="pick"><input type="radio" name="calls" value="carry">
           <b>Carry it to me</b>
@@ -139,45 +161,37 @@
         <div class="acts"><button class="btn" id="saveCalls">Save</button>
           <span class="spin" id="spCalls"></span></div>
         <div id="mCalls"></div>
-        <p class="note">Carrying records two people talking. Whether they must be told, and by
-          whom, depends on where you and they are — this software does not announce it.</p>
       </div>
 
       <div class="card">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">call</span></div>
-          <div><h2>Record calls</h2><p>Both sides of a carried call are saved to this
-            machine.</p></div>
+          <div><h2>Record calls</h2></div>
         </div>
         <div class="row">
-          <div class="lbl">Record calls</div>
+          <div class="lbl">Save both sides to this machine</div>
           <label class="sw"><input type="checkbox" id="recCalls"><span class="track"></span></label>
         </div>
         <div class="state" id="recDir">…</div>
         <div id="mRec"></div>
-        <p class="note">You are recording two people. Whether they must be told, and by whom,
-          depends on where you and they are — this software does not announce it.</p>
       </div>
 
       <div class="card">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">chat_bubble</span></div>
-          <div><h2>Record messages</h2><p>Archive SMS and mobile messages beside your
-            calls.</p></div>
+          <div><h2>Record messages</h2></div>
         </div>
         <div class="row">
-          <div class="lbl">Record messages</div>
+          <div class="lbl">Save SMS beside your calls</div>
           <label class="sw"><input type="checkbox" id="recMsgs" disabled><span class="track"></span></label>
         </div>
-        <p class="note">Not built yet. We receive WhatsApp through the SDK, not SMS — this is a
-          channel we do not ingest, rather than a screen nobody has drawn.</p>
+        <div class="state">Not built yet.</div>
       </div>
 
       <div class="card">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">graphic_eq</span></div>
-          <div><h2>Speech recognition</h2><p>With a model key the hosted engine does it; with no
-            key it runs here, and nothing leaves the machine.</p></div>
+          <div><h2>Speech recognition</h2></div>
         </div>
         <div class="state" id="sttState">…</div>
         <div class="grp"><label class="fl">Language of your calls</label>
@@ -189,9 +203,6 @@
             <option value="ms">Malay</option>
             <option value="th">Thai</option>
           </select></div>
-        <p class="note">Guessing is unreliable on phone audio. Left to guess, both models we
-          ship read a Singapore English call as Malay — confidently — and translated it, which
-          reversed the meaning. Set this.</p>
         <div class="grp"><label class="fl">How hard it tries</label>
           <select id="quality">
             <option value="fast">fast — quickest, smallest download</option>
@@ -199,8 +210,8 @@
             <option value="accurate">accurate — better</option>
             <option value="max">max — best, and the largest</option>
           </select></div>
-        <div class="grp"><label class="fl">Test the engine</label>
-          <div class="acts"><button class="btn ghost" id="doTest">Test local transcription</button>
+        <div class="grp">
+          <div class="acts"><button class="btn ghost" id="doTest">Test transcription</button>
             <span class="spin" id="spTest"></span></div>
           <div id="mTest"></div></div>
         <div class="acts"><button class="btn" id="saveQuality">Save</button>
@@ -208,14 +219,12 @@
           <button class="btn ghost" id="doStt" hidden style="margin-left:.5rem">Download it now</button>
           <span class="spin" id="spStt"></span></div>
         <div id="mStt"></div>
-        <p class="note">Transcribing happens after a call, on a queue, so nothing waits for it.
-          Your name above is given to the engine, and measurably improves how names are heard.</p>
       </div>
 
       <div class="card">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">description</span></div>
-          <div><h2>What you do</h2><p>Learned by running, not by filling in a form.</p></div>
+          <div><h2>What you do</h2></div>
         </div>
         <div class="state" id="doesState">…</div>
       </div>
@@ -223,8 +232,7 @@
       <div class="card" id="installCard" hidden>
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">download</span></div>
-          <div><h2>Install</h2><p>Puts this build somewhere permanent so it starts again after
-            a reboot, and so the copy you downloaded can be moved.</p></div>
+          <div><h2>Install</h2></div>
         </div>
         <div class="state" id="instState">…</div>
         <div class="acts"><button class="btn" id="doInstall">Install</button>
@@ -234,23 +242,42 @@
 
       <div class="card">
         <div class="head">
-          <div class="tile"><span class="material-symbols-rounded">restart_alt</span></div>
-          <div><h2>Run setup again</h2><p>Opens the welcome and storage screens. Everything on
-            this page stays as it is.</p></div>
+          <div class="tile"><span class="material-symbols-rounded">tune</span></div>
+          <div><h2>Advanced</h2></div>
         </div>
-        <div class="acts"><button class="btn ghost" id="rerun">Run setup again</button></div>
-        <p class="note">Setup no longer asks for anything it could overwrite — sign-in, the
-          storage folder, and finishing. Nothing here is cleared by walking through it again.</p>
+        <div class="row">
+          <div class="lbl">Show debug detail</div>
+          <label class="sw"><input type="checkbox" id="debug"><span class="track"></span></label>
+        </div>
+        <div class="row">
+          <div class="lbl">Walk through setup again</div>
+          <button class="btn ghost" id="rerun">Run setup</button>
+        </div>
       </div>
 
-      <div class="card">
-        <div class="head">
-          <div class="tile"><span class="material-symbols-rounded">bug_report</span></div>
-          <div><h2>Diagnostics</h2><p>Extra detail in the owner's view.</p></div>
-        </div>
-        <label class="dbg"><input type="checkbox" id="debug"> Show debug detail</label>
-      </div>
+    </div>
+  </div>
+</div>
 
+<!-- Model manager. Opens over the page; nothing here is a setting to scan past. -->
+<div class="ovl" id="ovlModels" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="Choose a model">
+    <div class="shead">
+      <div><h2>Models on this machine</h2></div>
+      <button class="x" id="closeModels" aria-label="Close">
+        <span class="material-symbols-rounded">close</span></button>
+    </div>
+    <div class="sbody">
+      <div class="state" id="machineState">…</div>
+      <div id="localList"></div>
+      <div id="pullList"></div>
+      <div class="frow" style="margin-top:.5rem">
+        <input type="text" id="anyModel" placeholder="or any Ollama name, e.g. mistral:7b">
+        <button class="btn ghost" id="getAny" style="flex-shrink:0">Get it</button>
+      </div>
+      <p class="mwhy"><a href="https://ollama.com/library" target="_blank"
+        rel="noreferrer">ollama.com/library</a></p>
+      <div id="mPull"></div>
     </div>
   </div>
 </div>
@@ -286,7 +313,7 @@
   $('debug').onchange = () => post('/api/ui', {debug: $('debug').checked});
   $('rerun').onclick = () => { location.href = '/setup?t=' + T + '&from=settings'; };
 
-  (async () => {
+  async function refreshCurrent(){
     const [cr, sr] = await Promise.all([
       fetch(`/api/setup/current?t=${T}`), fetch(`/api/state?t=${T}`)]);
     const cur = cr.ok ? await cr.json() : {};
@@ -299,10 +326,14 @@
       ? cur.does.split('\n').length + ' fact(s) recorded: ' + cur.does.split('\n')[0]
       : 'nothing recorded yet';
     $('modelState').textContent = cur.model || 'unknown';
-    $('model').placeholder = cur.model_name || 'qwen3.6-flash';
+    // Only prefill from the current model when it is a hosted one — offering a local model
+    // as the example here suggests something that would fail.
+    if (cur.model_name && !/, on this machine$/.test(cur.model || ''))
+      $('model').placeholder = cur.model_name;
     $('connState').textContent = cur.connector || 'unknown';
     if (cur.connector_uuid) $('cUuid').value = cur.connector_uuid;
-  })();
+  }
+  refreshCurrent();
 
   $('saveYou').onclick = async () => {
     $('saveYou').disabled = true;
@@ -322,7 +353,7 @@
     const d = await post('/api/setup/model', {model: $('model').value.trim(), key});
     $('saveModel').disabled = false; $('spModel').textContent = '';
     say('mModel', d.ok, d.message);
-    if (d.ok) { $('key').value = ''; $('modelState').textContent = 'just changed'; }
+    if (d.ok) { $('key').value = ''; refreshCurrent(); }
   };
 
   $('saveConn').onclick = async () => {
@@ -351,8 +382,8 @@
     if (!d || d.error === 'unauthorised') return;
     const st = $('sttState');
     if (!d.needed) {
-      st.textContent = 'A model key is attached, so the hosted engine transcribes. '
-        + 'Nothing is downloaded.';
+      st.textContent = 'Your DashScope key transcribes these, on Alibaba\'s servers. '
+        + 'Nothing is downloaded and nothing runs here.';
       $('doStt').hidden = true;
     } else if (!d.installed) {
       st.textContent = 'The on-machine engine is not installed in this build.';
@@ -420,7 +451,18 @@
     $('recDir').innerHTML = 'Saved to <code>' + esc((d.dirs || {}).calls || '?') + '</code>';
   }
   fetch(`/api/panel?t=${T}`).then(r => r.json()).then(svcRender).catch(() => {});
+  // The only line of prose removed from this page that was not decoration. It is not a hint
+  // about a control — it is a consequence the owner cannot know from the switch, and it is
+  // only true at the moment they turn it ON. So it moved from a paragraph nobody reads into
+  // the one instant it applies.
   $('recCalls').onchange = async () => {
+    if ($('recCalls').checked && !confirm(
+        'This records both people on the call.\n\n'
+        + 'Whether they have to be told, and by whom, depends on where you and they are. '
+        + 'AgentDuet does not announce it.')) {
+      $('recCalls').checked = false;
+      return;
+    }
     const d = await post('/api/setup/setting',
                          {field: 'record_calls', value: $('recCalls').checked ? 'yes' : 'no'});
     if (!d.ok) $('recCalls').checked = !$('recCalls').checked;
@@ -431,11 +473,34 @@
     const d = await fetch(`/api/setup/stt?t=${T}`).then(r => r.json()).catch(() => ({}));
     $('spTest').textContent = '';
     if (!d.installed) return say('mTest', false, 'The on-machine engine is not in this build.');
-    if (!d.needed) return say('mTest', true, 'A model key is attached, so the hosted engine transcribes.');
+    if (!d.needed) return say('mTest', true,
+      'Your DashScope key transcribes these, on Alibaba\'s servers.');
     if (!d.cached) { await post('/api/setup/stt', {}); return say('mTest', true,
       `${d.model} is not downloaded yet (about ${d.mb} MB). Downloading now.`); }
     say('mTest', true, `${d.model} is downloaded and ready on this machine.`);
   };
+
+  // ---- one model, two places it can live ----------------------------------------------
+  // The card asks WHERE first and shows only that branch. Hosted needs a key; local needs a
+  // download. Showing both sets of controls at once made the owner read past the half that
+  // did not apply, and made "which one am I actually on?" a question the page did not answer.
+  let where = 'local', touched = false;
+  function setWhere(w){
+    where = w;
+    $('modelWhere').querySelectorAll('button')
+      .forEach(b => b.classList.toggle('on', b.dataset.where === w));
+    $('paneLocal').hidden = w !== 'local';
+    $('paneHosted').hidden = w !== 'hosted';
+  }
+  $('modelWhere').querySelectorAll('button')
+    .forEach(b => b.onclick = () => { touched = true; setWhere(b.dataset.where); });
+
+  const ovl = $('ovlModels');
+  const closeOvl = () => { ovl.hidden = true; };
+  $('openModels').onclick = () => { ovl.hidden = false; loadModels(); };
+  $('closeModels').onclick = closeOvl;
+  ovl.onclick = e => { if (e.target === ovl) closeOvl(); };   // click the dim to dismiss
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeOvl(); });
 
   // ---- local models, sized against this machine --------------------------------------------
   // A weight in GB is not a decision. "4.9 GB, and you have 10 usable" is.
@@ -448,16 +513,21 @@
       + `<span style="color:var(--faint)">About <b>${m.budget_gb} GB</b> is a reasonable budget `
       + `for a model, leaving room for everything else you have open. `
       + `<b>${m.available_gb} GB</b> is free right now.</span>`;
+    // Open on the branch the owner is already on.
+    if (!touched) setWhere(d.provider === 'ollama'
+      || (d.local || []).some(x => x.name === d.current) ? 'local' : 'hosted');
 
     if (!d.ollama) {
       $('localList').innerHTML = '<p class="mwhy">Ollama is not running, so there is nothing '
         + 'local to offer. Start it (or install it) and reopen this page — we look at '
         + esc(d.ollama_host) + '.</p>';
+      $('pullList').innerHTML = '';
       return;
     }
     if (!(d.local || []).length) {
       $('localList').innerHTML = '<p class="mwhy">Ollama is running but has no models pulled. '
         + '<code>ollama pull qwen2.5:3b</code> is a small one to start with.</p>';
+      $('pullList').innerHTML = '';
       return;
     }
     // ALREADY ON DISK — clicking one swaps to it immediately, because there is nothing to
@@ -465,23 +535,24 @@
     // EVERY ACTION IS A BUTTON. Selection used to be a click on the model NAME, which nothing
     // announced — the only thing that looked pressable in a row was "delete", so the one
     // destructive action was the discoverable one.
-    $('localList').innerHTML = d.local.map(x => `
+    $('localList').innerHTML = '<label class="fl">Downloaded</label>' + d.local.map(x => `
       <div class="mrow ${x.name === d.current ? 'on' : ''}">
         <span class="nm">${x.name === d.current ? '● ' : ''}${esc(x.name)}</span>
-        <span class="sz">${x.size_gb} GB</span>
+        <span class="sz">${x.size_gb.toFixed(1)} GB</span>
         <span class="fitpill ${x.fit}">${x.fit === 'no' ? 'too big' : x.fit}</span>
         ${x.name === d.current
           ? '<span class="inuse">in use</span>'
           : `<button class="act use" data-pick="${esc(x.name)}">use this</button>
              <button class="act" data-del="${esc(x.name)}">delete</button>`}
       </div>
-      <p class="mwhy">${esc(x.why)}${x.now_ok ? '' :
-          ' <span style="color:#facc15">' + esc(x.now_why) + '</span>'}</p>`).join('');
+      ${x.fit === 'fits' && x.now_ok ? '' : `<p class="mwhy">${esc(x.why)}${x.now_ok ? '' :
+          ' <span style="color:#facc15">' + esc(x.now_why) + '</span>'}</p>`}`).join('');
     $('localList').querySelectorAll('[data-pick]').forEach(el => {
       el.onclick = async () => {
         const r = await post('/api/setup/model',
                              {model: el.dataset.pick, key: 'local', provider: 'ollama'});
         say('mModel', r.ok, r.message);
+        if (r.ok) { closeOvl(); refreshCurrent(); }
         loadModels();
       };
     });
@@ -498,15 +569,18 @@
     // NOT YET ON DISK. Sized the same way, so the decision to spend gigabytes is made before
     // the download rather than after it.
     const busy = (d.pulling || {}).running;
-    $('pullList').innerHTML = (d.suggested || []).map(x => `
+    const rows = (d.suggested || []).map(x => `
       <div class="mrow">
         <span class="nm">${esc(x.name)}</span>
-        <span class="sz">${x.size_gb} GB</span>
+        <span class="sz">${x.size_gb.toFixed(1)} GB</span>
         <span class="fitpill ${x.fit}">${x.fit === 'no' ? 'too big' : x.fit}</span>
         ${busy === x.name ? '<span class="sz">downloading…</span>'
-          : `<button class="act get" data-get="${esc(x.name)}" ${busy ? 'disabled' : ''}>download</button>`}
+          : `<button class="act get" data-get="${esc(x.name)}" ${busy ? 'disabled' : ''}>download &amp; use</button>`}
       </div>
-      <p class="mwhy">${esc(x.note)}</p>`).join('') || '<p class="mwhy">Nothing left to suggest.</p>';
+      <p class="mwhy">${esc(x.note)}</p>`).join('');
+    $('pullList').innerHTML = '<label class="fl" style="margin-top:1.25rem">Available to '
+      + 'download</label>'
+      + (rows || '<p class="mwhy">You have every one we suggest.</p>');
     $('pullList').querySelectorAll('[data-get]').forEach(el => {
       el.onclick = async () => {
         const r = await post('/api/models', {action: 'pull', name: el.dataset.get});
@@ -519,6 +593,14 @@
     if ((d.pulling || {}).error) say('mPull', false, d.pulling.error);
     if (busy) setTimeout(loadModels, 5000);
   }
+  $('getAny').onclick = async () => {
+    const n = $('anyModel').value.trim();
+    if (!n) { say('mPull', false, 'Type a model name first.'); return; }
+    const r = await post('/api/models', {action: 'pull', name: n});
+    say('mPull', r.ok, r.message);
+    if (r.ok) { $('anyModel').value = ''; setTimeout(loadModels, 4000); }
+  };
+
   function loadModels(){
     fetch(`/api/models?t=${T}`).then(r => r.json()).then(modelsRender).catch(() => {});
   }

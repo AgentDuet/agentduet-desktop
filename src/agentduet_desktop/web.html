@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="/app.css">
 <style>
   .app{flex:1;display:flex;overflow:hidden;}
-  aside{width:17rem;flex:0 0 17rem;background:var(--sidebar);border-right:1px solid var(--line);
+  aside{width:16rem;flex:0 0 16rem;background:var(--sidebar);border-right:1px solid var(--line);
     display:flex;flex-direction:column;padding:1rem;gap:.9rem;overflow:hidden;}
   .prof{padding:.75rem;border-radius:.75rem;background:var(--slate900);
     border:1px solid rgba(255,255,255,.05);display:flex;align-items:center;gap:.75rem;
@@ -26,24 +26,16 @@
   .navlab{font-size:10px;text-transform:uppercase;font-weight:700;letter-spacing:.05em;
     color:var(--faint);flex-shrink:0;}
 
-  /* THE LEFT PANEL IS THE PEOPLE, not a menu. Nothing to navigate between any more: the four
-     services moved into Settings, so the only thing this window does is show who called and
-     what was said. */
+  /* THE LEFT PANEL IS THE PEOPLE, not a menu. The four services moved into Settings, so the
+     only thing this column does is say who called. */
   .who-list{display:flex;flex-direction:column;gap:.25rem;overflow-y:auto;flex:1;min-height:0;}
-  /* PINNED, and separated by a rule rather than by hoping it stays first. It is not a person —
-     it is the owner talking to a model — so it must not sort into the list or be pushed down by
-     whoever called most recently. */
-  .who.pinned{flex-direction:row;align-items:center;gap:.55rem;margin-bottom:.35rem;
-    padding-bottom:.7rem;border-bottom:1px solid var(--line);border-radius:.6rem .6rem 0 0;}
-  .who.pinned .material-symbols-rounded{font-size:1.05rem;color:var(--blue400);}
-  .who.pinned .n{font-family:var(--sans);font-weight:600;}
   .who{display:flex;flex-direction:column;gap:.15rem;padding:.6rem .7rem;border-radius:.6rem;
     background:transparent;border:1px solid transparent;cursor:pointer;transition:.12s;}
   .who:hover{background:rgba(255,255,255,.04);}
   .who.on{border-color:rgba(59,130,246,.4);background:rgba(37,99,235,.15);}
   .who .n{font-family:var(--mono);font-size:.78rem;color:var(--ink2);}
   .who .m{font-size:10px;color:var(--faint);}
-  .who-empty{font-size:.75rem;color:var(--faint);line-height:1.6;padding:.5rem .2rem;}
+  .who-empty{font-size:.75rem;color:var(--faint);padding:.5rem .2rem;}
 
   .store{padding:.625rem;border-radius:.5rem;background:var(--slate900);
     border:1px solid rgba(255,255,255,.05);font-size:11px;display:flex;flex-direction:column;
@@ -54,8 +46,11 @@
   .store .path{font-family:var(--mono);color:#cbd5e1;font-size:10px;overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap;}
 
-  main{flex:1;background:var(--bg);overflow-y:auto;padding:1.5rem;}
-  .thead{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.2rem;}
+  main{flex:1;min-width:0;background:var(--bg);display:flex;flex-direction:column;
+    overflow:hidden;}
+  .mbody{flex:1;overflow-y:auto;padding:0 1.5rem 1.5rem;}
+  .thead{display:flex;justify-content:space-between;align-items:center;gap:1rem;
+    padding:1.5rem 1.5rem 1.2rem;flex-shrink:0;}
   .thread{display:flex;flex-direction:column;gap:.6rem;}
   .call{background:var(--card);border:1px solid var(--line);border-radius:.75rem;
     padding:.9rem 1rem;display:flex;flex-direction:column;gap:.5rem;}
@@ -66,7 +61,47 @@
     background:var(--slate900);border:1px solid rgba(255,255,255,.05);border-radius:.5rem;
     padding:.7rem;max-height:16rem;overflow:auto;}
   .call .none{font-size:.78rem;color:var(--faint);font-style:italic;}
-  .blank{color:var(--faint);font-size:.85rem;line-height:1.7;max-width:32rem;}
+  .blank{color:var(--faint);font-size:.85rem;}
+
+  /* ---- the assistant --------------------------------------------------------------------
+     TWO PANES, not three. It was briefly its own right-hand column, and at this window width
+     that left the transcript at ~460px and the chat at ~320px — both too narrow, to buy a
+     side-by-side view nobody asked for. As the pinned first row of the list it is one click
+     away, always visible, and gets the whole main column when it is open. The person last
+     opened is still sent as `viewing`, so "what did she want?" resolves after switching. */
+  .who.pinned{flex-direction:row;align-items:center;gap:.55rem;margin-bottom:.35rem;
+    padding-bottom:.7rem;border-bottom:1px solid var(--line);border-radius:.6rem .6rem 0 0;}
+  .who.pinned .material-symbols-rounded{font-size:1.05rem;color:var(--blue400);}
+  .who.pinned .n{font-family:var(--sans);font-weight:600;}
+  .mdl{font-family:var(--mono);font-size:10px;color:var(--faint);padding:.2rem .5rem;
+    border-radius:.3rem;background:var(--slate900);border:1px solid var(--line);}
+
+  .chat{display:flex;flex-direction:column;gap:1.1rem;max-width:44rem;}
+  .turn{display:flex;flex-direction:column;gap:.3rem;}
+  .turn.me{align-items:flex-end;}
+  .bub{padding:.65rem .85rem;border-radius:.85rem;font-size:.82rem;line-height:1.65;
+    white-space:pre-wrap;overflow-wrap:anywhere;max-width:82%;}
+  .turn.me .bub{background:rgba(37,99,235,.22);border:1px solid rgba(59,130,246,.35);
+    color:var(--ink2);border-bottom-right-radius:.25rem;}
+  .turn.it .bub{background:var(--card);border:1px solid var(--line);color:#cbd5e1;
+    border-bottom-left-radius:.25rem;}
+  .turn.bad .bub{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.3);color:#fca5a5;}
+  .turn .row{display:flex;align-items:center;}
+  .dots{display:flex;gap:.32rem;padding:.85rem;background:var(--card);border:1px solid var(--line);
+    border-radius:.85rem;border-bottom-left-radius:.25rem;width:max-content;}
+  .dots i{width:.35rem;height:.35rem;border-radius:50%;background:var(--faint);
+    animation:blink 1.3s ease-in-out infinite;}
+  .dots i:nth-child(2){animation-delay:.18s;}
+  .dots i:nth-child(3){animation-delay:.36s;}
+  .waited{font-family:var(--mono);font-size:10px;color:var(--faint);margin-left:.6rem;}
+  @keyframes blink{0%,80%,100%{opacity:.25;}40%{opacity:1;}}
+  @media (prefers-reduced-motion: reduce){.dots i{animation:none;opacity:.6;}}
+
+  .composer{display:flex;gap:.6rem;align-items:flex-end;padding:1rem 1.5rem;
+    border-top:1px solid var(--line);background:var(--sidebar);flex-shrink:0;}
+  .composer textarea{flex:1;min-height:2.5rem;max-height:9rem;resize:none;line-height:1.5;
+    padding:.6rem .7rem;}
+  .composer .btn{flex-shrink:0;padding:.55rem 1rem;}
 </style>
 </head>
 <body>
@@ -108,9 +143,18 @@
           <h1 id="tTitle">Conversations</h1>
           <p class="sub" id="tSub">Everyone who has called you, and what was recorded.</p>
         </div>
-        <span class="pill" id="ovPill"><span class="dot"></span>…</span>
+        <div style="display:flex;gap:.6rem;align-items:center">
+          <span class="mdl" id="aModel" hidden>—</span>
+          <span class="pill" id="ovPill"><span class="dot"></span>…</span>
+        </div>
       </div>
-      <div class="thread" id="thread"></div>
+      <div class="mbody" id="mbody">
+        <div class="thread" id="thread"></div>
+      </div>
+      <div class="composer" id="composer" hidden>
+        <textarea id="ask" rows="1" placeholder="Ask about your calls…"></textarea>
+        <button class="btn" id="send">Send</button>
+      </div>
     </main>
   </div>
 </div>
@@ -137,57 +181,56 @@
     return isNaN(d) ? iso : d.toLocaleString(undefined,
       {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
   };
+  const post = (path, body) => fetch(`${path}?t=${T}`, {method: 'POST',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}).then(r => r.json());
 
   const toSettings = e => { e.preventDefault(); location.href = '/settings?t=' + T; };
   $('toSettings').onclick = toSettings;
   $('toSettings2').onclick = toSettings;
 
-  //: The owner's own channel to a model. Pinned above the people because it is not one of
-  //: them — nobody called from it — and because it is the one row that is always there.
+  //: Not a person — nobody called from it — so it is pinned above the list rather than
+  //: sorted into it, and cannot be pushed down by whoever called most recently.
   const ASSISTANT = '__assistant__';
-  let THREADS = {people: []}, PICKED = ASSISTANT, MODEL = {};
+  let THREADS = {people: []}, PICKED = ASSISTANT, LAST_PERSON = '', MODEL = {};
 
-  function assistantRow(){
-    return `<div class="who pinned ${PICKED === ASSISTANT ? 'on' : ''}" data-who="${ASSISTANT}">
-      <span class="material-symbols-rounded">smart_toy</span>
-      <span class="n">Personal Assistant</span></div>`;
-  }
-
-  function drawAssistant(){
-    $('tTitle').textContent = 'Personal Assistant';
-    $('tSub').textContent = 'Ask about your calls, in your own words.';
-    const ready = MODEL.configured;
-    $('thread').innerHTML = `<div class="blank">
-      <p>This is where you will talk to a model about what happened — "what did they want?",
-      "summarise yesterday", "who is still waiting on me?".</p>
-      <p style="margin-top:.9rem">${ready
-        ? 'A model is attached (' + esc(MODEL.describe || '') + '), but the conversation itself '
-          + 'is not built yet.'
-        : 'Not built yet, and no model is attached. Add one under Settings &rsaquo; Model when '
-          + 'you want summaries.'}</p>
-      <p style="margin-top:.9rem;color:var(--faint);font-size:.78rem">Nothing here is sent
-      anywhere until you attach a model and ask something.</p></div>`;
-  }
-
+  // ---- people and their calls ---------------------------------------------------------
   function drawWho(){
     const list = THREADS.people || [];
     if (PICKED !== ASSISTANT && !list.some(p => p.who === PICKED)) PICKED = ASSISTANT;
-    $('whoList').innerHTML = assistantRow() + (list.length
-      ? list.map(p => `
+    $('whoList').innerHTML = `
+      <div class="who pinned ${PICKED === ASSISTANT ? 'on' : ''}" data-who="${ASSISTANT}">
+        <span class="material-symbols-rounded">smart_toy</span>
+        <span class="n">Personal Assistant</span></div>`
+      + (list.length ? list.map(p => `
       <div class="who ${p.who === PICKED ? 'on' : ''}" data-who="${esc(p.who)}">
         <span class="n">${esc(p.who)}</span>
         <span class="m">${p.calls.length} call${p.calls.length === 1 ? '' : 's'} · ${esc(when(p.last))}</span>
       </div>`).join('')
-      : '<div class="who-empty">No calls yet. When one is carried to you it appears here, '
-        + 'with its recording and transcript.</div>');
+      : '<div class="who-empty">No calls yet.</div>');
     $('whoList').querySelectorAll('.who').forEach(el => {
-      el.onclick = () => { PICKED = el.dataset.who; drawWho(); };
+      el.onclick = () => {
+        PICKED = el.dataset.who;
+        if (PICKED !== ASSISTANT) LAST_PERSON = PICKED;
+        drawWho();
+      };
     });
     if (PICKED === ASSISTANT) drawAssistant(); else drawThread();
   }
 
+  function drawAssistant(){
+    $('tTitle').textContent = 'Personal Assistant';
+    $('tSub').textContent = '';
+    $('composer').hidden = false;
+    $('aModel').hidden = false;
+    $('thread').innerHTML = '<div class="chat" id="chat"></div>';
+    drawChat();
+    $('ask').focus();
+  }
+
   function drawThread(){
     const p = (THREADS.people || []).find(x => x.who === PICKED);
+    $('composer').hidden = true;
+    $('aModel').hidden = true;
     if (!p) return;
     $('tTitle').textContent = p.who;
     $('tSub').textContent = `${p.calls.length} call${p.calls.length === 1 ? '' : 's'}`;
@@ -197,13 +240,66 @@
           <span class="when">${esc(when(c.at))}</span>
           <span class="meta">${esc(c.mode)}${c.files ? ' · ' + c.files + ' file' + (c.files === 1 ? '' : 's') : ''}${c.bytes ? ' · ' + kb(c.bytes) : ''}</span>
         </div>
-        ${c.silent
-          ? '<div class="none">Recorded nothing — the platform did not hand over the audio for this call.</div>'
-          : (c.transcript
-              ? `<div class="text">${esc(c.transcript)}</div>`
-              : '<div class="none">Transcript pending — it is written beside the audio once the queue reaches it.</div>')}
+        ${c.silent ? '<div class="none">No audio.</div>'
+          : (c.transcript ? `<div class="text">${esc(c.transcript)}</div>`
+                          : '<div class="none">Transcript pending.</div>')}
       </div>`).join('');
   }
+
+  // ---- the assistant ------------------------------------------------------------------
+  // Its history lives on the daemon (run/owner_chat.json), so a reload or a restart does not
+  // look like the conversation never happened.
+  let TURNS = [], BUSY = false;
+
+  function drawChat(pending){
+    const log = $('chat');
+    if (!log) return;
+    log.innerHTML = TURNS.map(t => `
+      <div class="turn me"><div class="bub">${esc(t.q)}</div></div>
+      <div class="turn ${t.bad ? 'bad' : 'it'}"><div class="bub">${esc(t.a)}</div></div>`).join('')
+      + (pending ? `<div class="turn me"><div class="bub">${esc(pending)}</div></div>
+         <div class="turn it"><div class="row"><div class="dots"><i></i><i></i><i></i></div>
+         <span class="waited" id="waited"></span></div></div>` : '');
+    $('mbody').scrollTop = $('mbody').scrollHeight;
+  }
+
+  async function send(){
+    const box = $('ask'), text = box.value.trim();
+    if (!text || BUSY) return;
+    BUSY = true;
+    box.value = ''; box.style.height = 'auto';
+    $('send').disabled = true;
+    drawChat(text);
+    const began = Date.now();
+    const tick = setInterval(() => {
+      const el = $('waited');
+      const secs = Math.round((Date.now() - began) / 1000);
+      if (el && secs >= 3) el.textContent = secs + 's';
+    }, 1000);
+    try {
+      // `viewing` is whoever is open in the middle column, so "her" and "this person" resolve
+      // to what the owner is looking at rather than being guessed.
+      const d = await post('/api/chat', {message: text, viewing: LAST_PERSON});
+      TURNS.push({q: text, a: d.reply || '', bad: !!d.error});
+    } catch (e) {
+      TURNS.push({q: text, a: String(e), bad: true});
+    }
+    clearInterval(tick);
+    BUSY = false;
+    $('send').disabled = false;
+    drawChat();
+    box.focus();
+  }
+
+  $('send').onclick = send;
+  $('ask').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+  $('ask').addEventListener('input', () => {           // grow to the text, up to the cap
+    const b = $('ask');
+    b.style.height = 'auto';
+    b.style.height = Math.min(b.scrollHeight, 128) + 'px';
+  });
 
   async function load(){
     const D = await fetch(`/api/panel?t=${T}`).then(r => r.json()).catch(() => ({}));
@@ -218,16 +314,27 @@
     $('ovPill').className = 'pill' + (live ? '' : ' off');
     $('ovPill').innerHTML = '<span class="dot"></span>' + (live ? 'Listening' : 'Not connected');
     $('chanState').textContent = live ? 'Recording to' : 'Would record to';
+
+    // WHICH MODEL IS ANSWERING, in the pane that is answering. Without it the owner cannot
+    // tell a local 135M model from a hosted one, and the two give very different replies.
     MODEL = D.model || {};
-    if (PICKED === ASSISTANT) drawAssistant();
+    $('aModel').textContent = MODEL.name || 'no model';
+    $('aModel').title = MODEL.describe || '';
+    const ok = !!MODEL.configured;
+    $('ask').disabled = !ok;
+    $('send').disabled = !ok;
+    $('ask').placeholder = ok ? 'Ask about your calls…' : 'Attach a model in Settings';
   }
 
-  async function loadThreads(){
-    THREADS = await fetch(`/api/threads?t=${T}`).then(r => r.json()).catch(() => ({people: []}));
+  Promise.all([
+    fetch(`/api/threads?t=${T}`).then(r => r.json()).catch(() => ({people: []})),
+    fetch(`/api/chat_history?t=${T}`).then(r => r.json()).catch(() => ({turns: []})),
+  ]).then(([th, hist]) => {
+    THREADS = th;
+    TURNS = (hist.turns || []).map(t => ({q: t.q, a: t.a}));
     drawWho();
-  }
+  });
   load();
-  loadThreads();
 </script>
 </body>
 </html>

@@ -154,14 +154,16 @@ def verdict(size_gb: float) -> tuple[str, str]:
     budget = budget_gb()
     if not budget:
         return "unknown", "Could not read this machine's memory, so this is unchecked."
+    # The sentence is PER ROW, so it must carry only what differs per row: the arithmetic.
+    # It used to explain the verdict too ("expect it to slow down…"), which meant a list of
+    # four similar models printed the same paragraph four times, and the reader stopped
+    # reading all of them. What "tight" means is explained once, by the list.
     need = size_gb * WORKING_SET
     if need <= budget * 0.6:
-        return "fits", f"Comfortable — about {need:.1f} GB against {budget:.0f} GB usable."
+        return "fits", f"needs about {need:.1f} GB of {budget:.0f} GB usable"
     if need <= budget:
-        return "tight", (f"Should run, with little to spare — about {need:.1f} GB against "
-                         f"{budget:.0f} GB usable. Expect it to slow down with other apps open.")
-    return "no", (f"Too big for this machine — wants about {need:.1f} GB against {budget:.0f} GB "
-                  f"usable. It would swap, which is slower than the hosted model.")
+        return "tight", f"needs about {need:.1f} GB of {budget:.0f} GB usable"
+    return "no", f"needs about {need:.1f} GB, more than the {budget:.0f} GB usable"
 
 
 def fits_now(size_gb: float) -> tuple[bool, str]:

@@ -20,6 +20,10 @@
   --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
+/* `hidden` is a UA-stylesheet rule, so ANY author `display:` beats it — a `.grp`
+   set to flex stays on screen with the attribute right there in the markup. Costly
+   because it reads as correct in the source and is only visible in a browser. */
+[hidden]{display:none !important;}
 ::-webkit-scrollbar{width:6px;height:6px;}
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:9999px;}
@@ -133,8 +137,12 @@ input[readonly]{font-family:var(--mono);}
   background:rgba(16,185,129,.2);color:var(--emerald);font-weight:500;}
 .tag.off{background:rgba(100,116,139,.2);color:var(--faint);}
 
-.state{padding:.75rem;background:var(--slate900);border-radius:.5rem;font-size:.75rem;
-  color:#cbd5e1;border:1px solid rgba(255,255,255,.05);line-height:1.6;}
+/* A READOUT, not a field. It had the input's fill, border and radius, so a line the owner
+   cannot edit looked exactly like the one above it that they can. Same fill as the card,
+   an accent rule down the left: not a text box, and not loose prose either. */
+.state{padding:.6rem .75rem;background:rgba(148,163,184,.06);border:0;
+  border-left:2px solid rgba(59,130,246,.55);border-radius:0 .375rem .375rem 0;
+  font-size:.75rem;color:#cbd5e1;line-height:1.6;}
 .state code{font-family:var(--mono);font-size:11px;color:var(--blue300);word-break:break-all;}
 .banner{padding:.75rem;border-radius:.5rem;background:rgba(59,130,246,.1);
   border:1px solid rgba(59,130,246,.2);font-size:.75rem;color:var(--blue300);display:flex;

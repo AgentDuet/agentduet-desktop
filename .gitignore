@@ -32,3 +32,6 @@ __pycache__/
 # build therefore stamped itself `+dirty` — including builds from a clean commit. That made the
 # dirty flag mean nothing, while INSTALL.md tells testers it should never appear.
 _build.py
+
+# playwright-mcp screenshots and snapshots — a local debugging aid, never a deliverable
+.playwright-mcp/

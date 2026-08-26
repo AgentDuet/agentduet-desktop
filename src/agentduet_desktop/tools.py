@@ -1737,6 +1737,75 @@ def cancel_booking(booking_id: str) -> str:
             else f"No booking with id {booking_id!r}.")
 
 
+# ---- the recorder's own tools -------------------------------------------------------------
+# The Personal Assistant's subject is CALLS: who rang, when, and what was said. It had no tool
+# that could see one, so asked "who called me today?" it reached for `pending_escalations` —
+# the nearest thing in a registry built for the secretary — and answered about escalations on
+# a product where nobody is ever escalated to. The fix is not a better prompt; it is giving it
+# the thing it is meant to talk about.
+
+
+def list_calls(days: str = "7") -> str:
+    """Calls that were carried and recorded — who, when, and whether a transcript exists."""
+    from . import calls as _calls, carry
+    from datetime import datetime, timedelta
+    try:
+        cut = datetime.now() - timedelta(days=max(1, int(str(days) or 7)))
+    except ValueError:
+        cut = datetime.now() - timedelta(days=7)
+    folder = carry.RECORDINGS
+    out = []
+    for r in _calls.recent():
+        at = r.get("at", "")
+        try:
+            if datetime.fromisoformat(at) < cut:
+                continue
+        except ValueError:
+            pass
+        names = [n for n in r.get("recordings", []) if (folder / n).is_file()]
+        done = any((folder / n).with_suffix(".txt").is_file() for n in names)
+        out.append(f"- {at}  {r.get('caller') or '?'}  "
+                   f"({'transcript ready' if done else 'no transcript yet'})")
+    return "\n".join(out) if out else f"No calls recorded in the last {days} days."
+
+
+def read_call(who: str = "", when: str = "") -> str:
+    """The transcript of a recorded call. `who` is the caller; `when` narrows to one date."""
+    from . import calls as _calls, carry
+    folder = carry.RECORDINGS
+    hits = []
+    for r in _calls.recent():
+        if who and who.strip().lower() not in (r.get("caller") or "").lower():
+            continue
+        if when and not (r.get("at") or "").startswith(when.strip()):
+            continue
+        for n in r.get("recordings", []):
+            t = (folder / n).with_suffix(".txt")
+            if t.is_file():
+                try:
+                    hits.append(f"--- {r.get('at','')} with {r.get('caller') or '?'} ---\n"
+                                + t.read_text()[:4000])
+                except OSError:
+                    pass
+                break
+        if len(hits) >= 5:
+            break
+    if not hits:
+        return ("No transcript matches that. Transcription runs after a call, on a queue, so a "
+                "recent call may not have one yet.")
+    return "\n\n".join(hits)
+
+
+#: The recorder's own tools. DELIBERATELY NOT IN `OWNER_TOOLS`: that registry is the stdio
+#: mcp's surface too, and the Personal Assistant needing a tool is not a reason to widen what
+#: an external assistant can call. `web.assistant_tools()` merges this with a named subset of
+#: OWNER_TOOLS; nothing else reads it.
+RECORDER_TOOLS = {
+    "list_calls": (list_calls, {"days": "how many days back (default 7)"}),
+    "read_call": (read_call, {"who": "the caller, or empty for any",
+                              "when": "a date like 2026-08-26, or empty for the most recent"}),
+}
+
 OWNER_TOOLS = {
     "pending_escalations": (pending_escalations, {}),
     "digest": (digest, {"day": "YYYY-MM-DD, defaults to today"}),
