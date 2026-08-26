@@ -22,6 +22,22 @@
   .acts{display:flex;align-items:center;}
   .dbg{display:flex;align-items:center;gap:.6rem;font-size:.75rem;color:#cbd5e1;cursor:pointer;}
   .dbg input{width:auto;accent-color:var(--accent);}
+  .mrow{display:flex;align-items:center;gap:.7rem;padding:.6rem .7rem;border-radius:.6rem;
+    border:1px solid var(--line);background:var(--slate900);margin-top:.4rem;cursor:pointer;}
+  .mrow:hover{border-color:rgba(59,130,246,.35);}
+  .mrow.on{border-color:rgba(59,130,246,.55);background:rgba(37,99,235,.12);}
+  .mrow .nm{font-family:var(--mono);font-size:.78rem;color:var(--ink2);flex:1;}
+  .mrow .sz{font-family:var(--mono);font-size:11px;color:var(--faint);}
+  .fitpill{font-size:10px;font-weight:700;padding:.15rem .5rem;border-radius:999px;}
+  .fitpill.fits{background:rgba(16,185,129,.2);color:var(--emerald);}
+  .fitpill.tight{background:rgba(234,179,8,.18);color:#facc15;}
+  .fitpill.no{background:rgba(239,68,68,.16);color:#fca5a5;}
+  .fitpill.unknown{background:rgba(100,116,139,.2);color:var(--faint);}
+  .mwhy{font-size:11px;color:var(--faint);margin:.3rem 0 0 .2rem;line-height:1.5;}
+  .mrow .act{font-size:10px;padding:.2rem .5rem;border-radius:.35rem;border:1px solid var(--line);
+    background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;}
+  .mrow .act:hover{border-color:var(--coral,#f0523d);color:#fca5a5;}
+  .mrow .act.get:hover{border-color:rgba(59,130,246,.5);color:var(--blue400);}
 </style>
 </head>
 <body>
@@ -60,15 +76,30 @@
       <div class="card">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">smart_toy</span></div>
-          <div><h2>Model</h2><p>Only needed to answer calls, or to summarise a transcript.</p></div>
+          <div><h2>Model</h2><p>Used to answer calls, and to summarise a transcript
+            afterwards.</p></div>
         </div>
         <div class="state" id="modelState">…</div>
-        <div class="grp"><label class="fl">Provider</label><input type="text" id="model"></div>
-        <div class="grp"><label class="fl">API key</label><input type="password" id="key"
-          placeholder="paste a key" autocomplete="off"></div>
+
+        <div class="grp">
+          <label class="fl">On this machine</label>
+          <div class="state" id="machineState">…</div>
+          <div id="localList"></div>
+          <label class="fl" style="margin-top:1rem">Download another</label>
+          <div id="pullList"></div>
+          <div id="mPull"></div>
+        </div>
+
+        <div class="grp">
+          <label class="fl">Or a hosted provider</label>
+          <input type="text" id="model" placeholder="gemini-3.1-flash, claude-sonnet-5, qwen3.6-flash">
+          <input type="password" id="key" placeholder="API key" autocomplete="off">
+        </div>
         <div class="acts"><button class="btn" id="saveModel">Check and save</button>
           <span class="spin" id="spModel"></span></div>
         <div id="mModel"></div>
+        <p class="note">A local model keeps transcripts on this machine. A hosted one is faster
+          and sends them to that provider.</p>
       </div>
 
       <div class="card">
@@ -406,6 +437,88 @@
       `${d.model} is not downloaded yet (about ${d.mb} MB). Downloading now.`); }
     say('mTest', true, `${d.model} is downloaded and ready on this machine.`);
   };
+
+  // ---- local models, sized against this machine --------------------------------------------
+  // A weight in GB is not a decision. "4.9 GB, and you have 10 usable" is.
+  function modelsRender(d){
+    const m = d.machine || {};
+    const gpu = m.gpu_kind === 'cuda' ? `${esc(m.gpu_name)} · ${m.vram_gb} GB VRAM`
+              : m.gpu_kind === 'apple' ? 'Apple Silicon, shared memory'
+              : 'no GPU — the processor does the work';
+    $('machineState').innerHTML = `${m.ram_gb} GB memory · ${gpu}<br>`
+      + `<span style="color:var(--faint)">About <b>${m.budget_gb} GB</b> is a reasonable budget `
+      + `for a model, leaving room for everything else you have open. `
+      + `<b>${m.available_gb} GB</b> is free right now.</span>`;
+
+    if (!d.ollama) {
+      $('localList').innerHTML = '<p class="mwhy">Ollama is not running, so there is nothing '
+        + 'local to offer. Start it (or install it) and reopen this page — we look at '
+        + esc(d.ollama_host) + '.</p>';
+      return;
+    }
+    if (!(d.local || []).length) {
+      $('localList').innerHTML = '<p class="mwhy">Ollama is running but has no models pulled. '
+        + '<code>ollama pull qwen2.5:3b</code> is a small one to start with.</p>';
+      return;
+    }
+    // ALREADY ON DISK — clicking one swaps to it immediately, because there is nothing to
+    // download and nothing to verify beyond that Ollama still has it.
+    $('localList').innerHTML = d.local.map(x => `
+      <div class="mrow ${x.name === d.current ? 'on' : ''}">
+        <span class="nm" data-pick="${esc(x.name)}">${esc(x.name)}</span>
+        <span class="sz">${x.size_gb} GB</span>
+        <span class="fitpill ${x.fit}">${x.fit === 'no' ? 'too big' : x.fit}</span>
+        ${x.name === d.current ? '<span class="sz">in use</span>'
+                               : `<button class="act" data-del="${esc(x.name)}">delete</button>`}
+      </div>
+      <p class="mwhy">${esc(x.why)}${x.now_ok ? '' :
+          ' <span style="color:#facc15">' + esc(x.now_why) + '</span>'}</p>`).join('');
+    $('localList').querySelectorAll('[data-pick]').forEach(el => {
+      el.onclick = async () => {
+        const r = await post('/api/setup/model',
+                             {model: el.dataset.pick, key: 'local', provider: 'ollama'});
+        say('mModel', r.ok, r.message);
+        loadModels();
+      };
+    });
+    $('localList').querySelectorAll('[data-del]').forEach(el => {
+      el.onclick = async () => {
+        const n = el.dataset.del;
+        if (!confirm(`Delete ${n}? It frees the disk and can be downloaded again.`)) return;
+        const r = await post('/api/models', {action: 'delete', name: n});
+        say('mModel', r.ok, r.message);
+        loadModels();
+      };
+    });
+
+    // NOT YET ON DISK. Sized the same way, so the decision to spend gigabytes is made before
+    // the download rather than after it.
+    const busy = (d.pulling || {}).running;
+    $('pullList').innerHTML = (d.suggested || []).map(x => `
+      <div class="mrow">
+        <span class="nm">${esc(x.name)}</span>
+        <span class="sz">${x.size_gb} GB</span>
+        <span class="fitpill ${x.fit}">${x.fit === 'no' ? 'too big' : x.fit}</span>
+        ${busy === x.name ? '<span class="sz">downloading…</span>'
+          : `<button class="act get" data-get="${esc(x.name)}" ${busy ? 'disabled' : ''}>download</button>`}
+      </div>
+      <p class="mwhy">${esc(x.note)}</p>`).join('') || '<p class="mwhy">Nothing left to suggest.</p>';
+    $('pullList').querySelectorAll('[data-get]').forEach(el => {
+      el.onclick = async () => {
+        const r = await post('/api/models', {action: 'pull', name: el.dataset.get});
+        say('mPull', r.ok, r.message);
+        loadModels();
+        if (r.ok) setTimeout(loadModels, 5000);
+      };
+    });
+    if ((d.pulling || {}).done) say('mPull', true, d.pulling.done);
+    if ((d.pulling || {}).error) say('mPull', false, d.pulling.error);
+    if (busy) setTimeout(loadModels, 5000);
+  }
+  function loadModels(){
+    fetch(`/api/models?t=${T}`).then(r => r.json()).then(modelsRender).catch(() => {});
+  }
+  loadModels();
 </script>
 </body>
 </html>

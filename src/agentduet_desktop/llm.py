@@ -49,7 +49,12 @@ logger = logging.getLogger("secretary.llm")
 #: `qwen` maps to DashScope (hosted). The same weights can also run locally through Ollama;
 #: that is a different transport, not a different model, so it will need
 #: SECRETARY_PROVIDER=ollama rather than a name prefix to tell them apart.
-_PROVIDERS = {"gemini": ("gemini",), "anthropic": ("claude",), "dashscope": ("qwen",)}
+_PROVIDERS = {"gemini": ("gemini",), "anthropic": ("claude",), "dashscope": ("qwen",),
+              # Local, and matched on the family names people actually type. `qwen` is
+              # deliberately NOT here: it belongs to DashScope above, and a local qwen must be
+              # selected by setting SECRETARY_PROVIDER=ollama rather than by guessing from a
+              # name that means two different things.
+              "ollama": ("llama", "mistral", "phi", "gemma", "deepseek")}
 
 #: Gemini honours it; the Claude 5 family rejects any non-default value with a 400, so the
 #: Anthropic path cannot send it. Consequence worth knowing rather than hiding: borderline
@@ -96,6 +101,105 @@ class _Gemini:
             contents=[{"role": "user", "parts": [{"text": prompt}]}],
             config={"temperature": TEMPERATURE})
         return (resp.text or "").strip()
+
+
+class _Ollama:
+    """A model running on this machine, through Ollama's local HTTP API.
+
+    WHY THIS IS VIABLE HERE WHEN IT WAS NOT FOR VOICE. Speech-to-speech was chosen over a local
+    cascade on latency: a CPU model cannot hold a live call. The recorder's model job is
+    different — summarising a transcript AFTER the call, on a queue where nothing waits. That is
+    the same argument that already makes local speech recognition work, and it is why the
+    "nothing leaves your machine" claim can be true end to end rather than true until you attach
+    a key.
+
+    NO API KEY, so `credential()` reports whether the SERVER is reachable instead. That keeps
+    the rest of the code provider-neutral: everything asks "is there a credential" and gets a
+    truthful answer about whether this provider can actually serve.
+    """
+
+    #: Ollama's default. Overridable because people do run it on another box on the LAN, which
+    #: is still meaningfully "not a cloud vendor" even if it is not this machine.
+    HOST = "OLLAMA_HOST"
+    DEFAULT_HOST = "http://127.0.0.1:11434"
+
+    @classmethod
+    def host(cls) -> str:
+        return (os.getenv(cls.HOST) or cls.DEFAULT_HOST).rstrip("/")
+
+    @classmethod
+    def credential(cls) -> str | None:
+        """Reachability stands in for a key. None when nothing is listening."""
+        import httpx
+        try:
+            r = httpx.get(f"{cls.host()}/api/tags", timeout=2)
+            return cls.host() if r.status_code == 200 else None
+        except Exception:
+            return None
+
+    @classmethod
+    def models(cls) -> list[dict]:
+        """What is already pulled, with sizes. Empty when Ollama is not running."""
+        import httpx
+        try:
+            r = httpx.get(f"{cls.host()}/api/tags", timeout=3)
+            return [{"name": m.get("name", ""), "size_gb": round(m.get("size", 0) / 1024**3, 1)}
+                    for m in (r.json().get("models") or [])]
+        except Exception:
+            return []
+
+    #: Worth offering because they are small enough to be useful on an ordinary laptop and
+    #: general enough to summarise a call. Sizes are the quantised download, which is what the
+    #: machine check needs — not the parameter count people quote.
+    SUGGESTED = [
+        {"name": "qwen2.5:3b", "size_gb": 1.9, "note": "small and quick; fine for summaries"},
+        {"name": "llama3.2:3b", "size_gb": 2.0, "note": "small, good general phrasing"},
+        {"name": "qwen2.5:7b", "size_gb": 4.7, "note": "noticeably better, needs more room"},
+        {"name": "llama3.1:8b", "size_gb": 4.9, "note": "strong all-rounder"},
+        {"name": "gemma2:9b", "size_gb": 5.4, "note": "strong, slower on a CPU"},
+    ]
+
+    @classmethod
+    def pull(cls, name: str) -> str:
+        """Download a model. BLOCKING and slow — gigabytes — so call it off the event loop."""
+        import httpx
+        with httpx.stream("POST", f"{cls.host()}/api/pull",
+                          json={"name": name, "stream": False}, timeout=None) as r:
+            r.read()
+            if r.status_code >= 400:
+                return f"Ollama refused to pull {name} ({r.status_code})."
+        return f"Downloaded {name}."
+
+    @classmethod
+    def delete(cls, name: str) -> str:
+        """Remove a pulled model, freeing its disk."""
+        import httpx
+        try:
+            r = httpx.request("DELETE", f"{cls.host()}/api/delete",
+                              json={"name": name}, timeout=30)
+        except Exception as exc:
+            return f"Could not reach Ollama: {exc}"
+        if r.status_code >= 400:
+            return f"Ollama refused to delete {name} ({r.status_code})."
+        return f"Deleted {name}."
+
+    def __init__(self, model: str, key: str | None):
+        self.model = model
+        self.base = self.host()
+
+    def complete(self, prompt: str, think: bool = False) -> str:
+        import httpx
+        # NOT the chat endpoint: every caller here sends one self-contained prompt and wants one
+        # answer, which is what /api/generate is. `stream` off because nothing renders tokens.
+        r = httpx.post(f"{self.base}/api/generate",
+                       json={"model": self.model, "prompt": prompt, "stream": False,
+                             "options": {"temperature": TEMPERATURE}},
+                       # Generous: a local model on a CPU is slow, and this runs on a queue
+                       # where nothing is waiting. Timing out a summary that would have arrived
+                       # is worse than waiting for it.
+                       timeout=300)
+        r.raise_for_status()
+        return (r.json().get("response") or "").strip()
 
 
 class _Anthropic:
@@ -307,7 +411,8 @@ def _strip_thinking(text: str) -> str:
     return re.sub(r"<think>.*", "", text, flags=re.S)
 
 
-_IMPLS = {"gemini": _Gemini, "anthropic": _Anthropic, "dashscope": _DashScope}
+_IMPLS = {"gemini": _Gemini, "anthropic": _Anthropic, "dashscope": _DashScope,
+          "ollama": _Ollama}
 _cached: dict[str, object] = {}
 
 

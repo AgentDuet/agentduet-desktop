@@ -1453,7 +1453,7 @@ def model_status() -> str:
     return ("OK   " if ok else "FAIL ") + why
 
 
-def attach_model(key: str, model: str = "") -> str:
+def attach_model(key: str, model: str = "", provider: str = "") -> str:
     """Attach a model by API key: verify it works, then save it to this instance.
 
     Removes the need for any external CLI — the framework owns the credential step, which
@@ -1467,23 +1467,60 @@ def attach_model(key: str, model: str = "") -> str:
     — the confirmation reports its length and last four characters only.
     """
     key = (key or "").strip()
-    if not key:
-        return "Give the API key to attach."
     m = (model or "").strip() or os.getenv("SECRETARY_MODEL") or ""
     if not m:
         return "Say which model to attach (e.g. claude-sonnet-5, gemini-3.6-flash)."
 
+    # A LOCAL MODEL HAS NO KEY, so "give the API key" is the wrong question to ask about one.
+    # What stands in for verification is the same thing that matters for a hosted key: prove it
+    # answers before saving, because a model that is configured and broken makes every message
+    # escalate for a reason nobody can see.
+    # CLEAR THE STICKY OVERRIDE FIRST, before anything asks which provider this is.
+    # SECRETARY_PROVIDER is an explicit choice that beats inference, and picking a local model
+    # sets it — so a hosted key attached afterwards was still routed to Ollama and rejected for
+    # not being a pulled model. It has to go before the question is asked, not after: an
+    # override outlives the decision that set it, which is the whole hazard of having one.
+    # The `provider` argument survives because it is a parameter, not the environment.
+    os.environ.pop("SECRETARY_PROVIDER", None)
+
+    # EXPLICIT BEATS INFERENCE. Provider is guessed from the model name, and the guess is wrong
+    # for exactly the case this feature adds: "qwen2.5:3b" running locally matches DashScope's
+    # "qwen" prefix and gets sent to the cloud with no key. The caller who picked a row from the
+    # local list knows which provider it is; let it say so.
+    if (provider or "").lower() == "ollama" or llm.provider(m) == "ollama":
+        if not llm._Ollama.credential():
+            return (f"Ollama is not reachable at {llm._Ollama.host()}, so {m} cannot be used. "
+                    "Start Ollama and try again.")
+        have = [x["name"] for x in llm._Ollama.models()]
+        if m not in have:
+            return (f"Ollama is running but has no model called {m}. "
+                    f"Pulled: {', '.join(have) or 'none'}.")
+        os.environ["SECRETARY_MODEL"], os.environ["SECRETARY_PROVIDER"] = m, "ollama"
+        _write_env({"SECRETARY_MODEL": m, "SECRETARY_PROVIDER": "ollama"})
+        return (f"Attached {m}, running on this machine. Transcripts stay here — nothing is sent "
+                "to a provider.")
+
+    if not key:
+        return "Give the API key to attach."
+
     var = llm.key_name(m)
-    before = os.environ.get(var)
+    before, before_model = os.environ.get(var), os.environ.get("SECRETARY_MODEL")
     os.environ[var], os.environ["SECRETARY_MODEL"] = key, m
     llm.forget()                       # drop any client cached under the old credential
     ok, why = llm.verify(m)
     if not ok:
-        # Put the environment back: a failed attach must change nothing.
+        # Put the environment back: a failed attach must change nothing. SECRETARY_MODEL was
+        # being left behind, so a rejected key produced an instance that reported itself
+        # configured while holding no working credential — the precise state this function
+        # exists to prevent, reached through its own error path.
         if before is None:
             os.environ.pop(var, None)
         else:
             os.environ[var] = before
+        if before_model is None:
+            os.environ.pop("SECRETARY_MODEL", None)
+        else:
+            os.environ["SECRETARY_MODEL"] = before_model
         llm.forget()
         return f"NOT saved — {why}"
 
