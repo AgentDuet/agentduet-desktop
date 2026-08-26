@@ -179,7 +179,7 @@ Break one of these and the secretary is a different product.
   setting up a phone answering service. So **setup no longer mentions an assistant** — its step 4
   is "finish", `init` runs the interview by default instead of deferring to the mcp, and `status`
   prints nothing when no assistant is registered rather than "nothing can drive this secretary".
-  `agentduet-desktop connect` remains for whoever wants it, and the 44 mcp tools are unchanged.
+  `agentduet-desktop connect` remains for whoever wants it, and the 38 mcp tools are unchanged.
   **Consequence: the site is load-bearing again, not transitional** — the August onboarding flow
   puts authorisation and WhatsApp verification in it, so something has to render them. The daemon
   must still not exit when it fails to bind.
