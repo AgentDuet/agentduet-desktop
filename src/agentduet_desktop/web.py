@@ -40,6 +40,57 @@ RUN = paths.RUN
 TOKEN_FILE = RUN / "web-token"
 HOST, PORT = "127.0.0.1", int(os.getenv("SECRETARY_WEB_PORT", "8899"))
 
+#: THE PERSONAL ASSISTANT IS NOT THE SECRETARY'S CONSOLE.
+#:
+#: `OWNER_TOOLS` is the registry for an owner running an agent that ANSWERS people: escalations,
+#: drafting, sending, permission grants, capability bounds. On the recorder nobody is answered
+#: and nothing is escalated, so those tools have no subject — and handed them, the assistant
+#: used them anyway. Asked "who called me today?" it called `pending_escalations` and reported
+#: that "all escalations have been addressed", on a product with no such object.
+#:
+#: So the assistant gets its own, smaller registry: the calls, the people on them, and the
+#: owner's own notes. Whatever the secretary needs stays in OWNER_TOOLS for the mcp, untouched.
+#: The subset of OWNER_TOOLS it keeps. The recorder's own tools come from
+#: `tools.RECORDER_TOOLS`, which is not part of the mcp surface at all.
+ASSISTANT_TOOL_NAMES = (
+    "list_people", "who_is",            # who was on the calls
+    "list_knowledge", "read_knowledge", "add_knowledge", "edit_knowledge",
+    "setup_status", "model_status",
+)
+
+ASSISTANT_PROMPT = """You are %s's personal assistant, running on their own computer.
+
+%%s
+
+Their phone calls are carried to them and recorded here, and the recordings are transcribed on
+this machine. Your subject is those calls: who rang, when, what was said, and what the owner
+should do about it. Summarise, find things, and remember what they tell you to remember.
+
+You have tools. To use one, reply with ONLY this JSON and nothing else:
+  {"tool": "<name>", "args": {...}}
+After you see the result, either call another tool or answer in plain text.
+To answer directly, just write the answer — no JSON.
+
+ANSWER FROM THE CALLS, NOT FROM MEMORY. A question about who called, or what someone said, is
+answered by calling list_calls or read_call first. Never guess at a name, a time or a quote.
+If there is no transcript yet, say so — transcription runs after a call, on a queue.
+
+You do not speak to anyone but the owner. You cannot send a message, answer a caller, or act on
+their behalf. If they ask you to reply to someone, say that this assistant only reads.
+
+Their notes are yours to keep correct. read_knowledge before you write, edit_knowledge to
+correct something that is already there, add_knowledge only when the subject is genuinely new.
+Do not leave two versions of one fact.
+
+Be brief. Do not describe what you are about to do — do it, then say what you did.
+
+THEIR NOTES:
+%%s
+
+TOOLS:
+%%s
+"""
+
 OWNER_PROMPT = """You are the owner's assistant for their desktop secretary.
 
 %s
@@ -124,9 +175,16 @@ def _subjects() -> str:
     return "\n".join(out) or "- (no knowledge documents yet)"
 
 
-def _tool_docs() -> str:
+def assistant_tools() -> dict:
+    """The Personal Assistant's registry: the recorder's own tools, plus a named subset of the
+    owner registry. `OWNER_TOOLS` itself is untouched — it is also the stdio mcp's surface."""
+    return {**tools.RECORDER_TOOLS,
+            **{n: tools.OWNER_TOOLS[n] for n in ASSISTANT_TOOL_NAMES if n in tools.OWNER_TOOLS}}
+
+
+def _tool_docs(registry: dict | None = None) -> str:
     lines = []
-    for name, (fn, params) in tools.OWNER_TOOLS.items():
+    for name, (fn, params) in (registry or tools.OWNER_TOOLS).items():
         args = ", ".join(f"{k} ({v})" for k, v in params.items()) or "no arguments"
         # A tool with no docstring used to raise IndexError here, and the whole owner site
         # failed to bind over it — reported as one warning line while the channel connected
@@ -162,7 +220,9 @@ class OwnerChat:
         # was the last line in the file that named a vendor.
         self.client = llm.client(model)
         self.model = model
-        self.system = OWNER_PROMPT % (owner.identity_block(), _subjects(), _tool_docs())
+        self.registry = assistant_tools()
+        self.system = ASSISTANT_PROMPT % owner.name() % (
+            owner.identity_block(), _subjects(), _tool_docs(self.registry))
         self.history: list[str] = []
         self.shown: list[dict] = self._load()      # what the page renders, oldest first
         # Reconstruct the model's own history from the visible turns, so a restart does not
@@ -269,7 +329,7 @@ class OwnerChat:
             # Every call in the reply, in the order given. One-at-a-time silently discarded
             # the rest of a batched reply.
             for name, args in action:
-                entry = tools.OWNER_TOOLS.get(name)
+                entry = self.registry.get(name)
                 if not entry:
                     history.append(f"TOOL_RESULT: no such tool '{name}'")
                     continue
@@ -283,9 +343,30 @@ class OwnerChat:
             continue
 
         final = await self._ask(history + ["(answer the owner now)"], context)
+        # A weak model can loop on the tool call and hand the same JSON back as its "answer".
+        # Rendering `{"tool": ...}` to the owner is never right — it is the machinery, not a
+        # reply. The last tool result usually IS the answer, so show that instead.
+        if self._parse(final):
+            last = next((h[len("TOOL_RESULT: "):] for h in reversed(history)
+                         if h.startswith("TOOL_RESULT: ")), "")
+            final = last or "No answer this turn — the model kept asking for the same tool."
+        final = self._unprefix(final)
         remember(history + [f"ASSISTANT: {final}"])
         self._record(shown_as, final, used, full=message)
         return {"reply": final, "tools": used}
+
+    #: History is handed to the model as plain `OWNER:` / `ASSISTANT:` lines, so a weak model
+    #: sometimes CONTINUES the transcript instead of answering — the reply comes back with the
+    #: speaker labels in it, and the owner sees their own question quoted back. Cheap to strip,
+    #: and never legitimate: the model is asked for the answer, not for the next line.
+    @staticmethod
+    def _unprefix(text: str) -> str:
+        out = []
+        for line in text.splitlines():
+            if line.startswith("OWNER:"):
+                continue
+            out.append(line[len("ASSISTANT:"):].lstrip() if line.startswith("ASSISTANT:") else line)
+        return "\n".join(out).strip() or text.strip()
 
     @staticmethod
     def _parse(text: str):
@@ -610,7 +691,10 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response({"error": "unauthorised"}, status=401)
         from . import connector
         cur = tools.current_setup()
-        cur["model"] = llm.describe()
+        # summary(), not describe(): this line is read by the owner, and describe() answers a
+        # log's question — provider key, credential kind, client health. /api/state still
+        # carries describe() for diagnostics.
+        cur["model"] = llm.summary()
         cur["model_name"] = os.getenv("SECRETARY_MODEL", "")
         # Explicit booleans. The pages used to infer "configured" from describe()'s prose, which
         # is a sentence written for a human and not a contract.
@@ -618,7 +702,9 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         cur["connector_configured"] = connector.configured()
         # No longer "live on the next restart" — the channel loop polls the environment, so a
         # saved connector connects within seconds.
-        cur["connector"] = "configured" if connector.configured() else "not configured"
+        cur["connector"] = ("Connected. Calls and messages can reach you."
+                            if connector.configured()
+                            else "Not connected, so nothing can reach you yet.")
         cur["connector_uuid"] = os.getenv(connector.UUID, "")
         # WHERE THE RECORDINGS GO, resolved on THIS machine. Never a path written into the page:
         # $AGENTDUET_HOME differs by platform and by install, and a Mac owner told to look in
@@ -805,7 +891,12 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             "stt": {"engine": transcribe.engine(), "model": transcribe.local_model(),
                     "quality": _own.transcription_quality() or "balanced",
                     "cached": transcribe.is_cached()},
-            "model": {"configured": _llm.configured(), "describe": _llm.describe()},
+            # `name` so the assistant pane can say WHICH model is answering — a local 135M
+            # and a hosted frontier model give very different replies, and the owner cannot
+            # otherwise tell which one they are talking to.
+            "model": {"configured": _llm.configured(),
+                      "name": os.getenv("SECRETARY_MODEL", ""),
+                      "describe": _llm.summary()},
             "files": {"calls": _listing(carry.RECORDINGS),
                       "answered": _listing(carry.RECORDINGS / _voice.ANSWERED),
                       "messages": []},
@@ -885,10 +976,16 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                 return web.json_response({"ok": False, "message":
                                           f"Already downloading {_pull['running']}."})
 
+            # DOWNLOADING IS NEVER THE GOAL. Nobody wants a file; they want the model in use.
+            # Pull then select, in one action, so the owner is not left with a downloaded model
+            # and a second button to find.
             async def _go():
                 _pull.update(running=name, error="", done="")
                 try:
                     msg = await asyncio.to_thread(_llm._Ollama.pull, name)
+                    if body.get("then_use", True):
+                        msg += " " + await asyncio.to_thread(
+                            tools.attach_model, "local", name, "ollama")
                     _pull.update(done=msg)
                 except Exception as exc:
                     _pull.update(error=f"{type(exc).__name__}: {exc}")
@@ -897,7 +994,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
 
             asyncio.get_running_loop().create_task(_go())
             return web.json_response({"ok": True, "message":
-                f"Downloading {name}. It keeps going if you leave this page."})
+                f"Downloading {name}, then switching to it. It keeps going if you leave "
+                "this page."})
 
         return web.json_response({"ok": False, "message": f"Unknown action {act!r}."})
 
@@ -934,6 +1032,9 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             "pulling": dict(_pull),
             "hosted": [{"name": n} for n in ("gemini", "anthropic", "qwen")],
             "current": os.getenv("SECRETARY_MODEL", ""),
+            # Which of the two the owner is on, so the page opens on the right one
+            # rather than making them re-declare a choice they already made.
+            "provider": os.getenv("SECRETARY_PROVIDER", ""),
             "configured": _llm.configured(),
         })
 

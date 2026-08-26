@@ -491,6 +491,32 @@ def verify(model: str = "") -> tuple[bool, str]:
     return True, f"Working — {describe(m)}"
 
 
+#: What the owner calls each provider. `describe()` names the code's provider key, which is
+#: right for a log and wrong for a settings page — nobody bought a "dashscope".
+_VENDOR = {"gemini": "Google", "anthropic": "Anthropic", "dashscope": "Alibaba",
+           "ollama": "this machine"}
+
+
+def summary(model: str = "") -> str:
+    """One line for the OWNER: which model, and where it runs.
+
+    The twin of describe(), split off because the two audiences want different sentences.
+    describe() names the provider key, the credential kind and the client's health — a
+    diagnostic. This answers the only question a settings page is asked: what is it set to?
+    """
+    m = model or os.getenv("SECRETARY_MODEL")
+    if not m:
+        return "No model attached. Calls are still carried and recorded without one."
+    prov = provider(m)
+    impl = _IMPLS[prov]
+    if impl.credential() is None:
+        return f"{m} is chosen, but has no key yet."
+    if client(m) is None:
+        return f"{m} is chosen, but it would not start. See the log."
+    where = "on this machine" if prov == "ollama" else f"hosted by {_VENDOR.get(prov, prov)}"
+    return f"{m}, {where}"
+
+
 def describe(model: str = "") -> str:
     """For the owner's diagnostics — which provider and model are in use, and how it is
     authenticated. Distinguishing "key" from "signed in" matters: an expired OAuth login
