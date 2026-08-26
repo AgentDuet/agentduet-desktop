@@ -249,7 +249,8 @@
             <div class="lbl">Connect AI Service</div>
             <label class="sw"><input type="checkbox" data-svc="connect_ai"><span class="track"></span></label>
           </div>
-          <div style="display:flex;gap:.5rem;margin-top:.25rem">
+          <div id="activeLlmBanner" style="display:none;margin-top:.5rem"></div>
+          <div style="display:flex;gap:.5rem;margin-top:.5rem">
             <button class="btn sm" id="tabLocalModels" style="flex:1">💻 Local Open-Source Models</button>
             <button class="btn ghost sm" id="tabCloudModels" style="flex:1">☁️ Hosted Cloud APIs</button>
           </div>
@@ -493,28 +494,53 @@
     const viewCloud = $('cloudModelsView');
 
     tabLocal.onclick = () => {
+      window.selectedModelTab = 'local';
       tabLocal.className = 'btn sm';
       tabCloud.className = 'btn ghost sm';
       viewLocal.style.display = 'block';
       viewCloud.style.display = 'none';
     };
     tabCloud.onclick = () => {
+      window.selectedModelTab = 'cloud';
       tabCloud.className = 'btn sm';
       tabLocal.className = 'btn ghost sm';
       viewLocal.style.display = 'none';
       viewCloud.style.display = 'block';
     };
 
+    // Render Active Model in RAM Banner
+    const llmLoaded = (D.model || {}).loaded_info || (hw.loaded_llm || {});
+    const activeLoadedModel = llmLoaded.loaded ? (llmLoaded.model || '') : '';
+    const normActive = (activeLoadedModel || '').replace(/^local\//, '').trim();
+    const activeBanner = $('activeLlmBanner');
+    if (activeBanner) {
+      if (llmLoaded.loaded && activeLoadedModel) {
+        activeBanner.style.display = 'block';
+        activeBanner.innerHTML = `
+          <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.35);border-radius:.625rem;padding:.75rem 1rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:.5rem">
+            <div style="display:flex;align-items:center;gap:.625rem">
+              <span style="color:var(--emerald);font-size:1.1rem">●</span>
+              <div>
+                <div style="font-weight:600;color:var(--ink2);font-size:.875rem">Active in RAM: ${esc(llmLoaded.name || activeLoadedModel)}</div>
+                <div style="font-size:11px;color:var(--muted)">Resident Footprint: ~${esc(llmLoaded.ram_mb || 0)} MB RAM · Ready for on-device inference</div>
+              </div>
+            </div>
+            <button class="btn danger sm" onclick="window.unloadLlm('${esc(activeLoadedModel)}')">Unload Model</button>
+          </div>
+        `;
+      } else {
+        activeBanner.style.display = 'none';
+      }
+    }
+
     // Render Rich Local Model Cards
     const cardsContainer = $('localModelCards');
     const localModels = (llmHw.models && Object.keys(llmHw.models).length) ? llmHw.models : {};
-    const llmLoaded = (D.model || {}).loaded_info || (hw.loaded_llm || {});
-    const activeLoadedModel = llmLoaded.loaded ? (llmLoaded.model || '') : '';
 
     cardsContainer.innerHTML = '';
     Object.entries(localModels).forEach(([mid, m]) => {
-      const isLoaded = llmLoaded.loaded && (activeLoadedModel === mid || activeLoadedModel === m.id);
-      const isDownloaded = !!m.is_downloaded;
+      const isLoaded = llmLoaded.loaded && (normActive === mid || normActive === m.id || normActive === (m.name || ''));
+      const isDownloaded = isLoaded || !!m.is_downloaded;
       const isBlocked = (m.status === 'blocked') || (!m.can_download && !isDownloaded);
       const isRec = (mid === llmRec);
 
@@ -595,11 +621,20 @@
       cloudSel.appendChild(opt);
     });
 
-    // If currently configured model is a cloud model, switch to Cloud tab by default
+    // Tab state determination (default local unless cloud is actively set)
     const curModelName = (D.model || {}).model || '';
-    if (curModelName && ['gemini', 'anthropic', 'dashscope'].some(c => curModelName.includes(c))) {
+    if (!window.selectedModelTab) {
+      if (curModelName && ['gemini', 'anthropic', 'dashscope'].some(c => curModelName.includes(c))) {
+        window.selectedModelTab = 'cloud';
+      } else {
+        window.selectedModelTab = 'local';
+      }
+    }
+    if (window.selectedModelTab === 'cloud') {
       tabCloud.onclick();
-      cloudSel.value = curModelName;
+      if (curModelName) cloudSel.value = curModelName;
+    } else {
+      tabLocal.onclick();
     }
   }
   load();

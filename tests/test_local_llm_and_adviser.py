@@ -33,11 +33,22 @@ class TestHardwareLLMAdviser(unittest.TestCase):
     """Test hardware profiling, specs catalog, and dynamic LLM recommendations."""
 
     def test_llm_catalog_entries(self):
+        self.assertIn("smollm2-360m", hardware.LLM_MODELS)
+        self.assertIn("qwen-2.5-0.5b", hardware.LLM_MODELS)
         self.assertIn("llama-3.2-1b", hardware.LLM_MODELS)
         self.assertIn("qwen-2.5-1.5b", hardware.LLM_MODELS)
+        self.assertIn("smollm2-1.7b", hardware.LLM_MODELS)
+        self.assertIn("gemma-2-2b", hardware.LLM_MODELS)
         self.assertIn("llama-3.2-3b", hardware.LLM_MODELS)
+        self.assertIn("qwen-2.5-3b", hardware.LLM_MODELS)
+        self.assertIn("phi-3.5-mini", hardware.LLM_MODELS)
         self.assertIn("qwen-2.5-7b", hardware.LLM_MODELS)
         self.assertIn("mistral-7b", hardware.LLM_MODELS)
+
+        for mid, spec in hardware.LLM_MODELS.items():
+            self.assertTrue(spec.get("download_url", "").startswith("https://huggingface.co/"))
+            self.assertTrue(spec.get("filename", "").endswith(".gguf"))
+            self.assertGreater(spec.get("ram_mb", 0), 0)
 
     def test_resolve_llm_spec(self):
         spec = hardware.resolve_llm_spec("llama-3.2-1b")
@@ -132,11 +143,19 @@ class TestLocalLLMLifecycle(unittest.TestCase):
         self.assertTrue(llm.is_loaded())
         self.assertEqual(llm.loaded_model(), "llama-3.2-1b")
 
+        hw_prof = hardware.get_hardware_profile()
+        self.assertTrue(hw_prof["loaded_llm"]["loaded"])
+        self.assertEqual(hw_prof["loaded_llm"]["model"], "llama-3.2-1b")
+        self.assertEqual(hw_prof["loaded_llm"]["ram_mb"], 1150)
+
         was_loaded, model_name, freed_mb = llm.unload()
         self.assertTrue(was_loaded)
         self.assertEqual(model_name, "llama-3.2-1b")
         self.assertGreaterEqual(freed_mb, 1000)
         self.assertFalse(llm.is_loaded())
+
+        hw_prof_after = hardware.get_hardware_profile()
+        self.assertFalse(hw_prof_after["loaded_llm"]["loaded"])
 
     def test_local_llm_download_and_delete(self):
         model_id = "qwen-2.5-1.5b"

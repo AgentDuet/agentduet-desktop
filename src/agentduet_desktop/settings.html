@@ -59,9 +59,8 @@
           <div class="tile"><span class="material-symbols-rounded">smart_toy</span></div>
           <div><h2>Model</h2><p>Local open-source models run on-device; hosted models use cloud APIs.</p></div>
         </div>
-        <div class="state" id="modelState">…</div>
         <div class="state" id="hwLlmState" style="margin-top:.5rem">Analyzing machine resources…</div>
-        
+        <div id="settingsActiveLlmBanner" style="display:none;margin-top:.5rem"></div>
         <div style="display:flex;gap:.5rem;margin-top:.5rem">
           <button class="btn sm" id="tabSettingsLocal" style="flex:1">💻 Local Open-Source Models</button>
           <button class="btn ghost sm" id="tabSettingsCloud" style="flex:1">☁️ Hosted Cloud APIs</button>
@@ -265,28 +264,53 @@
     const viewCloud = $('settingsCloudView');
 
     tabLocal.onclick = () => {
+      window.selectedSettingsModelTab = 'local';
       tabLocal.className = 'btn sm';
       tabCloud.className = 'btn ghost sm';
       viewLocal.style.display = 'block';
       viewCloud.style.display = 'none';
     };
     tabCloud.onclick = () => {
+      window.selectedSettingsModelTab = 'cloud';
       tabCloud.className = 'btn sm';
       tabLocal.className = 'btn ghost sm';
       viewLocal.style.display = 'none';
       viewCloud.style.display = 'block';
     };
 
+    // Render Active Model in RAM Banner
+    const loaded = hr.loaded_llm || {};
+    const activeLoadedModel = loaded.loaded ? (loaded.model || '') : '';
+    const normActive = (activeLoadedModel || '').replace(/^local\//, '').trim();
+    const activeBanner = $('settingsActiveLlmBanner');
+    if (activeBanner) {
+      if (loaded.loaded && activeLoadedModel) {
+        activeBanner.style.display = 'block';
+        activeBanner.innerHTML = `
+          <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.35);border-radius:.625rem;padding:.75rem 1rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:.5rem">
+            <div style="display:flex;align-items:center;gap:.625rem">
+              <span style="color:var(--emerald);font-size:1.1rem">●</span>
+              <div>
+                <div style="font-weight:600;color:var(--ink2);font-size:.875rem">Active in RAM: ${esc(loaded.name || activeLoadedModel)}</div>
+                <div style="font-size:11px;color:var(--muted)">Resident Footprint: ~${esc(loaded.ram_mb || 0)} MB RAM · Ready for on-device inference</div>
+              </div>
+            </div>
+            <button class="btn danger sm" onclick="window.unloadSettingsLlm('${esc(activeLoadedModel)}')">Unload Model</button>
+          </div>
+        `;
+      } else {
+        activeBanner.style.display = 'none';
+      }
+    }
+
     // Render Rich Local Model Cards
     const cardsContainer = $('settingsLocalCards');
     const localModels = (llmHw.models && Object.keys(llmHw.models).length) ? llmHw.models : {};
-    const loaded = hr.loaded_llm || {};
-    const activeLoadedModel = loaded.loaded ? (loaded.model || '') : '';
 
     cardsContainer.innerHTML = '';
     Object.entries(localModels).forEach(([mid, m]) => {
-      const isLoaded = loaded.loaded && (activeLoadedModel === mid || activeLoadedModel === m.id);
-      const isDownloaded = !!m.is_downloaded;
+      const isLoaded = loaded.loaded && (normActive === mid || normActive === m.id || normActive === (m.name || ''));
+      const isDownloaded = isLoaded || !!m.is_downloaded;
       const isBlocked = (m.status === 'blocked') || (!m.can_download && !isDownloaded);
       const isRec = (mid === llmRec);
 
@@ -303,7 +327,6 @@
           <div class="model-status-indicator active">● Active in RAM (~${esc(loaded.ram_mb || m.ram_mb || 0)} MB)</div>
           <div class="model-btn-group">
             <button class="btn danger sm" onclick="window.unloadSettingsLlm('${mid}')">Unload Model</button>
-            <button class="btn ghost sm" onclick="window.deleteSettingsLlm('${mid}')" title="Delete model files from disk">🗑️ Delete</button>
           </div>
         `;
       } else if (isDownloaded) {
@@ -319,7 +342,7 @@
           <div class="model-status-indicator not-downloaded">Not Downloaded</div>
           <div class="model-btn-group">
             ${m.can_download ?
-              `<button class="btn sm" onclick="window.downloadSettingsLlm('${mid}', true)">Download &amp; Load (${esc(m.dl_display || (m.dl_gb + ' GB'))})</button>` :
+              `<button class="btn sm" onclick="window.downloadSettingsLlm('${mid}', false)">Download (${esc(m.dl_display || (m.dl_gb + ' GB'))})</button>` :
               `<button class="btn sm" disabled title="${esc(m.reason || 'Hardware Insufficient')}">⛔ Insufficient Hardware</button>`
             }
           </div>
@@ -365,15 +388,25 @@
       cloudSel.appendChild(opt);
     });
 
+    // Tab state determination (default local unless cloud is actively set)
     const curModel = cr.model || '';
-    if (curModel && ['gemini', 'anthropic', 'dashscope'].some(c => curModel.includes(c))) {
+    if (!window.selectedSettingsModelTab) {
+      if (curModel && ['gemini', 'anthropic', 'dashscope'].some(c => curModel.includes(c))) {
+        window.selectedSettingsModelTab = 'cloud';
+      } else {
+        window.selectedSettingsModelTab = 'local';
+      }
+    }
+    if (window.selectedSettingsModelTab === 'cloud') {
       tabCloud.onclick();
-      cloudSel.value = curModel;
+      if (curModel) cloudSel.value = curModel;
+    } else {
+      tabLocal.onclick();
     }
   }
 
   // Model Lifecycle Global Callbacks for Settings
-  window.downloadSettingsLlm = async (mid, autoLoad = true) => {
+  window.downloadSettingsLlm = async (mid, autoLoad = false) => {
     say('mModel', true, `Downloading ${mid}… verifying disk and RAM headroom.`);
     const d = await post('/api/llm/download', {model: mid, auto_load: autoLoad});
     say('mModel', d.ok, d.message || d.error);

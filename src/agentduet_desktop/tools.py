@@ -1464,7 +1464,14 @@ def attach_model(key: str, model: str = "") -> str:
     For local open-source models (Llama, Qwen 2.5, Phi 3.5, Mistral), no API key is needed.
     """
     key = (key or "").strip()
-    m = (model or "").strip() or os.getenv("SECRETARY_MODEL") or ""
+    m = (model or "").strip()
+    if not m and key:
+        from . import hardware
+        if llm.provider(key) == "local" or (hasattr(hardware, "LLM_MODELS") and key in hardware.LLM_MODELS):
+            m = key
+            key = ""
+    if not m:
+        m = os.getenv("SECRETARY_MODEL") or ""
     if not m:
         return "Say which model to attach (e.g. llama-3.2-1b, claude-sonnet-5, gemini-3.1-flash)."
 

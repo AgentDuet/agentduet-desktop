@@ -94,6 +94,9 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
         "min_ram_gb": 2,
         "speed_rating": "⚡⚡⚡⚡⚡",
         "speed_tok": "~110-150 tok/s",
+        "repo": "bartowski/SmolLM2-360M-Instruct-GGUF",
+        "filename": "SmolLM2-360M-Instruct-Q4_K_M.gguf",
+        "download_url": "https://huggingface.co/bartowski/SmolLM2-360M-Instruct-GGUF/resolve/main/SmolLM2-360M-Instruct-Q4_K_M.gguf",
         "description": "Ultra-lightweight featherweight model. Fits easily in under 500 MB RAM, perfect for fast transcription summaries.",
     },
     "qwen-2.5-0.5b": {
@@ -110,6 +113,9 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
         "min_ram_gb": 2,
         "speed_rating": "⚡⚡⚡⚡⚡",
         "speed_tok": "~95-125 tok/s",
+        "repo": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+        "filename": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+        "download_url": "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf",
         "description": "Sub-1GB edge model. Extremely fast with strong multilingual understanding and low latency triage.",
     },
     "llama-3.2-1b": {
@@ -126,6 +132,9 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
         "min_ram_gb": 4,
         "speed_rating": "⚡⚡⚡⚡",
         "speed_tok": "~70-90 tok/s",
+        "repo": "bartowski/Llama-3.2-1B-Instruct-GGUF",
+        "filename": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+        "download_url": "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf",
         "description": "Meta's ultra-efficient 1B model. Excellent balance of speed, summarization, and low-latency agent tasks.",
     },
     "qwen-2.5-1.5b": {
@@ -142,6 +151,9 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
         "min_ram_gb": 4,
         "speed_rating": "⚡⚡⚡⚡",
         "speed_tok": "~65-80 tok/s",
+        "repo": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+        "filename": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        "download_url": "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf",
         "description": "Top recommendation for 8GB Macs. Instant streaming with strong multilingual, reasoning, and summarization skills.",
     },
     "smollm2-1.7b": {
@@ -158,6 +170,9 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
         "min_ram_gb": 4,
         "speed_rating": "⚡⚡⚡⚡",
         "speed_tok": "~65-85 tok/s",
+        "repo": "HuggingFaceTB/SmolLM2-1.7B-Instruct-GGUF",
+        "filename": "smollm2-1.7b-instruct-q4_k_m.gguf",
+        "download_url": "https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct-GGUF/resolve/main/smollm2-1.7b-instruct-q4_k_m.gguf",
         "description": "Compact powerhouse outperforming earlier 3B models in multi-turn reasoning and instruction following.",
     },
     "gemma-2-2b": {
@@ -174,6 +189,9 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
         "min_ram_gb": 4,
         "speed_rating": "⚡⚡⚡",
         "speed_tok": "~45-60 tok/s",
+        "repo": "bartowski/gemma-2-2b-it-GGUF",
+        "filename": "gemma-2-2b-it-Q4_K_M.gguf",
+        "download_url": "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf",
         "description": "Google's class-leading compact model with exceptional knowledge retrieval and dialogue capabilities.",
     },
     "llama-3.2-3b": {
@@ -190,6 +208,9 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
         "min_ram_gb": 8,
         "speed_rating": "⚡⚡⚡",
         "speed_tok": "~35-48 tok/s",
+        "repo": "bartowski/Llama-3.2-3B-Instruct-GGUF",
+        "filename": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+        "download_url": "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
         "description": "Meta's highly capable 3B edge model for multilingual dialogue, agentic tasks, and creative workflows.",
     },
     "qwen-2.5-3b": {
@@ -206,6 +227,9 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
         "min_ram_gb": 8,
         "speed_rating": "⚡⚡⚡",
         "speed_tok": "~35-50 tok/s",
+        "repo": "Qwen/Qwen2.5-3B-Instruct-GGUF",
+        "filename": "qwen2.5-3b-instruct-q4_k_m.gguf",
+        "download_url": "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf",
         "description": "Exceptional depth for complex creative writing, precise multi-turn dialogues, and in-depth reasoning.",
     },
     "phi-3.5-mini": {
@@ -222,6 +246,9 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
         "min_ram_gb": 8,
         "speed_rating": "⚡⚡⚡",
         "speed_tok": "~30-45 tok/s",
+        "repo": "bartowski/Phi-3.5-mini-instruct-GGUF",
+        "filename": "Phi-3.5-mini-instruct-Q4_K_M.gguf",
+        "download_url": "https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF/resolve/main/Phi-3.5-mini-instruct-Q4_K_M.gguf",
         "description": "Microsoft's compact powerhouse optimized for code reasoning, structured JSON outputs, and dense logic.",
     },
     "qwen-2.5-7b": {
@@ -238,6 +265,9 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
         "min_ram_gb": 16,
         "speed_rating": "⚡⚡",
         "speed_tok": "~20-30 tok/s",
+        "repo": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+        "filename": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+        "download_url": "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
         "description": "High-tier open weights model matching proprietary API quality for complex reasoning and enterprise tools.",
     },
     "mistral-7b": {
@@ -254,6 +284,9 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
         "min_ram_gb": 16,
         "speed_rating": "⚡⚡",
         "speed_tok": "~20-30 tok/s",
+        "repo": "bartowski/Mistral-7B-Instruct-v0.3-GGUF",
+        "filename": "Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
+        "download_url": "https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
         "description": "Industry benchmark 7B open model with extended context window and superior instruction following.",
     },
 }
@@ -300,7 +333,20 @@ def is_downloaded(model_id: str) -> bool:
     spec = resolve_llm_spec(model_id)
     key = spec.get("id", model_id) if spec else model_id
     model_dir = paths.MODELS / key
-    if model_dir.is_dir() and any(model_dir.iterdir()):
+    if not model_dir.is_dir():
+        return False
+    manifest_p = model_dir / "manifest.json"
+    if manifest_p.is_file():
+        try:
+            m_data = json.loads(manifest_p.read_text(encoding="utf-8"))
+            if m_data.get("status") == "downloaded":
+                return True
+        except Exception:
+            pass
+    gguf_files = list(model_dir.glob("*.gguf"))
+    if gguf_files and any(f.stat().st_size > 1024 * 1024 for f in gguf_files):
+        return True
+    if (model_dir / "model.bin").is_file():
         return True
     return False
 
@@ -311,7 +357,7 @@ def list_downloaded_models() -> list[str]:
         return []
     res = []
     for p in paths.MODELS.iterdir():
-        if p.is_dir() and any(p.iterdir()):
+        if p.is_dir() and is_downloaded(p.name):
             res.append(p.name)
     return res
 
@@ -529,6 +575,52 @@ def get_hardware_profile() -> dict[str, Any]:
             "apple_silicon_ane": {"supported": accel.get("ane_supported", False), "reason": accel.get("ane_why", "")},
             "cuda": {"supported": accel.get("cuda_available", False), "devices": accel.get("cuda_devices", 0)},
         },
+        "loaded_llm": _get_loaded_llm_info(),
+        "loaded_stt": _get_loaded_stt_info(),
+    }
+
+
+def _get_loaded_llm_info() -> dict[str, Any]:
+    try:
+        from . import llm
+        if hasattr(llm, "loaded_info"):
+            return llm.loaded_info()
+        is_l = llm.is_loaded() if hasattr(llm, "is_loaded") else False
+        mod = llm.loaded_model() if hasattr(llm, "loaded_model") else None
+        ram = llm.loaded_ram_mb() if hasattr(llm, "loaded_ram_mb") else 0
+        return {"loaded": is_l, "model": mod, "name": mod, "ram_mb": ram}
+    except Exception:
+        return {"loaded": False, "model": None, "name": None, "ram_mb": 0}
+
+
+def _get_loaded_stt_info() -> dict[str, Any]:
+    try:
+        from . import transcribe
+        if hasattr(transcribe, "loaded_info"):
+            return transcribe.loaded_info()
+        is_l = transcribe.is_loaded() if hasattr(transcribe, "is_loaded") else False
+        mod = transcribe.loaded_model() if hasattr(transcribe, "loaded_model") else None
+        ram = transcribe.loaded_ram_mb() if hasattr(transcribe, "loaded_ram_mb") else 0
+        return {"loaded": is_l, "model": mod, "name": mod, "ram_mb": ram}
+    except Exception:
+        return {"loaded": False, "model": None, "name": None, "ram_mb": 0}
+
+
+def hardware_adviser_report() -> dict[str, Any]:
+    """Return unified hardware and model adviser report including STT and LLM recommendations."""
+    hw = get_hardware_profile()
+    stt_rec = recommend_models(hw)
+    llm_rec = recommend_llm_models(hw)
+
+    loaded_stt = _get_loaded_stt_info()
+    loaded_llm = _get_loaded_llm_info()
+
+    return {
+        "hardware": hw,
+        "stt": stt_rec,
+        "llm": llm_rec,
+        "loaded_stt": loaded_stt,
+        "loaded_llm": loaded_llm,
     }
 
 
