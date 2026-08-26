@@ -99,3 +99,11 @@ sandbox that cannot choose its own destination.
 
 Carrying a call records two people talking. Whether they must be told, and by whom, depends on
 where you and they are. **This software does not announce it for you.**
+
+## Licence
+
+Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+Binary distributions bundle third-party components under their own licences; `NOTICE` lists
+them. Speech models are downloaded at run time, are not distributed with this software, and
+carry their own licences.

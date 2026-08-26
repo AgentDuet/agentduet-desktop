@@ -5,7 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agentduet-desktop"
 dynamic = ["version"]
-description = "A personal secretary that answers external parties on your behalf, on your own machine."
+description = "Records your calls, or answers them — on your own machine."
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.12"   # the SDK requires 3.12
 dependencies = [
   "agentduet>=1.0.0",        # released SDK: TELCO + WhatsApp
