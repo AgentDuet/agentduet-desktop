@@ -143,6 +143,40 @@ def attach(interactive: bool = True) -> bool:
     return not out.lower().startswith(("could not", "that key"))
 
 
+def sign_in(interactive: bool = True) -> bool:
+    """Offer to sign in. True if signed in by the time this returns.
+
+    HEADLESS FAILS CLEANLY RATHER THAN DEGRADING. A box with no display cannot show a consent
+    screen, and the workarounds — pasting a code back from a page that failed to load, or an ssh
+    tunnel — are either confusing or assume the reader forwards ports for fun. The connector key
+    still works, so such an owner has a route; it is simply the other one. Saying so plainly
+    beats offering a flow that cannot finish.
+    """
+    from . import oauth
+    if oauth.signed_in():
+        print(f"\n  Signed in as {oauth.email()}.")
+        return True
+    if not oauth.available() or not interactive:
+        return False
+    if not oauth.browser_available():
+        print("\n  Signing in needs a browser, and this machine has no display.")
+        print("  Use a connector key below instead — it does the same job.")
+        return False
+
+    print("\n  You can sign in with Google instead of typing a connector.")
+    print("  Signing in creates your connector for you; there is nothing to copy.")
+    if input("  Sign in now? [Y/n] ").strip().lower().startswith("n"):
+        return False
+    try:
+        who = oauth.sign_in_interactive()
+    except Exception as exc:
+        print(f"  Sign-in did not finish: {exc}")
+        print("  You can use a connector key below instead.")
+        return False
+    print(f"  Signed in as {who}. Connector {oauth.connector_uuid()} is yours.")
+    return True
+
+
 def connect(interactive: bool = True) -> bool:
     """Attach the B3 connector. Returns True if one is configured.
 
@@ -422,7 +456,9 @@ def main(interactive: bool = True) -> int:
               "\n  Run `agentduet-desktop init` again once you have a key,"
               "\n  or choose to have calls put through to you instead.")
         return 1
-    connected = connect(interactive)
+    # SIGN-IN FIRST, because it makes the manual step unnecessary rather than
+    # additional: it provisions the connector server-side.
+    connected = sign_in(interactive) or connect(interactive)
 
     # WHO, then HOW THEY ARE HEARD. Both work with no model, which is the point: this is the
     # path a Linux owner self-hosting a recorder walks, and every step above may have been
