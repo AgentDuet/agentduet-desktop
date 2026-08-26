@@ -199,8 +199,11 @@ async def run_channel() -> None:
     from . import oauth
     kwargs = dict(call_audio=CallAudioConfig(sample_rate=voice.CALL_SAMPLE_RATE))
     if oauth.signed_in():
+        # TOKEN ONLY. The SDK rejects a config carrying both — "token_provider is a standalone
+        # auth mode: remove api_key / connector_uuid / cert_path". The connector is a CLAIM
+        # inside the token, so passing it alongside is at best redundant and at worst a second
+        # source of truth that can disagree with the credential actually presented.
         kwargs["token_provider"] = oauth.token_provider
-        kwargs["connector_uuid"] = oauth.connector_uuid()
     else:
         kwargs["api_key"] = os.getenv("AGENTDUET_API_KEY")
         kwargs["connector_uuid"] = os.getenv("AGENTDUET_CONNECTOR_UUID")
@@ -363,9 +366,19 @@ async def run_channel() -> None:
 
 
 def connector_ready() -> bool:
-    """Read the ENVIRONMENT every time, not a value captured at startup — the settings page
-    writes the credential into this process as well as to .env."""
-    return bool(os.getenv("AGENTDUET_API_KEY") and os.getenv("AGENTDUET_CONNECTOR_UUID"))
+    """Whether the channel can be opened — by EITHER route, checked fresh every time.
+
+    Delegates rather than repeating the test. This asked only for the two environment variables,
+    which is right for an api-key install and wrong for a signed-in one: signing in provisions
+    the connector server-side, so neither variable is ever set and this returned False forever.
+    The daemon would have sat polling for a credential that was never going to arrive in the
+    environment, while the owner watched a completed sign-in do nothing.
+
+    Read fresh every time, never captured at startup: the settings page and the sign-in callback
+    both write into the RUNNING process, so a credential arriving later must take effect without
+    a restart."""
+    from . import connector
+    return connector.configured()
 
 
 async def main() -> None:
@@ -452,10 +465,10 @@ async def main() -> None:
     # again. The symptom was a chip reading "not connected" while the credential sat there
     # correct, advising the owner to check a network that was fine.
     if not connector_ready():
-        logger.info("No AgentDuet connector configured (AGENTDUET_API_KEY / "
-                    "AGENTDUET_CONNECTOR_UUID) — running the owner's view only. "
-                    "Everything local works; inbound messages need a connector. "
-                    "Waiting for one to be added.")
+        logger.info("No AgentDuet connector yet — running the owner's view only. "
+                    "Sign in, or set AGENTDUET_API_KEY and AGENTDUET_CONNECTOR_UUID. "
+                    "Everything local works; only inbound needs a connector. "
+                    "Waiting for one to arrive.")
         status.set_channel("unset")
         while not connector_ready():
             await asyncio.sleep(CONNECTOR_POLL_SECONDS)
