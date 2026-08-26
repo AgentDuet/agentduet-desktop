@@ -29,7 +29,7 @@ else
 fi
 for _ in $(seq 20); do
   sleep 1
-  URL=$(cat "${AGENTDUET_HOME:-$HOME/.dduet}/run/site-url" 2>/dev/null || true)
+  URL=$(cat "${AGENTDUET_HOME:-$HOME/.agentduet-desktop}/run/site-url" 2>/dev/null || true)
   [ -n "$URL" ] && break
 done
 
