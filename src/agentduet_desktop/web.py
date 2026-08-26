@@ -656,7 +656,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         # attach_model verifies BEFORE saving; the message it returns names the length and last
         # four characters only, never the key.
         out = tools.attach_model((body.get("key") or "").strip(),
-                                 (body.get("model") or "").strip())
+                                 (body.get("model") or "").strip(),
+                                 (body.get("provider") or "").strip())
         # Allow-list, not deny-list: a failed attach begins "NOT saved — …", which a list of
         # failure prefixes missed, so a bad key was reported as success. Only the message
         # attach_model emits on success counts as success.
@@ -853,6 +854,88 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             people.append({"who": who, "calls": items, "last": items[0]["at"] if items else ""})
         people.sort(key=lambda p: p["last"], reverse=True)
         return web.json_response({"people": people, "folder": str(folder)})
+
+    #: One pull at a time, and its outcome. Module state rather than per-request, because the
+    #: page starts it and then polls — the same shape as the speech-model download, for the same
+    #: reason: several gigabytes cannot be held open on one request.
+    _pull = {"running": "", "error": "", "done": ""}
+
+    async def api_model_action(request):
+        """Pull or delete a local model. Selecting one goes through /api/setup/model."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import llm as _llm
+        body = await request.json()
+        name = (body.get("name") or "").strip()
+        act = (body.get("action") or "").strip()
+        if not name:
+            return web.json_response({"ok": False, "message": "Which model?"})
+
+        if act == "delete":
+            # Deleting the model currently in use would leave a configured-but-broken instance,
+            # which is the failure attach_model exists to prevent. Refuse rather than repair.
+            if name == os.getenv("SECRETARY_MODEL"):
+                return web.json_response({"ok": False, "message":
+                    f"{name} is the model in use. Choose another one first, then delete it."})
+            return web.json_response({"ok": True, "message":
+                                      await asyncio.to_thread(_llm._Ollama.delete, name)})
+
+        if act == "pull":
+            if _pull["running"]:
+                return web.json_response({"ok": False, "message":
+                                          f"Already downloading {_pull['running']}."})
+
+            async def _go():
+                _pull.update(running=name, error="", done="")
+                try:
+                    msg = await asyncio.to_thread(_llm._Ollama.pull, name)
+                    _pull.update(done=msg)
+                except Exception as exc:
+                    _pull.update(error=f"{type(exc).__name__}: {exc}")
+                finally:
+                    _pull["running"] = ""
+
+            asyncio.get_running_loop().create_task(_go())
+            return web.json_response({"ok": True, "message":
+                f"Downloading {name}. It keeps going if you leave this page."})
+
+        return web.json_response({"ok": False, "message": f"Unknown action {act!r}."})
+
+    async def api_models(request):
+        """What could run here, sized against this machine.
+
+        A weight in GB is not a decision; a weight next to what this computer has is. So every
+        row carries a verdict, and the machine's own figures are returned alongside so the page
+        can say WHY rather than only colouring a row.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import llm as _llm, machine
+
+        local = []
+        for m in _llm._Ollama.models():
+            fit, why = machine.verdict(m["size_gb"])
+            now_ok, now_why = machine.fits_now(m["size_gb"])
+            local.append({**m, "fit": fit, "why": why, "now_ok": now_ok, "now_why": now_why})
+        return web.json_response({
+            "machine": machine.describe(),
+            # Reachable, not merely installed: Ollama not running is the common case and the
+            # page should say so rather than showing an empty list that reads as "none exist".
+            "ollama": bool(_llm._Ollama.credential()),
+            "ollama_host": _llm._Ollama.host(),
+            "local": local,
+            # What could be pulled, minus what already is. Sized the same way, so the choice
+            # to download is made against the machine rather than after a 5 GB surprise.
+            "suggested": [
+                {**x, **dict(zip(("fit", "why"), machine.verdict(x["size_gb"])))}
+                for x in _llm._Ollama.SUGGESTED
+                if x["name"] not in {m["name"] for m in _llm._Ollama.models()}
+            ],
+            "pulling": dict(_pull),
+            "hosted": [{"name": n} for n in ("gemini", "anthropic", "qwen")],
+            "current": os.getenv("SECRETARY_MODEL", ""),
+            "configured": _llm.configured(),
+        })
 
     async def api_ui(request):
         """View preferences. Server-side because the window has no localStorage — see
@@ -1292,6 +1375,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/api/state", api_state),
         web.get("/api/panel", api_panel),
         web.get("/api/threads", api_threads),
+        web.get("/api/models", api_models),
+        web.post("/api/models", api_model_action),
         web.post("/api/handover", api_handover),
         web.get("/api/install", api_install),
         web.post("/api/install", api_install),
