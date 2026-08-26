@@ -111,6 +111,36 @@
 
       <div class="card">
         <div class="head">
+          <div class="tile"><span class="material-symbols-rounded">call</span></div>
+          <div><h2>Record calls</h2><p>Both sides of a carried call are saved to this
+            machine.</p></div>
+        </div>
+        <div class="row">
+          <div class="lbl">Record calls</div>
+          <label class="sw"><input type="checkbox" id="recCalls"><span class="track"></span></label>
+        </div>
+        <div class="state" id="recDir">…</div>
+        <div id="mRec"></div>
+        <p class="note">You are recording two people. Whether they must be told, and by whom,
+          depends on where you and they are — this software does not announce it.</p>
+      </div>
+
+      <div class="card">
+        <div class="head">
+          <div class="tile"><span class="material-symbols-rounded">chat_bubble</span></div>
+          <div><h2>Record messages</h2><p>Archive SMS and mobile messages beside your
+            calls.</p></div>
+        </div>
+        <div class="row">
+          <div class="lbl">Record messages</div>
+          <label class="sw"><input type="checkbox" id="recMsgs" disabled><span class="track"></span></label>
+        </div>
+        <p class="note">Not built yet. We receive WhatsApp through the SDK, not SMS — this is a
+          channel we do not ingest, rather than a screen nobody has drawn.</p>
+      </div>
+
+      <div class="card">
+        <div class="head">
           <div class="tile"><span class="material-symbols-rounded">graphic_eq</span></div>
           <div><h2>Speech recognition</h2><p>With a model key the hosted engine does it; with no
             key it runs here, and nothing leaves the machine.</p></div>
@@ -135,6 +165,10 @@
             <option value="accurate">accurate — better</option>
             <option value="max">max — best, and the largest</option>
           </select></div>
+        <div class="grp"><label class="fl">Test the engine</label>
+          <div class="acts"><button class="btn ghost" id="doTest">Test local transcription</button>
+            <span class="spin" id="spTest"></span></div>
+          <div id="mTest"></div></div>
         <div class="acts"><button class="btn" id="saveQuality">Save</button>
           <span class="spin" id="spQuality"></span>
           <button class="btn ghost" id="doStt" hidden style="margin-left:.5rem">Download it now</button>
@@ -346,6 +380,31 @@
     $('doInstall').disabled = false; $('spInst').textContent = '';
     say('mInst', d.ok, d.message);
     fetch(`/api/install?t=${T}`).then(r => r.json()).then(instRender).catch(() => {});
+  };
+
+  // ---- the four services, moved here from the hub -----------------------------------------
+  // The hub is people and their calls now; anything with a switch or a field belongs on this
+  // page. Recording reads and writes a real setting; messages is a stub and says so.
+  function svcRender(d){
+    $('recCalls').checked = !!((d.services || {}).record_call || {}).on;
+    $('recDir').innerHTML = 'Saved to <code>' + esc((d.dirs || {}).calls || '?') + '</code>';
+  }
+  fetch(`/api/panel?t=${T}`).then(r => r.json()).then(svcRender).catch(() => {});
+  $('recCalls').onchange = async () => {
+    const d = await post('/api/setup/setting',
+                         {field: 'record_calls', value: $('recCalls').checked ? 'yes' : 'no'});
+    if (!d.ok) $('recCalls').checked = !$('recCalls').checked;
+    say('mRec', d.ok, d.message);
+  };
+  $('doTest').onclick = async () => {
+    $('spTest').textContent = 'checking…';
+    const d = await fetch(`/api/setup/stt?t=${T}`).then(r => r.json()).catch(() => ({}));
+    $('spTest').textContent = '';
+    if (!d.installed) return say('mTest', false, 'The on-machine engine is not in this build.');
+    if (!d.needed) return say('mTest', true, 'A model key is attached, so the hosted engine transcribes.');
+    if (!d.cached) { await post('/api/setup/stt', {}); return say('mTest', true,
+      `${d.model} is not downloaded yet (about ${d.mb} MB). Downloading now.`); }
+    say('mTest', true, `${d.model} is downloaded and ready on this machine.`);
   };
 </script>
 </body>

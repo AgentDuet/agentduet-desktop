@@ -11,10 +11,11 @@
 <link rel="stylesheet" href="/app.css">
 <style>
   .app{flex:1;display:flex;overflow:hidden;}
-  aside{width:15rem;flex:0 0 15rem;background:var(--sidebar);border-right:1px solid var(--line);
-    display:flex;flex-direction:column;justify-content:space-between;padding:1rem;}
+  aside{width:17rem;flex:0 0 17rem;background:var(--sidebar);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;padding:1rem;gap:.9rem;overflow:hidden;}
   .prof{padding:.75rem;border-radius:.75rem;background:var(--slate900);
-    border:1px solid rgba(255,255,255,.05);display:flex;align-items:center;gap:.75rem;}
+    border:1px solid rgba(255,255,255,.05);display:flex;align-items:center;gap:.75rem;
+    flex-shrink:0;}
   .prof .av{width:2rem;height:2rem;flex:0 0 2rem;border-radius:50%;background:var(--accent);
     color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;
     font-size:.75rem;}
@@ -22,68 +23,50 @@
     text-overflow:ellipsis;white-space:nowrap;}
   .prof .p{font-size:10px;font-family:var(--mono);color:var(--emerald);overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap;}
-  .navlab{padding:.25rem .5rem;font-size:10px;text-transform:uppercase;font-weight:700;
-    letter-spacing:.05em;color:var(--faint);}
-  nav{display:flex;flex-direction:column;gap:.25rem;}
-  nav button{width:100%;display:flex;align-items:center;gap:.625rem;padding:.5rem .75rem;
-    border-radius:.5rem;font:inherit;font-size:.75rem;font-weight:500;color:var(--muted);
+  .navlab{font-size:10px;text-transform:uppercase;font-weight:700;letter-spacing:.05em;
+    color:var(--faint);flex-shrink:0;}
+
+  /* THE LEFT PANEL IS THE PEOPLE, not a menu. Nothing to navigate between any more: the four
+     services moved into Settings, so the only thing this window does is show who called and
+     what was said. */
+  .who-list{display:flex;flex-direction:column;gap:.25rem;overflow-y:auto;flex:1;min-height:0;}
+  /* PINNED, and separated by a rule rather than by hoping it stays first. It is not a person —
+     it is the owner talking to a model — so it must not sort into the list or be pushed down by
+     whoever called most recently. */
+  .who.pinned{flex-direction:row;align-items:center;gap:.55rem;margin-bottom:.35rem;
+    padding-bottom:.7rem;border-bottom:1px solid var(--line);border-radius:.6rem .6rem 0 0;}
+  .who.pinned .material-symbols-rounded{font-size:1.05rem;color:var(--blue400);}
+  .who.pinned .n{font-family:var(--sans);font-weight:600;}
+  .who{display:flex;flex-direction:column;gap:.15rem;padding:.6rem .7rem;border-radius:.6rem;
     background:transparent;border:1px solid transparent;cursor:pointer;transition:.12s;}
-  nav button:hover{background:rgba(255,255,255,.05);color:var(--ink2);}
-  nav button.on{color:var(--blue400);background:rgba(37,99,235,.2);
-    border-color:rgba(59,130,246,.2);}
-  nav .material-symbols-rounded{font-size:1.125rem;}
+  .who:hover{background:rgba(255,255,255,.04);}
+  .who.on{border-color:rgba(59,130,246,.4);background:rgba(37,99,235,.15);}
+  .who .n{font-family:var(--mono);font-size:.78rem;color:var(--ink2);}
+  .who .m{font-size:10px;color:var(--faint);}
+  .who-empty{font-size:.75rem;color:var(--faint);line-height:1.6;padding:.5rem .2rem;}
+
   .store{padding:.625rem;border-radius:.5rem;background:var(--slate900);
     border:1px solid rgba(255,255,255,.05);font-size:11px;display:flex;flex-direction:column;
-    gap:.25rem;}
+    gap:.25rem;flex-shrink:0;}
   .store .r{display:flex;justify-content:space-between;align-items:center;color:var(--muted);}
   .store a{color:var(--blue400);font-size:10px;text-decoration:none;}
   .store a:hover{text-decoration:underline;}
   .store .path{font-family:var(--mono);color:#cbd5e1;font-size:10px;overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap;}
-  main{flex:1;background:var(--bg);overflow-y:auto;padding:1.5rem;}
-  .tab{display:none;flex-direction:column;gap:1.5rem;}
-  .tab.on{display:flex;}
-  .thead{display:flex;justify-content:space-between;align-items:center;}
-  .svcs{display:flex;flex-direction:column;gap:.75rem;}
-  .svc{padding:1rem;border-radius:.75rem;background:var(--card);border:1px solid var(--line);
-    display:flex;align-items:center;justify-content:space-between;gap:1rem;transition:.12s;}
-  .svc:hover{border-color:rgba(59,130,246,.3);}
-  .svc .go{display:flex;align-items:center;gap:.875rem;flex:1;cursor:pointer;}
-  .svc h3{font-size:.875rem;font-weight:600;color:var(--ink2);}
-  .titlerow{display:flex;align-items:center;gap:.5rem;}
-  .files{padding:.75rem;background:var(--slate900);border-radius:.5rem;font-family:var(--mono);
-    font-size:.75rem;color:#cbd5e1;display:flex;flex-direction:column;gap:.5rem;
-    border:1px solid rgba(255,255,255,.05);}
-  .files .h{display:flex;justify-content:space-between;color:var(--muted);
-    border-bottom:1px solid rgba(255,255,255,.05);padding-bottom:.5rem;}
-  .files .f{display:flex;justify-content:space-between;align-items:center;color:var(--blue300);
-    gap:1rem;}
-  .files .f span:last-child{color:var(--faint);white-space:nowrap;}
-  .files .none{color:var(--faint);font-style:italic;}
-  .out{padding:.75rem;background:var(--slate900);border-radius:.5rem;font-family:var(--mono);
-    font-size:.75rem;color:var(--muted);min-height:8rem;border:1px solid rgba(255,255,255,.05);
-    white-space:pre-wrap;}
-  .out .i{font-style:italic;}
 
-  .split{display:grid;grid-template-columns:minmax(12rem,16rem) minmax(0,1fr);gap:1rem;
-    align-items:start;}
-  .who-list{display:flex;flex-direction:column;gap:.25rem;}
-  .who{display:flex;flex-direction:column;gap:.15rem;padding:.6rem .7rem;border-radius:.6rem;
-    background:var(--card);border:1px solid var(--line);cursor:pointer;transition:.12s;}
-  .who:hover{border-color:rgba(59,130,246,.3);}
-  .who.on{border-color:rgba(59,130,246,.5);background:rgba(37,99,235,.12);}
-  .who .n{font-family:var(--mono);font-size:.78rem;color:var(--ink2);}
-  .who .m{font-size:10px;color:var(--faint);}
-  .thread{display:flex;flex-direction:column;gap:.6rem;min-height:12rem;}
-  .call{background:var(--card);border:1px solid var(--line);border-radius:.75rem;padding:.9rem 1rem;
-    display:flex;flex-direction:column;gap:.5rem;}
+  main{flex:1;background:var(--bg);overflow-y:auto;padding:1.5rem;}
+  .thead{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.2rem;}
+  .thread{display:flex;flex-direction:column;gap:.6rem;}
+  .call{background:var(--card);border:1px solid var(--line);border-radius:.75rem;
+    padding:.9rem 1rem;display:flex;flex-direction:column;gap:.5rem;}
   .call .top{display:flex;justify-content:space-between;align-items:center;gap:1rem;}
   .call .when{font-size:.78rem;color:var(--ink2);font-weight:600;}
   .call .meta{font-family:var(--mono);font-size:10px;color:var(--faint);}
   .call .text{font-size:.8rem;color:#cbd5e1;line-height:1.6;white-space:pre-wrap;
     background:var(--slate900);border:1px solid rgba(255,255,255,.05);border-radius:.5rem;
-    padding:.7rem;max-height:14rem;overflow:auto;}
+    padding:.7rem;max-height:16rem;overflow:auto;}
   .call .none{font-size:.78rem;color:var(--faint);font-style:italic;}
+  .blank{color:var(--faint);font-size:.85rem;line-height:1.7;max-width:32rem;}
 </style>
 </head>
 <body>
@@ -98,311 +81,116 @@
       <span class="dot"></span><span class="l">Power Mobile Line:</span>
       <span class="v" id="lineNum">—</span>
     </div>
-    <button class="tbtn on" id="toSettings">
-      <span class="material-symbols-rounded" style="font-size:.875rem">settings</span>
-      <span>Settings</span></button>
+    <a class="tbtn on" id="toSettings" href="#">
+      <span class="material-symbols-rounded">settings</span><span>Settings</span></a>
   </div>
 
   <div class="app">
     <aside>
-      <div style="display:flex;flex-direction:column;gap:1rem">
-        <div class="prof">
-          <div class="av" id="av">–</div>
-          <div style="min-width:0;flex:1">
-            <div class="n" id="who">—</div>
-            <div class="p" id="phone">—</div>
-          </div>
-        </div>
-        <div>
-          <div class="navlab">Main Control</div>
-          <nav>
-            <button data-v="threads" class="on">
-              <span class="material-symbols-rounded">forum</span><span>Conversations</span></button>
-            <button data-v="overview">
-              <span class="material-symbols-rounded">grid_view</span><span>Overview</span></button>
-            <button data-v="record-call">
-              <span class="material-symbols-rounded">call</span><span>Record Call</span></button>
-            <button data-v="transcribe">
-              <span class="material-symbols-rounded">graphic_eq</span><span>Transcribe Call</span></button>
-            <button data-v="record-message">
-              <span class="material-symbols-rounded">chat_bubble</span><span>Record Message</span></button>
-            <button data-v="connect-ai">
-              <span class="material-symbols-rounded">smart_toy</span><span>Connect AI</span></button>
-          </nav>
+      <div class="prof">
+        <div class="av" id="av">–</div>
+        <div style="min-width:0;flex:1">
+          <div class="n" id="who">—</div>
+          <div class="p" id="phone">—</div>
         </div>
       </div>
+      <div class="navlab">People</div>
+      <div class="who-list" id="whoList"></div>
       <div class="store">
-        <div class="r"><span>Storage:</span><a href="#" id="toSettings2">Change</a></div>
+        <div class="r"><span id="chanState">—</span><a href="#" id="toSettings2">Change</a></div>
         <div class="path" id="store">—</div>
       </div>
     </aside>
 
     <main>
-      <!-- CONVERSATIONS — the front door. People on the left, what happened with each on the
-           right. Deliberately NOT secretary.html's shape: no escalations, no permission grants,
-           no agent chat, because none of those exist when two humans talk and we only listen. -->
-      <div class="tab on" id="t-threads">
+      <div class="thead">
         <div>
-          <h1><span class="material-symbols-rounded ic">forum</span>Conversations</h1>
-          <p class="sub">Everyone who has called you, and what was recorded.</p>
+          <h1 id="tTitle">Conversations</h1>
+          <p class="sub" id="tSub">Everyone who has called you, and what was recorded.</p>
         </div>
-        <div class="split">
-          <div class="who-list" id="whoList"></div>
-          <div class="thread" id="thread"></div>
-        </div>
+        <span class="pill" id="ovPill"><span class="dot"></span>…</span>
       </div>
-
-      <!-- OVERVIEW -->
-      <div class="tab" id="t-overview">
-        <div class="thead">
-          <div>
-            <h1>Service Status Overview</h1>
-            <p class="sub" id="ovSub">…</p>
-          </div>
-          <span class="pill" id="ovPill"><span class="dot"></span>…</span>
-        </div>
-        <div class="svcs" id="ovRows"></div>
-      </div>
-
-      <!-- RECORD CALL -->
-      <div class="tab" id="t-record-call">
-        <div>
-          <h1>Record Call</h1>
-          <p class="sub">Manage audio saving rules and browse locally recorded calls.</p>
-        </div>
-        <div class="card">
-          <div class="row">
-            <div class="lbl">Record Calls</div>
-            <label class="sw"><input type="checkbox" data-svc="record_call"><span class="track"></span></label>
-          </div>
-        </div>
-        <div class="card">
-          <div class="row">
-            <span class="lbl3">Recorded Calls Directory</span>
-            <button class="link" id="openCalls">Open in Finder ↗</button>
-          </div>
-          <div class="files" id="fCalls"></div>
-        </div>
-        <div id="mCalls"></div>
-      </div>
-
-      <!-- TRANSCRIBE -->
-      <div class="tab" id="t-transcribe">
-        <div>
-          <h1>Transcribe Call</h1>
-          <p class="sub">Runs speech-to-text directly on your computer.</p>
-        </div>
-        <div class="card">
-          <div class="row" style="border-bottom:1px solid var(--line);padding-bottom:1rem">
-            <div class="lbl">Transcribe Calls</div>
-            <label class="sw"><input type="checkbox" data-svc="transcribe"><span class="track"></span></label>
-          </div>
-          <div>
-            <label class="fl">Select Local Model</label>
-            <select id="quality">
-              <option value="fast">Whisper Base (142 MB - Fastest)</option>
-              <option value="balanced">Whisper Small (464 MB - Fast &amp; Recommended)</option>
-              <option value="accurate">Whisper Medium (1.5 GB - Multilingual)</option>
-              <option value="max">Whisper Large v3 (2.9 GB - Best)</option>
-              <option value="ane" id="optAne">Apple Neural Engine (no download)</option>
-            </select>
-          </div>
-          <div class="banner" id="offline">
-            <span>● Offline Mode Guaranteed</span><span class="m">100% On-Device</span>
-          </div>
-          <div id="mStt"></div>
-        </div>
-        <div class="card">
-          <div class="row">
-            <span class="lbl3">Transcription Test Engine</span>
-            <button class="btn" id="doTest">Test Local Transcription</button>
-          </div>
-          <div class="out" id="testOut"><span class="i">Click "Test Local Transcription" to
-            check the engine…</span></div>
-        </div>
-      </div>
-
-      <!-- RECORD MESSAGE -->
-      <div class="tab" id="t-record-message">
-        <div>
-          <h1>Record Message</h1>
-          <p class="sub">Archive incoming and outgoing SMS &amp; mobile messages locally.</p>
-        </div>
-        <div class="card">
-          <div class="row">
-            <div class="lbl">Record Messages</div>
-            <label class="sw"><input type="checkbox" data-svc="record_message"><span class="track"></span></label>
-          </div>
-        </div>
-        <div class="card">
-          <div class="row">
-            <span class="lbl3">Message Logs Directory</span>
-            <button class="link" id="openMsgs">Open in Finder ↗</button>
-          </div>
-          <div class="files" id="fMsgs"></div>
-        </div>
-        <div id="mMsgs"></div>
-      </div>
-
-      <!-- CONNECT AI -->
-      <div class="tab" id="t-connect-ai">
-        <div>
-          <h1>Connect AI</h1>
-          <p class="sub">Pass call transcripts to cloud providers for smart action items &amp;
-            summaries.</p>
-        </div>
-        <div class="card">
-          <div class="row">
-            <div class="lbl">Connect AI Service</div>
-            <label class="sw"><input type="checkbox" data-svc="connect_ai"><span class="track"></span></label>
-          </div>
-          <div>
-            <label class="fl">AI Provider</label>
-            <select id="model"></select>
-          </div>
-          <div>
-            <label class="fl">Enter API Key</label>
-            <div style="display:flex;gap:.5rem">
-              <input id="key" type="password" placeholder="paste a key" autocomplete="off">
-              <button class="btn" id="doModel" style="flex-shrink:0">Verify Key</button>
-            </div>
-          </div>
-          <div id="mModel"></div>
-        </div>
-      </div>
+      <div class="thread" id="thread"></div>
     </main>
   </div>
 </div>
 
 <script>
+  window.onerror = function (m, src, line, col) {
+    try { new Image().src = '/__jserr?m=' + encodeURIComponent(m) + '&line=' + line; } catch (e) {}
+  };
 
-  // THE THREE CIRCLES ARE OURS, drawn in HTML. In a browser they are the illusion the design
-  // intends. In the native window macOS draws its own in the real titlebar, and two sets of
-  // lights is worse than none — so mark the document and let app.css hide ours.
-  // pywebview injects window.pywebview, but not necessarily before this runs, hence both.
   (function nativeChrome(){
     const mark = () => document.documentElement.classList.add('native');
     if (window.pywebview) mark();
     window.addEventListener('pywebviewready', mark);
   })();
 
-  window.onerror = function (m, src, line, col) {
-    try { new Image().src = '/__jserr?m=' + encodeURIComponent(m) + '&line=' + line; } catch (e) {}
-  };
-
   const T = new URLSearchParams(location.search).get('t') || '';
   const $ = id => document.getElementById(id);
   const esc = s => (s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
-  const say = (el, ok, text) =>
-    $(el).innerHTML = `<div class="msg ${ok ? 'ok' : 'no'}">${esc(text)}</div>`;
-  async function post(path, body){
-    const r = await fetch(`${path}?t=${T}`, {method:'POST',
-      headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-    return r.json();
-  }
   const kb = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB'
                                : Math.max(1, Math.round(n / 1024)) + ' KB';
+  const when = iso => {
+    if (!iso) return '';
+    const d = new Date(iso.replace(' ', 'T'));
+    return isNaN(d) ? iso : d.toLocaleString(undefined,
+      {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
+  };
 
-  function view(v){
-    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
-    document.querySelectorAll('.tab').forEach(s => s.classList.toggle('on', s.id === 't-' + v));
-  }
-  document.querySelectorAll('nav button').forEach(b => { b.onclick = () => view(b.dataset.v); });
   const toSettings = e => { e.preventDefault(); location.href = '/settings?t=' + T; };
   $('toSettings').onclick = toSettings;
   $('toSettings2').onclick = toSettings;
 
-  // The four services in the design's order. `real` says whether the switch does anything —
-  // two have nothing behind them yet, and a switch that lights up while changing nothing is
-  // the one thing a stub must never do.
-  const SERVICES = [
-    ['record_call',    'Record Call',     'record-call',    'call'],
-    ['transcribe',     'Transcribe Call', 'transcribe',     'graphic_eq'],
-    ['record_message', 'Record Message',  'record-message', 'chat_bubble'],
-    ['connect_ai',     'Connect AI',      'connect-ai',     'smart_toy'],
-  ];
+  //: The owner's own channel to a model. Pinned above the people because it is not one of
+  //: them — nobody called from it — and because it is the one row that is always there.
+  const ASSISTANT = '__assistant__';
+  let THREADS = {people: []}, PICKED = ASSISTANT, MODEL = {};
 
-  let D = {};
-  function rows(){
-    $('ovRows').innerHTML = SERVICES.map(([k, label, v, ic]) => {
-      const on = (((D.services || {})[k]) || {}).on;
-      return `<div class="svc">
-        <div class="go" data-go="${v}">
-          <div class="tile"><span class="material-symbols-rounded">${ic}</span></div>
-          <div><div class="titlerow"><h3>${label}</h3>
-            <span class="tag ${on ? '' : 'off'}">${on ? 'Enabled' : 'Disabled'}</span></div></div>
-        </div>
-        <label class="sw"><input type="checkbox" data-svc="${k}" ${on ? 'checked' : ''}>
-          <span class="track"></span></label>
-      </div>`;
-    }).join('');
-    $('ovRows').querySelectorAll('[data-go]').forEach(el => {
-      el.onclick = () => view(el.dataset.go);
-    });
-    switches();
+  function assistantRow(){
+    return `<div class="who pinned ${PICKED === ASSISTANT ? 'on' : ''}" data-who="${ASSISTANT}">
+      <span class="material-symbols-rounded">smart_toy</span>
+      <span class="n">Personal Assistant</span></div>`;
   }
 
-  function switches(){
-    document.querySelectorAll('input[data-svc]').forEach(el => {
-      const k = el.dataset.svc;
-      el.checked = !!(((D.services || {})[k]) || {}).on;
-      el.onchange = async () => {
-        if (k === 'record_call') {
-          const d = await post('/api/setup/setting',
-                               {field: 'record_calls', value: el.checked ? 'yes' : 'no'});
-          if (!d.ok) el.checked = !el.checked;
-          load();
-  loadThreads();
-          return;
-        }
-        el.checked = !el.checked;
-        const where = {transcribe: 'mStt', record_message: 'mMsgs', connect_ai: 'mModel'}[k];
-        if (where) say(where, false, 'Switching this service on and off is not built yet.');
-      };
-    });
+  function drawAssistant(){
+    $('tTitle').textContent = 'Personal Assistant';
+    $('tSub').textContent = 'Ask about your calls, in your own words.';
+    const ready = MODEL.configured;
+    $('thread').innerHTML = `<div class="blank">
+      <p>This is where you will talk to a model about what happened — "what did they want?",
+      "summarise yesterday", "who is still waiting on me?".</p>
+      <p style="margin-top:.9rem">${ready
+        ? 'A model is attached (' + esc(MODEL.describe || '') + '), but the conversation itself '
+          + 'is not built yet.'
+        : 'Not built yet, and no model is attached. Add one under Settings &rsaquo; Model when '
+          + 'you want summaries.'}</p>
+      <p style="margin-top:.9rem;color:var(--faint);font-size:.78rem">Nothing here is sent
+      anywhere until you attach a model and ask something.</p></div>`;
   }
-
-  function files(box, list){
-    const rowsHtml = (list || []).map(f =>
-      `<div class="f"><span>${esc(f.name)}</span><span>${esc(f.kind)} (${kb(f.bytes)})</span></div>`
-    ).join('');
-    $(box).innerHTML = '<div class="h"><span>File Name</span><span>Type &amp; Size</span></div>'
-      + (rowsHtml || '<div class="none">Nothing here yet.</div>');
-  }
-
-  // ---- conversations ----------------------------------------------------------------------
-  let THREADS = {people: [], folder: ""}, PICKED = "";
-
-  const when = iso => {
-    if (!iso) return "";
-    const d = new Date(iso.replace(" ", "T"));
-    return isNaN(d) ? iso : d.toLocaleString(undefined,
-      {day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"});
-  };
 
   function drawWho(){
     const list = THREADS.people || [];
-    if (!list.length) {
-      $('whoList').innerHTML = '<div class="call none">Nobody has called yet. Carried calls '
-        + 'appear here with their recording and transcript.</div>';
-      $('thread').innerHTML = '';
-      return;
-    }
-    if (!list.some(p => p.who === PICKED)) PICKED = list[0].who;
-    $('whoList').innerHTML = list.map(p => `
+    if (PICKED !== ASSISTANT && !list.some(p => p.who === PICKED)) PICKED = ASSISTANT;
+    $('whoList').innerHTML = assistantRow() + (list.length
+      ? list.map(p => `
       <div class="who ${p.who === PICKED ? 'on' : ''}" data-who="${esc(p.who)}">
         <span class="n">${esc(p.who)}</span>
         <span class="m">${p.calls.length} call${p.calls.length === 1 ? '' : 's'} · ${esc(when(p.last))}</span>
-      </div>`).join('');
+      </div>`).join('')
+      : '<div class="who-empty">No calls yet. When one is carried to you it appears here, '
+        + 'with its recording and transcript.</div>');
     $('whoList').querySelectorAll('.who').forEach(el => {
       el.onclick = () => { PICKED = el.dataset.who; drawWho(); };
     });
-    drawThread();
+    if (PICKED === ASSISTANT) drawAssistant(); else drawThread();
   }
 
   function drawThread(){
     const p = (THREADS.people || []).find(x => x.who === PICKED);
-    if (!p) { $('thread').innerHTML = ''; return; }
+    if (!p) return;
+    $('tTitle').textContent = p.who;
+    $('tSub').textContent = `${p.calls.length} call${p.calls.length === 1 ? '' : 's'}`;
     $('thread').innerHTML = p.calls.map(c => `
       <div class="call">
         <div class="top">
@@ -414,16 +202,11 @@
           : (c.transcript
               ? `<div class="text">${esc(c.transcript)}</div>`
               : '<div class="none">Transcript pending — it is written beside the audio once the queue reaches it.</div>')}
-      </div>`).join('') || '<div class="call none">No calls yet.</div>';
-  }
-
-  async function loadThreads(){
-    THREADS = await fetch(`/api/threads?t=${T}`).then(r => r.json()).catch(() => ({people: []}));
-    drawWho();
+      </div>`).join('');
   }
 
   async function load(){
-    D = await fetch(`/api/panel?t=${T}`).then(r => r.json()).catch(() => ({}));
+    const D = await fetch(`/api/panel?t=${T}`).then(r => r.json()).catch(() => ({}));
     $('who').textContent = D.name || 'Not signed in';
     $('av').textContent = (D.name || '?').split(/\s+/).map(w => w[0] || '')
       .join('').slice(0, 2).toUpperCase() || '–';
@@ -433,68 +216,18 @@
 
     const live = ['live', 'connecting', 'retrying'].indexOf(D.channel) >= 0;
     $('ovPill').className = 'pill' + (live ? '' : ' off');
-    $('ovPill').innerHTML = '<span class="dot"></span>' + (live ? 'Service Active' : 'Not connected');
-    $('ovSub').textContent = live
-      ? 'AgentDuet is active and listening for Power Mobile call events.'
-      : 'No connector yet, so no calls arrive. Add one in Settings.';
+    $('ovPill').innerHTML = '<span class="dot"></span>' + (live ? 'Listening' : 'Not connected');
+    $('chanState').textContent = live ? 'Recording to' : 'Would record to';
+    MODEL = D.model || {};
+    if (PICKED === ASSISTANT) drawAssistant();
+  }
 
-    rows();
-    files('fCalls', [...((D.files || {}).calls || []), ...((D.files || {}).answered || [])]);
-    files('fMsgs', (D.files || {}).messages);
-    const ane = D.ane || {};
-    const opt = $('optAne');
-    opt.disabled = !ane.supported;
-    opt.textContent = 'Apple Neural Engine (no download)'
-      + (ane.supported ? '' : ' — ' + (ane.why || 'not available here'));
-    if ((D.stt || {}).quality) $('quality').value = D.stt.quality;
-
-    const sel = $('model');
-    if (!sel.options.length) {
-      ['gemini', 'anthropic', 'qwen'].forEach(m => {
-        const o = document.createElement('option'); o.value = m; o.textContent = m; sel.appendChild(o);
-      });
-    }
+  async function loadThreads(){
+    THREADS = await fetch(`/api/threads?t=${T}`).then(r => r.json()).catch(() => ({people: []}));
+    drawWho();
   }
   load();
-
-  $('quality').onchange = async () => {
-    if ($('quality').value === 'ane') {
-      say('mStt', false, 'The Apple Neural Engine path is not built yet. '
-        + 'Pick a Whisper model for now.');
-      load();                       // put the select back to what is actually configured
-      return;
-    }
-    const d = await post('/api/setup/setting', {field: 'transcription', value: $('quality').value});
-    say('mStt', d.ok, d.message);
-    load();
-  };
-  $('openCalls').onclick = () => say('mCalls', false,
-    'Opening the folder needs a native call this page cannot make yet. The path is in the sidebar.');
-  $('openMsgs').onclick = () => say('mMsgs', false,
-    'Opening the folder needs a native call this page cannot make yet.');
-
-  $('doTest').onclick = async () => {
-    $('testOut').textContent = 'Checking the engine…';
-    const d = await fetch(`/api/setup/stt?t=${T}`).then(r => r.json()).catch(() => ({}));
-    if (!d.installed) { $('testOut').textContent = 'The on-machine engine is not in this build.'; return; }
-    if (!d.needed) { $('testOut').textContent = 'A model key is attached, so the hosted engine transcribes.'; return; }
-    if (!d.cached) {
-      $('testOut').textContent = `${d.model} is not downloaded yet (about ${d.mb} MB).\n`
-        + 'It fetches itself at the first transcription. Downloading now…';
-      await post('/api/setup/stt', {});
-      return;
-    }
-    $('testOut').textContent = `${d.model} is downloaded and ready on this machine.\n`
-      + 'Running it on a sample is not built yet — it runs after a real call, on a queue.';
-  };
-
-  $('doModel').onclick = async () => {
-    const key = $('key').value.trim();
-    if (!key) { say('mModel', false, 'Paste a key first.'); return; }
-    const d = await post('/api/setup/model', {model: $('model').value, key});
-    say('mModel', d.ok, d.message);
-    load();
-  };
+  loadThreads();
 </script>
 </body>
 </html>
