@@ -8,6 +8,7 @@ reverse it, so the fastest way to make a bad change here is to skip that.
 
 | about to touch | read |
 |---|---|
+| **anything at all** | **Two products, one daemon** — it decides whether the rest applies |
 | the asker's five tools | The fence · The risk this design must not hide |
 | anything a customer's tool can do | Customers will bring their own tools · WASM · Reaching the outside |
 | who may read or do what | Tools are a granted resource · Knowledge splits |
@@ -18,12 +19,40 @@ reverse it, so the fastest way to make a bad change here is to skip that.
 
 ---
 
-## The daemon is the product
+## Two products, one daemon
 
-**The asker daemon.** Always on. Holds the AgentDuet connection, answers calls and messages from
-external parties, decides nothing it has not been authorised to decide. It ships with a working
-secretary, and it takes **tools** as its extension point. This is the product; everything else
-serves it.
+Recorded 2026-08-17, and it governs how the rest of this document is read.
+
+**The recorder.** A call is carried through to the owner — the inbound leg terminates on us and
+we originate a second leg onward — and both sides are recorded, then transcribed on the owner's
+machine. **Two humans talk. Nobody is answered, nothing is decided.** This is what a new install
+is, and what setup configures by default.
+
+**The secretary.** The agent picks up, speaks for the owner, and may act. Everything below about
+the fence, disclosure, bounds and escalation exists for this, and applies only to this.
+
+**Why the distinction is load-bearing.** Every invariant in this document governs what an agent
+may SAY or DO on someone's behalf. On the recorder path most of them have no subject at all —
+nothing is disclosed, nothing is committed, no bounds are checked. Requiring a recording change
+to satisfy a fence built for a different product is how a three-week feature becomes a
+three-month one, and it is what kept the simpler product unshipped while the harder one was
+being fenced.
+
+So: **if a change has an agent speaking or acting, the fence is mandatory. If it does not, do not
+reach for it.**
+
+**Where they genuinely collide:** `voice.register()` claims `on_incoming_call`, and one connector
+has one handler. Answering and carrying are therefore mutually exclusive per install — a MODE,
+set in `settings.md`, not a preference.
+
+**What this does not mean.** The secretary is not deleted and nothing here is relaxed.
+`tests/test_rules.py` enforces it, and it all applies the day an agent speaks on a call.
+
+### The daemon is the product
+
+**The asker daemon.** Always on. Holds the AgentDuet connection, carries or answers calls and
+messages from external parties, decides nothing it has not been authorised to decide. It takes
+**tools** as its extension point. This is the product; everything else serves it.
 
 **The owner mcp is secondary.** It is how the owner reads and drives the daemon, from an AI
 assistant they already use. Administration, not the thing being sold. If it were the product, a
@@ -31,10 +60,10 @@ customer without an assistant would have bought nothing — and they have not.
 
 **Two consequences of that ordering, both easy to get backwards:**
 
-- **Administration cannot depend solely on the assistant.** "There is no owner interface" means we
-  do not build and maintain one as a product surface — not that the only route in is MCP. The CLI
-  (`init`, `status`, `connect`) and the transitional site both exist because an owner may have no
-  assistant at all, and the product still has to be theirs to run.
+- **Administration cannot depend solely on the assistant.** The mcp is one route in, never the
+  only one. The CLI
+  (`init`, `status`, `connect`) and the site both exist because an owner may have no assistant at
+  all, and the product still has to be theirs to run.
 - **The tool extension point is a first-class product concern, not a later nicety.** We ship the
   ability to add tools, so the security of tools someone else writes is core work: it is the one
   place where using the product as intended can create the vulnerability. See the fence, the
@@ -47,23 +76,37 @@ customer without an assistant would have bought nothing — and they have not.
                               no OS reach
 ```
 
-### Why no interface
+### The owner surface, and why this has flipped three times
 
-Building one means building it three times — a browser page, a native window, and a macOS
-bundle — and the native window is a third rendering engine that browser testing cannot check.
-That was not theoretical: on 2026-08-03 a single missing global (`localStorage`, absent in
-WebKitGTK) silently unwired the settings link, the quit button and the chat form, and the
-unwired form destroyed the session token on the first keypress.
+**Current answer (2026-08-11): the site is load-bearing, and the mcp is optional.**
 
-The owner already has an assistant. Riding on it costs one MCP server.
+The history matters only because the *reason* keeps being the same one. MCP-first, then
+site-first on 2026-07-30 (*"MCP needs the owner to already have an AI app; the site needs
+nothing"*), then MCP-first on 2026-08-03, then site-first again on 2026-08-11.
 
-### The reversal, and what would reverse it again
+**What changes each time is the assumption about who the owner is.** Packaged for a small vendor
+handed a binary, the owner does not have Claude Code or Goose and should not install one to
+finish setting up a phone answering service. So setup no longer mentions an assistant,
+`init` runs the interview itself, and `status` says nothing when none is registered.
 
-This has flipped twice. It was MCP-first, then site-first on 2026-07-30 (*"MCP needs the owner to
-already have an AI app; the site needs nothing"*), then MCP-first again on 2026-08-03.
+If that assumption changes again, revisit this decision — not the plumbing under it.
 
-Neither reasoning was wrong. What changed was the **assumption about who the owner is**. If that
-assumption changes, revisit this decision — not the plumbing under it.
+**The cost of a UI is real and has not gone away**, so it is bounded deliberately: a browser page
+is the surface, and the native window renders the same pages rather than being a second
+implementation. The hazard that proved this is worth remembering — on 2026-08-03 a single missing
+global (`localStorage`, absent in WebKitGTK) silently unwired the settings link, the quit button
+and the chat form, and the unwired form destroyed the session token on the first keypress.
+Anything the pages rely on must survive three engines, or be avoided.
+
+**Which surface is documented depends on the platform** (2026-08-14). macOS and Windows set up in
+the page; **Linux sets up in the console**, because that is a machine someone reached over ssh and
+opening a loopback browser page is the awkward path there. Both surfaces ship everywhere.
+
+**The consequence that bites: `init` must cover what the page covers.** It has drifted in both
+directions — the page gained a mode question and a speech-model download while `init` had
+neither; later `init` gained a language question the page lacked, and language decides whether an
+English call comes back as fluent Malay. `tests/test_rules.py` now checks the two cover the same
+fields, because remembering did not work.
 
 ---
 
@@ -249,6 +292,49 @@ Packaging is a trap and the remedy is in `packaging/agentduet-desktop.spec`: `--
 does not bundle the native library, and the build succeeds and dies at the first real call. `status`
 therefore runs a real tool rather than importing the runtime.
 
+### Carrying a call: we are the junction, not a tap
+
+Recorded 2026-08-14, built the same week. The topology is a **back-to-back user agent**: the
+inbound leg terminates on us and we originate a second leg onward to the owner's phone or PBX.
+
+```
+Telco ──▶ Leg 1 ──▶ AgentDuet WSS ◀──▶ the app on the owner's machine
+                          │
+                          ▼
+                       Leg 2 ──▶ the owner
+```
+
+**Nothing is attached to somebody else's call, because we are the junction.** That is why
+recording is available at all rather than being a permission we must obtain — the media is ours
+by construction, and `call.caller` and `call.callee` are simply the two legs. `connect()` takes
+no destination, because the destination is the connector's configured target.
+
+**None of the fence applies here**, and that is the point of the split at the top of this
+document: no knowledge lookup, no disclosure decision, no `check_bounds`, because nobody is
+answered.
+
+**The custody question gets BIGGER, not smaller, which is easy to get backwards.** The secretary
+holds only what the owner told it to say. This holds everything both parties say — the owner's
+customers, in conversations we are carrying. Be precise about the answer rather than
+overclaiming: the app runs on the owner's machine, so recordings are **stored** only there. The
+media still transits the platform to reach it, so *"never leaves your machine"* is false and
+*"stored only on your machine"* is both true and the stronger claim.
+
+**Consent is unresolved and is not addressed by anything else in this document.** Recording two
+people has jurisdiction-specific rules, and every invariant here governs what the agent may say
+or do — none of them ask whether the other party agreed to be in the conversation. Same class of
+question as outbound campaigns. Open.
+
+**Transcription is post-call, on a queue, and the queue is the filesystem** — a `.wav` with no
+sibling `.txt` is pending work, which is restart-safe with no state to corrupt. It runs on the
+owner's machine by default; a model key only switches it to a hosted engine.
+
+**Set the language.** Left to guess, both shipped speech models identified a Singapore English
+call as Malay — at 0.95 and 0.87 confidence — and did not garble it. They TRANSLATED, fluently,
+and the meaning inverted: *"can I waive my credit card bill"* came back as *"can I pay my bill"*.
+A wrong transcript that reads perfectly is worse than a broken one, because nothing about it
+looks wrong.
+
 ### Two models on a call, and why one instruction could not do both jobs
 
 Two models are needed for a call, and they are not two brains. One holds the conversation; the
@@ -380,9 +466,10 @@ be given a number before it stays rejected.
 
 ### The daemon must not die with a UI
 
-Today `secretary_agent.py` raises `SystemExit(1)` if the owner site fails to bind: *"This is the
-owner's primary surface — stopping."* Under this design that is backwards. The asker daemon is
-the product; nothing about an owner surface should be able to end it.
+The asker daemon is the product; nothing about an owner surface may end it. `secretary_agent.py`
+once raised `SystemExit(1)` when the owner site failed to bind — it now warns and carries on.
+Keep it that way: the site being load-bearing for SETUP does not make it load-bearing for
+answering.
 
 ---
 
@@ -404,12 +491,13 @@ stopped over its own endpoint.**
 | **secretary tools** | the registry operations | see below | read and drive the instance |
 
 On 2026-08-03 the daemon stopped and nobody noticed for twelve minutes — the log ends cleanly on
-`inbound is live`. It was found by accident. Service tools are the fix, and with no UI they are
-the **only** way to know it is alive.
+`inbound is live`. It was found by accident. Service tools are the fix, and for an owner driving
+this from an assistant they are the only way to know it is alive.
 
 **Open: does the secretary tools face need long-lived HTTP at all?** The HTTP argument assumed
-the daemon already ran an aiohttp app for the site. Without the site that assumption is gone,
-and per-session stdio may be sufficient and simpler. Decide before building.
+the daemon already runs an aiohttp app for the site — which it does again, so the argument is
+live rather than moot. Per-session stdio may still be sufficient and simpler. Decide before
+building.
 
 If it does become HTTP, one thing is not optional: **stdio is implicitly access-controlled and
 HTTP is not.** Only the spawning process can talk to a stdio server; a loopback HTTP endpoint is
@@ -518,16 +606,25 @@ actually be enforced.
 
 ## Installers
 
-Per-platform, and the delivery concern now that there is no UI to carry the first run.
+Per-platform, and the first thing a new owner touches.
 
 | | state |
 |---|---|
-| macOS arm64 | CI builds a `.app` in a DMG, smoke-tested for providers and voice. Unsigned — first launch needs right-click → Open |
+| macOS arm64 | CI builds a `.app` in a DMG, smoke-tested for providers and voice. **Signed, notarized and stapled** since 2026-08-18 — a normal double-click opens it |
 | macOS Intel | **dropped 2026-08-04.** `macos-13` is retired, so the job never started — and a queued job holds its whole run open, making finished builds look unfinished |
 | Linux x86_64 | CI builds it |
 | Windows | not started |
 
-Notarization needs an Apple Developer ID. Acceptable for a colleague, not past that.
+**Signing is automatic and conditional.** Every step is gated on the certificate secret existing,
+so a fork and a credential-less build still produce a working unsigned DMG. Two things worth not
+rediscovering: the hardened runtime needs `allow-jit`, because **wasmtime JITs** and without it
+the tool sandbox dies the first time a customer tool is called; and macOS `security import`
+cannot read a modern AES-256 PKCS#12 — it wants 3DES + SHA-1, while the obvious `-legacy` flag
+produces RC2-40, which OpenSSL 3 cannot read back to verify.
+
+**We are not going to the Mac App Store.** It requires the sandbox, which this app's loopback
+server, home-directory writes and model download would each have to be granted around. Deferred,
+not rejected.
 
 **AgentDuet Desktop is the product; installing an assistant is optional.** A boundary, because it is easy to
 drift across: we detect, offer, and configure what the owner chooses. If a change ever makes Goose
@@ -555,10 +652,13 @@ here, which is how this document grew a second copy of itself.
 5. **The login-item tool takes no parameters.**
 6. **Secrets never enter a model's context.** A terminal (`init`) or a single-purpose browser form
    are both fine; a chat box is not.
-7. **The site is transitional, but the CLI is not.** The site stays until `init` covers first-run
-   configuration, and is already not load-bearing — the daemon does not exit when it fails to
-   bind. The CLI is permanent: with the mcp secondary, an owner with no assistant must still be
-   able to run, configure and inspect their own product.
+7. **The site and the CLI are both permanent; the mcp is optional.** Revised 2026-08-11 — the
+   site was "transitional" while the owner was assumed to have an assistant. They set up in the
+   page on macOS and Windows and in the console on Linux, so both are first-class and must cover
+   the same ground. Neither may be load-bearing for ANSWERING: the daemon carries on when the
+   site fails to bind.
+8. **A new install carries calls; answering is opt-in.** The recorder is the product a new owner
+   gets, and it needs no model key. Choosing to answer requires one.
 
 ## Open
 
@@ -581,9 +681,18 @@ here, which is how this document grew a second copy of itself.
 
 ## Next
 
-1. **The Windows binary.** Reaching the outside landed 2026-08-05: a tool asked
-   `api.open-meteo.com` for a forecast by label and returned a temperature, having never named the
-   destination.
+1. **The Windows binary.** Not started, and the two pieces most likely to break are known: the
+   GUI window should work through WebView2 where it has no backend on Linux, and the file mode
+   protecting stored credentials is a no-op there — which OAuth makes sharper, since a rotating
+   refresh token in a plaintext file is a worse story than a static key was.
+2. **Conference audio for carried calls.** The bridge works and both people can talk, but the
+   platform does not hand the app the media yet, so the recorder — the first thing a new install
+   is for — records nothing. Not ours to build.
+3. **The token store for OAuth.** The contract is settled: the SDK gets a `token_provider()`
+   callback, calls it before each connect, and knows nothing about OAuth. Our side is a store and
+   a refresh clock — hold access + refresh, return the cached token while it has time left,
+   refresh before expiry, clear on `invalid_grant`. Buildable against a stub before the endpoint
+   exists.
 
 Done items are not listed here. `git log` has them.
 
