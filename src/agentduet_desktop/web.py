@@ -502,6 +502,19 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         body = await request.json()
         field = (body.get("field") or "").strip()
         value = body.get("value") or ""
+
+        # Hardware capability gating check for transcription quality
+        if field.lower().replace(" ", "_").replace("-", "_") == "transcription":
+            from . import hardware
+            val_str = str(value).strip().lower()
+            model_id = hardware.TIER_TO_MODEL.get(val_str, val_str)
+            cap = hardware.check_capability(model_id)
+            if not cap["can_load"]:
+                return web.json_response({
+                    "ok": False,
+                    "message": f"Hardware capability exceeded: {cap['reason']}"
+                })
+
         out = tools.set_setting(field, value)
         if out.lower().startswith("unknown"):
             return web.json_response({"ok": False, "message": out})
@@ -576,17 +589,32 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         """
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
-        from . import owner as _own, transcribe
+        from . import hardware, owner as _own, transcribe
 
         model = transcribe.local_model()
         needed = transcribe.engine() == "local" and _own.record_calls()
+        cap = hardware.check_capability(model)
+        loaded = transcribe.loaded_info()
+
         if request.method == "GET":
             return web.json_response({
                 "needed": needed, "model": model,
                 "mb": transcribe.MODEL_MB.get(model, 0),
                 "cached": transcribe.is_cached(model),
                 "running": _stt["running"], "error": _stt["error"],
-                "installed": transcribe._local_available()})
+                "installed": transcribe._local_available(),
+                "capability": cap,
+                "loaded_info": loaded,
+                "hardware": hardware.recommend_models(),
+            })
+
+        if not cap["can_download"]:
+            return web.json_response({
+                "ok": False,
+                "error": cap["reason"],
+                "message": cap["reason"],
+                "blocked": True,
+            }, status=400)
 
         if _stt["running"]:
             return web.json_response({"ok": True, "message": "Already downloading."})
@@ -604,6 +632,58 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
 
         asyncio.create_task(_go())
         return web.json_response({"ok": True, "message": f"Downloading {model}…"})
+
+    async def api_hardware(request):
+        """Hardware capabilities profile, dynamic model recommendations, and loaded model status."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import hardware, transcribe
+        rec = hardware.recommend_models()
+        rec["loaded_model"] = transcribe.loaded_info()
+        return web.json_response(rec)
+
+    async def api_model_unload(request):
+        """Unload resident local models (STT, LLM clients) and collect garbage to release RAM."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import hardware, llm, transcribe
+        stt_was_loaded, stt_model, freed_mb = transcribe.unload()
+        llm.unload()
+        _forget_chat()
+        hw = hardware.get_hardware_profile()
+        msg = f"Unloaded {stt_model} from memory (~{freed_mb} MB RAM freed)." if stt_was_loaded else "No model was loaded in memory."
+        return web.json_response({
+            "ok": True,
+            "message": msg,
+            "stt_unloaded": stt_was_loaded,
+            "model_unloaded": stt_model,
+            "freed_ram_mb": freed_mb,
+            "hardware": hw,
+        })
+
+    async def api_model_load(request):
+        """Explicitly pre-load the configured or requested local speech model into memory."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import hardware, transcribe
+        body = await request.json() if request.can_read_body else {}
+        want = (body.get("model") or "").strip() or transcribe.local_model()
+
+        # Check capability first
+        cap = hardware.check_capability(want)
+        if not cap["can_load"]:
+            return web.json_response({"ok": False, "error": cap["reason"], "blocked": True}, status=400)
+
+        try:
+            await asyncio.to_thread(transcribe._load, want)
+            transcribe._loaded_name = want
+            return web.json_response({
+                "ok": True,
+                "message": f"Successfully loaded {cap['name']} into memory (~{cap['ram_mb']} MB RAM resident).",
+                "loaded_info": transcribe.loaded_info(),
+            })
+        except Exception as exc:
+            return web.json_response({"ok": False, "error": f"Failed to load: {exc}"}, status=500)
 
     async def api_setup_current(request):
         if not authed(request):
@@ -803,7 +883,9 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             "ane": dict(zip(("supported", "why"), transcribe.ane_support())),
             "stt": {"engine": transcribe.engine(), "model": transcribe.local_model(),
                     "quality": _own.transcription_quality() or "balanced",
-                    "cached": transcribe.is_cached()},
+                    "cached": transcribe.is_cached(),
+                    "loaded_info": transcribe.loaded_info()},
+            "hardware": hardware.recommend_models(),
             "model": {"configured": _llm.configured(), "describe": _llm.describe()},
             "files": {"calls": _listing(carry.RECORDINGS),
                       "answered": _listing(carry.RECORDINGS / _voice.ANSWERED),
@@ -1236,6 +1318,9 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/api/setup/about", api_setup_about),
         web.get("/api/setup/stt", api_setup_stt),
         web.post("/api/setup/stt", api_setup_stt),
+        web.get("/api/hardware", api_hardware),
+        web.post("/api/model/unload", api_model_unload),
+        web.post("/api/model/load", api_model_load),
         web.post("/api/setup/about", api_setup_about),
         web.post("/api/setup/connector", api_setup_connector),
         web.post("/api/quit", api_quit),

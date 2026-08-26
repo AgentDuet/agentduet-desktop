@@ -113,6 +113,11 @@
             key it runs here, and nothing leaves the machine.</p></div>
         </div>
         <div class="state" id="sttState">…</div>
+        <div class="state" id="hwState" style="margin-top:.5rem">Analyzing machine resources…</div>
+        <div class="state" id="sttMemBox" style="margin-top:.5rem;display:flex;justify-content:space-between;align-items:center">
+          <span id="sttMemText">Resident memory: 0 MB</span>
+          <button class="btn danger sm" id="btnUnloadStt" style="display:none">Unload from RAM</button>
+        </div>
         <div class="grp"><label class="fl">Language of your calls</label>
           <select id="language">
             <option value="">guess it (not recommended)</option>
@@ -127,10 +132,10 @@
           reversed the meaning. Set this.</p>
         <div class="grp"><label class="fl">How hard it tries</label>
           <select id="quality">
-            <option value="fast">fast — quickest, smallest download</option>
-            <option value="balanced">balanced — the default</option>
-            <option value="accurate">accurate — better</option>
-            <option value="max">max — best, and the largest</option>
+            <option value="fast" data-tier="fast">fast — quickest, smallest download</option>
+            <option value="balanced" data-tier="balanced">balanced — the default</option>
+            <option value="accurate" data-tier="accurate">accurate — better</option>
+            <option value="max" data-tier="max">max — best, and the largest</option>
           </select></div>
         <div class="acts"><button class="btn" id="saveQuality">Save</button>
           <span class="spin" id="spQuality"></span>
@@ -291,7 +296,7 @@
       st.textContent = 'The on-machine engine is not installed in this build.';
       $('doStt').hidden = true;
     } else if (d.cached) {
-      st.innerHTML = 'Runs on this machine. <b>' + esc(d.model) + '</b> is ready.';
+      st.innerHTML = 'Runs on this machine. <b>' + esc(d.model) + '</b> is ready on disk.';
       $('doStt').hidden = true;
     } else {
       st.innerHTML = 'Runs on this machine. <b>' + esc(d.model) + '</b> is not downloaded yet '
@@ -301,13 +306,80 @@
     $('spStt').textContent = d.running ? 'downloading…' : '';
     if (d.running && !sttPoll) sttPoll = setInterval(sttCheck, 3000);
     if (!d.running && sttPoll) { clearInterval(sttPoll); sttPoll = null; }
+
+    // Hardware adviser info
+    const hw = d.hardware || {};
+    const hwInfo = hw.hardware || {};
+    const mem = hwInfo.memory || {};
+    const disk = hwInfo.disk || {};
+    const models = hw.models || {};
+    const recTier = hw.recommended_tier || 'balanced';
+
+    $('hwState').innerHTML = `<b>Hardware Resources:</b> ${esc(hwInfo.chip_name || 'CPU')} · `
+      + `<b>${mem.total_gb || '?'} GB RAM</b> (${mem.available_gb || '?'} GB Available) · `
+      + `<b>${disk.free_gb || '?'} GB Free Disk</b><br>`
+      + `<span style="color:var(--emerald);display:inline-block;margin-top:.25rem">⭐ <b>Adviser Recommendation:</b> ${esc(recTier.toUpperCase())} tier is optimal for your system resources.</span>`;
+
+    // Dynamic quality options
+    const qSelect = $('quality');
+    const tierMap = {fast: 'base', balanced: 'small', accurate: 'medium', max: 'large-v3'};
+    const tierLabels = {
+      fast: 'fast — quickest, smallest download',
+      balanced: 'balanced — the default',
+      accurate: 'accurate — better',
+      max: 'max — best, and the largest'
+    };
+
+    ['fast', 'balanced', 'accurate', 'max'].forEach(tier => {
+      const opt = qSelect.querySelector(`option[data-tier="${tier}"]`);
+      if (opt) {
+        const modKey = tierMap[tier];
+        const evalInfo = models[modKey] || {};
+        const isRec = (tier === recTier);
+        if (evalInfo.status === 'blocked') {
+          opt.disabled = true;
+          opt.textContent = `⛔ ${tierLabels[tier]} (Blocked - Exceeds RAM/Disk)`;
+        } else if (isRec) {
+          opt.disabled = false;
+          opt.textContent = `⭐ ${tierLabels[tier]} (Recommended)`;
+        } else {
+          opt.disabled = false;
+          opt.textContent = tierLabels[tier];
+        }
+      }
+    });
+
+    // Loaded model RAM state & unload button
+    const loaded = d.loaded_info || {};
+    const btnUnload = $('btnUnloadStt');
+    const memText = $('sttMemText');
+    if (loaded.loaded) {
+      memText.innerHTML = `Resident in RAM: <b>${esc(loaded.name || loaded.model)}</b> (~${loaded.ram_mb || 0} MB active RAM)`;
+      btnUnload.style.display = 'inline-block';
+    } else {
+      memText.innerHTML = 'Resident in RAM: <b>Not loaded</b> · 0 MB active RAM';
+      btnUnload.style.display = 'none';
+    }
   }
+
   function sttCheck(){
     fetch(`/api/setup/stt?t=${T}`).then(r => r.json()).then(sttRender).catch(() => {});
   }
+
+  $('btnUnloadStt').onclick = async () => {
+    $('btnUnloadStt').disabled = true;
+    const d = await post('/api/model/unload', {});
+    $('btnUnloadStt').disabled = false;
+    say('mStt', d.ok, d.message);
+    sttCheck();
+  };
+
   $('doStt').onclick = async () => {
     $('doStt').hidden = true; $('spStt').textContent = 'starting…';
-    await post('/api/setup/stt', {});
+    const res = await post('/api/setup/stt', {});
+    if (!res.ok && res.blocked) {
+      say('mStt', false, `⛔ Download Blocked: ${res.error}`);
+    }
     sttCheck();
   };
   $('saveQuality').onclick = async () => {

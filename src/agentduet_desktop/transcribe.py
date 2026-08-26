@@ -177,6 +177,8 @@ def fetch(model: str = "") -> str:
     what pays. Better to say the number and let the owner choose the moment.
     """
     name = model or local_model()
+    from . import hardware
+    hardware.validate_model_action(name, action="download")
     from faster_whisper.utils import download_model
     download_model(name)
     return name
@@ -219,6 +221,50 @@ def _hosted_one(audio: bytes, key: str) -> str:
 
 _local_model = None
 _loaded_name = ""
+
+
+def is_loaded() -> bool:
+    """Whether a local speech model is currently resident in RAM."""
+    return _local_model is not None
+
+
+def loaded_model() -> str:
+    """The name of the currently resident local speech model, or empty."""
+    return _loaded_name if _local_model is not None else ""
+
+
+def loaded_info() -> dict:
+    """Information about the currently loaded speech model in memory."""
+    from . import hardware
+    name = loaded_model()
+    spec = hardware.resolve_model_spec(name) if name else None
+    return {
+        "loaded": is_loaded(),
+        "model": name,
+        "name": spec.get("name", name) if spec else "",
+        "tier": spec.get("tier", "") if spec else "",
+        "ram_mb": spec.get("ram_mb", 0) if spec else 0,
+    }
+
+
+def unload() -> tuple[bool, str, int]:
+    """Unload the resident local speech model from RAM and release memory.
+
+    Returns (was_loaded, model_name, freed_ram_mb).
+    """
+    global _local_model, _loaded_name
+    import gc
+    if _local_model is None:
+        return False, "", 0
+    name = _loaded_name
+    from . import hardware
+    spec = hardware.resolve_model_spec(name)
+    freed_ram = spec.get("ram_mb", 0) if spec else 0
+    _local_model = None
+    _loaded_name = ""
+    gc.collect()
+    logger.info("unloaded speech model %s from memory (~%d MB released)", name, freed_ram)
+    return True, name, freed_ram
 
 
 #: The macOS release that first shipped SpeechAnalyzer/SpeechTranscriber, the long-form API.
@@ -286,6 +332,8 @@ def _load(name: str):
     transcription failure on a real recording — three retries later the file is written off for
     a reason that has nothing to do with it.
     """
+    from . import hardware
+    hardware.validate_model_action(name, action="load")
     from faster_whisper import WhisperModel
     device, compute = _device()
     try:

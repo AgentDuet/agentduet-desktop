@@ -345,6 +345,13 @@ def forget() -> None:
     _cached.clear()
 
 
+def unload() -> None:
+    """Drop cached clients and collect garbage to release memory."""
+    import gc
+    _cached.clear()
+    gc.collect()
+
+
 def configured(model: str = "") -> bool:
     """Is a credential present for the configured model? NO network call.
 

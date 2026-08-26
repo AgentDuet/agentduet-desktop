@@ -156,6 +156,13 @@
           <h1>Transcribe Call</h1>
           <p class="sub">Runs speech-to-text directly on your computer.</p>
         </div>
+        <div class="card" id="cardHw">
+          <div class="row">
+            <span class="lbl3">Hardware Analysis &amp; Model Adviser</span>
+            <span class="tag" id="hwChipTag">Hardware</span>
+          </div>
+          <div class="state" id="hwAdviserState" style="margin-top:.35rem">Analyzing machine resources…</div>
+        </div>
         <div class="card">
           <div class="row" style="border-bottom:1px solid var(--line);padding-bottom:1rem">
             <div class="lbl">Transcribe Calls</div>
@@ -164,10 +171,10 @@
           <div>
             <label class="fl">Select Local Model</label>
             <select id="quality">
-              <option value="fast">Whisper Base (142 MB - Fastest)</option>
-              <option value="balanced">Whisper Small (464 MB - Fast &amp; Recommended)</option>
-              <option value="accurate">Whisper Medium (1.5 GB - Multilingual)</option>
-              <option value="max">Whisper Large v3 (2.9 GB - Best)</option>
+              <option value="fast" data-tier="fast">Whisper Base (142 MB - Fastest)</option>
+              <option value="balanced" data-tier="balanced">Whisper Small (464 MB - Fast &amp; Recommended)</option>
+              <option value="accurate" data-tier="accurate">Whisper Medium (1.5 GB - Multilingual)</option>
+              <option value="max" data-tier="max">Whisper Large v3 (2.9 GB - Best)</option>
               <option value="ane" id="optAne">Apple Neural Engine (no download)</option>
             </select>
           </div>
@@ -175,6 +182,18 @@
             <span>● Offline Mode Guaranteed</span><span class="m">100% On-Device</span>
           </div>
           <div id="mStt"></div>
+        </div>
+        <div class="card">
+          <div class="row">
+            <div>
+              <span class="lbl3">Model Memory (RAM)</span>
+              <div id="modelMemStatus" style="font-size:.75rem;color:var(--ink2);margin-top:.25rem">Checking memory…</div>
+            </div>
+            <div style="display:flex;gap:.5rem;align-items:center">
+              <button class="btn sm" id="btnLoadModel" style="display:none">Load into RAM</button>
+              <button class="btn danger sm" id="btnUnloadModel" style="display:none">Unload Model</button>
+            </div>
+          </div>
         </div>
         <div class="card">
           <div class="row">
@@ -352,12 +371,71 @@
     rows();
     files('fCalls', [...((D.files || {}).calls || []), ...((D.files || {}).answered || [])]);
     files('fMsgs', (D.files || {}).messages);
+
+    // Hardware adviser
+    const hw = D.hardware || {};
+    const hwInfo = hw.hardware || {};
+    const mem = hwInfo.memory || {};
+    const disk = hwInfo.disk || {};
+    const models = hw.models || {};
+
+    if (hwInfo.chip_name) {
+      $('hwChipTag').textContent = hwInfo.chip_name;
+    }
+    const recTier = hw.recommended_tier || 'balanced';
+    $('hwAdviserState').innerHTML = `<b>Host Resources:</b> ${esc(hwInfo.chip_name || 'CPU')} · `
+      + `<b>${mem.total_gb || '?'} GB RAM</b> (${mem.available_gb || '?'} GB Available) · `
+      + `<b>${disk.free_gb || '?'} GB Free Storage</b><br>`
+      + `<span style="color:var(--emerald);display:inline-block;margin-top:.25rem">⭐ <b>Adviser Recommendation:</b> ${esc(recTier.toUpperCase())} tier is optimal for your system resources.</span>`;
+
+    // Dynamic model gating in quality dropdown
+    const qSelect = $('quality');
+    const tierMap = {fast: 'base', balanced: 'small', accurate: 'medium', max: 'large-v3'};
+    const modelNames = {fast: 'Whisper Base (142 MB - Fastest)', balanced: 'Whisper Small (464 MB - Balanced)', accurate: 'Whisper Medium (1.5 GB - Accurate)', max: 'Whisper Large v3 (2.9 GB - Max)'};
+
+    ['fast', 'balanced', 'accurate', 'max'].forEach(tier => {
+      const opt = qSelect.querySelector(`option[data-tier="${tier}"]`);
+      if (opt) {
+        const modKey = tierMap[tier];
+        const evalInfo = models[modKey] || {};
+        const isRec = (tier === recTier);
+        if (evalInfo.status === 'blocked') {
+          opt.disabled = true;
+          opt.textContent = `⛔ ${modelNames[tier]} (Blocked - Exceeds RAM/Disk)`;
+        } else if (isRec) {
+          opt.disabled = false;
+          opt.textContent = `⭐ ${modelNames[tier]} (Recommended)`;
+        } else {
+          opt.disabled = false;
+          opt.textContent = modelNames[tier];
+        }
+      }
+    });
+
     const ane = D.ane || {};
     const opt = $('optAne');
     opt.disabled = !ane.supported;
     opt.textContent = 'Apple Neural Engine (no download)'
       + (ane.supported ? '' : ' — ' + (ane.why || 'not available here'));
     if ((D.stt || {}).quality) $('quality').value = D.stt.quality;
+
+    // Model memory state
+    const stt = D.stt || {};
+    const loaded = stt.loaded_info || {};
+    const isLoaded = !!loaded.loaded;
+    const btnUnload = $('btnUnloadModel');
+    const btnLoad = $('btnLoadModel');
+    const memStatus = $('modelMemStatus');
+
+    if (isLoaded) {
+      memStatus.innerHTML = `<span class="tag">Loaded in RAM</span> <b style="color:var(--ink2)">${esc(loaded.name || loaded.model)}</b> resident (~${loaded.ram_mb || 0} MB RAM)`;
+      btnUnload.style.display = 'inline-block';
+      btnLoad.style.display = 'none';
+    } else {
+      memStatus.innerHTML = `<span class="tag off">Not in RAM</span> Stored on disk · 0 MB resident RAM`;
+      btnUnload.style.display = 'none';
+      btnLoad.style.display = stt.cached ? 'inline-block' : 'none';
+    }
 
     const sel = $('model');
     if (!sel.options.length) {
@@ -384,6 +462,22 @@
   $('openMsgs').onclick = () => say('mMsgs', false,
     'Opening the folder needs a native call this page cannot make yet.');
 
+  $('btnUnloadModel').onclick = async () => {
+    $('btnUnloadModel').disabled = true;
+    const d = await post('/api/model/unload', {});
+    $('btnUnloadModel').disabled = false;
+    say('mStt', d.ok, d.message);
+    load();
+  };
+
+  $('btnLoadModel').onclick = async () => {
+    $('btnLoadModel').disabled = true;
+    const d = await post('/api/model/load', {model: $('quality').value});
+    $('btnLoadModel').disabled = false;
+    say('mStt', d.ok, d.message || d.error);
+    load();
+  };
+
   $('doTest').onclick = async () => {
     $('testOut').textContent = 'Checking the engine…';
     const d = await fetch(`/api/setup/stt?t=${T}`).then(r => r.json()).catch(() => ({}));
@@ -392,7 +486,10 @@
     if (!d.cached) {
       $('testOut').textContent = `${d.model} is not downloaded yet (about ${d.mb} MB).\n`
         + 'It fetches itself at the first transcription. Downloading now…';
-      await post('/api/setup/stt', {});
+      const dl = await post('/api/setup/stt', {});
+      if (!dl.ok && dl.blocked) {
+        $('testOut').textContent = `⛔ Download Blocked: ${dl.error}`;
+      }
       return;
     }
     $('testOut').textContent = `${d.model} is downloaded and ready on this machine.\n`
