@@ -30,26 +30,24 @@
   word-wrap:normal;direction:ltr;-webkit-font-feature-settings:'liga';
   -webkit-font-smoothing:antialiased;user-select:none;}
 
-body{background:var(--page);color:var(--ink);font-family:var(--sans);height:100vh;
-  overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  padding:1.5rem;user-select:none;-webkit-font-smoothing:antialiased;}
-.window{width:100%;max-width:64rem;height:90vh;max-height:850px;background:var(--bg);
-  border-radius:1rem;border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;
-  overflow:hidden;position:relative;
-  box-shadow:0 25px 60px -15px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.08);}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);height:100vh;width:100vw;
+  overflow:hidden;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;
+  padding:0;margin:0;user-select:none;-webkit-font-smoothing:antialiased;}
+.window{width:100%;height:100%;flex:1;background:var(--bg);border-radius:0;border:none;
+  display:flex;flex-direction:column;overflow:hidden;position:relative;box-shadow:none;}
 
 /* ---- titlebar -------------------------------------------------------------------------- */
 /* THE THREE CIRCLES ARE DRAWN BY US. In a browser they are the illusion the design intends; in
  * the native window macOS draws its own, and two sets of lights is worse than none. `.native`
  * goes on <html> when window.pywebview exists — see nativeChrome() in the pages. */
 .titlebar{height:2.75rem;background:var(--sidebar);border-bottom:1px solid var(--line);
-  padding:0 1rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+  padding:0 1.25rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
 .lights{display:flex;align-items:center;gap:.5rem;}
 .lights i{width:.75rem;height:.75rem;border-radius:50%;display:block;}
 .lights i:nth-child(1){background:#ef4444;}
 .lights i:nth-child(2){background:#eab308;}
 .lights i:nth-child(3){background:#22c55e;}
-html.native .lights i{display:none;}
+html.native .lights{display:none;}
 html.native .brand{margin-left:0;padding-left:0;border-left:0;}
 .brand{margin-left:.75rem;padding-left:.5rem;border-left:1px solid rgba(255,255,255,.1);
   display:flex;align-items:center;gap:.5rem;}
