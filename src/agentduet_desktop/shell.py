@@ -121,9 +121,24 @@ def run_with_window(start_daemon, want_window: bool = True) -> int:
             logger.warning("native window unavailable (%s) — falling back to the browser", exc)
             print(f"  (no native window on this machine — opening your browser instead)")
 
-    if not open_in_browser(url):
-        print(f"\n  Open this in a browser:\n    {url}\n")
-    else:
+    # OPEN THE BROWSER ON FIRST RUN ONLY. It used to open on every start, from when the page was
+    # the only way to configure anything. `init` covers that now, and a daemon that seizes a
+    # browser tab every time it restarts is noise — during development it is a tab per restart.
+    #
+    # Not removed outright, because on macOS and Windows the page IS the documented setup
+    # surface: a brand new install that opened nothing would leave the owner with a running
+    # process and no way to find it. `setup-done` is the same marker the site uses to decide
+    # between the wizard and the hub, so the two agree by construction.
+    #
+    # The url is printed either way — that is what makes it findable without being taken over.
+    # An instance that predates the marker must not be treated as brand new — it would open a
+    # tab on every restart forever. A configured connector says setup happened, whenever it was,
+    # which is the same fallback the site's needs_setup() uses so the two cannot disagree.
+    from . import connector
+    first_run = not (paths.RUN / "setup-done").exists() and not connector.configured()
+    if first_run and open_in_browser(url):
         print(f"  owner view opened: {url}")
+    else:
+        print(f"  owner view: {url}")
     worker.join()
     return 0
