@@ -376,9 +376,13 @@ the product is.
       Neither onboarding path in the August flow used DDUET anyway. This also removed the
       base-URL clash: DDUET needed a dev endpoint while voice needs prod, and one client has one
       base URL.
-      **Watch the version ordering:** `1.0.1b1` (the DDUET branch) sorts ABOVE `1.0.0`, and when
-      main ships a real `1.0.1` it will outrank the branch while still lacking DDUET. DDUET is a
-      feature, so that branch ought to be renumbered `1.1.0b1`.
+      **UPDATE 2026-08-27: the renumber happened and DDUET is RELEASED.** `agentduet` `1.1.0b1`,
+      `b2` and `b3` are on PyPI with `Network.DDUET`, `DduetMessage` and `SendDduetMessage` — so
+      the reason this channel was dropped (a private branch) is gone. **The trap moved rather
+      than closing:** they are PRE-releases, so PyPI still serves `1.0.0` as latest and our
+      `agentduet>=1.0.0` resolves a clean install to a version with no DDUET at all. Our build
+      venv has `1.1.0b3` only because it was installed explicitly. Pin it before relying on the
+      channel — the failure is silent absence, not an error.
 - [ ] **Windows binary.** Intel Mac was DROPPED 2026-08-04: `macos-13` is retired so the job
       never started, and a queued job holds its whole run open — finished builds looked
       unfinished for hours. A pre-2020 Mac cannot run our build; check the chip before sending.
@@ -459,10 +463,38 @@ the product is.
 **Backend, not this package**
 
 - [ ] Identity: does AgentDuet issue a stable identity, and carry the verified property?
-- [x] ~~**Directory/discovery.**~~ **MOOT 2026-08-11.** This described the DDUET web-chat
-      surface, which is gone. WhatsApp and voice both arrive on prod, so there is no base-URL
-      conflict left and nothing to discover a per-agent URL for. Discovery becomes a real
-      question again only if a web surface returns.
+- [ ] **Directory/discovery — REOPENED 2026-08-27; "moot" was wrong.** It was closed on the
+      belief that the DDUET surface was gone. It is not: `PostBaChatMessageRequest.profile_url`
+      in `wss-edge`'s `nexus/mono/bachat/ba_chat_http.proto` is a **public BA slug**
+      (`dduet.com/<slug>`), and a message may be minted against it INSTEAD of an account uid. So
+      discovery is a URL anyone can hold, and the question is ours again: which slug an install
+      gets, who mints it, and whether a stranger reaching it is a verified asker.
+- [ ] **The DDUET people list and history exist in Nexus; the connector cannot reach them.**
+      Found 2026-08-27 by reading `wss-edge`'s vendored
+      `server/src/main/proto/nexus/mono/bachat/ba_chat_http.proto` rather than the SDK. Three RPCs
+      are defined: **`GetBaChatUserInfo`** (`ba_uid` required; a blank `account_uid` returns the
+      BA's WHOLE user list, paginated, sortable by display name), **`ListBaChatSessions`** (the
+      inbox — members, title, `last_message_at`) and **`QueryBaChatMessages`** (history; a blank
+      `session_uid` means every session the caller is a member of).
+      **`wss-edge` wires exactly ONE baChat path — `internal/baChat/v1/agentPostMessage`.** The
+      2026-08-10 adaptation design puts `agentListSessions`/`agentQueryMessages` under "Out of
+      scope, deliberately", so this is a plumbing gap, not a missing capability: the ask upstream
+      is to expose what exists, not to build a directory.
+      **One limit is deliberate and worth not designing around:** `BaChatUserInfo.emails` is
+      populated ONLY on a single-user lookup — "so a connector can turn one relayed userUid into
+      an emailable participant, not so a whole customer list can be harvested in one call".
+      Until this lands, the app can only know people who message it while it is running, which is
+      why `people/` looks empty on a fresh install.
+- [ ] **DDUET is BUSINESS-account chat, not the person-to-person app.** The distinction cost a
+      wrong answer on 2026-08-27, so: `AddressNetwork` is exactly `{WA, TELCO, DDUET}`, and DDUET
+      IS BaChat. `BaChatUserInfo` is documented as "the field set of
+      `friend.FriendWithoutIdentitiesResponse`" — so Nexus has a separate **friend** module for
+      person-to-person, and **`grep -rni friend` across all of `wss-edge` returns nothing**. A
+      message someone sends you as a friend in the mobile app is never relayed to a connector.
+      What DOES arrive is anything addressed to a BA the connector is a member of — including a
+      human colleague's reply sent AS that same BA from web or mobile, which lands as ordinary
+      inbound with `senderAccountUid == baUid`. Demoing this means messaging the BA, not the
+      person.
 - [x] ~~**Reply over WhatsApp.**~~ **BUILT 2026-08-11** — WhatsApp is now the messaging channel,
       not an unhandled network. `on_incoming_message` accepts `Network.WA`, replies with
       `SendWAMessage` in the `wa_echo_bot.py` shape (`_wa_text`, one helper so the asker reply and
@@ -481,6 +513,11 @@ the product is.
 - [ ] Outbound initiate: messaging is reactive, so held replies are delivered only when the
       person next writes. On WhatsApp there is a second limit — Meta's 24h customer-service
       window, after which a free-form reply needs an approved template we do not have.
+      **DDUET does not have either limit** (checked 2026-08-27): the 2026-08-10 BaChat adaptation
+      gave the connector proactive send — omit `session_uid`, pass the target's account uid as
+      `participant`, and Nexus mints the session. No window, no template. That makes DDUET the
+      cheaper route to held-reply delivery than WhatsApp, and it is the strongest argument for
+      carrying both channels rather than treating WA as the replacement.
 - [ ] Unverified askers: `knowledge/` is flat and public. Decide the disclosure tier before
       strangers are in scope.
 - [ ] **DashScope caps concurrent realtime connections per ACCOUNT** ("max_connections 100").
