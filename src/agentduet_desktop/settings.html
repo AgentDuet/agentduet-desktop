@@ -480,7 +480,7 @@
     // a dedicated ASR task and refuses a text part.
     const where = `Transcription engine: <b>${esc(d.engine_name || '?')}</b> · `
                 + esc(d.engine_where || '');
-    if (!d.installed && d.engine !== 'hosted') {
+    if (!d.installed) {
       st.textContent = 'Transcription engine: not in this build.';
       $('doStt').hidden = true;
     } else if (!d.needed) {

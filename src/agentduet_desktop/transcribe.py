@@ -1,21 +1,28 @@
 """Turn recorded call legs into text, on a queue, with or without a network.
 
-TWO ENGINES, ONE INTERFACE.
+ONE ENGINE: faster-whisper, on this machine. No key, no network, and the audio does not leave.
 
-  hosted  `qwen3-asr-flash` on DashScope. More accurate, needs the owner's model key.
-  local   faster-whisper on the CPU. No key, no network, nothing leaves the machine.
+IT USED TO PREFER A HOSTED ONE — `qwen3-asr-flash` on DashScope — whenever a credential existed,
+and it was measurably better on the same audio: it returned "Sir, ma'am … Trusty's Security
+Department" where local `base` gave "Sarah, ma'am … trustee security department". That path was
+removed on 2026-08-27, and the reason is worth keeping because the accuracy argument for putting
+it back will come round again.
 
-Hosted is preferred when a credential exists, because it is measurably better on the same
-audio — hosted returned "Sir, ma'am … Trusty's Security Department" where local `base` gave
-"Sarah, ma'am … trustee security department". Local is the one that makes the feature work at
-all for an owner who has not attached a model, and on the recording path that is the common
-case: carrying a call needs no LLM, so requiring one just to read back what was said would be
-an odd tax.
+THE CREDENTIAL IT KEYED OFF WAS THE LLM's. `_hosted_key()` was literally
+`llm._DashScope.credential()`, so attaching a Qwen key to summarise transcripts silently
+started uploading the CALL AUDIO to Alibaba. Nobody would predict that from either setting, and
+it happened on this machine: a local GLM running the assistant while every recording went to the
+cloud, on a key left over from an unrelated test.
 
-Neither is a chat model. `qwen3-asr-flash` is a dedicated ASR *task* — it refuses a text part
-alongside the audio, which is how that was discovered — and Whisper takes no instruction at all.
-On a path whose entire input is a stranger's voice, an engine that cannot be instructed is the
-right shape rather than a limitation.
+THE THREE JOBS ARE SEPARATE, and conflating the last two is what produced that. Two humans talk
+and we record them; speech-to-text turns that into words; a language model may LATER read the
+words. Only the third needs a provider. Speech-to-text was never an LLM job — `qwen3-asr-flash`
+is a dedicated ASR task that refuses a text part alongside the audio, which is how that was
+discovered.
+
+So the strongest thing this product says — that a recording of two people talking stays on the
+owner's machine — is now true without a clause. If a hosted engine returns it needs its own
+explicit setting and its own credential, never one inferred from the model key.
 
 THE QUEUE IS THE FILESYSTEM. A `.wav` with no sibling `.txt` is work to do. There is no queue
 file to corrupt, lose or get out of step with the recordings, and it is restart-safe by
@@ -28,7 +35,6 @@ cannot be recreated — is already closed on disk before any of it starts.
 """
 
 import asyncio
-import base64
 import io
 import logging
 import os
@@ -37,12 +43,8 @@ import wave
 
 logger = logging.getLogger("secretary")
 
-#: The hosted ASR task model. A function for the same reason as `local_model()`: a value read
-#: once at import cannot be changed without restarting the daemon.
-def hosted_model() -> str:
-    return os.getenv("SECRETARY_ASR_MODEL", "qwen3-asr-flash")
 
-#: How hard the local engine tries. Measured on a real 22s call, against the hosted engine's
+#: How hard the local engine tries. Measured on a real 22s call, against the (then) hosted
 #: "Hi! Hello, hello! What can you do? Okay. Err. Never mind. Bye. Bye.":
 #:
 #:   fast      base   14x realtime  ~145 MB   "…what you do? Okay, uh, never mind, I'm fine."
@@ -86,12 +88,6 @@ def local_model() -> str:
             or "balanced").lower()
     return QUALITY.get(tier, QUALITY["balanced"])
 
-#: Audio is sent inline as base64, so one hosted request carries about 1.4x the WAV's bytes. A
-#: minute of 24 kHz mono 16-bit is ~2.8 MB; a ten-minute call in one request would be ~38 MB.
-#: Chunking makes request size a function of this constant rather than call length. The local
-#: engine has no such limit and reads the whole file.
-CHUNK_SECONDS = 60
-
 #: A WAV header with no frames. Written when a call produced no audio at all — which is what an
 #: unbridged call looks like — and there is nothing to transcribe in one.
 EMPTY_WAV_BYTES = 64
@@ -110,11 +106,6 @@ class TranscriptionUnavailable(RuntimeError):
     """No engine can run. Recording must survive this."""
 
 
-# ---- engines ---------------------------------------------------------------------------
-
-def _hosted_key() -> str | None:
-    from . import llm
-    return llm._DashScope.credential()
 
 
 def _local_available() -> bool:
@@ -125,30 +116,27 @@ def _local_available() -> bool:
 
 
 def engine() -> str:
-    """`hosted`, `local`, or `` when neither can run."""
-    if _hosted_key():
-        return "hosted"
+    """`local`, or `` when the engine is not in this build.
+
+    It used to answer `hosted` whenever an LLM credential existed — see the module docstring for
+    why that is gone. Kept as a function returning a string rather than collapsing to a boolean,
+    because callers ask "which engine" and a second one may exist again.
+    """
     return "local" if _local_available() else ""
 
 
 def available() -> tuple[bool, str]:
     """(can transcribe, why not). Checked at start-up so the owner learns before a call."""
-    which = engine()
-    if which == "hosted":
+    if engine() == "local":
         return True, ""
-    if which == "local":
-        return True, ""
-    return False, ("no model key and faster-whisper is not installed — recordings will be kept, "
-                   "but not transcribed. `pip install 'agentduet-desktop[stt]'` transcribes "
-                   "on this machine with no key and no network.")
+    return False, ("the speech engine is not in this build — recordings are kept, but not "
+                   "transcribed. `pip install 'agentduet-desktop[stt]'` adds it; it needs no "
+                   "key and no network.")
 
 
 def describe() -> str:
     """One line for `status`, naming which engine would actually run."""
-    which = engine()
-    if which == "hosted":
-        return f"hosted ({hosted_model()})"
-    if which == "local":
+    if engine() == "local":
         return f"local ({local_model()}, on this machine)"
     return "OFF — " + available()[1]
 
@@ -182,39 +170,8 @@ def fetch(model: str = "") -> str:
     return name
 
 
-def _chunks(path: pathlib.Path, seconds: int = CHUNK_SECONDS):
-    """The WAV as a series of self-contained smaller WAVs, each with its own header."""
-    with wave.open(str(path), "rb") as src:
-        params = src.getparams()
-        per = params.framerate * seconds
-        while True:
-            frames = src.readframes(per)
-            if not frames:
-                return
-            buf = io.BytesIO()
-            with wave.open(buf, "wb") as out:
-                out.setnchannels(params.nchannels)
-                out.setsampwidth(params.sampwidth)
-                out.setframerate(params.framerate)
-                out.writeframes(frames)
-            yield buf.getvalue()
 
 
-def _hosted_one(audio: bytes, key: str) -> str:
-    import httpx
-    region = (os.getenv("DASHSCOPE_REGION") or "intl").strip().lower()
-    host = "dashscope-intl.aliyuncs.com" if region == "intl" else "dashscope.aliyuncs.com"
-    b64 = base64.b64encode(audio).decode()
-    # AUDIO ONLY. A text part is rejected: this is a dedicated ASR task, not a chat model that
-    # happens to hear. Adding "please transcribe" here would break every call.
-    body = {"model": hosted_model(), "messages": [{"role": "user", "content": [
-        {"type": "input_audio",
-         "input_audio": {"data": f"data:audio/wav;base64,{b64}", "format": "wav"}}]}]}
-    r = httpx.post(f"https://{host}/compatible-mode/v1/chat/completions", json=body,
-                   headers={"Authorization": f"Bearer {key}"}, timeout=180.0)
-    if r.status_code != 200:
-        raise TranscriptionUnavailable(f"{r.status_code}: {r.text[:200]}")
-    return (r.json()["choices"][0]["message"].get("content") or "").strip()
 
 
 _local_model = None
@@ -354,27 +311,9 @@ def _local(path: pathlib.Path) -> str:
 
 def transcribe(path: pathlib.Path) -> str:
     """The words on one recorded leg. Raises TranscriptionUnavailable; never returns a guess."""
-    which = engine()
-    if which == "local":
-        return _local(path)
-    key = _hosted_key()
-    if not key:
+    if engine() != "local":
         raise TranscriptionUnavailable(available()[1])
-
-    parts: list[str] = []
-    for i, chunk in enumerate(_chunks(path)):
-        try:
-            if text := _hosted_one(chunk, key):
-                parts.append(text)
-        except TranscriptionUnavailable:
-            raise
-        except Exception as exc:
-            # Marked in place rather than dropped: a transcript silently missing its middle
-            # minute reads as a complete record of a shorter call.
-            logger.error("transcribing %s chunk %d failed (%s: %s)",
-                         path.name, i, type(exc).__name__, exc)
-            parts.append(f"[minute {i + 1}: not transcribed]")
-    return " ".join(parts).strip()
+    return _local(path)
 
 
 # ---- the queue -------------------------------------------------------------------------

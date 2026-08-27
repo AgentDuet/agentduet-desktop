@@ -417,16 +417,14 @@ def test_carry_mode() -> None:
         ok("asking for an absent credential does not raise", False, f"{type(exc).__name__}: {exc}")
     finally:
         _os.environ.update({k: v for k, v in saved.items() if v is not None})
-    # THE HOSTED REQUEST CARRIES AUDIO AND NOTHING ELSE. qwen3-asr-flash is a dedicated ASR
-    # task and rejects a text part with a 400 — found the hard way. Checking the request BUILDER
-    # rather than a docstring, because prose passing a test is how a check starts succeeding for
-    # being well written.
+    # NO REQUEST BUILDER LEFT TO CHECK. There was a hosted ASR path here and it was removed on
+    # 2026-08-27; the module must not regrow one that posts audio anywhere. Checked against the
+    # SOURCE rather than behaviour, because a network call added back would only fail this suite
+    # if a test happened to exercise it, and this one exists precisely so none has to.
     import inspect
-    body_src = inspect.getsource(transcribe._hosted_one)
-    ok("the hosted request sends audio with no text part",
-       '"input_audio"' in body_src and '"type": "text"' not in body_src)
-    ok("a long call is chunked so request size does not scale with call length",
-       1 <= transcribe.CHUNK_SECONDS <= 300, transcribe.CHUNK_SECONDS)
+    src = inspect.getsource(transcribe)
+    for token in ("httpx.post", "requests.post", "urllib.request.urlopen"):
+        ok(f"transcribe.py makes no outbound call ({token})", token not in src)
 
 
 def test_shipped_dependencies() -> None:
@@ -537,9 +535,6 @@ def test_answered_call_recording() -> None:
     _o.environ["SECRETARY_STT_QUALITY"] = "max"
     eq("a tier changed after import takes effect immediately", _t.local_model(), "large-v3")
     _o.environ.pop("SECRETARY_STT_QUALITY", None)
-    _o.environ["SECRETARY_ASR_MODEL"] = "some-other-asr"
-    eq("and so does the hosted model name", _t.hosted_model(), "some-other-asr")
-    _o.environ.pop("SECRETARY_ASR_MODEL", None)
 
     # A GPU IS USED IF PRESENT, NEVER REQUIRED. CUDA is not bundled — 2-3 GB of wheels against a
     # 58 MB binary, and macOS has none at all — so this must degrade to CPU silently on the
@@ -731,17 +726,25 @@ def test_transcribe_queue() -> None:
             ok("with no engine at all it reports why, and writes nothing",
                transcribe.available()[0] is False and "not transcribed" in transcribe.available()[1])
 
-    # Engine PREFERENCE. Hosted is measurably more accurate on the same audio, so a machine with
-    # a key should not quietly fall back to the weaker local one.
-    with mock.patch.object(transcribe, "_hosted_key", return_value="k"), \
-         mock.patch.object(transcribe, "_local_available", return_value=True):
-        eq("a key means hosted, even when local is installed", transcribe.engine(), "hosted")
-    with mock.patch.object(transcribe, "_hosted_key", return_value=None), \
-         mock.patch.object(transcribe, "_local_available", return_value=True):
-        eq("no key falls back to local", transcribe.engine(), "local")
-    with mock.patch.object(transcribe, "_hosted_key", return_value=None), \
-         mock.patch.object(transcribe, "_local_available", return_value=False):
-        eq("neither is an empty engine, not a crash", transcribe.engine(), "")
+    # NO CREDENTIAL CHANGES WHERE AUDIO GOES. This is the invariant the hosted path violated:
+    # `_hosted_key()` was `llm._DashScope.credential()`, so attaching a Qwen key to summarise
+    # transcripts silently began uploading the CALL AUDIO to Alibaba — which happened on a real
+    # machine, a local model answering while every recording went to the cloud. The engine now
+    # depends on ONE thing: whether the speech engine is in this build.
+    import os as _os2
+    saved_key = _os2.environ.get("DASHSCOPE_API_KEY")
+    _os2.environ["DASHSCOPE_API_KEY"] = "a-key-that-must-change-nothing"
+    try:
+        with mock.patch.object(transcribe, "_local_available", return_value=True):
+            eq("a model key does not move transcription off this machine",
+               transcribe.engine(), "local")
+        with mock.patch.object(transcribe, "_local_available", return_value=False):
+            eq("and with no engine it is empty, not a remote fallback", transcribe.engine(), "")
+    finally:
+        if saved_key is None:
+            _os2.environ.pop("DASHSCOPE_API_KEY", None)
+        else:
+            _os2.environ["DASHSCOPE_API_KEY"] = saved_key
 
 
 def test_ring_limit() -> None:
