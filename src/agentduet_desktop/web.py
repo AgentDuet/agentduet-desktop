@@ -652,7 +652,48 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                 f"Downloading {models.CATALOGUE.get(name, {}).get('name', name)}. It keeps "
                 "going if you leave this page."})
 
+        if act == "add":
+            # THE ESCAPE HATCH. The owner names a repository and one file in it; the URL is
+            # built here from those two, never accepted from the page — a downloader that takes
+            # a URL from its caller is a request-forgery tool with a progress bar.
+            try:
+                key = await asyncio.to_thread(models.add_custom,
+                                              body.get("repo", ""), body.get("file", ""))
+            except (ValueError, RuntimeError) as exc:
+                return web.json_response({"ok": False, "message": str(exc)})
+
+            async def _go():
+                await asyncio.to_thread(models.download, key)
+                if models.is_downloaded(key):
+                    await asyncio.to_thread(models.load, key)
+                    if models.loaded() == key:
+                        await asyncio.to_thread(tools.attach_model, "local", key, "local")
+
+            asyncio.get_running_loop().create_task(_go())
+            return web.json_response({"ok": True, "message":
+                                      f"Downloading {body.get('file', '')}."})
+
         return web.json_response({"ok": False, "message": f"Unknown action {act!r}."})
+
+    async def api_hf(request):
+        """Search Hugging Face, or list one repository's GGUF files.
+
+        Two questions on one route because they are one flow: nobody searches without then
+        picking a file, and a repository is a shelf of quantisations rather than a model.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import models
+        repo = (request.query.get("repo") or "").strip()
+        query = (request.query.get("q") or "").strip()
+        try:
+            if repo:
+                return web.json_response({"ok": True, "repo": repo,
+                                          "files": await asyncio.to_thread(models.files, repo)})
+            return web.json_response({"ok": True,
+                                      "results": await asyncio.to_thread(models.search, query)})
+        except (RuntimeError, ValueError) as exc:
+            return web.json_response({"ok": False, "message": str(exc)})
 
     async def api_models(request):
         """Every model we offer, sized against this machine, with what it is FOR.
@@ -1121,6 +1162,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/api/panel", api_panel),
         web.get("/api/threads", api_threads),
         web.get("/api/models", api_models),
+        web.get("/api/models/hf", api_hf),
         web.post("/api/models", api_model_action),
         web.post("/api/handover", api_handover),
         web.get("/api/install", api_install),

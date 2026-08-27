@@ -46,7 +46,7 @@ logger = logging.getLogger("secretary.llm")
 #: Which provider owns a model name. LOCAL IS DECIDED BY THE CATALOGUE, not by a prefix: the
 #: ids in models.CATALOGUE are exact, so there is nothing to guess. `qwen` remains a prefix for
 #: DashScope because it means two different things — a hosted qwen and a local one — and a local
-#: qwen is matched by its full catalogue id (`qwen-2.5-7b`), never by the bare word.
+#: qwen is matched by its full catalogue id (`qwen3-8b`), never by the bare word.
 _PROVIDERS = {"gemini": ("gemini",), "anthropic": ("claude",), "dashscope": ("qwen",)}
 
 #: Gemini honours it; the Claude 5 family rejects any non-default value with a 400, so the
@@ -64,7 +64,7 @@ MAX_TOKENS = int(os.getenv("SECRETARY_MAX_TOKENS", "8192"))
 def provider(model: str = "") -> str:
     """Which provider serves `model`. Explicit env wins, then the catalogue, then the name.
 
-    THE CATALOGUE IS CHECKED BEFORE THE PREFIXES, and that order is load-bearing. `qwen-2.5-7b`
+    THE CATALOGUE IS CHECKED BEFORE THE PREFIXES, and that order is load-bearing. `qwen3-8b`
     is a local model whose name contains `qwen`, which is DashScope's prefix — inferring from
     the name first sent a downloaded model to a cloud vendor. An exact id beats a substring.
     """

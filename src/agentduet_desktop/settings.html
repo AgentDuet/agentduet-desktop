@@ -69,6 +69,24 @@
   .act:disabled:hover{border-color:var(--line);color:var(--faint);}
   .act.get,.act.use{border-color:rgba(59,130,246,.35);color:var(--blue400);}
   .act.get:hover,.act.use:hover{border-color:rgba(59,130,246,.6);background:rgba(37,99,235,.12);}
+  .hatch{margin-top:1.25rem;border-top:1px solid var(--line);padding-top:.9rem;}
+  .hatch summary{font-size:.75rem;color:var(--blue400);cursor:pointer;list-style:none;}
+  .hatch summary::-webkit-details-marker{display:none;}
+  .hatch summary::before{content:"+ ";font-family:var(--mono);}
+  .hatch[open] summary::before{content:"\2212 ";}
+  .hatch summary:hover{text-decoration:underline;}
+  .hfrow{display:flex;align-items:center;gap:.6rem;padding:.45rem .6rem;border-radius:.45rem;
+    border:1px solid var(--line);background:var(--slate900);margin-top:.35rem;}
+  .hfrow .r{font-family:var(--mono);font-size:11px;color:var(--ink2);flex:1;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;}
+  .hfrow .d{font-family:var(--mono);font-size:10px;color:var(--faint);
+    font-variant-numeric:tabular-nums;}
+  /* The weight is chosen FOR the owner; this is how they overrule it without leaving. */
+  .sizes summary{font-size:10px;color:var(--faint);cursor:pointer;list-style:none;}
+  .sizes summary::-webkit-details-marker{display:none;}
+  .sizes summary::before{content:"+ ";font-family:var(--mono);}
+  .sizes[open] summary::before{content:"\2212 ";}
+  .sizes summary:hover{color:var(--blue400);}
   .inuse{font-size:10px;font-weight:700;color:var(--emerald);
     background:rgba(16,185,129,.18);padding:.15rem .5rem;border-radius:999px;}
 
@@ -299,6 +317,18 @@
       <div class="state" id="machineState">…</div>
       <div id="modelList"></div>
       <div id="mPull"></div>
+
+      <!-- The escape hatch. Folded away because the curated list is the answer for almost
+           everyone, and open one click later because sometimes it is not. -->
+      <details class="hatch" id="hatch">
+        <summary>Get another model from Hugging Face</summary>
+        <div class="frow" style="margin-top:.6rem">
+          <input type="text" id="hfQuery" placeholder="qwen3, gemma, phi…">
+          <button class="btn ghost" id="hfGo" style="flex-shrink:0">Search</button>
+        </div>
+        <div id="hfResults"></div>
+        <div id="mHf"></div>
+      </details>
     </div>
   </div>
 </div>
@@ -583,17 +613,35 @@
         <div class="mtop">
           <span class="brand">${esc(x.brand)}</span>
           <span class="nm">${esc(x.name)}</span>
-          ${x.recommended ? '<span class="rec">best for this machine</span>' : ''}
+          ${x.in_use ? '<span class="rec">in use</span>' : ''}
           <span class="fitpill ${x.fit}">${x.fit === 'no' ? 'too big' : x.fit}</span>
         </div>
         <div class="mwhat">${esc(x.what)}</div>
         <div class="mfacts">
           <span>${x.dl_gb.toFixed(1)} GB download</span>
           <span>${x.ram_gb.toFixed(1)} GB in memory</span>
-          <span>${esc(x.speed)}</span>
-          <span>${esc(x.params)}</span>
+          ${x.speed ? `<span>${esc(x.speed)}</span>` : ''}
+          ${x.params ? `<span>${esc(x.params)}</span>` : ''}
+          ${x.estimated ? '<span>memory estimated</span>' : ''}
+          ${x.custom ? `<span>${esc(x.repo)}</span>` : ''}
         </div>
         <div class="mact">${act}</div>
+        ${(x.variants || []).length > 1 ? `
+        <details class="sizes">
+          <summary>${x.variants.length} sizes</summary>
+          ${x.variants.map(v => `
+            <div class="hfrow">
+              <span class="r">${esc(v.name)}${v.params ? ' · ' + esc(v.params) : ''}</span>
+              <span class="d">${v.dl_gb.toFixed(1)} GB</span>
+              <span class="fitpill ${v.fit}">${v.fit === 'no' ? 'too big' : v.fit}</span>
+              ${v.id === x.id ? '<span class="d">shown above</span>'
+                : v.state !== 'absent'
+                  ? `<button class="act use" data-load="${esc(v.id)}">Use this</button>`
+                  : v.fit === 'no'
+                    ? `<button class="act" disabled title="${esc(v.why)}">too big</button>`
+                    : `<button class="act get" data-get="${esc(v.id)}" ${busy ? 'disabled' : ''}>Download</button>`}
+            </div>`).join('')}
+        </details>` : ''}
       </div>`;
     }).join('');
 
@@ -622,6 +670,59 @@
     // While bytes are moving, keep the bar moving. Nothing else on this page polls.
     if (busy) setTimeout(loadModels, 1000);
   }
+
+  // ---- the escape hatch ----------------------------------------------------------------
+  // TWO STEPS, because a repository is not a model. It is a shelf of quantisations of one —
+  // Q2 through Q8 — and choosing between them IS the size-against-quality decision the owner
+  // came here to make. Picking one for them would be guessing at exactly that.
+  async function hfSearch(){
+    const q = $('hfQuery').value.trim();
+    if (!q) return;
+    $('hfResults').innerHTML = '<p class="mwhy">Searching…</p>';
+    const d = await fetch(`/api/models/hf?t=${T}&q=${encodeURIComponent(q)}`)
+                      .then(r => r.json()).catch(() => ({ok: false, message: 'No network.'}));
+    if (!d.ok) { $('hfResults').innerHTML = ''; return say('mHf', false, d.message); }
+    const rows = (d.results || []);
+    if (!rows.length) return $('hfResults').innerHTML = '<p class="mwhy">Nothing matched.</p>';
+    $('hfResults').innerHTML = rows.map(r => `
+      <div class="hfrow">
+        <span class="r" title="${esc(r.repo)}">${esc(r.repo)}</span>
+        <span class="d">${r.downloads.toLocaleString()}</span>
+        <button class="act use" data-repo="${esc(r.repo)}">Files</button>
+      </div>`).join('');
+    $('hfResults').querySelectorAll('[data-repo]').forEach(el =>
+      el.onclick = () => hfFiles(el.dataset.repo));
+  }
+
+  async function hfFiles(repo){
+    $('hfResults').innerHTML = '<p class="mwhy">Reading ' + esc(repo) + '…</p>';
+    const d = await fetch(`/api/models/hf?t=${T}&repo=${encodeURIComponent(repo)}`)
+                      .then(r => r.json()).catch(() => ({ok: false, message: 'No network.'}));
+    if (!d.ok) { $('hfResults').innerHTML = ''; return say('mHf', false, d.message); }
+    const files = d.files || [];
+    if (!files.length)
+      return $('hfResults').innerHTML = '<p class="mwhy">No .gguf files in ' + esc(repo) + '.</p>';
+    $('hfResults').innerHTML =
+      `<div class="hfrow"><span class="r">${esc(repo)}</span>
+         <button class="act" data-back="1">Back</button></div>`
+      + files.map(f => `
+      <div class="hfrow">
+        <span class="r" title="${esc(f.file)}">${esc(f.file)}</span>
+        <span class="d">${(f.mb / 1024).toFixed(1)} GB</span>
+        <button class="act get" data-file="${esc(f.file)}">Download and use</button>
+      </div>`).join('');
+    $('hfResults').querySelector('[data-back]').onclick = hfSearch;
+    $('hfResults').querySelectorAll('[data-file]').forEach(el => {
+      el.onclick = async () => {
+        const r = await post('/api/models', {action: 'add', repo, file: el.dataset.file});
+        say('mHf', r.ok, r.message);
+        if (r.ok) { $('hfResults').innerHTML = ''; $('hatch').open = false; loadModels(); }
+      };
+    });
+  }
+
+  $('hfGo').onclick = hfSearch;
+  $('hfQuery').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); hfSearch(); } });
 
   function loadModels(){
     fetch(`/api/models?t=${T}`).then(r => r.json()).then(modelsRender).catch(() => {});
