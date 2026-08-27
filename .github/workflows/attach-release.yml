@@ -46,8 +46,13 @@ jobs:
           shopt -s nullglob
           FILES=()
           for f in artifacts/*/*.dmg; do FILES+=("$f"); done
-          for f in artifacts/agentduet-desktop-linux-x86_64/agentduet-desktop; do
+          # PyInstaller writes into dist-bin/, and the artifact preserves that — so the binary
+          # is one level deeper than the artifact name suggests. Globbed rather than spelled
+          # out, since the first attempt guessed the path and silently attached nothing.
+          for f in artifacts/agentduet-desktop-linux-x86_64/*/agentduet-desktop \
+                   artifacts/agentduet-desktop-linux-x86_64/agentduet-desktop; do
             cp "$f" "agentduet-desktop-linux-x86_64" && FILES+=("agentduet-desktop-linux-x86_64")
+            break
           done
           [ ${#FILES[@]} -gt 0 ] || { echo "::error::nothing to attach"; exit 1; }
           printf 'attaching: %s\n' "${FILES[@]}"
