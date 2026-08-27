@@ -34,6 +34,17 @@ Never over-promise; if unsure, say the owner will follow up.
      for you, and nobody has answered that question for us either. -->
 carry
 
+## Recordings
+<!-- Where call audio and transcripts are written. An ABSOLUTE path.
+
+     Empty means the default, inside this instance:  <AGENTDUET_HOME>/run/recordings
+
+     Changing this does NOT move recordings already on disk. New ones go to the new folder and
+     the old ones stay where they are — moving gigabytes of audio is not something a settings
+     change should do behind your back. `agentduet-desktop status` always reports the folder
+     actually in use. -->
+
+
 ## Record calls
 <!-- yes (default) — an answered call is saved as audio under run/recordings/answered/,
      one file for the caller and one for the agent. The written transcript is kept either way.

@@ -30,6 +30,7 @@ that switches it on says so in the file the owner reads.
 
 import asyncio
 import logging
+import pathlib
 import wave
 from datetime import datetime
 
@@ -39,6 +40,22 @@ logger = logging.getLogger("secretary")
 
 #: Where recordings land, inside the instance — never the install directory, which an upgrade
 #: replaces wholesale.
+def recordings() -> pathlib.Path:
+    """Where recordings go, ASKED EACH TIME.
+
+    This was `RECORDINGS = paths.RUN / "recordings"`, a module constant — so every importer
+    froze it at import and the settings page could only ever display the folder, never change
+    it. Same read-at-use-time rule the model key already had to learn.
+
+    `carry` owns the question because it owns the files; `owner.recordings_dir()` holds the
+    answer because it is a setting.
+    """
+    from . import owner
+    return owner.recordings_dir()
+
+
+#: Kept so the name still resolves for anything that reads it as a value. It is the DEFAULT,
+#: not the setting — call `recordings()` for what is actually in use.
 RECORDINGS = paths.RUN / "recordings"
 
 #: Subdirectory for calls the AGENT answered. Defined here, beside the directory it sits in,
@@ -66,7 +83,7 @@ MAX_CALL_SECONDS = 4 * 60 * 60
 
 def _wav_path(call_id: str, leg: str) -> "paths.pathlib.Path":
     stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-    return RECORDINGS / f"{stamp}-{call_id}-{leg}.wav"
+    return recordings() / f"{stamp}-{call_id}-{leg}.wav"
 
 
 async def _record_leg(party, call_id: str, leg: str) -> None:
@@ -83,7 +100,7 @@ async def _record_leg(party, call_id: str, leg: str) -> None:
     writer = None
     frames = 0
     try:
-        RECORDINGS.mkdir(parents=True, exist_ok=True)
+        recordings().mkdir(parents=True, exist_ok=True)
         writer = wave.open(str(path), "wb")
         writer.setnchannels(CHANNELS)
         writer.setsampwidth(SAMPLE_WIDTH)
@@ -219,7 +236,7 @@ async def handle(sm, noti) -> None:
         # caller is known here and was only being logged.
         from . import calls as _calls
         _calls.record(call_id, caller, "carried", recordings=sorted(
-            str(p.name) for p in RECORDINGS.glob(f"*{call_id}*.wav")))
+            str(p.name) for p in recordings().glob(f"*{call_id}*.wav")))
         # THE TRANSCRIPT IS NOT THIS FUNCTION'S JOB. Carrying a call ends when the audio is
         # closed on disk; a `.wav` with no sibling `.txt` is the queue, and the worker in
         # `transcribe` picks it up within a poll. That keeps the call path free of a network

@@ -361,6 +361,14 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                             if connector.configured()
                             else "Not connected, so nothing can reach you yet.")
         cur["connector_uuid"] = os.getenv(connector.UUID, "")
+        cur["connected"] = connector.configured()
+        cur["backend"] = connector.environment()
+        # EVIDENCE THAT A KEY IS SET, without echoing it. The card said "Connected" above an
+        # empty password field, which reads as a contradiction — the field was empty because a
+        # password input is never populated, not because nothing was configured. Last four
+        # characters only, on a loopback page behind a per-machine token.
+        _k = os.getenv(connector.API_KEY, "")
+        cur["key_hint"] = f"····{_k[-4:]}" if len(_k) >= 4 else ("set" if _k else "")
         # SIGN-IN STATE. The card showed a key field and a uuid field and nothing else, so an
         # owner who had signed in could not see it, could not sign out, and could not tell that
         # the key sitting in .env was being ignored.
@@ -383,8 +391,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         cur["transcription"] = _own.transcription_quality()
         cur["language"] = _own.language()
         cur["record_calls"] = _own.record_calls()
-        cur["recordings_dir"] = str(carry.RECORDINGS / carry.ANSWERED)
-        cur["carried_dir"] = str(carry.RECORDINGS)
+        cur["recordings_dir"] = str(carry.recordings() / carry.ANSWERED)
+        cur["carried_dir"] = str(carry.recordings())
         # False until the backend has a sign-in endpoint. The page uses it to decide whether to
         # lead with "Sign in" or with the manual fields — see connector.OAUTH_URL.
         # Whether setup has been FINISHED before. The page uses it to decide that "Complete"
@@ -521,7 +529,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         """
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
-        from . import carry, llm as _llm, owner as _own, transcribe
+        from . import carry, llm as _llm, owner as _own, reveal as _reveal, transcribe
 
         def _listing(folder, limit=25):
             if not folder.is_dir():
@@ -542,9 +550,14 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             "phone": _own.phone(),
             "calls": _own.calls(),
             "channel": (secretary_tools.state().get("channel") or {}).get("channel", ""),
-            "storage": str(carry.RECORDINGS),
-            "dirs": {"calls": str(carry.RECORDINGS),
-                     "answered": str(carry.RECORDINGS / carry.ANSWERED)},
+            "storage": str(carry.recordings()),
+            # The setting as WRITTEN, not as resolved — the field must show what the owner
+            # typed, or an empty box would read as "no folder set" when the default is in use.
+            "recordings_set": _own.recordings_set(),
+            "can_reveal": _reveal.available()[0],
+            "can_pick": _reveal.can_pick()[0],
+            "dirs": {"calls": str(carry.recordings()),
+                     "answered": str(carry.recordings() / carry.ANSWERED)},
             # WHAT IS ACTUALLY ON, not what the design shows switched on. Two of these have
             # nothing behind them yet and say so rather than rendering a lit switch.
             "services": {
@@ -565,8 +578,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             "model": {"configured": _llm.configured(),
                       "name": os.getenv("SECRETARY_MODEL", ""),
                       "describe": _llm.summary()},
-            "files": {"calls": _listing(carry.RECORDINGS),
-                      "answered": _listing(carry.RECORDINGS / carry.ANSWERED),
+            "files": {"calls": _listing(carry.recordings()),
+                      "answered": _listing(carry.recordings() / carry.ANSWERED),
                       "messages": []},
         })
 
@@ -584,7 +597,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response({"error": "unauthorised"}, status=401)
         from . import calls, carry, transcribe
 
-        folder = carry.RECORDINGS
+        folder = carry.recordings()
         people = []
         for who, rows in calls.by_person().items():
             items = []
@@ -809,6 +822,38 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         _pending_signin.clear()
         _pending_signin.update(state=state, verifier=verifier)
         raise web.HTTPFound(url)
+
+    async def api_reveal(request):
+        """Show a folder in the desktop's file manager.
+
+        Takes a KEY, never a path. A route that opens whatever it is handed is a way to launch
+        a file manager on anything readable, from a page that is only as private as its token.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import reveal
+        body = await request.json()
+        msg = await asyncio.to_thread(reveal.open_folder, (body.get("folder") or "").strip())
+        return web.json_response({"ok": msg.startswith("Opened"), "message": msg})
+
+    async def api_pick_folder(request):
+        """Ask the desktop for a folder, and save it as the recordings location.
+
+        Cancelling returns ok with no change — a person closing a dialog has not failed at
+        anything, and reporting it in red is how a UI teaches people to distrust its messages.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import owner as _own, reveal
+        try:
+            chosen = await asyncio.to_thread(reveal.pick_folder, str(_own.recordings_dir()))
+        except RuntimeError as exc:
+            return web.json_response({"ok": False, "message": f"Cannot show a folder chooser: {exc}"})
+        if not chosen:
+            return web.json_response({"ok": True, "changed": False, "message": ""})
+        msg = await asyncio.to_thread(tools.set_setting, "recordings", chosen)
+        return web.json_response({"ok": True, "changed": True,
+                                  "message": msg.splitlines()[0]})
 
     async def api_connector_signout(request):
         """Forget the tokens.
@@ -1217,6 +1262,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/api/connector/signin", api_connector_signin),
         web.post("/api/connector/signin", api_connector_signin),
         web.post("/api/connector/signout", api_connector_signout),
+        web.post("/api/reveal", api_reveal),
+        web.post("/api/pick-folder", api_pick_folder),
         web.get("/callback", oauth_callback),
         web.get("/api/ui", api_ui),
         web.post("/api/ui", api_ui),

@@ -300,7 +300,11 @@ SETTING_FIELDS = {"name": "Name", "pronoun": "Pronoun", "voice": "Voice",
                   # `carry` starts recording two people. owner.calls() only accepts an exact
                   # match and treats everything else as `answer`, so a typo cannot switch
                   # recording on by accident.
-                  "calls": "Calls", "record_calls": "Record calls", "language": "Language", "transcription": "Transcription"}
+                  "calls": "Calls", "record_calls": "Record calls", "language": "Language",
+                  "transcription": "Transcription",
+                  # Where the audio goes. An absolute path; anything else falls back to the
+                  # default rather than raising — see owner.recordings_dir().
+                  "recordings": "Recordings"}
 def _section_bullets(doc: pathlib.Path, heading: str) -> list[str]:
     """The `- ` bullets under one `## ` heading."""
     if not doc.is_file():
@@ -650,7 +654,7 @@ def list_calls(days: str = "7") -> str:
         cut = datetime.now() - timedelta(days=max(1, int(str(days) or 7)))
     except ValueError:
         cut = datetime.now() - timedelta(days=7)
-    folder = carry.RECORDINGS
+    folder = carry.recordings()
     out = []
     for r in _calls.recent():
         at = r.get("at", "")
@@ -667,7 +671,7 @@ def list_calls(days: str = "7") -> str:
 def read_call(who: str = "", when: str = "") -> str:
     """The transcript of a recorded call. `who` is the caller; `when` narrows to one date."""
     from . import calls as _calls, carry
-    folder = carry.RECORDINGS
+    folder = carry.recordings()
     hits = []
     for r in _calls.recent():
         if who and who.strip().lower() not in (r.get("caller") or "").lower():

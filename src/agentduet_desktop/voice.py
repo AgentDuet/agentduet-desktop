@@ -509,7 +509,7 @@ class _Recorder:
 
     def __init__(self, inner, call_id: str):
         self._inner = inner
-        self._dir = carry.RECORDINGS / ANSWERED
+        self._dir = carry.recordings() / ANSWERED
         stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
         self._stamp = stamp
         self._caller = self._open(f"{stamp}-{call_id}-caller.wav")

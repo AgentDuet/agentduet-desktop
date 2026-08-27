@@ -132,8 +132,7 @@
       <div class="navlab">People</div>
       <div class="who-list" id="whoList"></div>
       <div class="store">
-        <div class="r"><span id="chanState">—</span><a href="#" id="toSettings2">Change</a></div>
-        <div class="path" id="store">—</div>
+        <div class="r"><span id="chanState">—</span><a href="#" id="toSettings2">Settings</a></div>
       </div>
     </aside>
 
@@ -310,13 +309,12 @@
     $('av').textContent = (D.name || '?').split(/\s+/).map(w => w[0] || '')
       .join('').slice(0, 2).toUpperCase() || '–';
     $('phone').textContent = D.phone || '—';
-    $('store').textContent = D.storage || '—';
     if (D.phone) { $('lineNum').textContent = D.phone; $('lineBadge').classList.add('on'); }
 
     const live = ['live', 'connecting', 'retrying'].indexOf(D.channel) >= 0;
     $('ovPill').className = 'pill' + (live ? '' : ' off');
     $('ovPill').innerHTML = '<span class="dot"></span>' + (live ? 'Listening' : 'Not connected');
-    $('chanState').textContent = live ? 'Recording to' : 'Would record to';
+    $('chanState').textContent = live ? 'Recording calls' : 'Not connected';
 
     // WHICH MODEL IS ANSWERING, in the pane that is answering. Without it the owner cannot
     // tell a local 135M model from a hosted one, and the two give very different replies.
