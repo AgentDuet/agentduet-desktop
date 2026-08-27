@@ -1,0 +1,55 @@
+# Attach a finished build's artifacts to a release, ON A RUNNER.
+#
+# WHY THIS EXISTS. `gh release upload` needs the file locally, and the macOS artifact is ~180 MB
+# — so publishing a release from a laptop means pulling 180 MB down and pushing it straight back
+# up, over whatever connection that laptop has. On this one that is hours. The artifact is
+# already inside GitHub; the only thing missing is a machine there to move it.
+#
+# Kept separate from build.yml rather than folded into it, on purpose: it must be able to attach
+# a build that has ALREADY happened. Making the release depend on a fresh build would publish a
+# different binary from the one that was tested.
+name: attach-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "The build run whose artifacts to attach"
+        required: true
+      tag:
+        description: "The release tag to attach them to"
+        required: true
+
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write          # creating/editing a release needs write, unlike a build
+      actions: read            # and reading another run's artifacts needs this
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts
+
+      - name: Look at what came down
+        run: find artifacts -type f -printf "%s\t%p\n" | sort -rn | head -20
+
+      # The .dmg is what a person double-clicks; the bare binary is what a Linux user wants.
+      # Uploaded under names that say which is which, since the artifact directories do not.
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          FILES=()
+          for f in artifacts/*/*.dmg; do FILES+=("$f"); done
+          for f in artifacts/agentduet-desktop-linux-x86_64/agentduet-desktop; do
+            cp "$f" "agentduet-desktop-linux-x86_64" && FILES+=("agentduet-desktop-linux-x86_64")
+          done
+          [ ${#FILES[@]} -gt 0 ] || { echo "::error::nothing to attach"; exit 1; }
+          printf 'attaching: %s\n' "${FILES[@]}"
+          gh release upload "${{ inputs.tag }}" "${FILES[@]}" --clobber \
+            --repo "${{ github.repository }}"
