@@ -83,15 +83,30 @@ jobs:
           # out, that owner gets recordings and no transcripts, and the no-key path we built is
           # a claim rather than a feature. numpy is already here via the qwen adapter, so the
           # real additions are ctranslate2, onnxruntime, tokenizers and av.
-          # [local] TOO, and it needs an EXTRA INDEX. llama-cpp-python publishes no wheels on
-          # PyPI and builds from source, which would need a C++ toolchain on the runner and,
-          # worse, imply one on the owner's machine — the very dependency this feature removes.
-          # The maintainer's own index has prebuilt ones; the native libraries are 7.7 MB.
+          # [local] — llama_cpp, and it is fetched DIFFERENTLY PER PLATFORM. Left out entirely,
+          # the binary looks healthy and reports that local models are "not in this build":
+          # true, and not what we shipped.
           #
-          # Local models replaced Ollama on 2026-08-27. Left out, the binary looks healthy and
-          # reports that local models are "not in this build" — true, and not what we shipped.
-          pip install --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu \
-            ".[gemini,anthropic,qwen,stt,local]" pyinstaller
+          # macOS BUILDS FROM SOURCE, because the prebuilt macOS arm64 wheels are CORRUPT.
+          # Verified 2026-08-27 on 0.3.35, .34, .33 and .32 — every one fails its own CRC on
+          # `lib/libggml-base.*.dylib`, so pip dies unpacking it. The Linux wheel from the same
+          # index passes the identical check, which is what rules out our tooling. Retrying is
+          # useless; it is not a flaky download.
+          #
+          # The cost is build minutes. The gains are worth more than they cost: nothing depends
+          # on a third party's static hosting any more, and a source build on Apple Silicon
+          # enables METAL, so local models use the GPU instead of only the CPU — which the
+          # prebuilt cpu wheel could never do.
+          #
+          # Linux keeps the wheel: it is verified intact and saves the same minutes.
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            CMAKE_ARGS="-DGGML_METAL=on" pip install --no-binary=llama-cpp-python \
+              "llama-cpp-python>=0.3"
+          else
+            pip install --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu \
+              "llama-cpp-python>=0.3"
+          fi
+          pip install ".[gemini,anthropic,qwen,stt,local]" pyinstaller
 
       - name: Build the binary
         run: pyinstaller --noconfirm --distpath dist-bin packaging/agentduet-desktop.spec
