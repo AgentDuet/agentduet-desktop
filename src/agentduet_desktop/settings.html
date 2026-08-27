@@ -152,28 +152,7 @@
           <div><h2>Model</h2></div>
         </div>
         <div class="state" id="modelState">…</div>
-
-        <div class="grp">
-          <div class="seg" id="modelWhere">
-            <button type="button" class="on" data-where="local">On this machine</button>
-            <button type="button" data-where="hosted">Hosted provider</button>
-          </div>
-
-          <div class="pickrow" id="paneLocal">
-            <button class="btn ghost" id="openModels">Choose a model…</button>
-          </div>
-
-          <div class="grp" id="paneHosted" hidden>
-            <div><label class="fl">Model name</label>
-              <input type="text" id="model"
-                     placeholder="gemini-3.1-flash, claude-sonnet-5, qwen3.6-flash"></div>
-            <div><label class="fl">API key</label>
-              <input type="password" id="key" autocomplete="off"></div>
-            <div class="acts"><button class="btn" id="saveModel">Check and save</button>
-              <span class="spin" id="spModel"></span></div>
-          </div>
-        </div>
-
+        <div class="acts"><button class="btn ghost" id="openModels">Choose a model…</button></div>
         <div id="mModel"></div>
       </div>
 
@@ -190,23 +169,6 @@
         <div class="acts"><button class="btn" id="saveConn">Check and save</button>
           <span class="spin" id="spConn"></span></div>
         <div id="mConn"></div>
-      </div>
-
-      <div class="card">
-        <div class="head">
-          <div class="tile"><span class="material-symbols-rounded">call</span></div>
-          <div><h2>What happens to a call</h2></div>
-        </div>
-        <label class="pick"><input type="radio" name="calls" value="carry">
-          <b>Carry it to me</b>
-          <span class="sm">Bridged to your phone, both sides recorded. Nobody is answered, and
-            no model key is needed.</span></label>
-        <label class="pick"><input type="radio" name="calls" value="answer">
-          <b>Answer it</b>
-          <span class="sm">The agent picks up and speaks for you. Needs a model above.</span></label>
-        <div class="acts"><button class="btn" id="saveCalls">Save</button>
-          <span class="spin" id="spCalls"></span></div>
-        <div id="mCalls"></div>
       </div>
 
       <div class="card">
@@ -309,11 +271,29 @@
 <div class="ovl" id="ovlModels" hidden>
   <div class="sheet" role="dialog" aria-modal="true" aria-label="Choose a model">
     <div class="shead">
-      <div><h2>Models on this machine</h2></div>
+      <div><h2>Choose a model</h2></div>
       <button class="x" id="closeModels" aria-label="Close">
         <span class="material-symbols-rounded">close</span></button>
     </div>
     <div class="sbody">
+      <!-- WHERE IT RUNS is the first question, and it belongs with the answer rather than on
+           the settings page. The card behind now shows what is set and one way to change it. -->
+      <div class="seg" id="modelWhere">
+        <button type="button" class="on" data-where="local">On this machine</button>
+        <button type="button" data-where="hosted">Hosted provider</button>
+      </div>
+
+      <div id="paneHosted" class="grp" hidden>
+        <div><label class="fl">Model name</label>
+          <input type="text" id="model"
+                 placeholder="gemini-3.1-flash, claude-sonnet-5, qwen3.6-flash"></div>
+        <div><label class="fl">API key</label>
+          <input type="password" id="key" autocomplete="off"></div>
+        <div class="acts"><button class="btn" id="saveModel">Check and save</button>
+          <span class="spin" id="spModel"></span></div>
+      </div>
+
+      <div id="paneLocal">
       <div class="state" id="machineState">…</div>
       <div id="modelList"></div>
       <div id="mPull"></div>
@@ -329,6 +309,7 @@
         <div id="hfResults"></div>
         <div id="mHf"></div>
       </details>
+      </div><!-- /paneLocal -->
     </div>
   </div>
 </div>
@@ -372,8 +353,6 @@
       fetch(`/api/setup/current?t=${T}`), fetch(`/api/state?t=${T}`)]);
     const cur = cr.ok ? await cr.json() : {};
     $('name').value = cur.name || '';
-    const mode = document.querySelector(`input[name=calls][value="${cur.calls || 'carry'}"]`);
-    if (mode) mode.checked = true;
     if (cur.transcription) $('quality').value = cur.transcription;
     $('language').value = cur.language || '';
     $('doesState').textContent = cur.does
@@ -406,8 +385,8 @@
     $('saveModel').disabled = true; $('spModel').textContent = 'checking with the provider…';
     const d = await post('/api/setup/model', {model: $('model').value.trim(), key});
     $('saveModel').disabled = false; $('spModel').textContent = '';
-    say('mModel', d.ok, d.message);
-    if (d.ok) { $('key').value = ''; refreshCurrent(); }
+    say(d.ok ? 'mModel' : 'mHf', d.ok, d.message);
+    if (d.ok) { $('key').value = ''; closeOvl(); refreshCurrent(); loadModels(); }
   };
 
   $('saveConn').onclick = async () => {
@@ -421,42 +400,6 @@
   };
 
   // ---- what happens to a call ------------------------------------------------------------
-  $('saveCalls').onclick = async () => {
-    const v = (document.querySelector('input[name=calls]:checked') || {}).value;
-    if (!v) { say('mCalls', false, 'Pick one.'); return; }
-    $('saveCalls').disabled = true; $('spCalls').textContent = 'saving…';
-    const d = await post('/api/setup/setting', {field: 'calls', value: v});
-    $('saveCalls').disabled = false; $('spCalls').textContent = '';
-    say('mCalls', d.ok, d.message);
-  };
-
-  // ---- speech recognition -----------------------------------------------------------------
-  let sttPoll = null;
-  function sttRender(d){
-    if (!d || d.error === 'unauthorised') return;
-    const st = $('sttState');
-    if (!d.needed) {
-      st.textContent = 'Your DashScope key transcribes these, on Alibaba\'s servers. '
-        + 'Nothing is downloaded and nothing runs here.';
-      $('doStt').hidden = true;
-    } else if (!d.installed) {
-      st.textContent = 'The on-machine engine is not installed in this build.';
-      $('doStt').hidden = true;
-    } else if (d.cached) {
-      st.innerHTML = 'Runs on this machine. <b>' + esc(d.model) + '</b> is ready.';
-      $('doStt').hidden = true;
-    } else {
-      st.innerHTML = 'Runs on this machine. <b>' + esc(d.model) + '</b> is not downloaded yet '
-        + '(about <b>' + d.mb + ' MB</b>). It will fetch itself at the first transcription.';
-      $('doStt').hidden = !!d.running;
-    }
-    $('spStt').textContent = d.running ? 'downloading…' : '';
-    if (d.running && !sttPoll) sttPoll = setInterval(sttCheck, 3000);
-    if (!d.running && sttPoll) { clearInterval(sttPoll); sttPoll = null; }
-  }
-  function sttCheck(){
-    fetch(`/api/setup/stt?t=${T}`).then(r => r.json()).then(sttRender).catch(() => {});
-  }
   $('doStt').onclick = async () => {
     $('doStt').hidden = true; $('spStt').textContent = 'starting…';
     await post('/api/setup/stt', {});
@@ -545,6 +488,10 @@
       .forEach(b => b.classList.toggle('on', b.dataset.where === w));
     $('paneLocal').hidden = w !== 'local';
     $('paneHosted').hidden = w !== 'hosted';
+    // The sheet is a fixed height with its own scroller; switching branch mid-scroll leaves
+    // the reader looking at whitespace where the other branch used to be.
+    const sb = document.querySelector('.sbody');
+    if (sb) sb.scrollTop = 0;
   }
   $('modelWhere').querySelectorAll('button')
     .forEach(b => b.onclick = () => { touched = true; setWhere(b.dataset.where); });

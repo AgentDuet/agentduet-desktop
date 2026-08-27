@@ -495,9 +495,17 @@ def describe(model: str = "") -> str:
     prov = provider(m)
     impl = _IMPLS[prov]
     cred = impl.credential()
-    how = ("no credential — set %s%s" % (impl.KEY,
-           ", or run `ant auth login`" if prov == "anthropic" else "")) if cred is None \
-        else ("api key" if cred else "signed in (OAuth profile / auth token)")
+    # `getattr`, not `impl.KEY`: the LOCAL provider has no key to set — its credential is a
+    # downloaded model — and reaching for one crashed `status` outright with an AttributeError.
+    # The command that exists to report health has to survive reporting on every provider.
+    if cred is None:
+        how = ("no model downloaded — choose one in Settings" if prov == "local" else
+               "no credential — set %s%s" % (getattr(impl, "KEY", "the provider's key"),
+                                             ", or run `ant auth login`"
+                                             if prov == "anthropic" else ""))
+    else:
+        how = "on this machine" if prov == "local" else \
+            ("api key" if cred else "signed in (OAuth profile / auth token)")
     # Report what WORKS, not just what is configured. A stale ANTHROPIC_PROFILE pointing at
     # a deleted profile looks credentialed and builds nothing — and "no model" means the
     # agent escalates every message, so the owner must not be told it is fine.
