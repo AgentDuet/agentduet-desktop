@@ -55,17 +55,26 @@ carry
 yes
 
 ## Transcription
-<!-- How hard the on-machine speech engine tries. Only used when no model key is attached.
-     fast      quickest, smallest download (~145 MB), least accurate
-     balanced  the default (~484 MB)
-     accurate  better (~1.5 GB)
-     max       best (~3 GB) — still transcribes a call in about a quarter of its length
+<!-- Which speech model runs on this machine. Whisper's own names, smallest first:
+
+     small           ~464 MB
+     medium          ~1.5 GB
+     large-v3-turbo  ~1.6 GB   THE DEFAULT. large-v3's accuracy at roughly half its time —
+                               same encoder, decoder cut from 32 layers to 4
+     large-v3        ~2.9 GB   the most accurate
+
+     No tiny or base: fast, and not accurate enough for a phone call. No distil-* models
+     either — faster again, and ENGLISH ONLY, while the Language setting above offers
+     Vietnamese, Chinese, Malay and Thai.
+
+     The old names — fast, balanced, accurate, max — still work and mean base, small, medium and
+     large-v3.
 
      Your name from above is used to help it hear names correctly, whichever you pick.
 
      Transcribing happens after the call, on a queue, so nothing waits for it. If your
      transcripts are missing words, this is the dial. -->
-balanced
+large-v3-turbo
 
 ## Language
 <!-- The language your calls are in, as a code: en, vi, zh, ms, th. Leave empty to guess.
