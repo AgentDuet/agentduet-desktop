@@ -34,8 +34,8 @@ import uuid
 import wave
 from datetime import datetime
 
-from . import (brain, callmode, capabilities, identity, memory, paths, people, permissions, policy,
-               schedule, status)
+from . import (brain, callmode, capabilities, carry, connector, identity, memory, paths, people,
+               permissions, policy, schedule, status)
 
 logger = logging.getLogger("dduet.voice")
 
@@ -63,12 +63,9 @@ VOICE_MODEL = os.getenv("SECRETARY_VOICE_MODEL", "")
 VOICE = os.getenv("SECRETARY_VOICE", "Jennifer")
 
 #: MUST match the voice model's output rate, and is negotiated for the whole call by
-#: secretary_agent. Qwen omni realtime emits 24 kHz (output_audio_format="pcm24"); the SDK's
-#: default is 16 kHz, which plays that audio 1.5x too slow and a fifth too low.
-#: Overridable because the correct value depends on the voice model AND on what the call leg
-#: actually delivers, and getting it wrong is not a subtle failure — it is slow-and-deep audio
-#: in one direction and an ASR that transcribes nothing in the other. 8000 / 16000 / 24000 only.
-CALL_SAMPLE_RATE = int(os.getenv("SECRETARY_CALL_SAMPLE_RATE", "24000"))
+#: Re-exported. It lives on `connector` now — it describes the channel, and the daemon reads it
+#: on every open, carry mode included, which is not a reason to load the answering agent.
+CALL_SAMPLE_RATE = connector.CALL_SAMPLE_RATE
 
 #: How long an answered call may stay silent before we give up on it. The realtime session can
 #: die AFTER connecting — the observed case is DashScope refusing on an ACCOUNT-WIDE cap
@@ -487,7 +484,8 @@ def _only_capability() -> str | None:
 #: so a subdirectory is invisible to it. Deliberate — an answered call ALREADY has a transcript,
 #: written turn by turn from the model's own events, and re-transcribing the audio would file a
 #: second, differently-worded copy of the same conversation against the same caller.
-ANSWERED = "answered"
+#: Re-exported from `carry`, which owns the directory this names.
+ANSWERED = carry.ANSWERED
 
 
 class _Recorder:
@@ -510,7 +508,6 @@ class _Recorder:
     """
 
     def __init__(self, inner, call_id: str):
-        from . import carry
         self._inner = inner
         self._dir = carry.RECORDINGS / ANSWERED
         stamp = datetime.now().strftime("%Y%m%dT%H%M%S")

@@ -24,6 +24,7 @@ import re
 from . import folder_index
 
 from . import paths
+from .folder_index import _terms
 
 PERMS = paths.PERMISSIONS
 
@@ -141,24 +142,6 @@ def _root(folder: str) -> pathlib.Path:
 MAX_CHUNKS = 12
 MAX_RETRIEVED_BYTES = 24 * 1024
 
-_STOP = {"the", "a", "an", "is", "are", "was", "were", "do", "does", "did", "what", "which",
-         "who", "how", "why", "when", "where", "can", "could", "would", "should", "i", "you",
-         "we", "they", "it", "of", "to", "in", "on", "for", "and", "or", "with", "your", "my",
-         "please", "about", "there", "this", "that", "be", "been", "have", "has", "will"}
-
-def _terms(text: str) -> list[str]:
-    """Lowercase word stems, stopwords dropped. Crude stemming so 'channels' hits
-    'channel' — good enough to rank, and it never decides access."""
-    out = []
-    for w in re.findall(r"[A-Za-z][A-Za-z0-9_-]{1,}", text.lower()):
-        if w in _STOP:
-            continue
-        for suf in ("ing", "ies", "es", "ed", "s"):
-            if len(w) > 4 and w.endswith(suf):
-                w = w[: -len(suf)] + ("y" if suf == "ies" else "")
-                break
-        out.append(w)
-    return out
 
 
 def _folder_chunks(folder: str) -> list[tuple[str, str]]:

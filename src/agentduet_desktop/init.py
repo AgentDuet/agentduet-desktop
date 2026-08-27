@@ -241,7 +241,7 @@ def interview() -> str:
     block = "\n".join(f"{k}: {v or '(not given)'}" for k, v in answers.items())
     # The model does the drafting, through the same tool surface it uses at runtime — so an
     # instance set up by init is indistinguishable from one the owner filled in by hand.
-    from .web import OwnerChat          # imported late: it pulls in the model client
+    from .assistant import OwnerChat    # imported late: it pulls in the model client
     chat = OwnerChat(os.getenv("SECRETARY_MODEL", ""))
     import asyncio
     result = asyncio.run(chat.turn(
