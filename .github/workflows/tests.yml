@@ -42,7 +42,7 @@ jobs:
           # deleted by an edit — it passed 140 other checks once while the voice path was broken.
           pip install wasmtime pyflakes
 
-      # Three suites, each run even if an earlier one fails. A single `&&` chain would report the
+      # Four suites, each run even if an earlier one fails. A single `&&` chain would report the
       # first failure and hide the rest, which turns one red run into several round trips.
       - name: Rules (model-free)
         run: python tests/test_rules.py
@@ -54,3 +54,8 @@ jobs:
       - name: Sandbox (what a customer tool cannot reach)
         if: ${{ !cancelled() }}
         run: python tests/test_wasm.py
+
+      # Runs a fresh interpreter per module, so it needs the package importable and nothing else.
+      - name: Boundary (the recorder does not depend on the secretary)
+        if: ${{ !cancelled() }}
+        run: python tests/test_boundary.py

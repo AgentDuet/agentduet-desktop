@@ -265,7 +265,7 @@ def main() -> None:
         print("\n  throwaway instance discarded — nothing to clean up")
     else:
       try:
-          from agentduet_desktop import tools
+          from agentduet_desktop import secretary_tools, tools
           asked = {q for _, _, _, q, _, _ in CASES}
           asked |= {q for _, _, _, turns in CONVERSATIONS for q, _ in turns}
           cleared = sum(1 for g in tools.open_escalations() if g["question"] in asked

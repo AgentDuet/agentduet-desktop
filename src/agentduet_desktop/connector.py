@@ -53,6 +53,19 @@ def oauth_available() -> bool:
     return oauth.available()
 
 #: Long enough to fail a bad credential, short enough that a page is not left hanging.
+#: The sample rate of call audio on this channel, for `CallAudioConfig`.
+#:
+#: IT LIVED IN `voice.py`, and the daemon read it on every channel open — so carrying a call, on
+#: a product where no agent speaks, loaded the answering agent and everything behind it to learn
+#: one integer. It describes what the leg delivers, which is a property of the channel.
+#:
+#: Qwen omni realtime emits 24 kHz (`output_audio_format="pcm24"`); the SDK default is 16 kHz,
+#: which plays that audio 1.5x too slow and a fifth too low. Overridable because the right value
+#: depends on the voice model AND on what the leg actually delivers, and getting it wrong is not
+#: subtle — slow-and-deep audio one way, an ASR that transcribes nothing the other.
+#: 8000 / 16000 / 24000 only.
+CALL_SAMPLE_RATE = int(os.getenv("SECRETARY_CALL_SAMPLE_RATE", "24000"))
+
 VERIFY_TIMEOUT = 20
 
 

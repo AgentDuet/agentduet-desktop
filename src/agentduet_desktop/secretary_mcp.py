@@ -35,6 +35,7 @@ Run as a MODULE, not a file path: the imports are package-relative.
 
 from mcp.server import MCPServer
 
+from . import secretary_tools
 from . import tools
 
 #: `mcp` 2.x renamed FastMCP to MCPServer. One import, so a future rename shows up in one place
@@ -50,7 +51,7 @@ def _register() -> list[str]:
     where a plain string would be guessed wrong.
     """
     names = []
-    for name, entry in tools.OWNER_TOOLS.items():
+    for name, entry in secretary_tools.OWNER_TOOLS.items():
         fn = entry[0]
         hints = entry[1] if len(entry) > 1 else {}
         doc = (fn.__doc__ or name).strip()

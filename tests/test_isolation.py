@@ -63,9 +63,9 @@ if leaked:
     failures.append(f"secretary_agent.py imports owner module(s) at top level: {leaked}")
 
 # 2 · the inbound handler must not reference any owner tool by name.
-from agentduet_desktop import tools  # noqa: E402
+from agentduet_desktop import secretary_tools, tools  # noqa: E402
 
-owner_tool_names = set(tools.OWNER_TOOLS)
+owner_tool_names = set(secretary_tools.OWNER_TOOLS)
 handler_src = ""
 for node in ast.walk(tree):
     if isinstance(node, ast.AsyncFunctionDef) and node.name == "on_message":

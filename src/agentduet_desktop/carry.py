@@ -41,6 +41,11 @@ logger = logging.getLogger("secretary")
 #: replaces wholesale.
 RECORDINGS = paths.RUN / "recordings"
 
+#: Subdirectory for calls the AGENT answered. Defined here, beside the directory it sits in,
+#: rather than in `voice.py` — the settings page and the hub both build this path, and reaching
+#: into the answering agent for a five-letter string made two recorder endpoints import it.
+ANSWERED = "answered"
+
 #: WAV parameters. These describe what the SDK hands us, so they are not free choices: the
 #: audio arrives as 24 kHz mono 16-bit PCM (`CallAudioConfig(sample_rate=...)` in the daemon).
 #: Writing a different header does not convert anything — it mislabels the bytes, and the file

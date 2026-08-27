@@ -46,9 +46,10 @@ from agentduet import (
     new_session_id,
 )
 
-from . import brain
-from . import people
-
+# NOT `brain` and `people` — see the message handler, which imports them where it uses them.
+# At module level they made carrying a call load the answering agent and the five modules behind
+# it, so a product that answers nobody paid for the whole agent at startup. tests/test_boundary.py
+# fails if they come back.
 from . import paths
 from . import status
 
@@ -196,8 +197,8 @@ async def run_channel() -> None:
     # attempt, which is the only moment that knows whether the cached one is still good. Handing
     # over a string here would freeze a credential that expires in thirty minutes into a daemon
     # that runs for weeks.
-    from . import oauth
-    kwargs = dict(call_audio=CallAudioConfig(sample_rate=voice.CALL_SAMPLE_RATE))
+    from . import connector, oauth
+    kwargs = dict(call_audio=CallAudioConfig(sample_rate=connector.CALL_SAMPLE_RATE))
     if oauth.signed_in():
         # TOKEN ONLY. The SDK rejects a config carrying both — "token_provider is a standalone
         # auth mode: remove api_key / connector_uuid / cert_path". The connector is a CLAIM
@@ -247,9 +248,11 @@ async def run_channel() -> None:
             # retained history. It does NOT widen `knowledge/`, which is flat and public to every
             # asker either way, so the disclosure surface is unchanged by this line.
             network = msg.network.value if hasattr(msg.network, "value") else str(msg.network)
+            from . import people
             verified = people.default_verified(network)
             # No conversation key: DDUET had a per-conversation Nexus token, WhatsApp has none,
             # so memory falls back to the identity — which on this channel IS the person.
+            from . import brain
             result = await brain.handle_query(asker, question, network, verified=verified,
                                               conversation=None)
             reply, outcome = result["reply"], result["outcome"]
@@ -280,7 +283,9 @@ async def run_channel() -> None:
                         _wa_text(item["text"], to=item["asker"]))
                     if result.success:
                         logger.info("→ (from owner) %s: %s", item["asker"], item["text"])
-                        brain.record(item["asker"], "(owner reply)", "owner", "", item["text"])
+                        from . import brain as _brain
+                        _brain.record(item["asker"], "(owner reply)", "owner", "",
+                                      item["text"])
                     else:
                         # Most likely outside WhatsApp's customer-service window: Meta only
                         # allows a free-form reply within 24h of the person's last message, and

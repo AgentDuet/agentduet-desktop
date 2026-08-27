@@ -399,18 +399,17 @@ def pending() -> list[pathlib.Path]:
 
 
 def _record(wav: pathlib.Path, text: str) -> None:
-    """File the transcript where the rest of the product reads it."""
-    from . import brain
-    # `<stamp>-<call id>-<leg>.wav`. The leg is the last field and the call id the rest, because
-    # a call id contains hyphens and a stamp does not.
-    stem = wav.stem.split("-")
-    leg = stem[-1]
-    call_id = "-".join(stem[1:-1])
+    """File the transcript beside its audio, which is where the recorder reads it.
+
+    IT ALSO WROTE TO `brain.record`, and that was wrong twice over. `calls.py` opens by arguing
+    the case — a query log wants asker, question, outcome, answer, and a carried call has no
+    question, so filing one there "would mean inventing a question to satisfy a schema". The row
+    written was `[carried call, caller]`: exactly that invented question, on every call. Nothing
+    read those rows; the hub, the assistant's tools and the settings page all read `calls.jsonl`
+    and the `.txt` beside the audio. Removed 2026-08-27, with tests/test_boundary.py to keep it
+    removed.
+    """
     wav.with_suffix(".txt").write_text(text + "\n")
-    # outcome="carried" marks a call nobody answered. It is not an exchange with the agent, and
-    # filing it as one would misreport what happened.
-    brain.record("", f"[carried call, {leg}]", "carried", "", text,
-                 None, "TELCO", None, False, f"call-{call_id}")
 
 
 def drain_once() -> int:
