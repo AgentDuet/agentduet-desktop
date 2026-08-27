@@ -361,6 +361,19 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                             if connector.configured()
                             else "Not connected, so nothing can reach you yet.")
         cur["connector_uuid"] = os.getenv(connector.UUID, "")
+        # SIGN-IN STATE. The card showed a key field and a uuid field and nothing else, so an
+        # owner who had signed in could not see it, could not sign out, and could not tell that
+        # the key sitting in .env was being ignored.
+        from . import oauth
+        cur["oauth"] = {
+            "available": oauth.available(),
+            "signed_in": oauth.signed_in(),
+            "email": oauth.email(),
+            "connector": oauth.connector_uuid(),
+            # Sign-in needs a browser to send the owner to. On a headless box it cannot work,
+            # and offering it there is a button that goes nowhere.
+            "browser": oauth.browser_available(),
+        }
         # WHERE THE RECORDINGS GO, resolved on THIS machine. Never a path written into the page:
         # $AGENTDUET_HOME differs by platform and by install, and a Mac owner told to look in
         # /home/... would reasonably conclude the feature had not run. Sent as an absolute path
@@ -797,6 +810,24 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         _pending_signin.update(state=state, verifier=verifier)
         raise web.HTTPFound(url)
 
+    async def api_connector_signout(request):
+        """Forget the tokens.
+
+        This is ALSO how an owner switches to an API key, and the card says so. The SDK refuses
+        a config carrying both — "token_provider is a standalone auth mode: remove api_key /
+        connector_uuid" — so a key entered while signed in is not a fallback, it is ignored.
+        Making that a real sign-out is the difference between switching and appearing to.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import oauth
+        if not oauth.signed_in():
+            return web.json_response({"ok": False, "message": "Not signed in."})
+        who = oauth.email() or "this account"
+        oauth.sign_out()
+        return web.json_response({"ok": True, "message":
+            f"Signed out of {who}. Calls stop arriving until you sign in again or enter a key."})
+
     async def oauth_callback(request):
         """Where the provider sends the browser back. Exchanges the code and stores the tokens.
 
@@ -1185,6 +1216,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/install", api_install),
         web.get("/api/connector/signin", api_connector_signin),
         web.post("/api/connector/signin", api_connector_signin),
+        web.post("/api/connector/signout", api_connector_signout),
         web.get("/callback", oauth_callback),
         web.get("/api/ui", api_ui),
         web.post("/api/ui", api_ui),

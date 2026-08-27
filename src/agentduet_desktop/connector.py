@@ -52,7 +52,6 @@ def oauth_available() -> bool:
     from . import oauth
     return oauth.available()
 
-#: Long enough to fail a bad credential, short enough that a page is not left hanging.
 #: The sample rate of call audio on this channel, for `CallAudioConfig`.
 #:
 #: IT LIVED IN `voice.py`, and the daemon read it on every channel open — so carrying a call, on
@@ -66,6 +65,7 @@ def oauth_available() -> bool:
 #: 8000 / 16000 / 24000 only.
 CALL_SAMPLE_RATE = int(os.getenv("SECRETARY_CALL_SAMPLE_RATE", "24000"))
 
+#: Long enough to fail a bad credential, short enough that a page is not left hanging.
 VERIFY_TIMEOUT = 20
 
 
