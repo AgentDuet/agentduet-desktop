@@ -207,18 +207,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         appItem.submenu = appMenu
         main.addItem(appItem)
 
-        // String selectors on purpose: these are responder-chain messages, and naming them via
-        // #selector needs a class that declares them, which pulls in ambiguity with NSObject's
-        // own `copy`. The strings are the stable contract.
+        // These are responder-chain messages, so the class named here is only a way to spell
+        // the selector — nothing sends them to NSText. Written as strings first, on the theory
+        // that #selector would trip over NSObject's own zero-argument `copy`; the compiler
+        // disambiguates on the signature and REJECTS the strings, so the theory was wrong.
+        // Undo and redo stay strings because no visible declaration exists to point at.
         let editItem = NSMenuItem()
         let editMenu = NSMenu(title: "Edit")
         editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
         editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
         editMenu.addItem(.separator())
-        editMenu.addItem(withTitle: "Cut", action: Selector(("cut:")), keyEquivalent: "x")
-        editMenu.addItem(withTitle: "Copy", action: Selector(("copy:")), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "Paste", action: Selector(("paste:")), keyEquivalent: "v")
-        editMenu.addItem(withTitle: "Select All", action: Selector(("selectAll:")),
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)),
+                         keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All",
+                         action: #selector(NSStandardKeyBindingResponding.selectAll(_:)),
                          keyEquivalent: "a")
         editItem.submenu = editMenu
         main.addItem(editItem)
