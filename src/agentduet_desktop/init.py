@@ -370,18 +370,18 @@ def choose_quality(interactive: bool = True) -> None:
     from . import owner, tools, transcribe
     if transcribe.engine() != "local":
         return                      # a key is attached: the hosted engine transcribes
-    current = owner.transcription_quality() or "balanced"
-    tiers = [("fast", "quickest, least accurate"), ("balanced", "the default"),
-             ("accurate", "better"), ("max", "best, and the largest")]
-    print("\n  How hard should the speech engine try?")
-    for i, (tier, why) in enumerate(tiers, 1):
-        mb = transcribe.MODEL_MB.get(transcribe.QUALITY[tier], 0)
-        mark = " <- current" if tier == current else ""
-        print(f"    {i}  {tier:9} {mb:>5} MB   {why}{mark}")
-    pick = _prompt(f"\n  1-4 [{current}]: ").strip()
-    if pick.isdigit() and 1 <= int(pick) <= len(tiers):
-        tools.set_setting("transcription", tiers[int(pick) - 1][0])
-        print(f"  -> {tiers[int(pick) - 1][0]}")
+    current = transcribe.local_model()
+    print("\n  Which speech model? Bigger is more accurate and slower.")
+    for i, model in enumerate(transcribe.TIERS, 1):
+        mb = transcribe.MODEL_MB.get(model, 0)
+        here = " (downloaded)" if transcribe.model_dir(model) else ""
+        mark = " <- current" if model == current else ""
+        print(f"    {i}  {model:16} {mb:>5} MB{here}{mark}")
+    pick = _prompt(f"\n  1-{len(transcribe.TIERS)} [{current}]: ").strip()
+    if pick.isdigit() and 1 <= int(pick) <= len(transcribe.TIERS):
+        chosen = transcribe.TIERS[int(pick) - 1]
+        tools.set_setting("transcription", chosen)
+        print(f"  -> {chosen}")
 
 
 def offer_speech_model(interactive: bool = True) -> None:

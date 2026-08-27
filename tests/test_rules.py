@@ -522,17 +522,52 @@ def test_answered_call_recording() -> None:
     # a call happens to end.
     import os as _o
     from agentduet_desktop import transcribe as _t
-    for tier, model in (("fast", "base"), ("balanced", "small"),
-                        ("accurate", "medium"), ("max", "large-v3")):
-        _o.environ["SECRETARY_STT_QUALITY"] = tier
-        eq(f"{tier} -> {model}", _t.local_model(), model)
-        ok(f"and {tier} states its download size", _t.MODEL_MB.get(model, 0) > 0)
+    for model in _t.TIERS:
+        _o.environ["SECRETARY_STT_QUALITY"] = model
+        eq(f"{model} is chosen by its own name", _t.local_model(), model)
+        ok(f"and {model} states its download size", _t.MODEL_MB.get(model, 0) > 0)
+    # AN UPGRADE MUST NOT MOVE THE MODEL. Instances configured before 2026-08-27 hold one of
+    # four adjectives, and silently jumping tier — `max` to a fallback, say — would change both
+    # accuracy and download size behind the owner's back.
+    for legacy, model in (("fast", "base"), ("balanced", "small"),
+                          ("accurate", "medium"), ("max", "large-v3")):
+        _o.environ["SECRETARY_STT_QUALITY"] = legacy
+        eq(f"the old name {legacy} still means {model}", _t.local_model(), model)
+    _o.environ["SECRETARY_STT_QUALITY"] = "nonsense-tier"
+    eq("and an unreadable one falls back to the default rather than raising",
+       _t.local_model(), _t.DEFAULT_MODEL)
+    ok("the default is one we actually offer", _t.DEFAULT_MODEL in _t.TIERS)
+    ok("and it states a download size", _t.MODEL_MB.get(_t.DEFAULT_MODEL, 0) > 0)
+    # NOT OFFERED, still resolvable. tiny and base are too inaccurate for a phone call to be
+    # worth choosing, but an instance already set to one must keep working rather than being
+    # silently moved to a different model on upgrade.
+    for gone in ("tiny", "base"):
+        ok(f"{gone} is not offered", gone not in _t.TIERS)
+        _o.environ["SECRETARY_STT_QUALITY"] = gone
+        eq(f"but {gone} still resolves when set deliberately", _t.local_model(), gone)
+        ok(f"and {gone} appears in the list so it can be seen and changed",
+           any(r["in_use"] and r["model"] == gone for r in _t.catalogue()))
+    _o.environ.pop("SECRETARY_STT_QUALITY", None)
+
+    # DOWNLOADED MEANS COMPLETE, not "a directory exists". The hub cache creates the directory
+    # the instant a fetch STARTS, so the row claimed a 1.5 GB model was ready when 66 MB of it
+    # had landed — offering Delete on weights still coming down, and making a several-minute
+    # download look instantaneous. Found by Stanley deleting `medium` and re-fetching it.
+    import unittest.mock as _m
+    with _m.patch.object(_t, "model_dir", return_value=pathlib.Path("/tmp")), \
+         _m.patch.object(_t, "is_cached", return_value=False):
+        rows = {r["model"]: r for r in _t.catalogue()}
+        ok("a half-downloaded model does not report itself downloaded",
+           all(not r["downloaded"] for r in rows.values()))
+        ok("and every row carries what has landed so far",
+           all("got_mb" in r for r in rows.values()))
+    _o.environ.pop("SECRETARY_STT_QUALITY", None)
     _o.environ.pop("SECRETARY_STT_QUALITY", None)
 
     # READ AT USE TIME, not captured at import. The settings page writes into the RUNNING
     # process's environment so a restart is not needed, and this was a module constant — so
     # changing the tier did nothing until the daemon was restarted. CLAUDE.md names this trap.
-    _o.environ["SECRETARY_STT_QUALITY"] = "max"
+    _o.environ["SECRETARY_STT_QUALITY"] = "large-v3"
     eq("a tier changed after import takes effect immediately", _t.local_model(), "large-v3")
     _o.environ.pop("SECRETARY_STT_QUALITY", None)
 

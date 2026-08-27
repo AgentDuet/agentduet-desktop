@@ -331,11 +331,17 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                 # being true if a second engine ever returns.
                 "engine": transcribe.engine(),
                 "engine_name": f"Whisper {model}",
-                "engine_where": "this machine",
+                # THE FOUR TIERS, with what each costs and whether it is here. The page offered
+                # them by adjective alone, so "balanced" and the engine line's "Whisper small"
+                # were the same model under two names and read as a contradiction.
+                "tiers": transcribe.catalogue(),
                 "needed": needed, "model": model,
                 "mb": transcribe.MODEL_MB.get(model, 0),
                 "cached": transcribe.is_cached(model),
-                "running": _stt["running"], "error": _stt["error"],
+                # WHICH model is coming down, not just that one is — the page has a row per
+                # model and needs to know where to put the progress.
+                "running": _stt["running"], "downloading": _stt.get("model", ""),
+                "error": _stt["error"],
                 "installed": transcribe._local_available()})
 
         if _stt["running"]:
@@ -837,6 +843,15 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         _pending_signin.update(state=state, verifier=verifier)
         raise web.HTTPFound(url)
 
+    async def api_stt_model(request):
+        """Delete one downloaded speech model. Downloading is `POST /api/setup/stt`."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import transcribe
+        body = await request.json()
+        msg = await asyncio.to_thread(transcribe.delete_model, (body.get("model") or "").strip())
+        return web.json_response({"ok": msg.startswith("Deleted"), "message": msg})
+
     async def api_reveal(request):
         """Show a folder in the desktop's file manager.
 
@@ -1276,6 +1291,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/api/connector/signin", api_connector_signin),
         web.post("/api/connector/signin", api_connector_signin),
         web.post("/api/connector/signout", api_connector_signout),
+        web.post("/api/stt-model", api_stt_model),
         web.post("/api/reveal", api_reveal),
         web.post("/api/pick-folder", api_pick_folder),
         web.get("/callback", oauth_callback),

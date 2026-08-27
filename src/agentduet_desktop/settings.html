@@ -252,20 +252,12 @@
             <option value="ms">Malay</option>
             <option value="th">Thai</option>
           </select></div>
-        <div class="grp"><label class="fl">How hard it tries</label>
-          <select id="quality">
-            <option value="fast">fast — quickest, smallest download</option>
-            <option value="balanced">balanced — the default</option>
-            <option value="accurate">accurate — better</option>
-            <option value="max">max — best, and the largest</option>
-          </select></div>
         <div class="grp">
-          <div class="acts"><button class="btn ghost" id="doTest">Test transcription</button>
-            <span class="spin" id="spTest"></span></div>
-          <div id="mTest"></div></div>
+          <label class="fl">How hard it tries</label>
+          <div id="sttTiers"></div>
+        </div>
         <div class="acts">
           <span class="spin" id="spQuality"></span>
-          <button class="btn ghost" id="doStt" hidden>Download it now</button>
           <span class="spin" id="spStt"></span></div>
         <div id="mStt"></div>
       
@@ -386,7 +378,6 @@
       fetch(`/api/setup/current?t=${T}`), fetch(`/api/state?t=${T}`)]);
     const cur = cr.ok ? await cr.json() : {};
     $('name').value = cur.name || '';
-    if (cur.transcription) $('quality').value = cur.transcription;
     $('language').value = cur.language || '';
     $('modelState').textContent = cur.model || 'unknown';
     drawAccount(cur);
@@ -478,21 +469,62 @@
     // this machine. It was a sentence explaining the situation, which reads as prose and buries
     // both. Neither engine is an LLM: faster-whisper locally, qwen3-asr-flash hosted, which is
     // a dedicated ASR task and refuses a text part.
-    const where = `Transcription engine: <b>${esc(d.engine_name || '?')}</b> · `
-                + esc(d.engine_where || '');
-    if (!d.installed) {
-      st.textContent = 'Transcription engine: not in this build.';
-      $('doStt').hidden = true;
-    } else if (!d.needed) {
-      st.innerHTML = where;
-      $('doStt').hidden = true;
-    } else if (d.cached) {
-      st.innerHTML = where + ' · ready';
-      $('doStt').hidden = true;
-    } else {
-      st.innerHTML = where + ' · not downloaded yet, about <b>' + d.mb + ' MB</b>';
-      $('doStt').hidden = !!d.running;
-    }
+    // "this machine" was on every line and is now the only possibility — a constant repeated
+    // is noise. "ready" went with it: the list below says which models are on disk, which is
+    // the question "ready" was standing in for.
+    // Just the engine. WHICH model is the row marked "in use" below — naming it here too put
+    // the same fact in two places, and they were free to disagree.
+    st.innerHTML = d.installed ? 'Transcription engine: <b>Whisper</b>'
+                               : 'Transcription engine: not in this build.';
+
+    const busy = !!d.running;
+    $('sttTiers').innerHTML = (d.tiers || []).map(t => {
+      const fetching = busy && d.downloading === t.model;
+      const pct = Math.min(99, Math.round(t.got_mb * 100 / (t.mb || 1)));
+      // A ROW MID-DOWNLOAD SAYS SO. It used to flip to "downloaded" the moment the directory
+      // appeared, so a 1.5 GB fetch looked instant and offered Delete on weights still coming
+      // down. Approximate — bytes on disk against the published size — and honest, which the
+      // previous state was not.
+      const act = fetching
+        ? `<div style="flex:1">
+             <div class="barlab"><span>Downloading…</span>
+               <span>${t.got_mb} / ${t.mb} MB · ${pct}%</span></div>
+             <div class="bar"><i style="width:${pct}%"></i></div>
+           </div>`
+        : t.in_use && t.downloaded ? '<span class="inuse">in use</span>'
+        : t.downloaded
+          ? `<button class="act use" data-tier="${esc(t.model)}">Use this</button>
+             <button class="act" data-del="${esc(t.model)}">Delete</button>`
+          : `<button class="act get" data-tier="${esc(t.model)}" ${busy ? 'disabled' : ''}>Download${t.in_use ? '' : ' and use'}</button>`;
+      return `
+      <div class="mrow ${t.in_use ? 'on' : ''}">
+        <span class="nm">${t.in_use ? '● ' : ''}${esc(t.name)}</span>
+        <span class="sz">${(t.mb / 1024).toFixed(1)} GB</span>
+        ${act}
+      </div>`;
+    }).join('');
+    // Keep the bar moving. Nothing else on this card polls.
+    if (busy) setTimeout(sttCheck, 1500);
+    $('sttTiers').querySelectorAll('[data-tier]').forEach(el => {
+      el.onclick = async () => {
+        await saveStt('transcription', el.dataset.tier);
+        // Not downloaded yet? Saving the tier only chooses it; fetch it now rather than
+        // leaving the first call of the day to wait for a 3 GB download.
+        if (el.classList.contains('get')) {
+          $('spStt').textContent = 'downloading…';
+          await post('/api/setup/stt', {});
+          sttCheck();
+        }
+      };
+    });
+    $('sttTiers').querySelectorAll('[data-del]').forEach(el => {
+      el.onclick = async () => {
+        if (!confirm(`Delete Whisper ${el.dataset.del}? It can be downloaded again.`)) return;
+        const r = await post('/api/stt-model', {model: el.dataset.del});
+        say('mStt', r.ok, r.message);
+        sttCheck();
+      };
+    });
     $('spStt').textContent = d.running ? 'downloading…' : '';
     if (d.running && !sttPoll) sttPoll = setInterval(sttCheck, 3000);
     if (!d.running && sttPoll) { clearInterval(sttPoll); sttPoll = null; }
@@ -500,25 +532,18 @@
   function sttCheck(){
     fetch(`/api/setup/stt?t=${T}`).then(r => r.json()).then(sttRender).catch(() => {});
   }
-  $('doStt').onclick = async () => {
-    $('doStt').hidden = true; $('spStt').textContent = 'starting…';
-    await post('/api/setup/stt', {});
-    sttCheck();
-  };
   // THEY SAVE THEMSELVES. This card had TWO buttons both saying "Save" — one for the folder
   // beside its field, one at the bottom for these two selects — and nothing said which was
   // which. A select that applies on change is the same shape as the toggle above it, and
   // leaves exactly one Save in the card, next to the only field that needs one.
-  const saveStt = async field => {
+  const saveStt = async (field, value) => {
     $('spQuality').textContent = 'saving…';
-    const d = await post('/api/setup/setting',
-                         {field, value: $(field === 'language' ? 'language' : 'quality').value});
+    const d = await post('/api/setup/setting', {field, value});
     $('spQuality').textContent = '';
     say('mStt', d.ok, d.message);
     sttCheck();                       // the tier decides WHICH model, so the state line changes
   };
-  $('language').onchange = () => saveStt('language');
-  $('quality').onchange = () => saveStt('transcription');
+  $('language').onchange = () => saveStt('language', $('language').value);
   sttCheck();
 
   // ---- install ---------------------------------------------------------------------------
@@ -611,18 +636,6 @@
     if (!d.ok) $('recCalls').checked = !$('recCalls').checked;
     say('mRec', d.ok, d.message);
   };
-  $('doTest').onclick = async () => {
-    $('spTest').textContent = 'checking…';
-    const d = await fetch(`/api/setup/stt?t=${T}`).then(r => r.json()).catch(() => ({}));
-    $('spTest').textContent = '';
-    if (!d.installed) return say('mTest', false, 'The on-machine engine is not in this build.');
-    if (!d.needed) return say('mTest', true,
-      'Your DashScope key transcribes these, on Alibaba\'s servers.');
-    if (!d.cached) { await post('/api/setup/stt', {}); return say('mTest', true,
-      `${d.model} is not downloaded yet (about ${d.mb} MB). Downloading now.`); }
-    say('mTest', true, `${d.model} is downloaded and ready on this machine.`);
-  };
-
   // ---- one model, two places it can live ----------------------------------------------
   // The card asks WHERE first and shows only that branch. Hosted needs a key; local needs a
   // download. Showing both sets of controls at once made the owner read past the half that

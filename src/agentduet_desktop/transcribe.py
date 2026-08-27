@@ -66,6 +66,39 @@ logger = logging.getLogger("secretary")
 #:
 #: Still 4.4x realtime on the 88s file, so cost is download size, not time. The lesson is about
 #: the sample, not the model: a short clip starves both equally and hides the difference.
+#: The models offered, smallest first. NO `tiny` OR `base`: they are fast and not accurate
+#: enough for a phone call, which is the only audio this product transcribes. Offering a model
+#: whose output would not be worth reading is not a choice, it is a trap with a small number
+#: next to it. They remain resolvable by name for anyone who sets one deliberately.
+#:
+#: WHISPER'S OWN NAMES, not adjectives of ours: "balanced"
+#: and "Whisper small" were the same thing under two names in one card, and an owner who reads
+#: anything about Whisper elsewhere meets these names, not ours.
+#:
+#: `large-v3-turbo` shares large-v3's encoder with a decoder cut from 32 layers to 4. Measured
+#: on a clean 88s call it was 20.7s -> 11.2s for the same audio, which is why it is here and why
+#: it sits between medium and large-v3 rather than at the top.
+#:
+#: NO `distil-*`. They are faster again and ENGLISH ONLY, and this product's own language list
+#: offers Vietnamese, Chinese, Malay and Thai. A model that silently cannot do most of the
+#: languages on the next control is not a tier.
+TIERS = ["small", "medium", "large-v3-turbo", "large-v3"]
+
+#: What a fresh install gets, and what an unreadable value falls back to. ONE CONSTANT, because
+#: it was three literals and they are the kind that drift apart.
+#:
+#: `large-v3-turbo` rather than `small` from 2026-08-27. It shares large-v3's encoder with a
+#: decoder cut from 32 layers to 4, so it is close to the most accurate model at roughly half
+#: its time — measured on a clean 88s call at 20.7s -> 11.2s. The cost is the download: 1.6 GB
+#: against small's 464 MB, on a queue where nothing waits for the result.
+#:
+#: A TYPO FALLS BACK HERE TOO, which means an unreadable value can start a 1.6 GB fetch. That is
+#: deliberate: the alternative is a fresh install and a mistyped one quietly running different
+#: models, and the row marked "in use" says which is running either way.
+DEFAULT_MODEL = "large-v3-turbo"
+
+#: What the four adjectives used to mean. Kept so an instance configured before 2026-08-27 keeps
+#: the model it chose instead of silently jumping tier on upgrade.
 QUALITY = {"fast": "base", "balanced": "small", "accurate": "medium", "max": "large-v3"}
 
 #: BEAM 5 AND VAD ALWAYS, at every tier. Not a trade: beam=5 with VAD measured FASTER than the
@@ -84,9 +117,18 @@ def local_model() -> str:
     if name := os.getenv("SECRETARY_STT_MODEL"):
         return name
     from . import owner
-    tier = (os.getenv("SECRETARY_STT_QUALITY") or owner.transcription_quality()
-            or "balanced").lower()
-    return QUALITY.get(tier, QUALITY["balanced"])
+    chosen = (os.getenv("SECRETARY_STT_QUALITY") or owner.transcription_quality()
+              or DEFAULT_MODEL).lower()
+    # ANY MODEL FASTER-WHISPER KNOWS, not just the ones we offer. TIERS is a curated list, not
+    # a whitelist: someone who deliberately sets `tiny`, `large-v2` or a `.en` variant should get
+    # it. Narrowing this to TIERS silently moved such an instance to the default on upgrade,
+    # which is the failure the legacy-name mapping below exists to prevent.
+    #
+    # A legacy adjective is translated; anything faster-whisper does not know falls back rather
+    # than raising, because a settings typo must not stop a call being transcribed.
+    if chosen in QUALITY:
+        return QUALITY[chosen]
+    return chosen if _repo(chosen) else DEFAULT_MODEL
 
 #: A WAV header with no frames. Written when a call produced no audio at all — which is what an
 #: unbridged call looks like — and there is nothing to transcribe in one.
@@ -143,7 +185,8 @@ def describe() -> str:
 
 #: Roughly what each tier costs to fetch, for telling the owner BEFORE it happens rather than
 #: after. Measured from the cache on disk, not from the docs.
-MODEL_MB = {"tiny": 75, "base": 142, "small": 464, "medium": 1500, "large-v3": 2900}
+MODEL_MB = {"tiny": 75, "base": 142, "small": 464, "medium": 1500,
+            "large-v3-turbo": 1600, "large-v3": 2900}
 
 
 def is_cached(model: str = "") -> bool:
@@ -411,3 +454,85 @@ async def worker() -> None:
             await asyncio.to_thread(drain_once)
         except Exception as exc:            # a worker that dies takes the queue with it
             logger.error("the transcription worker hit %s: %s", type(exc).__name__, exc)
+
+
+# ---- what is on disk -------------------------------------------------------------------
+#
+# THE MODELS WERE INVISIBLE. The page offered four tiers by adjective and said "ready" when the
+# chosen one happened to be present — so a machine could be holding every tier at once (6.7 GB
+# was found on the developer's own, from an evaluation weeks earlier) with nothing in the UI
+# saying so and no way to remove any of it. A model that downloads itself silently must be
+# removable in the same place.
+
+def _repo(model: str) -> str:
+    """The Hugging Face repo behind a model name, asked of FASTER-WHISPER rather than kept here.
+
+    A hand-written copy of this map drifts the moment the library adds a model — and it already
+    had: `large-v3-turbo` was sitting in the cache on this machine under a repo the local map
+    did not know.
+    """
+    try:
+        from faster_whisper.utils import _MODELS
+        return _MODELS.get(model, "")
+    except Exception:
+        return ""
+
+
+def model_dir(model: str) -> pathlib.Path | None:
+    """The cache directory holding this model, or None when it is not downloaded."""
+    repo = _repo(model)
+    if not repo:
+        return None
+    root = pathlib.Path(os.getenv("HF_HOME") or (pathlib.Path.home() / ".cache/huggingface"))
+    d = root / "hub" / ("models--" + repo.replace("/", "--"))
+    return d if d.is_dir() else None
+
+
+def size_on_disk(model: str) -> int:
+    """Megabytes this model actually occupies, or 0 when absent. Measured, not from the table."""
+    d = model_dir(model)
+    if not d:
+        return 0
+    # NOT SYMLINKS. The hub cache keeps one copy under blobs/ and links to it from
+    # snapshots/, so following both counts every byte twice — it reported 927 MB for a model
+    # `du` puts at 464.
+    return int(sum(f.stat().st_size for f in d.rglob("*")
+                   if f.is_file() and not f.is_symlink()) / 1024 / 1024)
+
+
+def delete_model(model: str) -> str:
+    """Remove a downloaded model. Refuses the one in use."""
+    if model == local_model():
+        return f"{model} is the model in use. Choose another quality first."
+    d = model_dir(model)
+    if not d:
+        return f"{model} is not downloaded."
+    freed = size_on_disk(model)
+    import shutil
+    shutil.rmtree(d, ignore_errors=True)
+    return f"Deleted Whisper {model}, freeing {freed} MB."
+
+
+def catalogue() -> list[dict]:
+    """The four tiers, in order, with what each costs and whether it is here.
+
+    Ordered by size rather than by the tier names, because the ONLY thing an owner is trading
+    between them is accuracy against disk and time — and an ordered list shows that where four
+    adjectives do not.
+    """
+    current = local_model()
+    out = []
+    for model in (TIERS if current in TIERS else [current] + TIERS):
+        # `is_cached`, NOT "a directory exists". The directory appears the instant a download
+        # STARTS, so the row claimed a 1.5 GB model was downloaded when 66 MB of it had
+        # arrived — offering Use this and Delete for weights that were still coming down, and
+        # making a fetch that had barely begun look instantaneous.
+        done = is_cached(model)
+        on_disk = size_on_disk(model)
+        out.append({"model": model, "name": model,
+                    "mb": on_disk if done else MODEL_MB.get(model, 0),
+                    # What has landed so far, so a partial fetch can show how far along it is
+                    # instead of looking like nothing or like everything.
+                    "got_mb": on_disk,
+                    "downloaded": done, "in_use": model == current})
+    return out
