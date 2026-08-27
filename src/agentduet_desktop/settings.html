@@ -102,6 +102,15 @@
     border:0;background:transparent;color:var(--muted);cursor:pointer;}
   .seg button.on{background:var(--accent);color:#fff;font-weight:600;}
   .pickrow{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;}
+  /* A field with its button beside it. This class was USED in four places and defined in none
+     — so every one of them stacked, and looked deliberate enough that nobody questioned it.
+     A class name that does not exist fails silently; only looking at the page finds it. */
+  .frow{display:flex;align-items:center;gap:.5rem;}
+  .frow input{flex:1;min-width:0;}
+  /* Wrappers introduced to show one branch at a time. `.card` spaces ITS OWN children, so
+     anything nested a level deeper lost that spacing and the fields ran together. */
+  #connManual,#connSignedIn,#connSignIn,#connByKey,#paneHosted,#paneLocal{
+    display:flex;flex-direction:column;gap:1rem;}
 
   /* Managing models is a DETOUR, not a setting. It only happens when someone is changing
      one, and it needs a lot of room to say why each model does or does not fit — so it
@@ -162,9 +171,10 @@
       <div class="card">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">dialpad</span></div>
-          <div><h2>AgentDuet account</h2></div>
+          <div style="flex:1"><h2>AgentDuet Account</h2></div>
+          <span class="pill off" id="connPill"><span class="dot"></span>…</span>
         </div>
-        <div class="state" id="connState">…</div>
+        <div class="state" id="connWho" hidden></div>
 
         <!-- SIGN IN, OR SET IT UP BY HAND — never both at once. The two are mutually
              exclusive upstream: the SDK refuses a config carrying a token AND a key, so a key
@@ -177,6 +187,15 @@
           </div>
         </div>
 
+        <!-- Configured by key. Shows WHAT is set rather than an empty box beside the word
+             "Connected", and only opens the form when the owner asks to change it. -->
+        <div id="connByKey" hidden>
+          <div class="acts" style="gap:.5rem">
+            <button class="btn ghost" id="replaceKey">Replace</button>
+            <button class="link" id="toSignIn" hidden>Sign in instead</button>
+          </div>
+        </div>
+
         <div id="connSignIn" hidden>
           <div class="acts" style="gap:.5rem">
             <button class="btn" id="signIn">Sign in with Google</button>
@@ -184,7 +203,7 @@
           </div>
         </div>
 
-        <div id="connManual">
+        <div id="connManual" hidden>
           <div class="grp"><label class="fl">API key</label><input type="password" id="cKey"
             placeholder="AGENTDUET_API_KEY" autocomplete="off"></div>
           <div class="grp"><label class="fl">Connector uuid</label><input type="text" id="cUuid"
@@ -198,33 +217,31 @@
       <div class="card">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">call</span></div>
-          <div><h2>Record calls</h2></div>
+          <div><h2>Record and Transcribe Calls</h2></div>
         </div>
         <div class="row">
-          <div class="lbl">Save both sides to this machine</div>
+          <div class="lbl">Save to this machine</div>
           <label class="sw"><input type="checkbox" id="recCalls"><span class="track"></span></label>
         </div>
-        <div class="state" id="recDir">…</div>
-        <div id="mRec"></div>
-      </div>
-
-      <div class="card">
-        <div class="head">
-          <div class="tile"><span class="material-symbols-rounded">chat_bubble</span></div>
-          <div><h2>Record messages</h2></div>
-        </div>
         <div class="row">
-          <div class="lbl">Save SMS beside your calls</div>
-          <label class="sw"><input type="checkbox" id="recMsgs" disabled><span class="track"></span></label>
+          <div class="lbl">Folder</div>
+          <div class="acts" style="gap:.5rem">
+            <button class="btn ghost" id="pickRec">Change</button>
+            <button class="btn ghost" id="openRec">Open</button>
+            <button class="btn ghost" id="openAns" hidden>Open answered</button>
+          </div>
         </div>
-        <div class="state">Not built yet.</div>
-      </div>
-
-      <div class="card">
-        <div class="head">
-          <div class="tile"><span class="material-symbols-rounded">graphic_eq</span></div>
-          <div><h2>Speech recognition</h2></div>
+        <div class="state" id="recDir">…</div>
+        <!-- Typing a path is the fallback for a machine with no folder chooser — a headless
+             box reached over ssh, where the console sets it instead. -->
+        <div class="grp" id="recManual" hidden>
+          <div class="frow">
+            <input type="text" id="recPath" placeholder="absolute path, or empty for the default">
+            <button class="btn ghost" id="saveRec" style="flex-shrink:0">Save</button>
+          </div>
         </div>
+        <div id="mRec"></div>
+        <hr style="border:0;border-top:1px solid var(--line);margin:.25rem 0">
         <div class="state" id="sttState">…</div>
         <div class="grp"><label class="fl">Language of your calls</label>
           <select id="language">
@@ -246,19 +263,24 @@
           <div class="acts"><button class="btn ghost" id="doTest">Test transcription</button>
             <span class="spin" id="spTest"></span></div>
           <div id="mTest"></div></div>
-        <div class="acts"><button class="btn" id="saveQuality">Save</button>
+        <div class="acts">
           <span class="spin" id="spQuality"></span>
-          <button class="btn ghost" id="doStt" hidden style="margin-left:.5rem">Download it now</button>
+          <button class="btn ghost" id="doStt" hidden>Download it now</button>
           <span class="spin" id="spStt"></span></div>
         <div id="mStt"></div>
+      
       </div>
 
       <div class="card">
         <div class="head">
-          <div class="tile"><span class="material-symbols-rounded">description</span></div>
-          <div><h2>What you do</h2></div>
+          <div class="tile"><span class="material-symbols-rounded">chat_bubble</span></div>
+          <div><h2>Record Messages</h2></div>
         </div>
-        <div class="state" id="doesState">…</div>
+        <div class="row">
+          <div class="lbl">Save SMS beside your calls</div>
+          <label class="sw"><input type="checkbox" id="recMsgs" disabled><span class="track"></span></label>
+        </div>
+        <div class="state">Not built yet.</div>
       </div>
 
       <div class="card" id="installCard" hidden>
@@ -278,10 +300,6 @@
           <div><h2>Advanced</h2></div>
         </div>
         <div class="row">
-          <div class="lbl">Show debug detail</div>
-          <label class="sw"><input type="checkbox" id="debug"><span class="track"></span></label>
-        </div>
-        <div class="row">
           <div class="lbl">Walk through setup again</div>
           <button class="btn ghost" id="rerun">Run setup</button>
         </div>
@@ -295,7 +313,7 @@
 <div class="ovl" id="ovlModels" hidden>
   <div class="sheet" role="dialog" aria-modal="true" aria-label="Choose a model">
     <div class="shead">
-      <div><h2>Choose a model</h2></div>
+      <div><h2>Choose a Model</h2></div>
       <button class="x" id="closeModels" aria-label="Close">
         <span class="material-symbols-rounded">close</span></button>
     </div>
@@ -361,10 +379,6 @@
   // Stored on the instance, not in the browser. The owner site is rendered by three engines
   // now (browser, the pywebview window, the macOS app) and the window has no localStorage at
   // all — reading it there threw and took the whole page down with it.
-  fetch(`/api/ui?t=${T}`).then(r => r.json())
-    .then(u => { $('debug').checked = !!u.debug; })
-    .catch(() => {});
-  $('debug').onchange = () => post('/api/ui', {debug: $('debug').checked});
   $('rerun').onclick = () => { location.href = '/setup?t=' + T + '&from=settings'; };
 
   async function refreshCurrent(){
@@ -374,9 +388,6 @@
     $('name').value = cur.name || '';
     if (cur.transcription) $('quality').value = cur.transcription;
     $('language').value = cur.language || '';
-    $('doesState').textContent = cur.does
-      ? cur.does.split('\n').length + ' fact(s) recorded: ' + cur.does.split('\n')[0]
-      : 'nothing recorded yet';
     $('modelState').textContent = cur.model || 'unknown';
     drawAccount(cur);
     if (cur.connector_uuid) $('cUuid').value = cur.connector_uuid;
@@ -401,20 +412,45 @@
   let manualForced = false;
   function drawAccount(cur){
     const o = cur.oauth || {};
-    $('connState').textContent = o.signed_in
-      ? `Signed in as ${o.email || 'this account'}` + (o.connector ? ` · ${o.connector}` : '')
-      : (cur.connector || 'unknown');
-    const canSignIn = o.available && o.browser && !o.signed_in;
-    $('connSignedIn').hidden = !o.signed_in;
-    // Offered on sign-in, hidden while signed in unless the owner asked for it — entering a key
-    // then would do nothing, because the token wins and the SDK refuses both.
-    $('connSignIn').hidden = !canSignIn || manualForced;
-    $('connManual').hidden = (o.signed_in && !manualForced) || (canSignIn && !manualForced);
+    const bySso = o.signed_in;
+    const byKey = !bySso && !!cur.key_hint;
+
+    // STATUS AS A STATE, NOT A SENTENCE. It read "Connected. Calls and messages can reach you."
+    // — a full stop and a clause, in a place the eye goes to for a yes or a no.
+    $('connPill').className = 'pill' + (cur.connected ? '' : ' off');
+    $('connPill').innerHTML = '<span class="dot"></span>'
+      + (cur.connected ? 'Connected' : 'Not connected');
+
+    // WHAT is configured, so "Connected" is not sitting above an empty password box. A password
+    // input is never populated, so the blank field read as "nothing set" when something was.
+    const bits = [];
+    if (bySso) bits.push(o.email || 'signed in');
+    else if (byKey) bits.push('API key ' + cur.key_hint);
+    const uuid = (bySso ? o.connector : cur.connector_uuid) || '';
+    if (uuid) bits.push(uuid);
+    // The backend only when it is NOT production. On a normal install it repeats what the
+    // line already says; on a sandbox install it is the most important thing on the card, and
+    // the failure it prevents is silent — a sign-in against the wrong environment replaces the
+    // connector a production DID routes to, with no error anywhere.
+    if (cur.backend && !cur.backend.startsWith('production')) bits.push('⚠ ' + cur.backend);
+    $('connWho').textContent = bits.join('  ·  ');
+    $('connWho').hidden = !bits.length;
+
+    const canSignIn = o.available && o.browser && !bySso;
+    $('connSignedIn').hidden = !bySso;
+    $('connByKey').hidden = !byKey || manualForced;
+    $('toSignIn').hidden = !canSignIn;
+    // Offered only when there is nothing configured yet, or the owner asked to change it.
+    $('connSignIn').hidden = !canSignIn || byKey || manualForced;
+    $('connManual').hidden = bySso || byKey ? !manualForced : (canSignIn && !manualForced);
   }
   const showManual = () => { manualForced = true; refreshCurrent(); };
   $('toManual').onclick = showManual;
   $('toManual2').onclick = showManual;
-  $('signIn').onclick = () => { location.href = `/api/connector/signin?t=${T}&provider=google`; };
+  $('replaceKey').onclick = showManual;
+  const goSignIn = () => { location.href = `/api/connector/signin?t=${T}&provider=google`; };
+  $('signIn').onclick = goSignIn;
+  $('toSignIn').onclick = goSignIn;
   $('signOut').onclick = async () => {
     if (!confirm('Sign out? Calls stop arriving until you sign in again or enter a key.')) return;
     const d = await post('/api/connector/signout', {});
@@ -430,7 +466,7 @@
     const d = await post('/api/setup/connector', {key, uuid});
     $('saveConn').disabled = false; $('spConn').textContent = '';
     say('mConn', d.ok, d.message);
-    if (d.ok) $('cKey').value = '';
+    if (d.ok) { $('cKey').value = ''; manualForced = false; refreshCurrent(); }
   };
 
   // ---- speech recognition ------------------------------------------------------------------
@@ -465,14 +501,20 @@
     await post('/api/setup/stt', {});
     sttCheck();
   };
-  $('saveQuality').onclick = async () => {
-    $('saveQuality').disabled = true; $('spQuality').textContent = 'saving…';
-    await post('/api/setup/setting', {field: 'language', value: $('language').value});
-    const d = await post('/api/setup/setting', {field: 'transcription', value: $('quality').value});
-    $('saveQuality').disabled = false; $('spQuality').textContent = '';
+  // THEY SAVE THEMSELVES. This card had TWO buttons both saying "Save" — one for the folder
+  // beside its field, one at the bottom for these two selects — and nothing said which was
+  // which. A select that applies on change is the same shape as the toggle above it, and
+  // leaves exactly one Save in the card, next to the only field that needs one.
+  const saveStt = async field => {
+    $('spQuality').textContent = 'saving…';
+    const d = await post('/api/setup/setting',
+                         {field, value: $(field === 'language' ? 'language' : 'quality').value});
+    $('spQuality').textContent = '';
     say('mStt', d.ok, d.message);
     sttCheck();                       // the tier decides WHICH model, so the state line changes
   };
+  $('language').onchange = () => saveStt('language');
+  $('quality').onchange = () => saveStt('transcription');
   sttCheck();
 
   // ---- install ---------------------------------------------------------------------------
@@ -506,12 +548,52 @@
   function svcRender(d){
     $('recCalls').checked = !!((d.services || {}).record_call || {}).on;
     $('recDir').innerHTML = 'Saved to <code>' + esc((d.dirs || {}).calls || '?') + '</code>';
+    if (document.activeElement !== $('recPath')) $('recPath').value = d.recordings_set || '';
+    // Hidden rather than disabled where no file manager exists — a headless box reached over
+    // ssh has nowhere to open one, and that is the normal case for a self-hosted install
+    // rather than a fault to report.
+    $('openRec').hidden = !d.can_reveal;
+    $('openAns').hidden = !d.can_reveal || !((d.services || {}).answer_call || {}).on;
+    // Choose, or type — never both. A machine with a folder chooser has no reason to offer a
+    // text field where a typo sends recordings somewhere silently wrong.
+    $('pickRec').hidden = !d.can_pick;
+    $('recManual').hidden = !!d.can_pick;
   }
-  fetch(`/api/panel?t=${T}`).then(r => r.json()).then(svcRender).catch(() => {});
+  function loadPanel(){
+    fetch(`/api/panel?t=${T}`).then(r => r.json()).then(svcRender).catch(() => {});
+  }
+  loadPanel();
   // The only line of prose removed from this page that was not decoration. It is not a hint
   // about a control — it is a consequence the owner cannot know from the switch, and it is
   // only true at the moment they turn it ON. So it moved from a paragraph nobody reads into
   // the one instant it applies.
+  const reveal = async folder => {
+    const d = await post('/api/reveal', {folder});
+    say('mRec', d.ok, d.message);
+  };
+  $('pickRec').onclick = async () => {
+    say('mRec', true, 'Choose a folder in the window that just opened…');
+    const d = await post('/api/pick-folder', {});
+    // A cancelled dialog is not a failure. Clearing the line beats reporting one.
+    if (d.ok && !d.changed) { $('mRec').innerHTML = ''; return; }
+    say('mRec', d.ok, d.message);
+    if (d.ok) loadPanel();
+  };
+  $('openRec').onclick = () => reveal('recordings');
+  $('openAns').onclick = () => reveal('answered');
+
+  $('saveRec').onclick = async () => {
+    const v = $('recPath').value.trim();
+    // CHANGING IT DOES NOT MOVE WHAT IS ALREADY THERE. Said before it happens rather than
+    // after: moving gigabytes of call audio is not something a Save button should do quietly,
+    // and neither is leaving someone to discover the split on their own.
+    if (v && !confirm('Recordings from now on go to:\n\n' + v
+        + '\n\nAnything already recorded stays where it is. Continue?')) return;
+    const d = await post('/api/setup/setting', {field: 'recordings', value: v});
+    say('mRec', d.ok, d.message);
+    loadPanel();
+  };
+
   $('recCalls').onchange = async () => {
     if ($('recCalls').checked && !confirm(
         'This records both people on the call.\n\n'

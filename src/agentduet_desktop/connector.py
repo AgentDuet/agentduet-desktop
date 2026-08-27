@@ -69,6 +69,29 @@ CALL_SAMPLE_RATE = int(os.getenv("SECRETARY_CALL_SAMPLE_RATE", "24000"))
 VERIFY_TIMEOUT = 20
 
 
+def environment() -> str:
+    """Which backend this instance talks to, as something a person can compare.
+
+    NOTHING RECORDED THIS, and two failure modes hid in the gap. Signing in against a
+    non-production endpoint provisions a connector on THAT environment, and a signed-in install
+    ignores AGENTDUET_CONNECTOR_UUID entirely — the connector is a claim inside the token. So a
+    sandbox sign-in silently moves a production install off its own connector, its DID stops
+    reaching it, and no error appears anywhere. The other mode is duller and just as annoying:
+    an endpoint that was configured once, tested, and then not written down.
+
+    Derived rather than stored, so it cannot drift from what the daemon is actually using.
+    """
+    from . import oauth
+    url = oauth.endpoint()
+    if not url:
+        return "production (api key)" if os.getenv(API_KEY) else "not configured"
+    host = url.split("://")[-1].split("/")[0]
+    # Anything that is not the production host is worth naming in full: the whole point is to
+    # notice when an instance is pointed somewhere unexpected.
+    kind = "production" if host.startswith("wss-prod.") else host
+    return f"{kind} (sign-in)" if oauth.signed_in() else f"{kind} (sign-in available)"
+
+
 def configured() -> bool:
     """Can this install reach the platform at all — by either route.
 

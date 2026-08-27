@@ -128,10 +128,16 @@ def cmd_status(args) -> int:
     # changes the answer to "why did nobody answer my test call?" more than any line below it,
     # and reading `voice: available` while the agent is deliberately not answering is the kind
     # of true-but-misleading report that sends someone debugging the wrong thing.
+    # WHICH BACKEND, before anything about what it can do. An instance pointed at a sandbox
+    # looks identical to a production one in every other line here, and a sign-in against the
+    # wrong environment silently replaces the connector a production DID routes to.
+    from . import connector as _conn
+    print(f"  backend  : {_conn.environment()}")
+
     from . import owner as owner_settings
     if owner_settings.calls() == owner_settings.CALLS_CARRY:
         from . import carry, transcribe
-        print(f"  calls    : CARRIED onward, both legs recorded to {carry.RECORDINGS}")
+        print(f"  calls    : CARRIED onward, both legs recorded to {carry.recordings()}")
         print(f"  transcript: {transcribe.describe()}")
         if waiting := len(transcribe.pending()):
             print(f"  queued   : {waiting} recording(s) waiting to be transcribed")

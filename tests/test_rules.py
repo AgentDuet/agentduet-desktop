@@ -347,7 +347,7 @@ def test_carry_mode() -> None:
     # It records to the INSTANCE. The install directory is replaced wholesale on upgrade, so a
     # recording written there is deleted by the next update, silently.
     ok("recordings land in the instance, not the install",
-       str(carry.RECORDINGS).startswith(str(paths.RUN)), str(carry.RECORDINGS))
+       str(carry.recordings()).startswith(str(paths.RUN)), str(carry.recordings()))
 
     # The WAV header must match what the SDK sends. A mismatch does not convert anything — it
     # mislabels the bytes, and the file plays at the wrong speed. Cost hours on the voice path.
@@ -656,10 +656,10 @@ def test_answered_call_recording() -> None:
     # so the subdirectory is what keeps them out.
     from agentduet_desktop import carry, transcribe
     home = pathlib.Path(tempfile.mkdtemp(prefix="answered-test-"))
-    with mock.patch.object(carry, "RECORDINGS", home / "recordings"):
-        (carry.RECORDINGS / voice.ANSWERED).mkdir(parents=True)
-        (carry.RECORDINGS / voice.ANSWERED / "x-1-caller.wav").write_bytes(b"RIFF" + b"\0" * 4000)
-        (carry.RECORDINGS / "y-2-caller.wav").write_bytes(b"RIFF" + b"\0" * 4000)
+    with mock.patch.object(carry, "recordings", lambda: home / "recordings"):
+        (carry.recordings() / voice.ANSWERED).mkdir(parents=True)
+        (carry.recordings() / voice.ANSWERED / "x-1-caller.wav").write_bytes(b"RIFF" + b"\0" * 4000)
+        (carry.recordings() / "y-2-caller.wav").write_bytes(b"RIFF" + b"\0" * 4000)
         names = [p.name for p in transcribe.pending()]
         eq("only carried recordings are queued", names, ["y-2-caller.wav"])
 
@@ -677,10 +677,10 @@ def test_transcribe_queue() -> None:
     from agentduet_desktop import carry, transcribe
 
     home = pathlib.Path(tempfile.mkdtemp(prefix="queue-test-"))
-    with mock.patch.object(carry, "RECORDINGS", home / "recordings"):
-        carry.RECORDINGS.mkdir(parents=True)
+    with mock.patch.object(carry, "recordings", lambda: home / "recordings"):
+        carry.recordings().mkdir(parents=True)
         def wav(name, size=4096):
-            p = carry.RECORDINGS / name
+            p = carry.recordings() / name
             p.write_bytes(b"RIFF" + b"\0" * (size - 4))
             return p
 
@@ -1064,7 +1064,7 @@ def test_setup_mode() -> None:
     # everyone installing a call recorder offered a half-built second product as a first-run
     # question. It is still a real setting, still read by `choose_mode`, and still editable in
     # settings.md — parity holds because neither surface has it, which is the thing this checks.
-    for field in ("name", "language", "transcription"):
+    for field in ("name", "language", "transcription", "recordings"):
         ok(f"the console can set `{field}`", f'"{field}"' in init_src)
         ok(f"and so can the settings page",
            f"'{field}'" in settings_page or f'"{field}"' in settings_page

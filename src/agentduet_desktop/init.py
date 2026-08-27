@@ -266,6 +266,26 @@ def choose_mode(interactive: bool = True) -> str:
     return owner.calls()
 
 
+def where_recordings_go(interactive: bool = True) -> None:
+    """Ask where call audio should be written. Enter keeps the default.
+
+    On the console path especially: a self-hosted box is the install most likely to want this
+    somewhere other than the home directory, and it is the one that never sees the settings
+    page. Skipping it here would make the folder settable by macOS owners only.
+    """
+    if not interactive:
+        return
+    from . import owner as _o
+    current = _o.recordings_set()
+    print("\n  Where should call recordings go?")
+    print(f"    default: {_o.recordings_dir()}")
+    ans = _prompt(f"\n  absolute path, or Enter to keep [{current or 'default'}]: ").strip()
+    if not ans:
+        return
+    print("  " + tools.set_setting("recordings", ans).splitlines()[0])
+    print(f"  -> {_o.recordings_dir()}")
+
+
 def who_you_are(interactive: bool = True) -> None:
     """The owner's name, WITHOUT a model.
 
@@ -476,6 +496,7 @@ def main(interactive: bool = True) -> int:
     who_you_are(interactive)
     choose_language(interactive)
     choose_quality(interactive)
+    where_recordings_go(interactive)
     offer_speech_model(interactive)
     installed = offer_install(interactive)
 

@@ -386,10 +386,10 @@ def pending() -> list[pathlib.Path]:
     (an unbridged call produces exactly that), and one already marked `.failed`.
     """
     from . import carry
-    if not carry.RECORDINGS.is_dir():
+    if not carry.recordings().is_dir():
         return []
     out = []
-    for wav in sorted(carry.RECORDINGS.glob("*.wav")):
+    for wav in sorted(carry.recordings().glob("*.wav")):
         if wav.with_suffix(".txt").exists() or wav.with_suffix(".failed").exists():
             continue
         if wav.stat().st_size <= EMPTY_WAV_BYTES:

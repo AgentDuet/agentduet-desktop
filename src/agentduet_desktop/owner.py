@@ -218,6 +218,44 @@ def transcription_quality() -> str:
     return _first_line(_strip_guidance(_sections().get("Transcription", ""))).strip().lower()
 
 
+def recordings_set() -> str:
+    """The folder AS WRITTEN in settings.md — "" when the default is in use.
+
+    Separate from `recordings_dir()`, which resolves it. The settings field must show what the
+    owner typed: filling it with the resolved default would make "unset" indistinguishable from
+    "set to exactly the default", and clearing it would then look like no change.
+    """
+    return _first_line(_strip_guidance(_sections().get("Recordings", ""))).strip()
+
+
+def recordings_dir() -> pathlib.Path:
+    """Where call audio and transcripts are written. Default `$AGENTDUET_HOME/run/recordings`.
+
+    READ AT USE TIME, NEVER IMPORTED AS A CONSTANT. `carry.RECORDINGS` used to be a module-level
+    path, so every reader froze it at import — which is why the page could only ever SHOW the
+    folder. The same lesson `local_model()` had to learn: a value the owner can change cannot be
+    captured at startup.
+
+    An unusable value falls back to the default rather than raising. A folder that cannot be
+    created is a settings typo, and losing a call to it would be a much worse outcome than
+    quietly recording somewhere real and saying so in `status`.
+    """
+    default = paths.RUN / "recordings"
+    raw = _first_line(_strip_guidance(_sections().get("Recordings", ""))).strip()
+    if not raw:
+        return default
+    try:
+        chosen = pathlib.Path(raw).expanduser()
+        if not chosen.is_absolute():
+            return default
+        chosen.mkdir(parents=True, exist_ok=True)
+        return chosen
+    except OSError:
+        # No logger in this module by design — it is read by everything and must stay quiet.
+        # `status` reports the folder actually in use, which is where a bad value shows up.
+        return default
+
+
 def record_calls() -> bool:
     """Whether an ANSWERED call is written to disk as audio. Default ON.
 
