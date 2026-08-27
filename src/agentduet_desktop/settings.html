@@ -165,12 +165,33 @@
           <div><h2>AgentDuet account</h2></div>
         </div>
         <div class="state" id="connState">…</div>
-        <div class="grp"><label class="fl">API key</label><input type="password" id="cKey"
-          placeholder="AGENTDUET_API_KEY" autocomplete="off"></div>
-        <div class="grp"><label class="fl">Connector uuid</label><input type="text" id="cUuid"
-          placeholder="00000000-0000-0000-0000-000000000000" autocomplete="off"></div>
-        <div class="acts"><button class="btn" id="saveConn">Check and save</button>
-          <span class="spin" id="spConn"></span></div>
+
+        <!-- SIGN IN, OR SET IT UP BY HAND — never both at once. The two are mutually
+             exclusive upstream: the SDK refuses a config carrying a token AND a key, so a key
+             entered while signed in is ignored rather than used as a fallback. Switching
+             therefore has to sign out first, and the button says so. -->
+        <div id="connSignedIn" hidden>
+          <div class="acts" style="gap:.5rem">
+            <button class="btn ghost" id="signOut">Sign out</button>
+            <button class="link" id="toManual">Use an API key instead</button>
+          </div>
+        </div>
+
+        <div id="connSignIn" hidden>
+          <div class="acts" style="gap:.5rem">
+            <button class="btn" id="signIn">Sign in with Google</button>
+            <button class="link" id="toManual2">Set it up by hand</button>
+          </div>
+        </div>
+
+        <div id="connManual">
+          <div class="grp"><label class="fl">API key</label><input type="password" id="cKey"
+            placeholder="AGENTDUET_API_KEY" autocomplete="off"></div>
+          <div class="grp"><label class="fl">Connector uuid</label><input type="text" id="cUuid"
+            placeholder="00000000-0000-0000-0000-000000000000" autocomplete="off"></div>
+          <div class="acts"><button class="btn" id="saveConn">Check and save</button>
+            <span class="spin" id="spConn"></span></div>
+        </div>
         <div id="mConn"></div>
       </div>
 
@@ -357,7 +378,7 @@
       ? cur.does.split('\n').length + ' fact(s) recorded: ' + cur.does.split('\n')[0]
       : 'nothing recorded yet';
     $('modelState').textContent = cur.model || 'unknown';
-    $('connState').textContent = cur.connector || 'unknown';
+    drawAccount(cur);
     if (cur.connector_uuid) $('cUuid').value = cur.connector_uuid;
   }
   refreshCurrent();
@@ -371,6 +392,35 @@
     }
     $('saveYou').disabled = false;
     say('mYou', true, out.join('\n'));
+  };
+
+  // ---- the AgentDuet account, in whichever of three states it is --------------------------
+  // signed in | can sign in | by hand only. The third is not a degraded version of the second:
+  // with no endpoint configured there is no sign-in to offer, and a button that cannot work is
+  // worse than no button.
+  let manualForced = false;
+  function drawAccount(cur){
+    const o = cur.oauth || {};
+    $('connState').textContent = o.signed_in
+      ? `Signed in as ${o.email || 'this account'}` + (o.connector ? ` · ${o.connector}` : '')
+      : (cur.connector || 'unknown');
+    const canSignIn = o.available && o.browser && !o.signed_in;
+    $('connSignedIn').hidden = !o.signed_in;
+    // Offered on sign-in, hidden while signed in unless the owner asked for it — entering a key
+    // then would do nothing, because the token wins and the SDK refuses both.
+    $('connSignIn').hidden = !canSignIn || manualForced;
+    $('connManual').hidden = (o.signed_in && !manualForced) || (canSignIn && !manualForced);
+  }
+  const showManual = () => { manualForced = true; refreshCurrent(); };
+  $('toManual').onclick = showManual;
+  $('toManual2').onclick = showManual;
+  $('signIn').onclick = () => { location.href = `/api/connector/signin?t=${T}&provider=google`; };
+  $('signOut').onclick = async () => {
+    if (!confirm('Sign out? Calls stop arriving until you sign in again or enter a key.')) return;
+    const d = await post('/api/connector/signout', {});
+    say('mConn', d.ok, d.message);
+    manualForced = false;
+    refreshCurrent();
   };
 
   $('saveConn').onclick = async () => {
