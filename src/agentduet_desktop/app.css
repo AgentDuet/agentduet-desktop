@@ -64,6 +64,10 @@ html.native .window{max-width:none;height:100%;max-height:none;flex:1;
 .lights i:nth-child(3){background:#22c55e;}
 html.native .lights{display:none;}
 html.native .brand{margin-left:0;padding-left:0;border-left:0;}
+/* THE REAL LIGHTS SIT ON TOP. The Swift shell uses a full-size content view with a transparent
+   titlebar, which is what puts the page's own titlebar row under macOS's window controls — so
+   reserve the width they occupy, or the AgentDuet mark sits beneath the close button. */
+html.native .titlebar{padding-left:4.9rem;}
 .brand{margin-left:.75rem;padding-left:.5rem;border-left:1px solid rgba(255,255,255,.1);
   display:flex;align-items:center;gap:.5rem;}
 .brand .ad{width:1.25rem;height:1.25rem;border-radius:.375rem;background:var(--accent);color:#fff;
