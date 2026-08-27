@@ -478,6 +478,22 @@
                                : 'Transcription engine: not in this build.';
 
     const busy = !!d.running;
+    const sttSig = JSON.stringify([(d.tiers || []).map(t => [t.model, t.downloaded, t.in_use]),
+                                   d.downloading, d.installed]);
+    if (sttSig === lastSttSig) {
+      const row = (d.tiers || []).find(t => t.model === d.downloading);
+      if (row) {
+        const pct = Math.min(99, Math.round(row.got_mb * 100 / (row.mb || 1)));
+        const bar = $('sttTiers').querySelector('.bar i');
+        const lab = $('sttTiers').querySelector('.barlab span:last-child');
+        if (bar) bar.style.width = pct + '%';
+        if (lab) lab.textContent = `${row.got_mb} / ${row.mb} MB · ${pct}%`;
+      }
+      if (busy) setTimeout(sttCheck, 1500);
+      return;
+    }
+    lastSttSig = sttSig;
+
     $('sttTiers').innerHTML = (d.tiers || []).map(t => {
       const fetching = busy && d.downloading === t.model;
       const pct = Math.min(99, Math.round(t.got_mb * 100 / (t.mb || 1)));
@@ -640,17 +656,20 @@
   // The card asks WHERE first and shows only that branch. Hosted needs a key; local needs a
   // download. Showing both sets of controls at once made the owner read past the half that
   // did not apply, and made "which one am I actually on?" a question the page did not answer.
-  let where = 'local', touched = false;
+  let where = 'local', touched = false, lastModelSig = '', lastSttSig = '';
   function setWhere(w){
+    // ONLY ON AN ACTUAL CHANGE. Switching branch mid-scroll leaves the reader looking at
+    // whitespace, so the sheet returns to the top — but this is called on EVERY poll, and
+    // during a download that poll runs once a second. It scrolled the panel to the top under
+    // the owner's hands while they watched a progress bar.
+    const changed = w !== where;
     where = w;
     $('modelWhere').querySelectorAll('button')
       .forEach(b => b.classList.toggle('on', b.dataset.where === w));
     $('paneLocal').hidden = w !== 'local';
     $('paneHosted').hidden = w !== 'hosted';
-    // The sheet is a fixed height with its own scroller; switching branch mid-scroll leaves
-    // the reader looking at whitespace where the other branch used to be.
     const sb = document.querySelector('.sbody');
-    if (sb) sb.scrollTop = 0;
+    if (changed && sb) sb.scrollTop = 0;
   }
   $('modelWhere').querySelectorAll('button')
     .forEach(b => b.onclick = () => { touched = true; setWhere(b.dataset.where); });
@@ -688,6 +707,23 @@
     }
 
     const busy = (d.progress || {}).model;
+
+    // REBUILD ONLY WHEN THE SHAPE CHANGES. This polls once a second during a download, and
+    // rewriting innerHTML each time flickered, collapsed any open "sizes" expander, and threw
+    // away whatever the reader was looking at. Progress moves every tick; the LIST does not.
+    const sig = JSON.stringify([(d.models || []).map(x => [x.id, x.state, x.in_use]), busy,
+                                d.engine]);
+    if (sig === lastModelSig) {
+      const p = d.progress || {};
+      const bar = $('modelList').querySelector('.bar i');
+      const lab = $('modelList').querySelector('.barlab span:last-child');
+      if (bar) bar.style.width = p.percent + '%';
+      if (lab) lab.textContent = `${p.done_mb} / ${p.total_mb} MB · ${p.percent}%`;
+      if (busy) setTimeout(loadModels, 1000);
+      return;
+    }
+    lastModelSig = sig;
+
     $('modelList').innerHTML = (d.models || []).map(x => {
       const here = x.state === 'loaded';
       const disk = x.state !== 'absent';
