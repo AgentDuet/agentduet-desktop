@@ -601,95 +601,88 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         people.sort(key=lambda p: p["last"], reverse=True)
         return web.json_response({"people": people, "folder": str(folder)})
 
-    #: One pull at a time, and its outcome. Module state rather than per-request, because the
-    #: page starts it and then polls — the same shape as the speech-model download, for the same
-    #: reason: several gigabytes cannot be held open on one request.
-    _pull = {"running": "", "error": "", "done": ""}
-
     async def api_model_action(request):
-        """Pull or delete a local model. Selecting one goes through /api/setup/model."""
+        """download | cancel | load | unload | delete — one verb per state change.
+
+        FIVE VERBS BECAUSE THERE ARE THREE STATES. A model is absent, on disk, or resident, and
+        collapsing that into "get it" and "remove it" is what left a laptop holding five
+        gigabytes for a model nobody was using.
+        """
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
-        from . import llm as _llm
+        from . import models
         body = await request.json()
         name = (body.get("name") or "").strip()
         act = (body.get("action") or "").strip()
+
+        if act == "cancel":
+            return web.json_response({"ok": True, "message": models.cancel()})
         if not name:
             return web.json_response({"ok": False, "message": "Which model?"})
 
         if act == "delete":
-            # Deleting the model currently in use would leave a configured-but-broken instance,
-            # which is the failure attach_model exists to prevent. Refuse rather than repair.
-            if name == os.getenv("SECRETARY_MODEL"):
-                return web.json_response({"ok": False, "message":
-                    f"{name} is the model in use. Choose another one first, then delete it."})
-            return web.json_response({"ok": True, "message":
-                                      await asyncio.to_thread(_llm._Ollama.delete, name)})
+            return web.json_response({"ok": True,
+                                      "message": await asyncio.to_thread(models.delete, name)})
+        if act == "unload":
+            return web.json_response({"ok": True, "message": models.unload()})
+        if act == "load":
+            # Loading is also SELECTING. Two buttons for "use this model" is one button too
+            # many, and the second one is the one nobody presses.
+            _, msg = await asyncio.to_thread(models.load, name)
+            if models.loaded() == name:
+                msg += " " + await asyncio.to_thread(tools.attach_model, "local", name, "local")
+            return web.json_response({"ok": models.loaded() == name, "message": msg})
 
-        if act == "pull":
-            if _pull["running"]:
+        if act == "download":
+            if models.progress()["model"]:
                 return web.json_response({"ok": False, "message":
-                                          f"Already downloading {_pull['running']}."})
+                                          f"Already downloading {models.progress()['model']}."})
 
             # DOWNLOADING IS NEVER THE GOAL. Nobody wants a file; they want the model in use.
-            # Pull then select, in one action, so the owner is not left with a downloaded model
-            # and a second button to find.
+            # So it loads and attaches when the bytes land, in one action.
             async def _go():
-                _pull.update(running=name, error="", done="")
-                try:
-                    msg = await asyncio.to_thread(_llm._Ollama.pull, name)
-                    if body.get("then_use", True):
-                        msg += " " + await asyncio.to_thread(
-                            tools.attach_model, "local", name, "ollama")
-                    _pull.update(done=msg)
-                except Exception as exc:
-                    _pull.update(error=f"{type(exc).__name__}: {exc}")
-                finally:
-                    _pull["running"] = ""
+                await asyncio.to_thread(models.download, name)
+                if models.is_downloaded(name) and body.get("then_use", True):
+                    await asyncio.to_thread(models.load, name)
+                    if models.loaded() == name:
+                        await asyncio.to_thread(tools.attach_model, "local", name, "local")
 
             asyncio.get_running_loop().create_task(_go())
             return web.json_response({"ok": True, "message":
-                f"Downloading {name}, then switching to it. It keeps going if you leave "
-                "this page."})
+                f"Downloading {models.CATALOGUE.get(name, {}).get('name', name)}. It keeps "
+                "going if you leave this page."})
 
         return web.json_response({"ok": False, "message": f"Unknown action {act!r}."})
 
     async def api_models(request):
-        """What could run here, sized against this machine.
+        """Every model we offer, sized against this machine, with what it is FOR.
 
-        A weight in GB is not a decision; a weight next to what this computer has is. So every
-        row carries a verdict, and the machine's own figures are returned alongside so the page
-        can say WHY rather than only colouring a row.
+        A weight in GB is not a decision; a weight next to what this computer has is — and even
+        that is not enough. The picker used to say a 3B model `fits` and an 8B was `tight`, and
+        the 8B was the one that could actually do the job. So a row also carries what the model
+        is good at, how fast it runs, and whether it is the one we would pick.
         """
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
-        from . import llm as _llm, machine
+        from . import llm as _llm, machine, models
 
-        local = []
-        for m in _llm._Ollama.models():
-            fit, why = machine.verdict(m["size_gb"])
-            now_ok, now_why = machine.fits_now(m["size_gb"])
-            local.append({**m, "fit": fit, "why": why, "now_ok": now_ok, "now_why": now_why})
+        engine_ok, engine_why = models.available()
         return web.json_response({
             "machine": machine.describe(),
-            # Reachable, not merely installed: Ollama not running is the common case and the
-            # page should say so rather than showing an empty list that reads as "none exist".
-            "ollama": bool(_llm._Ollama.credential()),
-            "ollama_host": _llm._Ollama.host(),
-            "local": local,
-            # What could be pulled, minus what already is. Sized the same way, so the choice
-            # to download is made against the machine rather than after a 5 GB surprise.
-            "suggested": [
-                {**x, **dict(zip(("fit", "why"), machine.verdict(x["size_gb"])))}
-                for x in _llm._Ollama.SUGGESTED
-                if x["name"] not in {m["name"] for m in _llm._Ollama.models()}
-            ],
-            "pulling": dict(_pull),
-            "hosted": [{"name": n} for n in ("gemini", "anthropic", "qwen")],
+            "disk_free_gb": round(models.disk_free_mb() / 1024, 1),
+            "engine": engine_ok,
+            "engine_why": engine_why,
+            "models": models.listing(),
+            "loaded": models.loaded(),
+            "progress": models.progress(),
             "current": os.getenv("SECRETARY_MODEL", ""),
-            # Which of the two the owner is on, so the page opens on the right one
-            # rather than making them re-declare a choice they already made.
-            "provider": os.getenv("SECRETARY_PROVIDER", ""),
+            # Which of the two branches the owner is on, so the page opens on the right one
+            # rather than making them re-declare a choice they already made. EMPTY when the
+            # name is not one anything serves — an upgraded install holds an Ollama tag, and
+            # `provider()` routes that to gemini, which would open the page on the hosted
+            # branch and hide the very list they need.
+            "provider": (_llm.provider() if _llm.recognised(os.getenv("SECRETARY_MODEL", ""))
+                         else ""),
             "configured": _llm.configured(),
         })
 

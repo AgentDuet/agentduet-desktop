@@ -43,18 +43,11 @@ except ImportError:                     # pragma: no cover - depends on the envi
 
 logger = logging.getLogger("secretary.llm")
 
-#: Set explicitly, or inferred from the model name — a user who writes
-#: SECRETARY_MODEL=claude-sonnet-5 should not also have to name the provider.
-#:
-#: `qwen` maps to DashScope (hosted). The same weights can also run locally through Ollama;
-#: that is a different transport, not a different model, so it will need
-#: SECRETARY_PROVIDER=ollama rather than a name prefix to tell them apart.
-_PROVIDERS = {"gemini": ("gemini",), "anthropic": ("claude",), "dashscope": ("qwen",),
-              # Local, and matched on the family names people actually type. `qwen` is
-              # deliberately NOT here: it belongs to DashScope above, and a local qwen must be
-              # selected by setting SECRETARY_PROVIDER=ollama rather than by guessing from a
-              # name that means two different things.
-              "ollama": ("llama", "mistral", "phi", "gemma", "deepseek")}
+#: Which provider owns a model name. LOCAL IS DECIDED BY THE CATALOGUE, not by a prefix: the
+#: ids in models.CATALOGUE are exact, so there is nothing to guess. `qwen` remains a prefix for
+#: DashScope because it means two different things — a hosted qwen and a local one — and a local
+#: qwen is matched by its full catalogue id (`qwen-2.5-7b`), never by the bare word.
+_PROVIDERS = {"gemini": ("gemini",), "anthropic": ("claude",), "dashscope": ("qwen",)}
 
 #: Gemini honours it; the Claude 5 family rejects any non-default value with a 400, so the
 #: Anthropic path cannot send it. Consequence worth knowing rather than hiding: borderline
@@ -69,11 +62,19 @@ MAX_TOKENS = int(os.getenv("SECRETARY_MAX_TOKENS", "8192"))
 
 
 def provider(model: str = "") -> str:
-    """Which provider serves `model`. Explicit env wins; otherwise inferred from the name."""
+    """Which provider serves `model`. Explicit env wins, then the catalogue, then the name.
+
+    THE CATALOGUE IS CHECKED BEFORE THE PREFIXES, and that order is load-bearing. `qwen-2.5-7b`
+    is a local model whose name contains `qwen`, which is DashScope's prefix — inferring from
+    the name first sent a downloaded model to a cloud vendor. An exact id beats a substring.
+    """
     named = (os.getenv("SECRETARY_PROVIDER") or "").strip().lower()
-    if named in _PROVIDERS:
+    if named in _IMPLS:
         return named
     name = (model or os.getenv("SECRETARY_MODEL") or "").lower()
+    from . import models
+    if name in models.CATALOGUE:
+        return "local"
     for prov, prefixes in _PROVIDERS.items():
         if any(p in name for p in prefixes):
             return prov
@@ -103,103 +104,51 @@ class _Gemini:
         return (resp.text or "").strip()
 
 
-class _Ollama:
-    """A model running on this machine, through Ollama's local HTTP API.
+class _Local:
+    """A model running on THIS machine, from weights we shipped for and downloaded ourselves.
 
     WHY THIS IS VIABLE HERE WHEN IT WAS NOT FOR VOICE. Speech-to-speech was chosen over a local
     cascade on latency: a CPU model cannot hold a live call. The recorder's model job is
     different — summarising a transcript AFTER the call, on a queue where nothing waits. That is
-    the same argument that already makes local speech recognition work, and it is why the
-    "nothing leaves your machine" claim can be true end to end rather than true until you attach
-    a key.
+    the same argument that already makes local speech recognition work, and it is why "nothing
+    leaves your machine" can be true end to end rather than true until you attach a key.
 
-    NO API KEY, so `credential()` reports whether the SERVER is reachable instead. That keeps
-    the rest of the code provider-neutral: everything asks "is there a credential" and gets a
+    IT WAS OLLAMA UNTIL 2026-08-27. Ollama made model management free and cost the thing the
+    product sells: download one binary and it works. `models.py` owns the weights now, so there
+    is nothing for the owner to install.
+
+    NO API KEY, so `credential()` reports whether local inference is POSSIBLE — the engine is in
+    this build and a model is on disk. Everything else asks "is there a credential" and gets a
     truthful answer about whether this provider can actually serve.
     """
 
-    #: Ollama's default. Overridable because people do run it on another box on the LAN, which
-    #: is still meaningfully "not a cloud vendor" even if it is not this machine.
-    HOST = "OLLAMA_HOST"
-    DEFAULT_HOST = "http://127.0.0.1:11434"
-
-    @classmethod
-    def host(cls) -> str:
-        return (os.getenv(cls.HOST) or cls.DEFAULT_HOST).rstrip("/")
-
     @classmethod
     def credential(cls) -> str | None:
-        """Reachability stands in for a key. None when nothing is listening."""
-        import httpx
-        try:
-            r = httpx.get(f"{cls.host()}/api/tags", timeout=2)
-            return cls.host() if r.status_code == 200 else None
-        except Exception:
+        from . import models
+        if not models.available()[0]:
             return None
-
-    @classmethod
-    def models(cls) -> list[dict]:
-        """What is already pulled, with sizes. Empty when Ollama is not running."""
-        import httpx
-        try:
-            r = httpx.get(f"{cls.host()}/api/tags", timeout=3)
-            return [{"name": m.get("name", ""), "size_gb": round(m.get("size", 0) / 1024**3, 1)}
-                    for m in (r.json().get("models") or [])]
-        except Exception:
-            return []
-
-    #: Worth offering because they are small enough to be useful on an ordinary laptop and
-    #: general enough to summarise a call. Sizes are the quantised download, which is what the
-    #: machine check needs — not the parameter count people quote.
-    SUGGESTED = [
-        {"name": "qwen2.5:3b", "size_gb": 1.9, "note": "small and quick; fine for summaries"},
-        {"name": "llama3.2:3b", "size_gb": 2.0, "note": "small, good general phrasing"},
-        {"name": "qwen2.5:7b", "size_gb": 4.7, "note": "noticeably better, needs more room"},
-        {"name": "llama3.1:8b", "size_gb": 4.9, "note": "strong all-rounder"},
-        {"name": "gemma2:9b", "size_gb": 5.4, "note": "strong, slower on a CPU"},
-    ]
-
-    @classmethod
-    def pull(cls, name: str) -> str:
-        """Download a model. BLOCKING and slow — gigabytes — so call it off the event loop."""
-        import httpx
-        with httpx.stream("POST", f"{cls.host()}/api/pull",
-                          json={"name": name, "stream": False}, timeout=None) as r:
-            r.read()
-            if r.status_code >= 400:
-                return f"Ollama refused to pull {name} ({r.status_code})."
-        return f"Downloaded {name}."
-
-    @classmethod
-    def delete(cls, name: str) -> str:
-        """Remove a pulled model, freeing its disk."""
-        import httpx
-        try:
-            r = httpx.request("DELETE", f"{cls.host()}/api/delete",
-                              json={"name": name}, timeout=30)
-        except Exception as exc:
-            return f"Could not reach Ollama: {exc}"
-        if r.status_code >= 400:
-            return f"Ollama refused to delete {name} ({r.status_code})."
-        return f"Deleted {name}."
+        return "on-device" if any(models.is_downloaded(m) for m in models.CATALOGUE) else None
 
     def __init__(self, model: str, key: str | None):
         self.model = model
-        self.base = self.host()
 
     def complete(self, prompt: str, think: bool = False) -> str:
-        import httpx
-        # NOT the chat endpoint: every caller here sends one self-contained prompt and wants one
-        # answer, which is what /api/generate is. `stream` off because nothing renders tokens.
-        r = httpx.post(f"{self.base}/api/generate",
-                       json={"model": self.model, "prompt": prompt, "stream": False,
-                             "options": {"temperature": TEMPERATURE}},
-                       # Generous: a local model on a CPU is slow, and this runs on a queue
-                       # where nothing is waiting. Timing out a summary that would have arrived
-                       # is worse than waiting for it.
-                       timeout=300)
-        r.raise_for_status()
-        return (r.json().get("response") or "").strip()
+        from . import models
+        engine, msg = models.load(self.model)
+        if engine is None:
+            raise RuntimeError(msg)
+        # LOADED ONCE AND KEPT. `models.load` returns the resident engine when it is already the
+        # one asked for, so a second summary does not re-read gigabytes from disk. Releasing it
+        # is the owner's call, through unload — see the three states in models.py.
+        out = engine.create_chat_completion(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=TEMPERATURE,
+            # Room for a transcript summary. A cap small enough to truncate does not error; it
+            # returns a confident half-answer, which is worse.
+            max_tokens=2048)
+        return (out["choices"][0]["message"]["content"] or "").strip()
+
+
 
 
 class _Anthropic:
@@ -412,7 +361,7 @@ def _strip_thinking(text: str) -> str:
 
 
 _IMPLS = {"gemini": _Gemini, "anthropic": _Anthropic, "dashscope": _DashScope,
-          "ollama": _Ollama}
+          "local": _Local}
 _cached: dict[str, object] = {}
 
 
@@ -494,7 +443,20 @@ def verify(model: str = "") -> tuple[bool, str]:
 #: What the owner calls each provider. `describe()` names the code's provider key, which is
 #: right for a log and wrong for a settings page — nobody bought a "dashscope".
 _VENDOR = {"gemini": "Google", "anthropic": "Anthropic", "dashscope": "Alibaba",
-           "ollama": "this machine"}
+           "local": "this machine"}
+
+
+def recognised(model: str) -> bool:
+    """Is this a name some provider here actually serves?
+
+    `provider()` must always answer, so it defaults to gemini for anything unmatched — which is
+    right for routing and wrong for reporting. This is the question routing cannot ask.
+    """
+    name = (model or "").lower()
+    from . import models
+    if name in models.CATALOGUE:
+        return True
+    return any(p in name for prefixes in _PROVIDERS.values() for p in prefixes)
 
 
 def summary(model: str = "") -> str:
@@ -507,13 +469,20 @@ def summary(model: str = "") -> str:
     m = model or os.getenv("SECRETARY_MODEL")
     if not m:
         return "No model attached. Calls are still carried and recorded without one."
+    # AN UPGRADE LEAVES A NAME BEHIND. Instances configured before 2026-08-27 hold an Ollama
+    # tag like `tulu3:8b`, which no provider serves now — and `provider()` falls through to
+    # gemini, so the owner was told their model "has no key yet". It is not a missing key; the
+    # model is gone. Say that, because the fix is to choose another one, not to find a key.
+    if not recognised(m):
+        return (f"{m} is not available in this build — it was managed by Ollama, which is no "
+                f"longer required. Choose a model below and it downloads itself.")
     prov = provider(m)
     impl = _IMPLS[prov]
     if impl.credential() is None:
         return f"{m} is chosen, but has no key yet."
     if client(m) is None:
         return f"{m} is chosen, but it would not start. See the log."
-    where = "on this machine" if prov == "ollama" else f"hosted by {_VENDOR.get(prov, prov)}"
+    where = "on this machine" if prov == "local" else f"hosted by {_VENDOR.get(prov, prov)}"
     return f"{m}, {where}"
 
 
