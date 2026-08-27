@@ -72,6 +72,31 @@ try:
 except Exception as _exc:
     print(f"WARNING: wasmtime not collected ({_exc}) — customer tools will fail at runtime")
 
+# THE LOCAL LLM ENGINE, ADDED BY HAND FOR THE SAME REASON AS WASMTIME.
+#
+# `llama_cpp/llama_cpp.py` computes `dirname(__file__)/"lib"` at import and ctypes-loads
+# libllama from it. PyInstaller's analysis sees a string, not a dependency — so
+# `--collect-all llama_cpp` produces a binary that imports the package happily and dies on
+# "Shared library with base name 'llama' not found" the first time a model is loaded. Which is
+# after the owner has downloaded several gigabytes of weights.
+#
+# All five libraries go in the SAME directory: libllama links the three libggml ones through an
+# $ORIGIN rpath, so splitting them breaks the load with a much less obvious error.
+#
+# Absent, the binary is still correct — models.available() reports that local models are not in
+# this build, hosted providers work, and calls are carried and recorded with no model at all.
+_llama_binaries = []
+try:
+    import llama_cpp as _lc
+    _lc_root = Path(_lc.__file__).parent
+    for _pat in ("*.so", "*.dylib", "*.dll"):
+        for _lib in (_lc_root / "lib").glob(_pat):
+            _llama_binaries.append((str(_lib), "llama_cpp/lib"))
+    if not _llama_binaries:
+        print("WARNING: llama_cpp found but its lib/ is empty — local models will not run")
+except Exception as _exc:
+    print(f"NOTE: llama_cpp not collected ({_exc}) — this binary has no local models")
+
 hiddenimports = [
     # OUR OWN modules, all of them. Several are imported lazily inside functions (`web` from the
     # daemon, `tools`/`brain`/`canvas` from each other) to keep import order and startup cost
@@ -97,6 +122,10 @@ hiddenimports = [
     # ever. Exactly the lazy-import gotcha at the top of CLAUDE.md.
     *collect_submodules("faster_whisper"),
     "ctranslate2", "onnxruntime", "av", "tokenizers",
+    # THE LOCAL LLM. Imported inside models.load() and probed with find_spec in
+    # models.available() — so PyInstaller sees neither, exactly like faster_whisper above.
+    *collect_submodules("llama_cpp"),
+    "diskcache", "jinja2",      # llama_cpp's own runtime dependencies, imported lazily by it
 ]
 
 # ctranslate2 keeps its inference engine in a SIBLING `ctranslate2.libs/` directory, the
@@ -121,7 +150,7 @@ a = Analysis(
     [str(Path(SPECPATH).parent / "entry.py")],
     pathex=[str(Path(SPECPATH).parent / "src")],
     datas=datas,
-    binaries=_wasm_binaries + _ct2_libs,
+    binaries=_wasm_binaries + _ct2_libs + _llama_binaries,
     hiddenimports=hiddenimports,
     excludes=["tkinter", "test", "unittest"],   # nothing here draws a GUI
     noarchive=False,

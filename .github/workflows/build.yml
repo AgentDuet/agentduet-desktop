@@ -83,7 +83,15 @@ jobs:
           # out, that owner gets recordings and no transcripts, and the no-key path we built is
           # a claim rather than a feature. numpy is already here via the qwen adapter, so the
           # real additions are ctranslate2, onnxruntime, tokenizers and av.
-          pip install ".[gemini,anthropic,qwen,stt]" pyinstaller
+          # [local] TOO, and it needs an EXTRA INDEX. llama-cpp-python publishes no wheels on
+          # PyPI and builds from source, which would need a C++ toolchain on the runner and,
+          # worse, imply one on the owner's machine — the very dependency this feature removes.
+          # The maintainer's own index has prebuilt ones; the native libraries are 7.7 MB.
+          #
+          # Local models replaced Ollama on 2026-08-27. Left out, the binary looks healthy and
+          # reports that local models are "not in this build" — true, and not what we shipped.
+          pip install --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu \
+            ".[gemini,anthropic,qwen,stt,local]" pyinstaller
 
       - name: Build the binary
         run: pyinstaller --noconfirm --distpath dist-bin packaging/agentduet-desktop.spec
@@ -110,6 +118,11 @@ jobs:
           done
           grep -q "voice    : available" status.txt \
             || { echo "::error::binary cannot answer calls — check agentduet-adapters[qwen]"; exit 1; }
+          # LOCAL MODELS. The engine is ctypes-loaded from a path computed at import, so a
+          # binary missing its libraries imports llama_cpp fine and dies when a model is first
+          # loaded — after the owner has downloaded gigabytes of weights.
+          grep -q "engine   : available" status.txt \
+            || { echo "::error::binary has no local model engine — check the [local] extra and the spec"; exit 1; }
 
       # ---- the native shell, when asked for ---------------------------------------------------
       #

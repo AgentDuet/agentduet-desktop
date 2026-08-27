@@ -106,6 +106,24 @@ def cmd_status(args) -> int:
             pass
     print(f"  providers: {', '.join(providers) if providers else 'NONE — no model can be attached'}")
 
+    # LOCAL MODELS, and this line has to LOAD the engine rather than import the package.
+    # llama_cpp ctypes-loads its library from a path computed at import, so a binary built
+    # without those files imports perfectly and fails the first time a model is used — which is
+    # after the owner has downloaded several gigabytes of weights. Importing llama_cpp performs
+    # that load, so a plain import IS the check here; find_spec would not be.
+    from . import models as _models
+    _ok, _why = _models.available()
+    if _ok:
+        try:
+            import llama_cpp                                       # noqa: F401
+        except Exception as exc:                                   # the ctypes load failed
+            _ok, _why = False, f"engine present but its library did not load: {exc}"
+    _here = sum(1 for _m in _models.CATALOGUE if _models.is_downloaded(_m))
+    print(f"  engine   : {'available' if _ok else 'NOT available — ' + _why}")
+    if _ok:
+        print(f"  models   : {_here} of {len(_models.CATALOGUE)} downloaded"
+              + (f", {_models.loaded()} loaded" if _models.loaded() else ""))
+
     # WHAT HAPPENS TO A CALL, before what the call machinery can do. Which mode is active
     # changes the answer to "why did nobody answer my test call?" more than any line below it,
     # and reading `voice: available` while the agent is deliberately not answering is the kind
