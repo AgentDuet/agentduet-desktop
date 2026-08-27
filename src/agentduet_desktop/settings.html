@@ -638,8 +638,8 @@
     $('hostedList').innerHTML = (rows || []).map(h => `
       <div class="mcard ${h.in_use ? 'on' : ''}">
         <div class="mtop">
-          <span class="brand">${esc(h.id.toUpperCase().slice(0, 9))}</span>
-          <span class="nm">${esc(h.vendor)}</span>
+          <span class="brand">${esc(h.brand)}</span>
+          <span class="nm">${esc(h.family)}</span>
           ${h.in_use ? '<span class="rec">in use</span>' : ''}
           ${h.has_key ? `<span class="fitpill fits">${esc(h.how)}</span>`
                       : '<span class="fitpill unknown">no key</span>'}
@@ -661,7 +661,7 @@
                <button class="act get" data-save="${esc(h.id)}">Check and save</button>`}
         </div>
         <details class="sizes">
-          <summary>another model from ${esc(h.vendor)}</summary>
+          <summary>another ${esc(h.family)} model</summary>
           <div class="frow" style="margin-top:.5rem">
             <input type="text" class="hother" data-p="${esc(h.id)}"
                    placeholder="exact model name">
@@ -686,7 +686,7 @@
       send({action: 'use_hosted', name: v, provider: el.dataset.other});
     });
     $('hostedList').querySelectorAll('[data-forget]').forEach(el => el.onclick = () => {
-      if (!confirm(`Forget the ${el.dataset.forget} key? You will need it again to come back.`))
+      if (!confirm(`Forget this key? You will need it again to come back.`))
         return;
       send({action: 'forget_key', name: el.dataset.forget});
     });

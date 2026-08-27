@@ -360,8 +360,75 @@ def _strip_thinking(text: str) -> str:
     return re.sub(r"<think>.*", "", text, flags=re.S)
 
 
+class _OpenAICompat:
+    """Any provider that speaks the OpenAI chat-completions shape over a bearer key.
+
+    A separate small class rather than a refactor of `_DashScope`: that one carries region
+    selection, a key file, and an SSE path for Qwen's thinking mode, none of which a plain
+    provider needs — and rewriting a working money-path provider to share code with two new
+    ones is a poor trade the day before a demo.
+
+    Subclasses set KEY, URL and LABEL. Nothing else differs.
+    """
+
+    KEY = ""
+    URL = ""
+    LABEL = ""
+
+    @classmethod
+    def credential(cls) -> str | None:
+        return os.getenv(cls.KEY) or None
+
+    def __init__(self, model: str, key: str | None):
+        self.model, self.key = model, key or os.getenv(self.KEY, "")
+
+    def complete(self, prompt: str, think: bool = False) -> str:
+        import httpx
+        r = httpx.post(self.URL,
+                       headers={"Authorization": f"Bearer {self.key}",
+                                "Content-Type": "application/json"},
+                       json={"model": self.model,
+                             "messages": [{"role": "user", "content": prompt}],
+                             "temperature": TEMPERATURE},
+                       timeout=120)
+        if r.status_code >= 400:
+            raise RuntimeError(f"{self.LABEL} refused the request ({r.status_code}): "
+                               f"{r.text[:200]}")
+        return (r.json()["choices"][0]["message"]["content"] or "").strip()
+
+
+class _XAI(_OpenAICompat):
+    """Grok, on xAI's own OpenAI-compatible endpoint."""
+
+    KEY = "XAI_API_KEY"
+    URL = "https://api.x.ai/v1/chat/completions"
+    LABEL = "xAI"
+
+
+class _Bedrock(_OpenAICompat):
+    """Amazon Nova, through Bedrock's OpenAI-compatible endpoint and a Bedrock API key.
+
+    UNTESTED BY US — we hold no AWS key, so this path has never made a real request. It is
+    written from the documented endpoint shape rather than from a run, and the region is
+    part of the URL, so a wrong region is a wrong host rather than a wrong parameter.
+
+    That is safer than it sounds because `attach_model` VERIFIES before it saves: a wrong
+    endpoint or a key of the wrong kind fails at the moment the owner configures it, with the
+    provider's own error, rather than silently at the first call. If it turns out Bedrock
+    needs SigV4 rather than a bearer token for this route, that is what the owner will see.
+    """
+
+    KEY = "AWS_BEDROCK_API_KEY"
+    LABEL = "Amazon Bedrock"
+
+    @property
+    def URL(self) -> str:                     # region belongs to the instance, not the class
+        region = os.getenv("AWS_REGION") or "us-east-1"
+        return f"https://bedrock-runtime.{region}.amazonaws.com/openai/v1/chat/completions"
+
+
 _IMPLS = {"gemini": _Gemini, "anthropic": _Anthropic, "dashscope": _DashScope,
-          "local": _Local}
+          "local": _Local, "xai": _XAI, "bedrock": _Bedrock}
 _cached: dict[str, object] = {}
 
 
@@ -443,7 +510,7 @@ def verify(model: str = "") -> tuple[bool, str]:
 #: What the owner calls each provider. `describe()` names the code's provider key, which is
 #: right for a log and wrong for a settings page — nobody bought a "dashscope".
 _VENDOR = {"gemini": "Google", "anthropic": "Anthropic", "dashscope": "Alibaba",
-           "local": "this machine"}
+           "local": "this machine", "xai": "xAI", "bedrock": "Amazon"}
 
 
 def recognised(model: str) -> bool:
@@ -532,17 +599,33 @@ def describe(model: str = "") -> str:
 # free-text field beside them is not a fallback — it is the normal way to reach anything newer.
 # Listing live models per provider once a key exists is worth doing and is not done.
 
+#: TAG IS THE COMPANY, HEADING IS THE NAME PEOPLE KNOW — the same shape as the local cards,
+#: which read META / Llama 3.2 3B. Hosted used to read ANTHROPIC / Anthropic: the API's internal
+#: id on the tag and the company printed twice, while the word an owner actually recognises
+#: ("Claude") appeared nowhere.
 HOSTED = {
-    "gemini": dict(
-        vendor="Google", models=["gemini-3.1-flash", "gemini-3.1-pro"],
-        what="Fast and inexpensive. The default this project was built against."),
     "anthropic": dict(
-        vendor="Anthropic", models=["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5"],
+        brand="ANTHROPIC", family="Claude",
+        models=["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5"],
         what="Strongest on instruction-following and long transcripts. Also accepts a "
              "`claude` CLI login instead of a key."),
+    "gemini": dict(
+        brand="GOOGLE", family="Gemini",
+        models=["gemini-3.1-flash", "gemini-3.1-pro"],
+        what="Fast and inexpensive. The default this project was built against."),
     "dashscope": dict(
-        vendor="Alibaba", models=["qwen3.6-flash", "qwen3.6-plus"],
-        what="Qwen, hosted. The same family as the local Qwen models, without the download."),
+        brand="ALIBABA", family="Qwen",
+        models=["qwen3.6-flash", "qwen3.6-plus"],
+        what="The same family as the local Qwen models, without the download."),
+    "xai": dict(
+        brand="XAI", family="Grok",
+        models=["grok-4", "grok-4-fast"],
+        what="xAI's hosted line, on an OpenAI-compatible endpoint."),
+    "bedrock": dict(
+        brand="AMAZON", family="Nova",
+        models=["amazon.nova-lite-v1:0", "amazon.nova-pro-v1:0"],
+        what="Nova through Bedrock. Needs a Bedrock API key and the right AWS_REGION — and "
+             "we hold no AWS account, so this is the one provider here we have never run."),
 }
 
 
@@ -559,7 +642,8 @@ def hosted_listing() -> list[dict]:
         impl = _IMPLS[name]
         cred = impl.credential()
         out.append({
-            "id": name, "vendor": spec["vendor"], "what": spec["what"],
+            "id": name, "brand": spec["brand"], "family": spec["family"],
+            "what": spec["what"],
             "key_env": getattr(impl, "KEY", ""),
             # None means no credential at all; "" means signed in some other way (an Anthropic
             # CLI profile), which is a real credential and must not read as a missing one.
@@ -569,7 +653,7 @@ def hosted_listing() -> list[dict]:
             "model": live_model if name == live_prov else "",
             "models": spec["models"],
         })
-    return sorted(out, key=lambda h: (not h["in_use"], h["vendor"].lower()))
+    return sorted(out, key=lambda h: (not h["in_use"], h["brand"].lower()))
 
 
 def forget_key(name: str) -> str:
@@ -579,11 +663,11 @@ def forget_key(name: str) -> str:
         return f"{name} is not a provider we offer."
     live = os.getenv("SECRETARY_MODEL", "")
     if recognised(live) and provider(live) == name:
-        return (f"{spec['vendor']} is in use. Choose another model first, then forget the key.")
+        return f"{spec['family']} is in use. Choose another model first, then forget the key."
     var = getattr(_IMPLS[name], "KEY", "")
     if not var or os.getenv(var) is None:
-        return f"No {spec['vendor']} key is stored."
+        return f"No {spec['family']} key is stored."
     from . import tools
     tools._forget_env([var])
     _cached.clear()          # a cached client outlives the key that built it
-    return f"Forgot the {spec['vendor']} key."
+    return f"Forgot the {spec['family']} key."
