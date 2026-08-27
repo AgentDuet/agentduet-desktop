@@ -530,13 +530,18 @@
   // A weight in GB is not a decision. "4.9 GB, and you have 10 usable" is.
   function modelsRender(d){
     const m = d.machine || {};
-    const gpu = m.gpu_kind === 'cuda' ? `${esc(m.gpu_name)} · ${m.vram_gb} GB VRAM`
-              : m.gpu_kind === 'apple' ? 'Apple Silicon, shared memory'
-              : 'no GPU — the processor does the work';
-    $('machineState').innerHTML = `${m.ram_gb} GB memory · ${gpu} · ${d.disk_free_gb} GB free`
-      + `<br><span style="color:var(--faint)">About <b>${m.budget_gb} GB</b> is a reasonable `
-      + `budget for a model, leaving room for everything else you have open. `
-      + `<b>${m.available_gb} GB</b> is free right now.</span>`;
+    const gpu = m.gpu_kind === 'cuda' ? `${esc(m.gpu_name)}, ${m.vram_gb} GB VRAM`
+              : m.gpu_kind === 'apple' ? 'Apple Silicon'
+              : 'no GPU';
+    // FACTS, NOT A SENTENCE. This was a labelled line followed by a paragraph explaining what
+    // a reasonable memory budget is — and nobody reads a paragraph in a status box. The budget
+    // is already expressed where it is USED: every card says what it costs in memory and wears
+    // a fit pill computed against it. Saying the number too was arithmetic homework.
+    //
+    // Each figure carries its own unit, because the line once read "15 GB memory · 278 GB free"
+    // where the 278 was DISK, sitting on the memory line.
+    $('machineState').textContent =
+      `${m.ram_gb} GB memory · ${m.available_gb} GB free · ${d.disk_free_gb} GB disk · ${gpu}`;
 
     if (!touched) setWhere(d.provider === 'local' || !d.provider ? 'local' : 'hosted');
 
