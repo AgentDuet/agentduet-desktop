@@ -512,3 +512,78 @@ def describe(model: str = "") -> str:
     if cred is not None and client(m) is None:
         how += " — but the client failed to build; see the log"
     return f"{prov}/{m} — {how}"
+
+
+# ---- the hosted providers, as a list rather than a text field -------------------------------
+#
+# THE SAME THREE STATES AS A LOCAL MODEL, and the middle one was invisible until now. Keys live
+# per provider in the instance .env, so an owner who configured Gemini and then switched to
+# Claude still HAS their Gemini key — and the page could not say so, made them paste it again to
+# switch back, and never offered to remove it. That is `absent / on disk / in use` wearing
+# different words:
+#
+#   no key           -> paste one
+#   key stored       -> "use this", no retyping
+#   key and selected -> in use, and "forget this key" is the counterpart to Delete
+#
+# WHAT THIS DELIBERATELY DOES NOT CLAIM: that `models` enumerates what a provider offers. A GGUF
+# repository can be listed exactly; a hosted catalogue cannot, not without a key and a different
+# API per vendor. These are starting points taken from what this codebase already used, and the
+# free-text field beside them is not a fallback — it is the normal way to reach anything newer.
+# Listing live models per provider once a key exists is worth doing and is not done.
+
+HOSTED = {
+    "gemini": dict(
+        vendor="Google", models=["gemini-3.1-flash", "gemini-3.1-pro"],
+        what="Fast and inexpensive. The default this project was built against."),
+    "anthropic": dict(
+        vendor="Anthropic", models=["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5"],
+        what="Strongest on instruction-following and long transcripts. Also accepts a "
+             "`claude` CLI login instead of a key."),
+    "dashscope": dict(
+        vendor="Alibaba", models=["qwen3.6-flash", "qwen3.6-plus"],
+        what="Qwen, hosted. The same family as the local Qwen models, without the download."),
+}
+
+
+def hosted_listing() -> list[dict]:
+    """Every hosted provider, what it costs the owner to use, and whether we already hold a key.
+
+    Alphabetical by vendor, with whatever is in use pinned first — the same order as the local
+    list, for the same reason: any other order ranks the vendors.
+    """
+    live_model = os.getenv("SECRETARY_MODEL", "")
+    live_prov = provider(live_model) if recognised(live_model) else ""
+    out = []
+    for name, spec in HOSTED.items():
+        impl = _IMPLS[name]
+        cred = impl.credential()
+        out.append({
+            "id": name, "vendor": spec["vendor"], "what": spec["what"],
+            "key_env": getattr(impl, "KEY", ""),
+            # None means no credential at all; "" means signed in some other way (an Anthropic
+            # CLI profile), which is a real credential and must not read as a missing one.
+            "has_key": cred is not None,
+            "how": "" if cred is None else ("api key" if cred else "signed in"),
+            "in_use": name == live_prov,
+            "model": live_model if name == live_prov else "",
+            "models": spec["models"],
+        })
+    return sorted(out, key=lambda h: (not h["in_use"], h["vendor"].lower()))
+
+
+def forget_key(name: str) -> str:
+    """Remove a stored credential. Refuses the provider currently in use."""
+    spec = HOSTED.get(name)
+    if not spec:
+        return f"{name} is not a provider we offer."
+    live = os.getenv("SECRETARY_MODEL", "")
+    if recognised(live) and provider(live) == name:
+        return (f"{spec['vendor']} is in use. Choose another model first, then forget the key.")
+    var = getattr(_IMPLS[name], "KEY", "")
+    if not var or os.getenv(var) is None:
+        return f"No {spec['vendor']} key is stored."
+    from . import tools
+    tools._forget_env([var])
+    _cached.clear()          # a cached client outlives the key that built it
+    return f"Forgot the {spec['vendor']} key."
