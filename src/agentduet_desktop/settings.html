@@ -39,6 +39,9 @@
   .mfacts{display:flex;gap:.9rem;flex-wrap:wrap;font-family:var(--mono);font-size:10px;
     color:var(--faint);font-variant-numeric:tabular-nums;}
   .mact{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;}
+  /* The hosted cards put a key field and a model select in the action row, so those two
+     controls have to shrink to a row rather than filling the width like a form field. */
+  .mact select,.mact input{width:auto;flex:0 1 11rem;font-size:11px;padding:.25rem .4rem;}
   .live{font-size:10px;font-weight:700;color:var(--emerald);
     background:rgba(16,185,129,.18);padding:.15rem .5rem;border-radius:999px;}
   .bar{height:.35rem;border-radius:999px;background:var(--slate700);overflow:hidden;}
@@ -283,14 +286,9 @@
         <button type="button" data-where="hosted">Hosted provider</button>
       </div>
 
-      <div id="paneHosted" class="grp" hidden>
-        <div><label class="fl">Model name</label>
-          <input type="text" id="model"
-                 placeholder="gemini-3.1-flash, claude-sonnet-5, qwen3.6-flash"></div>
-        <div><label class="fl">API key</label>
-          <input type="password" id="key" autocomplete="off"></div>
-        <div class="acts"><button class="btn" id="saveModel">Check and save</button>
-          <span class="spin" id="spModel"></span></div>
+      <div id="paneHosted" hidden>
+        <div id="hostedList"></div>
+        <div id="mModelH"></div>
       </div>
 
       <div id="paneLocal">
@@ -359,10 +357,6 @@
       ? cur.does.split('\n').length + ' fact(s) recorded: ' + cur.does.split('\n')[0]
       : 'nothing recorded yet';
     $('modelState').textContent = cur.model || 'unknown';
-    // Only prefill from the current model when it is a hosted one — offering a local model
-    // as the example here suggests something that would fail.
-    if (cur.model_name && !/, on this machine$/.test(cur.model || ''))
-      $('model').placeholder = cur.model_name;
     $('connState').textContent = cur.connector || 'unknown';
     if (cur.connector_uuid) $('cUuid').value = cur.connector_uuid;
   }
@@ -379,16 +373,6 @@
     say('mYou', true, out.join('\n'));
   };
 
-  $('saveModel').onclick = async () => {
-    const key = $('key').value.trim();
-    if (!key) { say('mModel', false, 'Paste a key to change the model.'); return; }
-    $('saveModel').disabled = true; $('spModel').textContent = 'checking with the provider…';
-    const d = await post('/api/setup/model', {model: $('model').value.trim(), key});
-    $('saveModel').disabled = false; $('spModel').textContent = '';
-    say(d.ok ? 'mModel' : 'mHf', d.ok, d.message);
-    if (d.ok) { $('key').value = ''; closeOvl(); refreshCurrent(); loadModels(); }
-  };
-
   $('saveConn').onclick = async () => {
     const key = $('cKey').value.trim(), uuid = $('cUuid').value.trim();
     if (!key || !uuid) { say('mConn', false, 'Both the API key and the uuid are needed.'); return; }
@@ -399,7 +383,33 @@
     if (d.ok) $('cKey').value = '';
   };
 
-  // ---- what happens to a call ------------------------------------------------------------
+  // ---- speech recognition ------------------------------------------------------------------
+  let sttPoll = null;
+  function sttRender(d){
+    if (!d || d.error === 'unauthorised') return;
+    const st = $('sttState');
+    if (!d.needed) {
+      st.textContent = 'Your DashScope key transcribes these, on Alibaba\'s servers. '
+        + 'Nothing is downloaded and nothing runs here.';
+      $('doStt').hidden = true;
+    } else if (!d.installed) {
+      st.textContent = 'The on-machine engine is not installed in this build.';
+      $('doStt').hidden = true;
+    } else if (d.cached) {
+      st.innerHTML = 'Runs on this machine. <b>' + esc(d.model) + '</b> is ready.';
+      $('doStt').hidden = true;
+    } else {
+      st.innerHTML = 'Runs on this machine. <b>' + esc(d.model) + '</b> is not downloaded yet '
+        + '(about <b>' + d.mb + ' MB</b>). It will fetch itself at the first transcription.';
+      $('doStt').hidden = !!d.running;
+    }
+    $('spStt').textContent = d.running ? 'downloading…' : '';
+    if (d.running && !sttPoll) sttPoll = setInterval(sttCheck, 3000);
+    if (!d.running && sttPoll) { clearInterval(sttPoll); sttPoll = null; }
+  }
+  function sttCheck(){
+    fetch(`/api/setup/stt?t=${T}`).then(r => r.json()).then(sttRender).catch(() => {});
+  }
   $('doStt').onclick = async () => {
     $('doStt').hidden = true; $('spStt').textContent = 'starting…';
     await post('/api/setup/stt', {});
@@ -520,6 +530,7 @@
     $('machineState').textContent =
       `${m.ram_gb} GB memory · ${m.available_gb} GB free · ${d.disk_free_gb} GB disk · ${gpu}`;
 
+    hostedRender(d.hosted);
     if (!touched) setWhere(d.provider === 'local' || !d.provider ? 'local' : 'hosted');
 
     if (!d.engine) {
@@ -616,6 +627,76 @@
 
     // While bytes are moving, keep the bar moving. Nothing else on this page polls.
     if (busy) setTimeout(loadModels, 1000);
+  }
+
+  // ---- hosted providers, in the same three states as a local model ----------------------
+  // no key -> paste one | key stored -> "Use this", no retyping | in use -> "Forget this key".
+  // The middle state existed all along and was invisible: keys live per provider in .env, so
+  // someone who configured Gemini and moved to Claude still HAS their Gemini key, and the page
+  // made them paste it again to come back.
+  function hostedRender(rows){
+    $('hostedList').innerHTML = (rows || []).map(h => `
+      <div class="mcard ${h.in_use ? 'on' : ''}">
+        <div class="mtop">
+          <span class="brand">${esc(h.id.toUpperCase().slice(0, 9))}</span>
+          <span class="nm">${esc(h.vendor)}</span>
+          ${h.in_use ? '<span class="rec">in use</span>' : ''}
+          ${h.has_key ? `<span class="fitpill fits">${esc(h.how)}</span>`
+                      : '<span class="fitpill unknown">no key</span>'}
+        </div>
+        <div class="mwhat">${esc(h.what)}</div>
+        ${h.in_use ? `<div class="mfacts"><span>${esc(h.model)}</span></div>` : ''}
+        <div class="mact">
+          ${h.has_key
+            ? `<select class="hmodel" data-p="${esc(h.id)}">
+                 ${h.models.map(m => `<option ${m === h.model ? 'selected' : ''}>${esc(m)}</option>`).join('')}
+               </select>
+               <button class="act use" data-use="${esc(h.id)}">Use this</button>
+               <button class="act" data-forget="${esc(h.id)}">Forget this key</button>`
+            : `<input class="hkey" type="password" data-p="${esc(h.id)}"
+                      placeholder="${esc(h.key_env)}" autocomplete="off">
+               <select class="hmodel" data-p="${esc(h.id)}">
+                 ${h.models.map(m => `<option>${esc(m)}</option>`).join('')}
+               </select>
+               <button class="act get" data-save="${esc(h.id)}">Check and save</button>`}
+        </div>
+        <details class="sizes">
+          <summary>another model from ${esc(h.vendor)}</summary>
+          <div class="frow" style="margin-top:.5rem">
+            <input type="text" class="hother" data-p="${esc(h.id)}"
+                   placeholder="exact model name">
+            <button class="act get" data-other="${esc(h.id)}" style="flex-shrink:0">Use it</button>
+          </div>
+          <p class="mwhy">A provider's catalogue cannot be listed the way a repository's files
+            can, so anything newer than the names above is typed here.</p>
+        </details>
+      </div>`).join('');
+
+    const pick = (p, cls) => (document.querySelector(`.${cls}[data-p="${p}"]`) || {}).value || '';
+    const send = async body => {
+      const r = await post('/api/models', body);
+      say('mModelH', r.ok, r.message);
+      if (r.ok) { refreshCurrent(); loadModels(); }
+    };
+    $('hostedList').querySelectorAll('[data-use]').forEach(el => el.onclick = () =>
+      send({action: 'use_hosted', name: pick(el.dataset.use, 'hmodel'), provider: el.dataset.use}));
+    $('hostedList').querySelectorAll('[data-other]').forEach(el => el.onclick = () => {
+      const v = pick(el.dataset.other, 'hother');
+      if (!v) return say('mModelH', false, 'Type a model name first.');
+      send({action: 'use_hosted', name: v, provider: el.dataset.other});
+    });
+    $('hostedList').querySelectorAll('[data-forget]').forEach(el => el.onclick = () => {
+      if (!confirm(`Forget the ${el.dataset.forget} key? You will need it again to come back.`))
+        return;
+      send({action: 'forget_key', name: el.dataset.forget});
+    });
+    $('hostedList').querySelectorAll('[data-save]').forEach(el => el.onclick = async () => {
+      const pr = el.dataset.save, key = pick(pr, 'hkey');
+      if (!key) return say('mModelH', false, 'Paste a key first.');
+      const d = await post('/api/setup/model', {model: pick(pr, 'hmodel'), key});
+      say('mModelH', d.ok, d.message);
+      if (d.ok) { refreshCurrent(); loadModels(); }
+    });
   }
 
   // ---- the escape hatch ----------------------------------------------------------------

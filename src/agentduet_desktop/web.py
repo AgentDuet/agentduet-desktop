@@ -601,6 +601,10 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         people.sort(key=lambda p: p["last"], reverse=True)
         return web.json_response({"people": people, "folder": str(folder)})
 
+    def models_llm_forget(name):
+        from . import llm as _l
+        return _l.forget_key(name)
+
     async def api_model_action(request):
         """download | cancel | load | unload | delete — one verb per state change.
 
@@ -651,6 +655,17 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response({"ok": True, "message":
                 f"Downloading {models.CATALOGUE.get(name, {}).get('name', name)}. It keeps "
                 "going if you leave this page."})
+
+        if act == "use_hosted":
+            # A key we ALREADY HOLD needs no retyping — the same "Use this" a downloaded model
+            # gets. attach_model verifies against the provider before saving either way.
+            msg = await asyncio.to_thread(tools.attach_model, "", name,
+                                          (body.get("provider") or "").strip())
+            return web.json_response({"ok": "Attached" in msg, "message": msg})
+
+        if act == "forget_key":
+            return web.json_response({"ok": True,
+                                      "message": await asyncio.to_thread(models_llm_forget, name)})
 
         if act == "add":
             # THE ESCAPE HATCH. The owner names a repository and one file in it; the URL is
@@ -714,6 +729,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             "engine": engine_ok,
             "engine_why": engine_why,
             "models": models.listing(),
+            "hosted": _llm.hosted_listing(),
             "loaded": models.loaded(),
             "progress": models.progress(),
             "current": os.getenv("SECRETARY_MODEL", ""),

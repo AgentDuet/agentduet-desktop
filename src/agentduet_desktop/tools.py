@@ -547,10 +547,21 @@ def attach_model(key: str, model: str = "", provider: str = "") -> str:
         return (f"Attached {models.CATALOGUE.get(m, {}).get('name', m)}, running on this "
                 "machine. Transcripts stay here — nothing is sent to a provider.")
 
-    if not key:
-        return "Give the API key to attach."
-
     var = llm.key_name(m)
+
+    # A KEY WE ALREADY HOLD NEEDS NO RETYPING. Switching from Claude back to Gemini used to
+    # demand the Gemini key again, because this refused an empty one — while the key was
+    # sitting in .env the whole time, unmentioned. An empty key now means "use the stored
+    # one", and only a provider with nothing stored is asked for it.
+    #
+    # "" is a real credential for Anthropic (a CLI profile), so the test is `is None`, not
+    # falsiness. Verification still runs either way: an attach that skips it is how an
+    # instance reports itself configured while holding a stale key.
+    if not key:
+        if llm._IMPLS[llm.provider(m)].credential() is None:
+            return "Give the API key to attach."
+        key = os.getenv(var) or ""
+
     before, before_model = os.environ.get(var), os.environ.get("SECRETARY_MODEL")
     os.environ[var], os.environ["SECRETARY_MODEL"] = key, m
     llm.forget()                       # drop any client cached under the old credential
@@ -571,7 +582,12 @@ def attach_model(key: str, model: str = "", provider: str = "") -> str:
         llm.forget()
         return f"NOT saved — {why}"
 
-    _write_env({var: key, "SECRETARY_MODEL": m})
+    # Only write a key we were GIVEN. Re-writing a stored one is a no-op, and writing a blank
+    # one over an Anthropic CLI login would replace a working credential with an empty string.
+    _write_env(({var: key} if key else {}) | {"SECRETARY_MODEL": m,
+                                              "SECRETARY_PROVIDER": llm.provider(m)})
+    if not key:
+        return f"Attached {m}. {why}"
     return (f"Attached {m}. {why}\n"
             f"  saved {var} to {paths.ENV_FILE} (chmod 600, {len(key)} chars, "
             f"ending {key[-4:]})")
@@ -607,6 +623,25 @@ def _write_env(values: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n")
     path.chmod(0o600)
+
+
+def _forget_env(names: list[str]) -> None:
+    """Drop these keys from the instance .env, and from this process.
+
+    The counterpart to _write_env. Setting a credential to "" would leave a line that reads
+    like a configured-but-empty key, which is the state `credential()` cannot tell from a
+    typo — so the line goes rather than being blanked.
+    """
+    path = paths.ENV_FILE
+    if path.is_file():
+        keep = [l for l in path.read_text().splitlines()
+                if l.split("=", 1)[0].strip() not in names]
+        path.write_text("\n".join(keep) + ("\n" if keep else ""))
+        path.chmod(0o600)
+    for n in names:
+        os.environ.pop(n, None)
+
+
 def list_calls(days: str = "7") -> str:
     """Calls that were carried and recorded — who, when, and whether a transcript exists."""
     from . import calls as _calls, carry
