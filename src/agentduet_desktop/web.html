@@ -166,7 +166,10 @@
 
   (function nativeChrome(){
     const mark = () => document.documentElement.classList.add('native');
-    if (window.pywebview) mark();
+    // TWO NATIVE HOSTS NOW. pywebview injects `window.pywebview`; the Swift shell
+    // injects `window.agentduetNative` at document start. Either means macOS is
+    // drawing the real traffic lights, so ours must not be drawn under them.
+    if (window.pywebview || window.agentduetNative) mark();
     window.addEventListener('pywebviewready', mark);
   })();
 

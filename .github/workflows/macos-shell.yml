@@ -1,0 +1,64 @@
+# Compile the native macOS shell.
+#
+# THIS WORKFLOW IS THE COMPILER. Nobody on the team has a Swift toolchain to hand — the code is
+# written on Linux — so a push here is how we find out whether it builds. It is deliberately
+# separate from `build.yml` and deliberately cheap: `swift build` on a warm runner is a couple
+# of minutes, where a full PyInstaller + sign + notarize run is tens.
+#
+# It does NOT touch the release path. `build.yml` still ships the PyInstaller .app until this
+# shell has been launched on a real Mac by a real person.
+name: macos-shell
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "macos/**"
+      - "packaging/make-macos-app.sh"
+      - ".github/workflows/macos-shell.yml"
+
+jobs:
+  build:
+    runs-on: macos-14         # Apple silicon; the only macOS label we use
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: swift --version && xcodebuild -version
+
+      # `-warnings-as-errors` on purpose. The whole value of this job is catching what a Mac
+      # would tell us, and on code written blind a warning is usually a real mistake — an
+      # unused result, a deprecated call, a pattern that never matches.
+      - name: Build
+        working-directory: macos
+        run: swift build -c release -Xswiftc -warnings-as-errors
+
+      # Prove the bundle ASSEMBLES, with a stand-in for the daemon. Whether the shell can start
+      # the real one is a question only a person with a Mac can answer; whether the plist parses
+      # and the layout is right is answerable here, and it is where a typo would otherwise sit
+      # until someone downloaded a DMG.
+      - name: Assemble a bundle
+        run: |
+          printf '#!/bin/sh\necho stand-in\n' > /tmp/agentduet-desktop
+          chmod +x /tmp/agentduet-desktop
+          packaging/make-macos-app.sh \
+            macos/.build/release/AgentDuetShell /tmp/agentduet-desktop dist-shell
+          plutil -lint "dist-shell/AgentDuet Desktop.app/Contents/Info.plist"
+
+      - name: Check it is a real app bundle
+        run: |
+          APP="dist-shell/AgentDuet Desktop.app"
+          # An arm64 Mach-O executable, not a script or a fat file with the wrong slice.
+          file "$APP/Contents/MacOS/AgentDuet Desktop" | grep -q "Mach-O 64-bit executable arm64"
+          # CFBundleExecutable must NAME a file that is actually there. Getting this wrong
+          # produces an app that double-clicks and does nothing, with no error anywhere.
+          EXE=$(plutil -extract CFBundleExecutable raw "$APP/Contents/Info.plist")
+          test -x "$APP/Contents/MacOS/$EXE"
+          echo "ok: $EXE"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-shell-unsigned
+          path: macos/.build/release/AgentDuetShell
+          if-no-files-found: error
