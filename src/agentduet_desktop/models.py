@@ -550,6 +550,13 @@ def listing() -> list[dict]:
 # figure. The size on disk is real (the API reports it), so the memory estimate is derived the
 # same way an unknown model's always was — and it is labelled an estimate, because it is one.
 
+#: PACKAGING NOTE, recorded here because this is where someone looks when local models are
+#: missing from a build. llama-cpp-python publishes no wheels on PyPI, and the maintainer's own
+#: index at abetlen.github.io serves macOS arm64 wheels that FAIL THEIR OWN CRC — checked on
+#: 0.3.35, .34, .33 and .32 on 2026-08-27, all corrupt on `lib/libggml-base.*.dylib`, while the
+#: Linux wheel from the same index passes the identical check. So CI builds it from source on
+#: macOS (which also turns Metal on) and takes the wheel on Linux. See .github/workflows/build.yml.
+
 HF_API = "https://huggingface.co/api"
 HF_FILES = "https://huggingface.co"
 
