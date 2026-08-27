@@ -35,6 +35,21 @@ stt = ["faster-whisper>=1.0"]
 # The owner's view in a native window rather than a browser tab. Optional on purpose: the site
 # is the primary surface and must come up even where no system webview exists.
 ui = ["pywebview>=5.0"]
+# LOCAL MODELS, run from weights we download ourselves. This replaced Ollama on 2026-08-27:
+# model management was free and cost the thing the product sells, which is that you download one
+# binary and it works.
+#
+# INSTALLING THIS NEEDS AN EXTRA INDEX. llama-cpp-python publishes NO wheels on PyPI and builds
+# from source, which would need a C++ toolchain on the owner's machine — the exact dependency
+# this feature exists to remove. The maintainer's own index has prebuilt ones:
+#
+#   pip install --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu \
+#       "agentduet-desktop[local]"
+#
+# The native libraries total 7.7 MB, so the binary cost is small. They must be added to the
+# PyInstaller spec BY HAND — `--collect-all` fails silently for exactly this shape, as wasmtime
+# already taught us: the build succeeds and the binary dies at first use.
+local = ["llama-cpp-python>=0.3"]
 
 [project.scripts]
 agentduet-desktop = "agentduet_desktop.cli:main"

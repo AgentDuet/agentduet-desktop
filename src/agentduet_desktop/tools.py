@@ -535,18 +535,17 @@ def attach_model(key: str, model: str = "", provider: str = "") -> str:
     # for exactly the case this feature adds: "qwen2.5:3b" running locally matches DashScope's
     # "qwen" prefix and gets sent to the cloud with no key. The caller who picked a row from the
     # local list knows which provider it is; let it say so.
-    if (provider or "").lower() == "ollama" or llm.provider(m) == "ollama":
-        if not llm._Ollama.credential():
-            return (f"Ollama is not reachable at {llm._Ollama.host()}, so {m} cannot be used. "
-                    "Start Ollama and try again.")
-        have = [x["name"] for x in llm._Ollama.models()]
-        if m not in have:
-            return (f"Ollama is running but has no model called {m}. "
-                    f"Pulled: {', '.join(have) or 'none'}.")
-        os.environ["SECRETARY_MODEL"], os.environ["SECRETARY_PROVIDER"] = m, "ollama"
-        _write_env({"SECRETARY_MODEL": m, "SECRETARY_PROVIDER": "ollama"})
-        return (f"Attached {m}, running on this machine. Transcripts stay here — nothing is sent "
-                "to a provider.")
+    if (provider or "").lower() == "local" or llm.provider(m) == "local":
+        from . import models
+        ok, why = models.available()
+        if not ok:
+            return why
+        if not models.is_downloaded(m):
+            return f"{m} is not downloaded yet."
+        os.environ["SECRETARY_MODEL"], os.environ["SECRETARY_PROVIDER"] = m, "local"
+        _write_env({"SECRETARY_MODEL": m, "SECRETARY_PROVIDER": "local"})
+        return (f"Attached {models.CATALOGUE.get(m, {}).get('name', m)}, running on this "
+                "machine. Transcripts stay here — nothing is sent to a provider.")
 
     if not key:
         return "Give the API key to attach."
