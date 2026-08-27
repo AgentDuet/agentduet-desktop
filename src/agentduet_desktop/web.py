@@ -321,18 +321,17 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         from . import owner as _own, transcribe
 
         model = transcribe.local_model()
-        needed = transcribe.engine() == "local" and _own.record_calls()
+        needed = _own.record_calls()
         if request.method == "GET":
             return web.json_response({
-                # NAME THE ENGINE. The page described the situation in a sentence — "Your
-                # DashScope key transcribes these, on Alibaba's servers" — which reads as
-                # explanation and buries the two facts that matter: which engine, and where it
-                # runs. Those decide whether call audio leaves the machine.
+                # NAME THE ENGINE. The page used to describe the situation in a sentence,
+                # which buried the two facts that matter: which engine, and where it runs.
+                # There is one engine now and it is local, so "this machine" is a constant —
+                # kept as a field anyway, because a page that states it cannot quietly stop
+                # being true if a second engine ever returns.
                 "engine": transcribe.engine(),
-                "engine_name": (transcribe.hosted_model() if transcribe.engine() == "hosted"
-                                else f"Whisper {model}"),
-                "engine_where": ("Alibaba's servers" if transcribe.engine() == "hosted"
-                                 else "this machine"),
+                "engine_name": f"Whisper {model}",
+                "engine_where": "this machine",
                 "needed": needed, "model": model,
                 "mb": transcribe.MODEL_MB.get(model, 0),
                 "cached": transcribe.is_cached(model),
