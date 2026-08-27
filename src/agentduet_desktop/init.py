@@ -252,24 +252,18 @@ def interview() -> str:
 
 
 def choose_mode(interactive: bool = True) -> str:
-    """Answer calls, or put them through and record them. Returns the mode in force."""
-    current = owner.calls()
-    if not interactive:
-        return current
-    # CARRYING IS FIRST AND IS THE DEFAULT, because it is the product a new install is — see
-    # "Two products, one daemon" in docs/design.md. It also matches the order Settings lists
-    # them in, so the console and the page do not disagree about which is the ordinary choice.
-    print("\n  What should it do with a call?")
-    print("    1  put it through to your phone, and record both sides.  No model needed.")
-    print("       You are recording two people; check what you must tell them.")
-    print("    2  answer it for you — an assistant picks up.  Needs a model.")
-    pick = _prompt(f"\n  1 or 2 [{'1' if current == owner.CALLS_CARRY else '2'}]: ").strip()
-    if pick not in ("1", "2"):
-        return current
-    mode = owner.CALLS_ANSWER if pick == "2" else owner.CALLS_CARRY
-    tools.set_setting("calls", mode)
-    print(f"  -> calls will be {'carried and recorded' if mode == owner.CALLS_CARRY else 'answered'}")
-    return mode
+    """The call mode in force. NO LONGER ASKED, on either surface.
+
+    The console used to offer "answer it / put it through", and Settings had a card for the
+    same choice. Both are gone: the recorder is the product, `carry` is what the seeded
+    settings.md says, and offering the secretary as a first-run question put a half-built
+    second product in front of everyone installing the first one.
+
+    It is still a real setting and still read here — an owner who wants the agent to answer
+    edits `## Calls` in settings.md, which is the same place every other rarely-changed thing
+    lives. Removing the question did not remove the mode.
+    """
+    return owner.calls()
 
 
 def who_you_are(interactive: bool = True) -> None:

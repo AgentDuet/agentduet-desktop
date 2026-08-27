@@ -486,8 +486,15 @@ def test_setup_without_a_model() -> None:
     root = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
     page = (root / "setup.html").read_text()
     settings_page = (root / "settings.html").read_text()
-    ok("choosing to answer says it needs a model",
-       'value="answer"' in settings_page and "needs a model" in settings_page.lower())
+    # THE WARNING MOVED WITH THE CHOICE. Settings used to offer answer-or-carry and had to say
+    # that answering needs a model — picking it with no key leaves a daemon holding the
+    # connector with nothing to speak, which is safe (cannot_answer makes it wait) but silent.
+    # The page stopped offering the choice on 2026-08-27, so the warning belongs where the
+    # choice now lives: the `## Calls` comment in the seeded settings.md. Checked there instead
+    # of deleted, because the warning is the point and the page was only its address.
+    ok("answering still says it needs a model, where the mode is now chosen",
+       "needs a model key" in
+       (root / "templates" / "settings.md").read_text().lower())
     ok("and carrying is what a fresh install gets",
        (root / "templates" / "settings.md").read_text().count("\ncarry\n") == 1)
     ok("the owner's name is still settable", 'id="name"' in settings_page)
@@ -1051,7 +1058,13 @@ def test_setup_mode() -> None:
     # and language is the one that decides whether an English call comes back as fluent Malay.
     init_src = (src / "init.py").read_text()
     settings_page = (src / "settings.html").read_text()
-    for field in ("name", "calls", "language", "transcription"):
+    # `calls` LEFT THIS LIST on 2026-08-27, and deliberately rather than to make the test pass.
+    # The mode is no longer asked on EITHER surface: the recorder is the product, the seeded
+    # settings.md says `carry`, and putting "should an agent answer for you?" in front of
+    # everyone installing a call recorder offered a half-built second product as a first-run
+    # question. It is still a real setting, still read by `choose_mode`, and still editable in
+    # settings.md — parity holds because neither surface has it, which is the thing this checks.
+    for field in ("name", "language", "transcription"):
         ok(f"the console can set `{field}`", f'"{field}"' in init_src)
         ok(f"and so can the settings page",
            f"'{field}'" in settings_page or f'"{field}"' in settings_page
