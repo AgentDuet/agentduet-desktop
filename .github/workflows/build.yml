@@ -7,6 +7,12 @@ name: build
 
 on:
   workflow_dispatch:
+    inputs:
+      shell:
+        description: "macOS window: pyinstaller (shipping) or native (the Swift shell, under test)"
+        type: choice
+        options: [pyinstaller, native]
+        default: pyinstaller
   push:
     tags: ["v*"]
 
@@ -104,6 +110,25 @@ jobs:
           done
           grep -q "voice    : available" status.txt \
             || { echo "::error::binary cannot answer calls — check agentduet-adapters[qwen]"; exit 1; }
+
+      # ---- the native shell, when asked for ---------------------------------------------------
+      #
+      # OPT-IN, and it must stay that way until somebody has launched it on a real Mac. It
+      # replaces `dist-bin/AgentDuet Desktop.app` in place, so everything downstream — signing,
+      # the DMG, notarization, stapling — runs on it unchanged rather than growing a parallel
+      # path that drifts. `macos-shell.yml` is the fast compile check; this is how a tester
+      # gets something to double-click.
+      - name: Build the native shell (macOS)
+        if: runner.os == 'macOS' && inputs.shell == 'native'
+        working-directory: macos
+        run: swift build -c release -Xswiftc -warnings-as-errors
+
+      - name: Wrap it around the daemon (macOS)
+        if: runner.os == 'macOS' && inputs.shell == 'native'
+        run: |
+          packaging/make-macos-app.sh \
+            macos/.build/release/AgentDuetShell dist-bin/agentduet-desktop dist-bin
+          plutil -lint "dist-bin/AgentDuet Desktop.app/Contents/Info.plist"
 
       # ---- signing, and only when there is a certificate to sign with -----------------------
 
