@@ -474,19 +474,23 @@
   function sttRender(d){
     if (!d || d.error === 'unauthorised') return;
     const st = $('sttState');
-    if (!d.needed) {
-      st.textContent = 'Your DashScope key transcribes these, on Alibaba\'s servers. '
-        + 'Nothing is downloaded and nothing runs here.';
+    // WHICH ENGINE, AND WHERE IT RUNS — the two facts that decide whether call audio leaves
+    // this machine. It was a sentence explaining the situation, which reads as prose and buries
+    // both. Neither engine is an LLM: faster-whisper locally, qwen3-asr-flash hosted, which is
+    // a dedicated ASR task and refuses a text part.
+    const where = `Transcription engine: <b>${esc(d.engine_name || '?')}</b> · `
+                + esc(d.engine_where || '');
+    if (!d.installed && d.engine !== 'hosted') {
+      st.textContent = 'Transcription engine: not in this build.';
       $('doStt').hidden = true;
-    } else if (!d.installed) {
-      st.textContent = 'The on-machine engine is not installed in this build.';
+    } else if (!d.needed) {
+      st.innerHTML = where;
       $('doStt').hidden = true;
     } else if (d.cached) {
-      st.innerHTML = 'Runs on this machine. <b>' + esc(d.model) + '</b> is ready.';
+      st.innerHTML = where + ' · ready';
       $('doStt').hidden = true;
     } else {
-      st.innerHTML = 'Runs on this machine. <b>' + esc(d.model) + '</b> is not downloaded yet '
-        + '(about <b>' + d.mb + ' MB</b>). It will fetch itself at the first transcription.';
+      st.innerHTML = where + ' · not downloaded yet, about <b>' + d.mb + ' MB</b>';
       $('doStt').hidden = !!d.running;
     }
     $('spStt').textContent = d.running ? 'downloading…' : '';

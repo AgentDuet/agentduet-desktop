@@ -397,7 +397,13 @@ def set_setting(field: str, value: str) -> str:
         else text.rstrip() + f"\n\n{block}"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
-    return f"Set {heading} in settings.md (not knowledge — never quoted to anyone):\n  {body[:160]}"
+    # WRITTEN FOR A PERSON. It said "Set Recordings in settings.md (not knowledge — never
+    # quoted to anyone):" — the storage file, an internal distinction, and a trailing colon,
+    # shown verbatim in the settings page. A person-facing message reads fine to a model; the
+    # reverse does not, so this direction is the one that cannot leak. The disclosure fact the
+    # parenthetical carried lives in this function's docstring, where the model reads it.
+    shown = body.strip().splitlines()[0][:120] if body.strip() else ""
+    return f"{heading} saved — {shown}." if shown else f"{heading} cleared."
 def add_knowledge(fact: str, file: str = "", section: str = "") -> str:
     """Teach the secretary a fact. Name the file that already owns the subject."""
     fact = fact.strip()
@@ -592,9 +598,9 @@ def attach_model(key: str, model: str = "", provider: str = "") -> str:
                                               "SECRETARY_PROVIDER": llm.provider(m)})
     if not key:
         return f"Attached {m}. {why}"
-    return (f"Attached {m}. {why}\n"
-            f"  saved {var} to {paths.ENV_FILE} (chmod 600, {len(key)} chars, "
-            f"ending {key[-4:]})")
+    # The last four characters confirm WHICH key without echoing it. The file it went to and
+    # its mode are ours to get right, not facts the owner acts on.
+    return f"Attached {m}. {why}\n  Key ending {key[-4:]} saved."
 def save_connector(api_key: str, connector_uuid: str) -> str:
     """Write the B3 connector credential to this instance. Verify FIRST (see connector.verify).
 
@@ -610,9 +616,8 @@ def save_connector(api_key: str, connector_uuid: str) -> str:
     # picks this up within seconds without a restart.
     os.environ[connector.API_KEY] = api_key
     os.environ[connector.UUID] = connector_uuid
-    return (f"Saved the connector to {paths.ENV_FILE} (chmod 600). "
-            f"Key {len(api_key)} chars ending {api_key[-4:]}, connector {connector_uuid}. "
-            f"The channel connects within a few seconds — no restart needed.")
+    return (f"Saved. Key ending {api_key[-4:]}, connector {connector_uuid}.\n"
+            "The channel picks this up within a few seconds — no restart needed.")
 def _write_env(values: dict) -> None:
     """Upsert keys in the instance .env, preserving everything else and the file mode."""
     path = paths.ENV_FILE

@@ -229,7 +229,16 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
     _SETTING_LABEL = {"name": "Your name", "pronoun": "Your pronoun", "phone": "Your phone",
                       "never_say": "The never-say list", "calls": "What happens to a call",
                       "record_calls": "Call recording", "language": "Language",
-                      "transcription": "Transcription quality"}
+                      "transcription": "Transcription quality",
+                      "recordings": "Recordings folder"}
+
+    def _saved(field: str, value: str) -> str:
+        """How the page says a setting was stored. The ONLY phrasing for it."""
+        label = _SETTING_LABEL.get(field.lower().replace(" ", "_").replace("-", "_"), field)
+        shown = value.strip().splitlines()[0][:60] if value.strip() else ""
+        # Cleared, not "saved" with nothing after it — and the state line under it shows what
+        # the value fell back to, so the two together say what happened and what is in force.
+        return f"{label} saved — {shown}." if shown else f"{label} cleared."
 
     async def api_setup_setting(request):
         """Set one owner setting directly — no model involved."""
@@ -241,10 +250,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         out = tools.set_setting(field, value)
         if out.lower().startswith("unknown"):
             return web.json_response({"ok": False, "message": out})
-        label = _SETTING_LABEL.get(field.lower().replace(" ", "_").replace("-", "_"), field)
-        shown = value.strip().splitlines()[0][:60] if value.strip() else ""
-        return web.json_response({"ok": True, "message":
-                                  f"{label} saved" + (f" — {shown}." if shown else ".")})
+        return web.json_response({"ok": True, "message": _saved(field, value)})
 
     async def api_setup_connector(request):
         """Verify the B3 connector, then save it. Never reachable from the assistant."""
@@ -318,6 +324,15 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         needed = transcribe.engine() == "local" and _own.record_calls()
         if request.method == "GET":
             return web.json_response({
+                # NAME THE ENGINE. The page described the situation in a sentence — "Your
+                # DashScope key transcribes these, on Alibaba's servers" — which reads as
+                # explanation and buries the two facts that matter: which engine, and where it
+                # runs. Those decide whether call audio leaves the machine.
+                "engine": transcribe.engine(),
+                "engine_name": (transcribe.hosted_model() if transcribe.engine() == "hosted"
+                                else f"Whisper {model}"),
+                "engine_where": ("Alibaba's servers" if transcribe.engine() == "hosted"
+                                 else "this machine"),
                 "needed": needed, "model": model,
                 "mb": transcribe.MODEL_MB.get(model, 0),
                 "cached": transcribe.is_cached(model),
@@ -851,9 +866,9 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response({"ok": False, "message": f"Cannot show a folder chooser: {exc}"})
         if not chosen:
             return web.json_response({"ok": True, "changed": False, "message": ""})
-        msg = await asyncio.to_thread(tools.set_setting, "recordings", chosen)
+        await asyncio.to_thread(tools.set_setting, "recordings", chosen)
         return web.json_response({"ok": True, "changed": True,
-                                  "message": msg.splitlines()[0]})
+                                  "message": _saved("recordings", chosen)})
 
     async def api_connector_signout(request):
         """Forget the tokens.
