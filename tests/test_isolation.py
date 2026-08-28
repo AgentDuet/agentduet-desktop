@@ -132,7 +132,10 @@ for identity in people.list_profiles():
 # 5b · verification is carried by the IDENTITY, never inferred from the transport.
 #      A self-vouching network must not smuggle a profile in for an unverified claim.
 for identity in people.list_profiles():
-    for net in ("WA", "WHATSAPP", "TELCO"):
+    # Driven from the set, never a copy of it. A hardcoded list silently stops covering a
+    # network the moment one is added — the same drift that let "WHATSAPP" sit here for months
+    # matching nothing.
+    for net in sorted(people.SELF_VOUCHING_NETWORKS):
         if people.default_verified(net) and not people.profile_for(identity, False):
             continue        # default only applies when the caller passes nothing
     if people.profile_for(identity, False) or people.folders_for(identity, False):
