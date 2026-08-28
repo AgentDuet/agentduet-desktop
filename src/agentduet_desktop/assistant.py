@@ -122,6 +122,25 @@ TAINTING = {"read_call"}
 NEEDS_OWNER = {"add_knowledge", "edit_knowledge"}
 
 
+#: A REPLY THAT HAS STOPPED SAYING ANYTHING. Near-greedy decoding with no repetition penalty
+#: locks into a loop, and the result is long, confident-looking and empty: 8,525 characters of
+#: "Who called me this week?" repeated 339 times, from glm-4-9b on 2026-08-27.
+#:
+#: Storing one is worse than losing it. The visible log keeps it forever, `self.history` replays
+#: it into the context of every later turn, and a context that visibly repeats is exactly what
+#: primes the next loop — so one bad generation seeds the following ones.
+#:
+#: Measured as the fraction of DISTINCT fixed-width windows. Real prose approaches 1.0; the case
+#: above scored 0.03. The length floor matters: a short answer ("Yes." / "No calls today.") has
+#: few windows and would otherwise look degenerate for being brief.
+def _degenerate(text: str, window: int = 40, floor: int = 800, ratio: float = 0.25) -> bool:
+    """True when a reply is mostly the same few characters over and over."""
+    if len(text) < floor:
+        return False
+    chunks = [text[i:i + window] for i in range(0, len(text) - window, window)]
+    return bool(chunks) and len(set(chunks)) / len(chunks) < ratio
+
+
 def _proposals() -> list[dict]:
     try:
         return json.loads((paths.RUN / "knowledge_proposals.json").read_text())
@@ -313,6 +332,13 @@ class OwnerChat:
         history = self.history + [f"OWNER: {message}"]
         used: list[str] = []
         nudged = False
+        # WHAT HAS ALREADY BEEN ASKED THIS TURN. The loop was bounded but had no memory, so a
+        # model that liked a tool called it with identical arguments until the bound ran out —
+        # eight `read_call`s in one turn, seven of them wasted round-trips whose identical
+        # results then filled the context with duplicate lines and primed the repetition loop
+        # `_degenerate` now catches. Answering from the cache costs nothing and breaks that.
+        seen: dict[tuple, str] = {}
+        repeats = 0
 
         def remember(h):
             # What the model SAW is not what we keep. A 3 KB setup instruction block would
@@ -334,6 +360,15 @@ class OwnerChat:
                 if not used and self.CLAIMED.search(out):
                     out += ("\n\n[nothing actually happened — no tool ran this turn, so nothing "
                             "was saved, sent or changed. Ask again to have it done.]")
+                if _degenerate(out):
+                    # NEVER STORE IT. The visible log keeps it forever and `remember` replays it into
+                    # every later turn, so a context that visibly repeats primes the next loop — one bad
+                    # generation would seed the ones after it.
+                    logger.warning("discarded a degenerate reply (%d chars) from %s",
+                                   len(out), self.model)
+                    out = ("That came back as one phrase repeated, so I have thrown it away rather "
+                             "than keep it. Ask again. If it keeps happening the model is too small for "
+                             "this, or the conversation has grown repetitive — New conversation clears it.")
                 remember(history + [f"ASSISTANT: {out}"])
                 self._record(shown_as, out, used, full=message)
                 return {"reply": out, "tools": used, "proposals": _proposals()}
@@ -344,6 +379,15 @@ class OwnerChat:
                 entry = self.registry.get(name)
                 if not entry:
                     history.append(f"TOOL_RESULT: no such tool '{name}'")
+                    continue
+                key = (name, json.dumps(args, sort_keys=True, default=str))
+                if key in seen:
+                    repeats += 1
+                    # Hand back what it already got, and SAY it is a repeat — a silent cache hit
+                    # looks like a fresh answer and invites the same call again.
+                    history.append(f"ASSISTANT: called {name}")
+                    history.append("TOOL_RESULT: (already called this turn, same arguments) "
+                                   + seen[key])
                     continue
                 # THE GATE. Once a stranger's words are in this context, a write that
                 # publishes an unattributed claim stops being something the model may do and
@@ -370,9 +414,12 @@ class OwnerChat:
                     result = f"tool error: {exc}"
                 if name in TAINTING:
                     self.tainted = True
+                seen[key] = result
                 used.append(name)
                 history.append(f"ASSISTANT: called {name}")
                 history.append(f"TOOL_RESULT: {result}")
+            if repeats >= 2:
+                break               # asking the same thing twice more will not answer it
             continue
 
         final = await self._ask(history + ["(answer the owner now)"], context)
@@ -382,8 +429,20 @@ class OwnerChat:
         if self._parse(final):
             last = next((h[len("TOOL_RESULT: "):] for h in reversed(history)
                          if h.startswith("TOOL_RESULT: ")), "")
+            # That note is for the MODEL — it explains why it got the same answer twice. Shown
+            # to the owner it is machinery leaking into a reply.
+            last = last.replace("(already called this turn, same arguments) ", "")
             final = last or "No answer this turn — the model kept asking for the same tool."
         final = self._unprefix(final)
+        if _degenerate(final):
+            # NEVER STORE IT. The visible log keeps it forever and `remember` replays it into
+            # every later turn, so a context that visibly repeats primes the next loop — one bad
+            # generation would seed the ones after it.
+            logger.warning("discarded a degenerate reply (%d chars) from %s",
+                           len(final), self.model)
+            final = ("That came back as one phrase repeated, so I have thrown it away rather "
+                     "than keep it. Ask again. If it keeps happening the model is too small for "
+                     "this, or the conversation has grown repetitive — New conversation clears it.")
         remember(history + [f"ASSISTANT: {final}"])
         self._record(shown_as, final, used, full=message)
         return {"reply": final, "tools": used, "proposals": _proposals()}
