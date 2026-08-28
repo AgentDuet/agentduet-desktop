@@ -39,6 +39,7 @@ from agentduet import (
     InboundCallMode,
     TriggerConditionsBuilder,
     Network,
+    SendDduetMessage,
     SendWAMessage,
     Session,
     SessionManager,
@@ -135,6 +136,20 @@ def _first_text(payload: dict) -> str:
     return ""
 
 
+def _dduet_text(body: str, *, to: str, session_uid: str, ba_uid: str) -> SendDduetMessage:
+    """One outbound DDUET (Nexus BaChat) text.
+
+    `to` is the other party's Nexus ACCOUNT UID — not an email; the relay carries account uids
+    only. `session_uid` is the Nexus conversation, and a multi-BA connector must send `ba_uid`
+    back or the server answers AMBIGUOUS_BA. Ours backs more than one BA (Hallie, 2026-08-28:
+    one BA has one connector, but one connector can serve several), so it is always passed.
+
+    Same reason as `_wa_text`: both senders — answering an asker, and delivering a reply the
+    owner queued — must build the same object, and two literals drift.
+    """
+    return SendDduetMessage.text(body, participant=to, session_uid=session_uid, ba_uid=ba_uid)
+
+
 def _wa_text(body: str, *, to: str) -> SendWAMessage:
     """One outbound WhatsApp text, shaped as `examples/wa_echo_bot.py` in the SDK shapes it.
 
@@ -155,23 +170,35 @@ def _wa_text(body: str, *, to: str) -> SendWAMessage:
     )
 
 
-def remember_session(asker: str, subscriber: str) -> None:
-    """Remember who we may reply to, and through which subscriber.
+def remember_session(asker: str, subscriber: str, *, network: str = "WA",
+                     session_uid: str = "", ba_uid: str = "") -> None:
+    """Remember who we may reply to, and everything needed to build that reply.
 
     A reply needs the subscriber the message arrived on — for WhatsApp that is the Business
     Account's `phone_number_id`, which nothing else exposes. Persisted so the owner can answer
     later through the MCP tool, in a process that never saw the inbound message.
 
-    No session token any more: DDUET needed a per-conversation Nexus id, WhatsApp routes on the
-    participant. Which also means two parallel conversations with one person are ONE thread here
-    — correct for WhatsApp, where the number is the person.
+    THE NETWORK IS STORED BECAUSE THE REPLY IS SHAPED BY IT. WhatsApp routes on the participant
+    alone; DDUET needs the Nexus `session_uid` and, on a connector serving several BAs, the
+    `ba_uid` — without which the server answers AMBIGUOUS_BA. A queued reply built as the wrong
+    kind does not degrade, it fails, so the shape has to survive the process that saw the
+    inbound message.
+
+    On WhatsApp two parallel conversations with one person are ONE thread here, which is correct
+    where the number IS the person. On DDUET the session uid keeps them apart.
     """
     RUN.mkdir(exist_ok=True)
     data = json.loads(SESSIONS.read_text()) if SESSIONS.exists() else {}
-    data[asker] = {
+    row = {
         "subscriber": subscriber,
+        "network": network,
         "last_seen": datetime.now().isoformat(timespec="seconds"),
     }
+    if session_uid:
+        row["session_uid"] = session_uid
+    if ba_uid:
+        row["ba_uid"] = ba_uid
+    data[asker] = row
     SESSIONS.write_text(json.dumps(data, indent=2))
 
 
@@ -220,20 +247,49 @@ async def run_channel() -> None:
 
         @sm.on_incoming_message
         async def on_message(msg: IncomingMessage):
-            if msg.network is not Network.WA:
+            if msg.network not in (Network.WA, Network.DDUET):
                 # SAY SO. This used to `return` in silence, which meant a message on another
                 # network left no trace at all — indistinguishable from the channel being dead,
-                # and impossible to test against. The released SDK carries TELCO and WA; we
-                # answer WA here, and TELCO arrives as a CALL through voice.register(), not here.
-                logger.info("ignored a %s message from %s (subscriber %s) — only WA is "
-                            "answered on this channel", msg.network, msg.participant.value,
+                # and impossible to test against. TELCO arrives as a CALL through
+                # voice.register(), not here.
+                logger.info("ignored a %s message from %s (subscriber %s) — only WA and DDUET "
+                            "are answered on this channel", msg.network, msg.participant.value,
                             msg.subscriber)
                 return
 
-            asker = msg.participant.value          # the sender's wa_id (their phone number)
-            question = _first_text(msg.payload)
+            # `participant` is the OTHER party and nexus keeps it sticky across a conversation,
+            # so it is who to answer on both channels. On WA it is their phone number; on DDUET
+            # it is their Nexus account uid — an identifier, never an email, because the relay
+            # carries account uids only.
+            asker = msg.participant.value
+            conversation = None
+            dd = msg.dduet if msg.network is Network.DDUET else None
+            if dd is not None:
+                # THE WHOLE PAYLOAD, ONCE PER MESSAGE, WHILE THIS IS NEW. We have never seen a
+                # real inbound DDUET frame — `user_metadata` is documented as {email, name} with
+                # "either key possibly absent", and nothing but a real message settles which
+                # arrives. Narrow this to a summary once it has been seen a few times; it is
+                # deliberately noisy for now.
+                logger.info("DDUET inbound raw: %s", json.dumps(dd.raw, default=str)[:4000])
+
+                # AUTHORSHIP IS THE TWO UIDS, NEVER THE `sender` ROLE STRING — every BA member
+                # relays as AGENT, so a role cannot tell our own staff from the customer.
+                # user_uid == ba_uid means OUR OWN BA's side wrote this: a colleague replying as
+                # the BA from web or mobile, which the relay delivers to us like any inbound.
+                # Answering it would have the agent reply to its own organisation.
+                if dd.user_uid and dd.user_uid == dd.ba_uid:
+                    logger.info("DDUET: skipping a message authored by our own BA (%s) — a "
+                                "human on our side replied, session %s", dd.ba_uid, dd.session_uid)
+                    return
+                question = _first_text(dd.content)
+                conversation = dd.session_uid      # a real per-conversation key, unlike WA
+            else:
+                question = _first_text(msg.payload)
             logger.info("← %s: %s", asker, question)
-            remember_session(asker, msg.subscriber)
+            remember_session(asker, msg.subscriber,
+                             network=("DDUET" if dd is not None else "WA"),
+                             session_uid=(dd.session_uid if dd is not None else ""),
+                             ba_uid=(dd.ba_uid if dd is not None else ""))
             # NOT status.set_number(): the subscriber is the Business Account's
             # `phone_number_id`, a Meta identifier and not a dialable number, so showing it in
             # the header would read as the owner's number while being unusable as one. A real
@@ -250,17 +306,19 @@ async def run_channel() -> None:
             network = msg.network.value if hasattr(msg.network, "value") else str(msg.network)
             from . import people
             verified = people.default_verified(network)
-            # No conversation key: DDUET had a per-conversation Nexus token, WhatsApp has none,
-            # so memory falls back to the identity — which on this channel IS the person.
+            # WhatsApp has no conversation key, so memory falls back to the identity — which
+            # on that channel IS the person. DDUET has one: the Nexus session uid.
             from . import brain
             result = await brain.handle_query(asker, question, network, verified=verified,
-                                              conversation=None)
+                                              conversation=conversation)
             reply, outcome = result["reply"], result["outcome"]
             logger.info("→ [%s%s] %s", outcome,
                         f" {result['reason']}" if result["reason"] else "", reply)
 
-            send = await (await session_for(msg.subscriber)).send_message(
-                _wa_text(reply, to=asker))
+            outbound = (_dduet_text(reply, to=asker, session_uid=dd.session_uid,
+                                    ba_uid=dd.ba_uid) if dd is not None
+                        else _wa_text(reply, to=asker))
+            send = await (await session_for(msg.subscriber)).send_message(outbound)
             if not send.success:
                 logger.error("reply failed: %s (%s)", send.error_code, send.error_content)
 
@@ -279,8 +337,16 @@ async def run_channel() -> None:
                     if not s:
                         logger.error("owner reply dropped — no session for %s", item["asker"])
                         continue
-                    result = await (await session_for(s["subscriber"])).send_message(
-                        _wa_text(item["text"], to=item["asker"]))
+                    # Built from what was stored at inbound time, because this process never
+                    # saw the message. A DDUET reply sent as a WhatsApp one does not degrade —
+                    # it fails — so the network decides the shape here too.
+                    if s.get("network") == "DDUET":
+                        queued = _dduet_text(item["text"], to=item["asker"],
+                                             session_uid=s.get("session_uid", ""),
+                                             ba_uid=s.get("ba_uid", ""))
+                    else:
+                        queued = _wa_text(item["text"], to=item["asker"])
+                    result = await (await session_for(s["subscriber"])).send_message(queued)
                     if result.success:
                         logger.info("→ (from owner) %s: %s", item["asker"], item["text"])
                         from . import brain as _brain
