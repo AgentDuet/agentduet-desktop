@@ -143,6 +143,15 @@ class _Local:
         out = engine.create_chat_completion(
             messages=[{"role": "user", "content": prompt}],
             temperature=TEMPERATURE,
+            # NOT llama.cpp's default. `create_chat_completion` defaults this to 1.0 — no
+            # penalty at all — while llama.cpp's own CLI uses 1.1, so leaving it unset silently
+            # buys "repetition is free". With TEMPERATURE at 0 that is near-greedy decoding with
+            # nothing discouraging a loop, and a context that visibly repeats is all it takes:
+            # glm-4-9b answered "Who called me this week?" with that phrase 339 times, 8,525
+            # characters holding 7 distinct 40-character windows, stopping only at max_tokens.
+            # 1.1 is llama.cpp's own value; high enough to break a loop, low enough to leave a
+            # model free to repeat a name or a date that genuinely recurs.
+            repeat_penalty=1.1,
             # Room for a transcript summary. A cap small enough to truncate does not error; it
             # returns a confident half-answer, which is worse.
             max_tokens=2048)
