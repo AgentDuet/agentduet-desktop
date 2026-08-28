@@ -36,7 +36,19 @@
 
 body{background:var(--page);color:var(--ink);font-family:var(--sans);height:100vh;
   overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  padding:1.5rem;user-select:none;-webkit-font-smoothing:antialiased;}
+  padding:1.5rem;-webkit-font-smoothing:antialiased;}
+
+/* SELECTABLE BY DEFAULT, and the chrome opts out. `body` carried `user-select:none` from the
+   mockup, where it buys the feel of a native app — but this app's CONTENT is text people need
+   out of it: a call transcript, an address someone read out, a number, the assistant's answer.
+   None of it could be selected, and there is no other way to copy it.
+   Native apps behave this way too: a mail message selects, the toolbar does not. So the rule
+   is inverted rather than deleted — chrome that is furniture stays unselectable, because
+   dragging across a sidebar and highlighting the navigation is the thing `none` was preventing.
+   (The icon font keeps its own `none` above for a sharper reason: selecting a Material Symbols
+   ligature copies the literal word "graphic_eq".) */
+.titlebar,.lights,.brand,.linebadge,.tbtn,.btn,.sw,.pill,.tag,.lbl,.lbl3,.sub,
+button,label,summary,nav{user-select:none;-webkit-user-select:none;}
 .window{width:100%;max-width:64rem;height:90vh;max-height:850px;background:var(--bg);
   border-radius:1rem;border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;
   overflow:hidden;position:relative;

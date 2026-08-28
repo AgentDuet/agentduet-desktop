@@ -94,6 +94,14 @@
   .prop button:hover{border-color:var(--faint);color:var(--ink2);}
   .prop button.ok{background:var(--accent);border-color:var(--accent);color:#fff;}
   .prop button.ok:hover{filter:brightness(1.1);}
+  .newconv{background:transparent;border:1px solid var(--line);color:var(--muted);
+           border-radius:.375rem;padding:.25rem .625rem;font:inherit;font-size:.75rem;
+           cursor:pointer;white-space:nowrap;}
+  .newconv:hover{border-color:var(--faint);color:var(--ink2);}
+  /* A divider, not a message: the record continues, the model's memory of it does not. */
+  .brk{display:flex;align-items:center;gap:.625rem;margin:1rem 0;color:var(--faint);
+       font-size:.6875rem;letter-spacing:.06em;text-transform:uppercase;}
+  .brk::before,.brk::after{content:"";flex:1;height:1px;background:var(--line);}
   .turn.me{align-items:flex-end;}
   .bub{padding:.65rem .85rem;border-radius:.85rem;font-size:.82rem;line-height:1.65;
     white-space:pre-wrap;overflow-wrap:anywhere;max-width:82%;}
@@ -160,6 +168,7 @@
         </div>
         <div style="display:flex;gap:.6rem;align-items:center">
           <span class="mdl" id="aModel" hidden>—</span>
+          <button class="newconv" id="newConv" hidden title="Start a new conversation. Your record is kept; the assistant stops carrying the earlier messages.">New conversation</button>
           <span class="pill" id="ovPill"><span class="dot"></span>…</span>
         </div>
       </div>
@@ -240,6 +249,7 @@
     $('tSub').textContent = '';
     $('composer').hidden = false;
     $('aModel').hidden = false;
+    $('newConv').hidden = false;
     $('thread').innerHTML = '<div class="chat" id="chat"></div>';
     drawChat();
     $('ask').focus();
@@ -249,6 +259,7 @@
     const p = (THREADS.people || []).find(x => x.who === PICKED);
     $('composer').hidden = true;
     $('aModel').hidden = true;
+    $('newConv').hidden = true;
     if (!p) return;
     $('tTitle').textContent = p.who;
     $('tSub').textContent = `${p.calls.length} call${p.calls.length === 1 ? '' : 's'}`;
@@ -272,7 +283,7 @@
   function drawChat(pending){
     const log = $('chat');
     if (!log) return;
-    log.innerHTML = TURNS.map(t => `
+    log.innerHTML = TURNS.map(t => t.brk ? `<div class="brk"><span>new conversation</span></div>` : `
       <div class="turn me"><div class="bub">${esc(t.q)}</div></div>
       <div class="turn ${t.bad ? 'bad' : 'it'}"><div class="bub">${esc(t.a)}</div></div>`).join('')
       + (pending ? `<div class="turn me"><div class="bub">${esc(pending)}</div></div>
@@ -334,6 +345,14 @@
     box.focus();
   }
 
+  $('newConv').onclick = async () => {
+    const d = await post('/api/chat_new', {});
+    TURNS = (d.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a});
+    PROPOSALS = [];
+    drawChat();
+    $('ask').focus();
+  };
+
   $('send').onclick = send;
   $('ask').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
@@ -373,7 +392,7 @@
     fetch(`/api/chat_history?t=${T}`).then(r => r.json()).catch(() => ({turns: []})),
   ]).then(([th, hist]) => {
     THREADS = th;
-    TURNS = (hist.turns || []).map(t => ({q: t.q, a: t.a}));
+    TURNS = (hist.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a});
     drawWho();
   });
   load();

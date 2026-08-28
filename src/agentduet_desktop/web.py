@@ -999,6 +999,15 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         return web.json_response(await _chat().turn(body.get("message", ""),
                                                     (body.get("viewing") or "").strip()))
 
+    async def api_chat_new(request):
+        """Start a new conversation: drop the model's context, keep the owner's record."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        c = _chat()
+        if c is not None:
+            c.new_conversation()
+        return web.json_response({"turns": c.shown if c else []})
+
     async def api_proposals(request):
         """What the assistant wants to add to the shared notes, waiting on the owner."""
         if not authed(request):
@@ -1318,6 +1327,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/resolve", api_resolve),
         web.post("/api/send", api_send),
         web.get("/api/chat_history", api_chat_history),
+        web.post("/api/chat_new", api_chat_new),
         web.get("/api/proposals", api_proposals),
         web.post("/api/proposal", api_proposal),
         web.get("/c/{token}", canvas_page),
