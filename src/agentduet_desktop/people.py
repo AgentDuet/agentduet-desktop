@@ -44,7 +44,18 @@ OBSERVED = "## Observed"
 #: "WA" is the SDK's enum value; "WHATSAPP" was here first and never matched anything, so the
 #: intent to trust WhatsApp was declared for months without ever firing. Both are listed because
 #: the spelled-out name is what a human writes when adding a channel by hand.
-SELF_VOUCHING_NETWORKS = {"TELCO", "WA", "WHATSAPP"}
+#:
+#: "DDUET" joined 2026-08-28. Reaching a BA through its public slug requires SSO, so the sender
+#: is a signed-in account and the transport has proved the email the same way registration
+#: proves a WhatsApp number. Nexus has no guest account type at all — `AccountType` is exactly
+#: {UNSPECIFIED, PERSONAL, BA} — so there is no anonymous sender to accidentally trust.
+#:
+#: WHAT THIS DOES NOT SAY. Authentication is not identity verification. Nexus carries a separate
+#: `kyc_status` (NONE / VERIFIED) which is the stronger claim, and it is NOT on the relay — it
+#: comes from GetBaChatUserInfo, which the connector plane does not expose yet. So this default
+#: means "the transport authenticated them", and the day KYC is readable it becomes the explicit
+#: signal that overrides this, exactly as the paragraph above intends.
+SELF_VOUCHING_NETWORKS = {"TELCO", "WA", "WHATSAPP", "DDUET"}
 
 
 def default_verified(network: str) -> bool:

@@ -462,7 +462,28 @@ the product is.
 
 **Backend, not this package**
 
-- [ ] Identity: does AgentDuet issue a stable identity, and carry the verified property?
+- [x] ~~Identity: does AgentDuet issue a stable identity, and carry the verified property?~~
+      **ANSWERED 2026-08-28, from the Nexus protos — YES to both, and the shape matters.**
+      - **Stable identity = `account_uid`.** Always on the relay as `senderAccountUid`, and the
+        2026-08-10 design makes it required: "Every identity decision keys on an account uid."
+      - **Verified property = `kyc_status`** (`NONE` / `VERIFIED`) on `BaChatUserInfo`. It is
+        NOT on the relay — it comes from `GetBaChatUserInfo`, which the connector plane does not
+        expose yet, so it is unreadable today.
+      - **No anonymous sender exists.** `AccountType` is exactly `{UNSPECIFIED, PERSONAL, BA}` —
+        no guest type — and reaching a BA through its public slug requires SSO. So a stranger
+        arriving at a slug is PSEUDONYMOUS, not anonymous: a stable id always, a readable name
+        sometimes, a verified identity only when KYC says so.
+      **THE TRAP, and it will bite before anything else does: the email is a LABEL, not a KEY.**
+      `people/<identity>.md` and `who_is(asker)` key on "their email or number" — fine for TELCO
+      and WA, wrong for DDUET. The relay's `user_metadata` `{email, name}` is `orElse(null)`,
+      absent entirely on BA-authored relays ("a BA account holds no email row"), and the design
+      doc says outright that "`userEmail` is no longer a dependable identity" because it FLIPS to
+      the staff member's address when a colleague replies as the BA. Key on `account_uid` and
+      treat the email as display and matching only — otherwise a colleague's reply silently
+      writes into the wrong person's file.
+      `SELF_VOUCHING_NETWORKS` gained `"DDUET"` on the strength of the SSO requirement. That is a
+      claim about AUTHENTICATION, not identity verification; `kyc_status` is the stronger signal
+      and should override it the day it is readable.
 - [ ] **Directory/discovery — REOPENED 2026-08-27; "moot" was wrong.** It was closed on the
       belief that the DDUET surface was gone. It is not: `PostBaChatMessageRequest.profile_url`
       in `wss-edge`'s `nexus/mono/bachat/ba_chat_http.proto` is a **public BA slug**
