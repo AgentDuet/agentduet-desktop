@@ -195,14 +195,49 @@ class OwnerChat:
         self.shown: list[dict] = self._load()      # what the page renders, oldest first
         # Reconstruct the model's own history from the visible turns, so a restart does not
         # also lose the thread of the conversation ("send that" still resolves).
-        for turn in self.shown[-self.KEEP // 2:]:
+        #
+        # ONLY BACK TO THE LAST BREAK. A break is the owner starting a new conversation, and
+        # the whole point of that is to drop what came before out of the context — so replaying
+        # across one would quietly undo it on the next restart, taint included. The turns
+        # themselves are KEPT and still rendered: the owner's thinking is worth preserving even
+        # when the model is no longer to be reminded of it.
+        for turn in self._since_break(self.KEEP // 2):
             self.history += [f"OWNER: {turn['q']}", f"ASSISTANT: {turn['a']}"]
         self.history = self.history[-self.KEEP:]
         # A transcript already in the replayed context still taints this conversation, so the
-        # flag is rebuilt from the turns rather than reset to False on every restart.
+        # flag is rebuilt from the turns rather than reset to False on every restart. It is
+        # rebuilt from the TOOL NAMES, which outlive the tool results: a restart drops the raw
+        # TOOL_RESULT lines but keeps the assistant's own answers, and an answer can quote the
+        # transcript it was given. Over-conservative on purpose — the cost is one click.
         self.tainted = any(t in TAINTING
-                           for turn in self.shown[-self.KEEP // 2:]
+                           for turn in self._since_break(self.KEEP // 2)
                            for t in (turn.get("tools") or []))
+
+    def _since_break(self, limit: int) -> list[dict]:
+        """The most recent turns, stopping at the last `new conversation`. A break entry has no
+        `q`/`a` — it is a divider in the record, not something anyone said."""
+        turns = []
+        for turn in reversed(self.shown):
+            if turn.get("break"):
+                break
+            if "q" in turn:
+                turns.append(turn)
+            if len(turns) >= limit:
+                break
+        return list(reversed(turns))
+
+    def new_conversation(self) -> None:
+        """Start fresh. Drops the model's context — so the transcript stops being replayed and
+        the taint goes with it, because the reason for it is genuinely gone.
+
+        The visible log is NOT wiped. Clearing the context is a statement about what the model
+        should be reminded of; deleting the owner's own record is a different act, and nobody
+        asked for it."""
+        self.shown = (self.shown + [{"break": True,
+                                     "at": datetime.now().isoformat(timespec="seconds")}])[-60:]
+        self._persist()
+        self.history = []
+        self.tainted = False
 
     def _load(self) -> list[dict]:
         try:
@@ -223,6 +258,9 @@ class OwnerChat:
         if full and full != question:
             turn["q_full"] = full
         self.shown = (self.shown + [turn])[-60:]
+        self._persist()
+
+    def _persist(self) -> None:
         try:
             self.STORE.parent.mkdir(parents=True, exist_ok=True)
             self.STORE.write_text(json.dumps(self.shown, indent=2))
