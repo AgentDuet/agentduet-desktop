@@ -673,6 +673,24 @@ def list_calls(days: str = "7") -> str:
         out.append(f"- {at}  {r.get('caller') or '?'}  "
                    f"({'transcript ready' if done else 'no transcript yet'})")
     return "\n".join(out) if out else f"No calls recorded in the last {days} days."
+#: MARK TEXT A STRANGER WROTE, wherever it is about to reach a model.
+#:
+#: Two paths need this and they are not the same shape. On the secretary side an asker types at
+#: the agent directly. On the RECORDER side nobody types at anything — a caller simply talks, and
+#: `read_call` hands the transcription to the owner's assistant, which holds `add_knowledge`.
+#: That is the same class of exposure arriving through a channel with no signup, no account and
+#: no way to refuse the input: anyone who can dial a number can author text that a tool-using
+#: model will read. Marking is not a defence on its own; it is what lets everything downstream
+#: tell content from instruction.
+#:
+#: The delimiter is STRIPPED from the content first. Otherwise the author closes it themselves and
+#: continues outside the quote — the oldest escape in the book, and the reason naive quoting fails.
+UNTRUSTED_MARK = "⟦asker-said⟧"
+def untrusted(text: str) -> str:
+    """Mark text a STRANGER wrote. See UNTRUSTED_MARK."""
+    if not text:
+        return ""
+    return f"{UNTRUSTED_MARK} {str(text).replace(UNTRUSTED_MARK, '')} {UNTRUSTED_MARK}"
 def read_call(who: str = "", when: str = "") -> str:
     """The transcript of a recorded call. `who` is the caller; `when` narrows to one date."""
     from . import calls as _calls, carry
@@ -687,8 +705,11 @@ def read_call(who: str = "", when: str = "") -> str:
             t = (folder / n).with_suffix(".txt")
             if t.is_file():
                 try:
+                    # The header is OURS — the timestamp and the caller come from call metadata, not
+                    # from anything said. Only the body is the stranger's, so only the body is marked;
+                    # marking the header too would let a transcript forge a plausible one.
                     hits.append(f"--- {r.get('at','')} with {r.get('caller') or '?'} ---\n"
-                                + t.read_text()[:4000])
+                                + untrusted(t.read_text()[:4000]))
                 except OSError:
                     pass
                 break
@@ -709,6 +730,24 @@ def read_call(who: str = "", when: str = "") -> str:
 #: `attach_model` and `save_connector` are deliberately absent: using them means pasting a
 #: credential into a chat box, which sends it to the model provider and writes it to
 #: run/owner_chat.json in plaintext. Keys are entered on the settings page.
+def note_about(who: str, note: str) -> str:
+    """Remember something about a person, attributed to them.
+
+    This is the assistant's own accumulation, and it is deliberately NOT `note_person`. That one
+    also writes 'Folders' (which GRANTS a readable folder) and 'Always escalate' — authority,
+    reachable from a tool that reads transcripts. This writes observations only.
+
+    Attribution is what makes autonomous writing safe here. "Pauline said the policy is 90 days"
+    stays true whoever said it, so a hostile sentence recorded this way is an accurate note
+    rather than a poisoned fact. Stripping the attribution — promoting a claim into the agent's
+    own voice — is `add_knowledge`, and that is the step the owner has to approve.
+    """
+    note = (note or "").strip()
+    if not note:
+        return "Nothing to note."
+    if not (who or "").strip():
+        return "Say who this is about — a note with no one attached is a claim, not an observation."
+    return people.add_note(who.strip(), "Who", note)
 ASSISTANT_SHARED = {
     "list_people": (list_people, {}),
     "who_is": (who_is, {"asker": "their email or number"}),
@@ -723,6 +762,9 @@ ASSISTANT_SHARED = {
         "file": "the document to correct, e.g. about.md",
         "old": "the exact existing text to replace — must appear exactly once",
         "new": "its replacement; leave empty to delete the text"}),
+    "note_about": (note_about, {
+        "who": "the person the note is about — their name, email or number",
+        "note": "what to remember about them, in your own words"}),
     "setup_status": (setup_status, {}),
     "model_status": (model_status, {}),
 }

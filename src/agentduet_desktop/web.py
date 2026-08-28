@@ -999,6 +999,23 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         return web.json_response(await _chat().turn(body.get("message", ""),
                                                     (body.get("viewing") or "").strip()))
 
+    async def api_proposals(request):
+        """What the assistant wants to add to the shared notes, waiting on the owner."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import assistant as _a
+        return web.json_response({"proposals": _a.pending()})
+
+    async def api_proposal(request):
+        """Approve or discard one. The knowledge write happens HERE, on a click — which is the
+        whole point: a model that has read a stranger's words cannot publish on its own say-so."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import assistant as _a
+        body = await request.json()
+        msg = _a.resolve(str(body.get("id") or ""), bool(body.get("approve")))
+        return web.json_response({"message": msg, "proposals": _a.pending()})
+
     # ---- simulator -------------------------------------------------------
     # Stands in for the DDUET backend so the POC is testable now. It calls
     # brain.handle_query — the SAME path a real inbound message takes — so what you
@@ -1301,6 +1318,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/resolve", api_resolve),
         web.post("/api/send", api_send),
         web.get("/api/chat_history", api_chat_history),
+        web.get("/api/proposals", api_proposals),
+        web.post("/api/proposal", api_proposal),
         web.get("/c/{token}", canvas_page),
         web.get("/api/canvas/available", api_canvas_available),
         web.get("/api/canvas/info", api_canvas_info),

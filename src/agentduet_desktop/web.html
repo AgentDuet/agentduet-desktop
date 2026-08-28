@@ -78,6 +78,22 @@
 
   .chat{display:flex;flex-direction:column;gap:1.1rem;max-width:44rem;}
   .turn{display:flex;flex-direction:column;gap:.3rem;}
+  /* A proposed knowledge write, waiting on the owner. Deliberately NOT a chat bubble: a
+     bubble is something that was said, and this is something that has NOT happened yet. It
+     is a control, so it looks like one. */
+  .prop{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--blue400);
+        border-radius:.5rem;padding:.75rem .875rem;margin:.5rem 0;}
+  .prop b{display:block;font-size:.75rem;letter-spacing:.04em;text-transform:uppercase;
+          color:var(--blue300);margin-bottom:.375rem;}
+  .prop p{margin:0 0 .5rem;color:var(--ink2);font-size:.875rem;line-height:1.5;}
+  .prop small{display:block;color:var(--faint);font-size:.75rem;margin-bottom:.625rem;}
+  .prop .row{display:flex;gap:.5rem;justify-content:flex-start;}
+  .prop button{background:transparent;border:1px solid var(--line);color:var(--muted);
+               border-radius:.375rem;padding:.3rem .75rem;font:inherit;font-size:.8125rem;
+               cursor:pointer;}
+  .prop button:hover{border-color:var(--faint);color:var(--ink2);}
+  .prop button.ok{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .prop button.ok:hover{filter:brightness(1.1);}
   .turn.me{align-items:flex-end;}
   .bub{padding:.65rem .85rem;border-radius:.85rem;font-size:.82rem;line-height:1.65;
     white-space:pre-wrap;overflow-wrap:anywhere;max-width:82%;}
@@ -261,9 +277,33 @@
       <div class="turn ${t.bad ? 'bad' : 'it'}"><div class="bub">${esc(t.a)}</div></div>`).join('')
       + (pending ? `<div class="turn me"><div class="bub">${esc(pending)}</div></div>
          <div class="turn it"><div class="row"><div class="dots"><i></i><i></i><i></i></div>
-         <span class="waited" id="waited"></span></div></div>` : '');
+         <span class="waited" id="waited"></span></div></div>` : '')
+      + PROPOSALS.map(p => `
+      <div class="prop">
+        <b>Add to your shared notes</b>
+        <p>${esc(p.args && (p.args.fact || p.args.new || p.args.old) || '')}</p>
+        <small>${esc((p.args && p.args.file) || 'knowledge')} · proposed after reading a call</small>
+        <div class="row">
+          <button class="ok" data-pid="${esc(p.id)}" data-ok="1">Add it</button>
+          <button data-pid="${esc(p.id)}">Discard</button>
+        </div>
+      </div>`).join('');
     $('mbody').scrollTop = $('mbody').scrollHeight;
   }
+
+  // The assistant may write freely to a PERSON's notes, because those stay attributed. The
+  // shared notes are what everyone is told, so once a call transcript is in the conversation
+  // the write waits here for a click. Nothing is saved until one arrives.
+  let PROPOSALS = [];
+  async function decide(id, approve){
+    const d = await post('/api/proposal', {id, approve});
+    PROPOSALS = d.proposals || [];
+    drawChat();
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('.prop button');
+    if (b) decide(b.dataset.pid, b.dataset.ok === '1');
+  });
 
   async function send(){
     const box = $('ask'), text = box.value.trim();
@@ -283,6 +323,7 @@
       // to what the owner is looking at rather than being guessed.
       const d = await post('/api/chat', {message: text, viewing: LAST_PERSON});
       TURNS.push({q: text, a: d.reply || '', bad: !!d.error});
+      PROPOSALS = d.proposals || [];
     } catch (e) {
       TURNS.push({q: text, a: String(e), bad: true});
     }
