@@ -292,12 +292,10 @@ def owner_context(asker: str, messages: int = 8, focus: str = "") -> str:
 #:
 #: The delimiter is STRIPPED from the content first. Otherwise an asker closes it themselves and
 #: continues outside the quote — the oldest escape in the book, and the reason naive quoting fails.
-UNTRUSTED_MARK = "⟦asker-said⟧"
-def untrusted(text: str) -> str:
-    """Mark text a STRANGER wrote. See UNTRUSTED_MARK."""
-    if not text:
-        return ""
-    return f"{UNTRUSTED_MARK} {str(text).replace(UNTRUSTED_MARK, '')} {UNTRUSTED_MARK}"
+#: Defined in `tools` since 2026-08-28, not here. It was only ever on the secretary side by
+#: accident of history, and the recorder needs it MORE: `read_call` hands a stranger's words
+#: to a model holding knowledge writes. Re-exported so this module's own callers are unchanged.
+from .tools import UNTRUSTED_MARK, untrusted        # noqa: F401  (re-export)
 def who_label(asker: str, verified: bool = True) -> str:
     """Name the person first, address second — for every owner-facing string.
 
