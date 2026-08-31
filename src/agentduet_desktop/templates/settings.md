@@ -34,6 +34,23 @@ Never over-promise; if unsure, say the owner will follow up.
      for you, and nobody has answered that question for us either. -->
 carry
 
+## Messages
+<!-- What happens when someone messages you — on DDUET (a person writing to your business
+     account) or WhatsApp.
+
+     carry   — the message is relayed to you. You read it in the app and you answer it.
+               The assistant helps: it transcribes, summarises and drafts. It does not send.
+     answer  — the agent answers as you, from what it knows. Needs a model key.
+
+     `carry` IS THE DEFAULT, and it is the same decision as Calls above: two humans talk, we are
+     the junction, nobody is impersonated.
+
+     This setting did not exist until 2026-08-28, and its absence had a consequence worth
+     knowing about: a `carry` install still answered chats as its owner, because the message
+     path went straight to the agent with nothing to consult. If you have been running this
+     app and someone got a reply you did not write, that is why. -->
+carry
+
 ## Recordings
 <!-- Where call audio and transcripts are written. An ABSOLUTE path.
 

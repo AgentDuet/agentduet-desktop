@@ -19,6 +19,7 @@ which is precisely the kind of destructive surprise a "safe" unit test should ne
 
 import json
 import pathlib
+import re
 import shutil
 import sys
 import tempfile
@@ -493,8 +494,15 @@ def test_setup_without_a_model() -> None:
     ok("answering still says it needs a model, where the mode is now chosen",
        "needs a model key" in
        (root / "templates" / "settings.md").read_text().lower())
-    ok("and carrying is what a fresh install gets",
-       (root / "templates" / "settings.md").read_text().count("\ncarry\n") == 1)
+    # BOTH MODES, BY HEADING — not a count of the word. This counted occurrences of "carry"
+    # and broke the day `## Messages` was added with the same default, which is the assertion
+    # passing its own test: a fresh install must carry BOTH, and a count cannot say which.
+    seeded = (root / "templates" / "settings.md").read_text()
+    for heading in ("Calls", "Messages"):
+        body = seeded.split(f"## {heading}", 1)[-1].split("\n## ", 1)[0]
+        body = re.sub(r"<!--.*?-->", "", body, flags=re.S)      # the guidance, not the value
+        value = [l.strip() for l in body.splitlines() if l.strip()]
+        ok(f"a fresh install carries {heading.lower()}", value and value[0] == "carry")
     ok("the owner's name is still settable", 'id="name"' in settings_page)
     # Setup must NOT carry a second copy of them.
     ok("and setup does not duplicate the connector fields",
@@ -1102,6 +1110,9 @@ def test_setup_mode() -> None:
     # everyone installing a call recorder offered a half-built second product as a first-run
     # question. It is still a real setting, still read by `choose_mode`, and still editable in
     # settings.md — parity holds because neither surface has it, which is the thing this checks.
+    # `messages` is absent for the SAME reason, and was born that way on 2026-08-28: relaying is
+    # the product on that channel too, the seeded settings.md says `carry`, and "should an agent
+    # answer your chats?" is not a first-run question. Both modes are edited in settings.md.
     for field in ("name", "language", "transcription", "recordings"):
         ok(f"the console can set `{field}`", f'"{field}"' in init_src)
         ok(f"and so can the settings page",
