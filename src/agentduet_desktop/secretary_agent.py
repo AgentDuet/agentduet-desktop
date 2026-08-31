@@ -136,6 +136,17 @@ def _first_text(payload: dict) -> str:
     return ""
 
 
+def _display_name(dd) -> str:
+    """Something readable for the owner, from the relay's display hint. Never an identity.
+
+    Seen on the first real message: `{"email": "…@gmail.com", "name": "Stanley Leong"}`. Either
+    key may be absent, so the name is preferred, the email is the fallback, and an empty string
+    is a fine answer — the app falls back to the uid rather than inventing anything.
+    """
+    meta = getattr(dd, "user_metadata", None) or {}
+    return str(meta.get("name") or meta.get("email") or "").strip()
+
+
 def _dduet_system(content: dict) -> str:
     """The systemType when a DDUET frame is an EVENT rather than something a person said.
 
@@ -189,7 +200,7 @@ def _wa_text(body: str, *, to: str) -> SendWAMessage:
 
 
 def remember_session(asker: str, subscriber: str, *, network: str = "WA",
-                     session_uid: str = "", ba_uid: str = "") -> None:
+                     session_uid: str = "", ba_uid: str = "", display: str = "") -> None:
     """Remember who we may reply to, and everything needed to build that reply.
 
     A reply needs the subscriber the message arrived on — for WhatsApp that is the Business
@@ -216,6 +227,14 @@ def remember_session(asker: str, subscriber: str, *, network: str = "WA",
         row["session_uid"] = session_uid
     if ba_uid:
         row["ba_uid"] = ba_uid
+    # A NAME TO SHOW, NEVER A NAME TO KEY ON. The identity is the account uid and stays the
+    # account uid — the relay's `user_metadata` is documented as "either key possibly absent",
+    # is null on every BA-authored relay, and flips to the staff member's address when a
+    # colleague replies as the BA. So it is carried alongside for the owner to read, and
+    # nothing looks anyone up by it. Without this the app titles a conversation
+    # "d7553b51-6567-11f1-a64a-a9511a89ac64".
+    if display:
+        row["display"] = display
     data[asker] = row
     SESSIONS.write_text(json.dumps(data, indent=2))
 
@@ -306,7 +325,8 @@ async def run_channel() -> None:
                     # participant, session_uid, ba_uid — so recording it here means the owner can
                     # answer the conversation even if the person never sends another word.
                     remember_session(asker, msg.subscriber, network="DDUET",
-                                     session_uid=dd.session_uid, ba_uid=dd.ba_uid)
+                                     session_uid=dd.session_uid, ba_uid=dd.ba_uid,
+                                     display=_display_name(dd))
                     logger.info("DDUET: %s event on session %s — noted, not answered",
                                 event, dd.session_uid)
                     return
@@ -317,7 +337,8 @@ async def run_channel() -> None:
             remember_session(asker, msg.subscriber,
                              network=("DDUET" if dd is not None else "WA"),
                              session_uid=(dd.session_uid if dd is not None else ""),
-                             ba_uid=(dd.ba_uid if dd is not None else ""))
+                             ba_uid=(dd.ba_uid if dd is not None else ""),
+                             display=(_display_name(dd) if dd is not None else ""))
             # NOT status.set_number(): the subscriber is the Business Account's
             # `phone_number_id`, a Meta identifier and not a dialable number, so showing it in
             # the header would read as the owner's number while being unusable as one. A real
@@ -393,10 +414,11 @@ async def run_channel() -> None:
                         queued = _wa_text(item["text"], to=item["asker"])
                     result = await (await session_for(s["subscriber"])).send_message(queued)
                     if result.success:
+                        # NO SECOND LOG ROW. `reply_to` already wrote the owner_reply row when
+                        # the owner pressed send; this is the DELIVERY of that same message, and
+                        # recording it again put the reply in the conversation twice — invisible
+                        # until the app grew a thread view, then immediately obvious.
                         logger.info("→ (from owner) %s: %s", item["asker"], item["text"])
-                        from . import brain as _brain
-                        _brain.record(item["asker"], "(owner reply)", "owner", "",
-                                      item["text"])
                     else:
                         # Most likely outside WhatsApp's customer-service window: Meta only
                         # allows a free-form reply within 24h of the person's last message, and

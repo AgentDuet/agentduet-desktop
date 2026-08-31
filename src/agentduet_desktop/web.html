@@ -102,6 +102,9 @@
   .brk{display:flex;align-items:center;gap:.625rem;margin:1rem 0;color:var(--faint);
        font-size:.6875rem;letter-spacing:.06em;text-transform:uppercase;}
   .brk::before,.brk::after{content:"";flex:1;height:1px;background:var(--line);}
+  /* Who spoke, under the bubble. A reply the OWNER typed and one the agent produced look
+     identical otherwise, and on a money or promise question that is the whole difference. */
+  .turn .who{font-size:.6875rem;color:var(--faint);margin-top:.25rem;padding:0 .25rem;}
   .turn.me{align-items:flex-end;}
   .bub{padding:.65rem .85rem;border-radius:.85rem;font-size:.82rem;line-height:1.65;
     white-space:pre-wrap;overflow-wrap:anywhere;max-width:82%;}
@@ -221,6 +224,15 @@
   let THREADS = {people: []}, PICKED = ASSISTANT, LAST_PERSON = '', MODEL = {};
 
   // ---- people and their calls ---------------------------------------------------------
+  // Calls AND messages now, so the line cannot just say "n calls" — someone who only ever
+  // wrote would have read as "0 calls".
+  function countLabel(p){
+    const c = (p.calls || []).length, m = (p.messages || []).length, bits = [];
+    if (c) bits.push(c + ' call' + (c === 1 ? '' : 's'));
+    if (m) bits.push(m + ' message' + (m === 1 ? '' : 's'));
+    return bits.join(' · ') || 'no activity';
+  }
+
   function drawWho(){
     const list = THREADS.people || [];
     if (PICKED !== ASSISTANT && !list.some(p => p.who === PICKED)) PICKED = ASSISTANT;
@@ -230,10 +242,10 @@
         <span class="n">Personal Assistant</span></div>`
       + (list.length ? list.map(p => `
       <div class="who ${p.who === PICKED ? 'on' : ''}" data-who="${esc(p.who)}">
-        <span class="n">${esc(p.who)}</span>
-        <span class="m">${p.calls.length} call${p.calls.length === 1 ? '' : 's'} · ${esc(when(p.last))}</span>
+        <span class="n">${esc(p.display || p.who)}</span>
+        <span class="m">${countLabel(p)} · ${esc(when(p.last))}</span>
       </div>`).join('')
-      : '<div class="who-empty">No calls yet.</div>');
+      : '<div class="who-empty">Nobody yet.</div>');
     $('whoList').querySelectorAll('.who').forEach(el => {
       el.onclick = () => {
         PICKED = el.dataset.who;
@@ -250,29 +262,63 @@
     $('composer').hidden = false;
     $('aModel').hidden = false;
     $('newConv').hidden = false;
+    const ok = !!MODEL.configured;
+    $('ask').disabled = !ok;
+    $('send').disabled = !ok;
+    $('ask').placeholder = ok ? 'Ask about your calls…' : 'Attach a model in Settings';
     $('thread').innerHTML = '<div class="chat" id="chat"></div>';
     drawChat();
-    $('ask').focus();
+    if (ok) $('ask').focus();
   }
 
   function drawThread(){
     const p = (THREADS.people || []).find(x => x.who === PICKED);
-    $('composer').hidden = true;
     $('aModel').hidden = true;
     $('newConv').hidden = true;
-    if (!p) return;
-    $('tTitle').textContent = p.who;
-    $('tSub').textContent = `${p.calls.length} call${p.calls.length === 1 ? '' : 's'}`;
-    $('thread').innerHTML = p.calls.map(c => `
+    if (!p) { $('composer').hidden = true; return; }
+
+    // THE COMPOSER IS THE POINT OF THIS VIEW. Messages are CARRIED now — the agent does not
+    // answer them — so if the owner cannot reply from here, nobody replies at all.
+    $('composer').hidden = false;
+    $('ask').disabled = false;
+    $('send').disabled = false;
+    $('ask').placeholder = `Message ${p.display || p.who}…`;
+
+    $('tTitle').textContent = p.display || p.who;
+    const msgs = p.messages || [], calls = p.calls || [];
+    const bits = [];
+    if (calls.length) bits.push(`${calls.length} call${calls.length === 1 ? '' : 's'}`);
+    if (msgs.length) bits.push(`${msgs.length} message${msgs.length === 1 ? '' : 's'}`);
+    $('tSub').textContent = bits.join(' · ');
+
+    // INTERLEAVED BY TIME, because they are one relationship and not two logs. Someone who
+    // rang and then wrote is one person having one conversation across two channels.
+    const items = calls.map(c => ({at: c.at, call: c}))
+      .concat(msgs.map(m => ({at: m.at, msg: m})))
+      .sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
+
+    $('thread').innerHTML = items.map(it => it.call ? `
       <div class="call">
         <div class="top">
-          <span class="when">${esc(when(c.at))}</span>
-          <span class="meta">${esc(c.mode)}${c.files ? ' · ' + c.files + ' file' + (c.files === 1 ? '' : 's') : ''}${c.bytes ? ' · ' + kb(c.bytes) : ''}</span>
+          <span class="when">${esc(when(it.call.at))}</span>
+          <span class="meta">${esc(it.call.mode)}${it.call.files ? ' · ' + it.call.files + ' file' + (it.call.files === 1 ? '' : 's') : ''}${it.call.bytes ? ' · ' + kb(it.call.bytes) : ''}</span>
         </div>
-        ${c.silent ? '<div class="none">No audio.</div>'
-          : (c.transcript ? `<div class="text">${esc(c.transcript)}</div>`
-                          : '<div class="none">Transcript pending.</div>')}
-      </div>`).join('');
+        ${it.call.silent ? '<div class="none">No audio.</div>'
+          : (it.call.transcript ? `<div class="text">${esc(it.call.transcript)}</div>`
+                                : '<div class="none">Transcript pending.</div>')}
+      </div>` : msgHtml(it.msg)).join('')
+      || '<div class="none">Nothing yet.</div>';
+    $('mbody').scrollTop = $('mbody').scrollHeight;
+  }
+
+  // One inbound message and whatever went back. `by` says who spoke for us, which the reader
+  // cannot infer: empty means nobody did — the normal case now that messages are carried.
+  function msgHtml(m){
+    const theirs = m.them ? `<div class="turn it"><div class="bub">${esc(m.them)}</div>
+        <div class="who">${esc(m.network)} · ${esc(when(m.at))}</div></div>` : '';
+    if (!m.us) return theirs;
+    return theirs + `<div class="turn me"><div class="bub">${esc(m.us)}</div>
+        <div class="who">${m.by === 'agent' ? 'answered by the agent' : 'you · ' + esc(when(m.at))}</div></div>`;
   }
 
   // ---- the assistant ------------------------------------------------------------------
@@ -330,12 +376,27 @@
       if (el && secs >= 3) el.textContent = secs + 's';
     }, 1000);
     try {
+      if (PICKED !== ASSISTANT) {
+        // A REPLY TO A PERSON, not a question to the assistant. Same box, and the difference
+        // is which of them is on screen — so it must be impossible to get wrong: the assistant
+        // never sends, and this never asks.
+        await post('/api/send', {asker: PICKED, text});
+        await refresh();
+        drawThread();
+        clearInterval(tick); BUSY = false; $('send').disabled = false; box.focus();
+        return;
+      }
       // `viewing` is whoever is open in the middle column, so "her" and "this person" resolve
       // to what the owner is looking at rather than being guessed.
       const d = await post('/api/chat', {message: text, viewing: LAST_PERSON});
       TURNS.push({q: text, a: d.reply || '', bad: !!d.error});
       PROPOSALS = d.proposals || [];
     } catch (e) {
+      if (PICKED !== ASSISTANT) {
+        clearInterval(tick); BUSY = false; $('send').disabled = false;
+        alert('Could not send: ' + e);
+        return;
+      }
       TURNS.push({q: text, a: String(e), bad: true});
     }
     clearInterval(tick);
@@ -381,10 +442,15 @@
     MODEL = D.model || {};
     $('aModel').textContent = MODEL.name || 'no model';
     $('aModel').title = MODEL.describe || '';
-    const ok = !!MODEL.configured;
-    $('ask').disabled = !ok;
-    $('send').disabled = !ok;
-    $('ask').placeholder = ok ? 'Ask about your calls…' : 'Attach a model in Settings';
+    // The gate is applied where the composer is drawn, not here — it belongs to the ASSISTANT
+    // and not to a reply. Replying to a person needs no model at all, the same way carrying a
+    // call needs none, and disabling the box on an install with no key would have left a
+    // carried message with nobody able to answer it.
+    if (PICKED === ASSISTANT) drawAssistant();
+  }
+
+  async function refresh(){
+    THREADS = await fetch(`/api/threads?t=${T}`).then(r => r.json()).catch(() => ({people: []}));
   }
 
   Promise.all([
