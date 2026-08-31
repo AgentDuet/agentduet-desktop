@@ -192,6 +192,28 @@ def calls() -> str:
     return CALLS_CARRY if first.startswith(CALLS_CARRY) else CALLS_ANSWER
 
 
+MESSAGES_ANSWER = "answer"
+MESSAGES_CARRY = "carry"
+
+
+def messages() -> str:
+    """`carry` (relay to the owner, who answers) or `answer` (the agent answers as them).
+
+    DEFAULTS TO CARRY, which is the opposite of `calls()` and deliberate. Calls defaulted to
+    ANSWER because that setting predates the recorder; messages are getting a mode for the first
+    time, so the default is the product we actually ship — two humans, relayed, with the agent
+    assisting rather than impersonating.
+
+    The absence of this setting is what let a `carry` install answer a chat as its owner. The
+    call path had been through the two-product split and the message path never had, so
+    `on_incoming_message` went to `brain.handle_query` unconditionally — not a decision anyone
+    made, just what was there before. (Found 2026-08-28, on the first real DDUET conversation:
+    settings said carry, and the agent replied "Stanley is currently unavailable" as Stanley.)
+    """
+    first = _first_line(_strip_guidance(_sections().get("Messages", ""))).strip().lower()
+    return MESSAGES_ANSWER if first.startswith(MESSAGES_ANSWER) else MESSAGES_CARRY
+
+
 def language() -> str:
     """The language calls are in, as an ISO code — "en", "vi", "zh". "" means guess.
 

@@ -136,6 +136,24 @@ def _first_text(payload: dict) -> str:
     return ""
 
 
+def _dduet_system(content: dict) -> str:
+    """The systemType when a DDUET frame is an EVENT rather than something a person said.
+
+    Nexus relays conversation lifecycle as ordinary inbound with a `system` part — the first one
+    seen was CONVO_CREATED, carrying `dataJson: {"title": "hi hi"}`, where the title is the
+    proto's "first sentence of the first message". So the words are in there, and they are still
+    not a message: answering a creation event means replying to the fact that a conversation
+    exists.
+
+    Without this the handler asked the model to answer an empty string, and it loaded a 7.6 GB
+    model to do it.
+    """
+    for part in (content or {}).get("parts", []) or []:
+        if part.get("type") == "system":
+            return part.get("system", {}).get("systemType", "system")
+    return ""
+
+
 def _dduet_text(body: str, *, to: str, session_uid: str, ba_uid: str) -> SendDduetMessage:
     """One outbound DDUET (Nexus BaChat) text.
 
@@ -281,8 +299,18 @@ async def run_channel() -> None:
                     logger.info("DDUET: skipping a message authored by our own BA (%s) — a "
                                 "human on our side replied, session %s", dd.ba_uid, dd.session_uid)
                     return
-                question = _first_text(dd.content)
                 conversation = dd.session_uid      # a real per-conversation key, unlike WA
+                event = _dduet_system(dd.content)
+                if event:
+                    # Remember the session ANYWAY. This frame carries everything a reply needs —
+                    # participant, session_uid, ba_uid — so recording it here means the owner can
+                    # answer the conversation even if the person never sends another word.
+                    remember_session(asker, msg.subscriber, network="DDUET",
+                                     session_uid=dd.session_uid, ba_uid=dd.ba_uid)
+                    logger.info("DDUET: %s event on session %s — noted, not answered",
+                                event, dd.session_uid)
+                    return
+                question = _first_text(dd.content)
             else:
                 question = _first_text(msg.payload)
             logger.info("← %s: %s", asker, question)
@@ -306,9 +334,26 @@ async def run_channel() -> None:
             network = msg.network.value if hasattr(msg.network, "value") else str(msg.network)
             from . import people
             verified = people.default_verified(network)
+            from . import brain
+            from . import owner
+
+            # CARRY: RELAY IT, DO NOT ANSWER IT. The same shape as a carried call — two humans
+            # talk, we are the junction, nobody is impersonated. The message is recorded so the
+            # owner can read it and reply from the app, and the session is already stored above,
+            # so their reply has everything it needs to go back out.
+            #
+            # This mode did not exist until 2026-08-28. Before it, `on_incoming_message` went to
+            # handle_query unconditionally, so an install with `## Calls: carry` — an owner who
+            # had explicitly said the agent must not speak for them — still had it answer their
+            # chats. Found on the first real DDUET conversation.
+            if owner.messages() == owner.MESSAGES_CARRY:
+                brain.record(asker, question, "carried", "", "", network=network,
+                             verified=verified, conversation=conversation)
+                logger.info("[%s] %s → carried to the owner, not answered", network, asker)
+                return
+
             # WhatsApp has no conversation key, so memory falls back to the identity — which
             # on that channel IS the person. DDUET has one: the Nexus session uid.
-            from . import brain
             result = await brain.handle_query(asker, question, network, verified=verified,
                                               conversation=conversation)
             reply, outcome = result["reply"], result["outcome"]
