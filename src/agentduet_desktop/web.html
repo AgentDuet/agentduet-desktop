@@ -108,10 +108,20 @@
   /* align-self, because .turn is a column flex container and a stretched button reads as a
      divider rather than something to press — it looked exactly like the "new conversation"
      rule above it. */
-  .useit{align-self:flex-start;background:transparent;border:1px dashed var(--line);
-         color:var(--muted);border-radius:.375rem;padding:.3rem .7rem;font:inherit;
-         font-size:.75rem;cursor:pointer;margin-top:.125rem;}
+  /* INSIDE the bubble, under the words it acts on. Outside it floated between two turns and
+     read as belonging to neither — a control has to sit with its subject. The rule above it is
+     what separates it from the text without needing space. */
+  .useit{display:block;margin:.625rem -.25rem -.125rem;padding:.5rem .25rem 0;width:calc(100% + .5rem);
+         text-align:left;background:transparent;border:0;border-top:1px solid rgba(255,255,255,.08);
+         color:var(--blue300);font:inherit;font-size:.75rem;cursor:pointer;}
+  .useit:hover{color:#fff;}
   .useit:hover{border-style:solid;border-color:var(--blue400);color:var(--blue300);}
+  /* A DRAFT LOOKS DIFFERENT FROM AN ANSWER, because it is a different object: words meant for
+     someone else, which have not gone anywhere. The claim that this assistant writes but never
+     sends is only worth making if the owner can see it on every draft. */
+  .bub.draft{border-color:rgba(96,165,250,.4);background:rgba(37,99,235,.10);}
+  .dlbl{display:block;font-size:.6875rem;letter-spacing:.04em;text-transform:uppercase;
+        color:var(--blue300);margin-bottom:.4rem;}
   .turn.me{align-items:flex-end;}
   .bub{padding:.65rem .85rem;border-radius:.85rem;font-size:.82rem;line-height:1.65;
     white-space:pre-wrap;overflow-wrap:anywhere;max-width:82%;}
@@ -344,8 +354,9 @@
     if (!log) return;
     log.innerHTML = TURNS.map((t, i) => t.brk ? `<div class="brk"><span>new conversation</span></div>` : `
       <div class="turn me"><div class="bub">${esc(t.q)}</div></div>
-      <div class="turn ${t.bad ? 'bad' : 'it'}"><div class="bub">${esc(t.a)}</div></div>
-      ${useAsReply(t, i)}`).join('')
+      <div class="turn ${t.bad ? 'bad' : 'it'}"><div class="bub${t.draft ? ' draft' : ''}">${
+        t.draft ? `<span class="dlbl">Draft reply${replyTarget() ? ' to ' + esc((replyTarget().display || replyTarget().who)) : ''} — not sent</span>` : ''
+      }${esc(t.a)}${useAsReply(t, i)}</div></div>`).join('')
       + (pending ? `<div class="turn me"><div class="bub">${esc(pending)}</div></div>
          <div class="turn it"><div class="row"><div class="dots"><i></i><i></i><i></i></div>
          <span class="waited" id="waited"></span></div></div>` : '')
@@ -382,8 +393,8 @@
   // anyone. A control repeated past the point of meaning stops reading as a control.
   function useAsReply(t, i){
     const who = replyTarget();
-    if (i !== TURNS.length - 1 || !who || t.bad || !t.a || t.a.length > 900) return '';
-    return `<div class="turn it"><button class="useit" data-turn="${i}">Use as reply to ${esc(who.display || who.who)}</button></div>`;
+    if (!t.draft || i !== TURNS.length - 1 || !who || t.bad || !t.a) return '';
+    return `<button class="useit" data-turn="${i}">Use as reply to ${esc(who.display || who.who)}</button>`;
   }
 
   document.addEventListener('click', e => {
@@ -439,7 +450,7 @@
       // `viewing` is whoever is open in the middle column, so "her" and "this person" resolve
       // to what the owner is looking at rather than being guessed.
       const d = await post('/api/chat', {message: text, viewing: LAST_PERSON});
-      TURNS.push({q: text, a: d.reply || '', bad: !!d.error});
+      TURNS.push({q: text, a: d.reply || '', bad: !!d.error, draft: !!d.draft});
       PROPOSALS = d.proposals || [];
     } catch (e) {
       if (PICKED !== ASSISTANT) {
@@ -458,7 +469,7 @@
 
   $('newConv').onclick = async () => {
     const d = await post('/api/chat_new', {});
-    TURNS = (d.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a});
+    TURNS = (d.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a, draft: !!t.draft});
     PROPOSALS = [];
     drawChat();
     $('ask').focus();
@@ -526,7 +537,7 @@
     fetch(`/api/chat_history?t=${T}`).then(r => r.json()).catch(() => ({turns: []})),
   ]).then(([th, hist]) => {
     THREADS = th;
-    TURNS = (hist.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a});
+    TURNS = (hist.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a, draft: !!t.draft});
     drawWho();
   });
   load();

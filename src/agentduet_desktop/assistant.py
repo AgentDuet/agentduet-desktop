@@ -253,6 +253,66 @@ def _loose_call(text: str) -> list:
     return [(m.group(1), args)]
 
 
+#: THE OWNER TELLING US TO SEND WHAT WAS JUST DRAFTED.
+#:
+#: This is the context split, taken to its limit. The worry it answers: an assistant that has
+#: READ a stranger's message and can also SEND is one where a stranger's words can put a message
+#: on the wire. Separating the two per turn does not fix that on its own, because the message
+#: stays in the history — the model holding the send tool has still seen it, and separating the
+#: TOOLS without separating the EXPOSURE is not separation.
+#:
+#: So the sending turn gets no history at all. And once its context is empty, there is nothing
+#: for a model to do: the words already exist, the owner has read them, and the recipient comes
+#: from the thread. A model in that path would add an injection surface and no capability. So
+#: there is no model in the send path.
+#:
+#: What that leaves is a decision made by a regex, which has to be tight, because a false
+#: positive puts a message in front of a customer and nothing takes it back. Three conditions
+#: must all hold: the owner said something that is ONLY a send instruction, a draft exists to
+#: send, and a recipient resolves. Anything else falls through to the ordinary path, where the
+#: worst case is a wasted answer.
+_SEND_INTENT = re.compile(
+    r"^(?:ok(?:ay)?[,\s]+)?(?:yes[,\s]+)?(?:please\s+)?(?:go\s+ahead\s+and\s+)?"
+    r"send(?:\s+(?:it|that|this|the\s+reply|the\s+message))?"
+    r"(?:\s+(?:to\s+them|to\s+him|to\s+her|now|please))*[.!]?$",
+    re.I)
+
+
+#: THE OWNER ASKING FOR WORDS TO SEND SOMEONE, rather than an answer for themselves.
+#:
+#: A DRAFT IS ITS OWN OBJECT and this is what makes one. Without it, "send it" meant "the last
+#: answer" — which might be "2." or a summary of who wrote in, neither of which anyone should be
+#: able to send by saying two words. With it, "send it" means the draft, and where there is no
+#: draft there is nothing to send.
+#:
+#: It is also the fence made visible. The claim is that the assistant writes but never sends;
+#: a balloon labelled as a draft says so on screen, every time, instead of it being a property
+#: the owner has to take on trust.
+#:
+#: Code decides this, from what the OWNER asked, not from the model volunteering that its answer
+#: is a draft — a weak model forgets, and a manipulated one could claim anything.
+_DRAFT_INTENT = re.compile(
+    r"\b(?:repl(?:y|ies)|respond|answer\s+(?:him|her|them|it)|tell\s+(?:him|her|them)|"
+    r"say\s+to\s+(?:him|her|them)|write\s+(?:him|her|them|back)|get\s+back\s+to\s+(?:him|her|them)|"
+    r"let\s+(?:him|her|them)\s+know)\b", re.I)
+
+
+def draft_intent(message: str) -> bool:
+    """True when the owner is asking for something to SEND, not something to know."""
+    return bool(_DRAFT_INTENT.search(message or ""))
+
+
+def send_intent(message: str) -> bool:
+    """True when the owner's message is a send instruction and nothing else.
+
+    Deliberately refuses anything with extra content. "send it" sends; "send it and tell him we
+    close at six" does not, because the second half is a new instruction that has to be drafted
+    and read before it goes anywhere. A regex cannot tell which part of a compound sentence is
+    the payload, so it declines to try.
+    """
+    return bool(_SEND_INTENT.match((message or "").strip()))
+
+
 class OwnerChat:
     """Minimal tool-calling loop.
 
@@ -340,7 +400,8 @@ class OwnerChat:
         except (OSError, json.JSONDecodeError):
             return []
 
-    def _record(self, question: str, answer: str, used: list[str], full: str = "") -> None:
+    def _record(self, question: str, answer: str, used: list[str], full: str = "",
+                draft: bool = False) -> None:
         """Append one visible turn. Tool results are deliberately NOT stored — they are
         diagnostics, they are large, and they are stale the moment the queue changes.
 
@@ -350,6 +411,10 @@ class OwnerChat:
         """
         turn = {"q": question, "a": answer, "tools": used,
                 "at": datetime.now().isoformat(timespec="seconds")}
+        # A DRAFT, decided from what the owner asked for. Stored on the turn so the page can
+        # label it and so "send it" has one unambiguous referent.
+        if draft and answer:
+            turn["draft"] = True
         if full and full != question:
             turn["q_full"] = full
         self.shown = (self.shown + [turn])[-60:]
@@ -501,8 +566,9 @@ class OwnerChat:
                              "than keep it. Ask again. If it keeps happening the model is too small for "
                              "this, or the conversation has grown repetitive — New conversation clears it.")
                 remember(history + [f"ASSISTANT: {out}"])
-                self._record(shown_as, out, used, full=message)
-                return {"reply": out, "tools": used, "proposals": _proposals()}
+                self._record(shown_as, out, used, full=message, draft=draft_intent(message))
+                return {"reply": out, "tools": used, "proposals": _proposals(),
+                        "draft": draft_intent(message) and bool(out)}
 
             # Every call in the reply, in the order given. One-at-a-time silently discarded
             # the rest of a batched reply.
@@ -586,13 +652,32 @@ class OwnerChat:
                      "than keep it. Ask again. If it keeps happening the model is too small for "
                      "this, or the conversation has grown repetitive — New conversation clears it.")
         remember(history + [f"ASSISTANT: {final}"])
-        self._record(shown_as, final, used, full=message)
-        return {"reply": final, "tools": used, "proposals": _proposals()}
+        self._record(shown_as, final, used, full=message, draft=draft_intent(message))
+        return {"reply": final, "tools": used, "proposals": _proposals(),
+                "draft": draft_intent(message) and bool(final)}
 
     #: History is handed to the model as plain `OWNER:` / `ASSISTANT:` lines, so a weak model
     #: sometimes CONTINUES the transcript instead of answering — the reply comes back with the
     #: speaker labels in it, and the owner sees their own question quoted back. Cheap to strip,
     #: and never legitimate: the model is asked for the answer, not for the next line.
+    def last_draft(self) -> str:
+        """The most recent turn MARKED as a draft — what "send it" refers to.
+
+        Not simply the last answer: "2." is an answer and must not be sendable by saying two
+        words. Empty when the owner has not asked for anything to send, which correctly makes
+        "send it" a no-op rather than a surprise.
+        """
+        for turn in reversed(self.shown):
+            if turn.get("draft") and turn.get("a"):
+                return turn["a"]
+            if turn.get("break"):
+                break
+        return ""
+
+    def note_sent(self, question: str, confirmation: str) -> None:
+        """Record the send as a turn, so the chat shows what left and when."""
+        self._record(question, confirmation, ["reply_to"])
+
     def _last_answer(self) -> str:
         """The most recent answer, skipping break markers.
 
