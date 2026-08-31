@@ -733,6 +733,25 @@ def _display_for(asker: str) -> str:
     return (seen.get(asker) or {}).get("display") or asker
 
 
+def messages_summary(days: int = 7) -> str:
+    """How many messages, from whom, how many unanswered — and NOT A WORD anyone else wrote.
+
+    Every character of this is computed here from the log, so unlike `read_messages` it carries
+    no asker-authored text and does not taint a conversation. That is what lets it be handed to
+    the assistant on EVERY turn.
+
+    It exists because the model would not look. Asked "any new msg?" with a few turns of history
+    behind it, glm-4-9b answered from what it remembered instead of calling read_messages — and
+    then, asked who they were from, invented an account uid and a message
+    ("a8e0c4d9-...: Just checking in, hope all is well") that had never existed. Neither the
+    person nor the words were real.
+
+    Making the tool available was not enough, because a weak model deciding whether to look is
+    itself the failure. Code looks, every turn, and hands over the answer.
+    """
+    return read_messages(days=days).split("\n", 1)[0]
+
+
 def read_messages(who: str = "", limit: int = 20, days: int = 0) -> str:
     """The message conversation with someone — DDUET or WhatsApp, oldest first.
 
@@ -770,7 +789,7 @@ def read_messages(who: str = "", limit: int = 20, days: int = 0) -> str:
         who_counts[name] = who_counts.get(name, 0) + 1
         if not r.get("answer"):
             unanswered += 1
-    people_bit = ", ".join(f"{n} from {w}" for w, n in who_counts.items())
+    people_bit = ", ".join(f"{n} from {w}" for w, n in who_counts.items())  # noqa: E501
     total = sum(who_counts.values())
     head = (f"{total} message{'' if total == 1 else 's'}"
             + (f" ({people_bit})" if people_bit else "")
@@ -783,7 +802,12 @@ def read_messages(who: str = "", limit: int = 20, days: int = 0) -> str:
         if r.get("outcome") == "owner_reply":
             out.append(f"[{when}] the owner replied: {r.get('answer', '')}")
             continue
-        out.append(f"[{when}] them: {untrusted(r.get('question', ''))}")
+        # NAME THE SENDER ON EVERY LINE. Only the summary header carried names, so asked who
+        # three messages were from, the model answered "from an unknown sender" three times —
+        # correctly, since the lines it was reading did not say. The name is ours, from the
+        # session store; only the words are marked.
+        out.append(f"[{when}] {_display_for(r.get('asker') or 'someone')}: "
+                   f"{untrusted(r.get('question', ''))}")
         if r.get("answer"):
             out.append(f"[{when}] the agent answered: {r.get('answer')}")
         else:

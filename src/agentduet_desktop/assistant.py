@@ -495,14 +495,31 @@ class OwnerChat:
         # the person's OPEN THREADS and the draft the answering agent wrote for them — objects
         # that do not exist on a machine where nobody is answered. What the owner is looking at
         # here is a person and their calls, so that is what it is handed.
-        context = ""
+        # THE STATE OF THE INBOX, EVERY TURN, WHETHER OR NOT A TOOL IS CALLED. Counted by code
+        # and carrying nobody's words, so it costs no taint — and it removes the most common
+        # question from the model's judgement entirely.
+        # THE INBOX, EVERY TURN — the count AND the messages, whether or not a tool is called.
+        #
+        # It was going to be conditional, injecting the bodies only for a question that needed
+        # them. Two of seven test phrases failed immediately: "what did he ask?" (the pattern had
+        # `asked`, not `ask`) and "what are they and from who?", which contains no message word
+        # at all because it is a pronoun follow-up. Patching those invites the next miss, and
+        # every miss looks like the model being stupid rather than the model being starved.
+        #
+        # So it is unconditional. The cost is that every conversation is tainted, which makes a
+        # knowledge write a proposal the owner clicks — rare, and one click. The benefit is that
+        # "it did not look it up" stops being a failure mode: asked what two messages were, the
+        # model invented an account uid and a quote from a person who does not exist, and no
+        # amount of prompt wording fixes a model answering a question it was given no data for.
+        context = ("RIGHT NOW, in the last 7 days: " + tools.messages_summary()
+                   + "\n\nTHE MESSAGES:\n" + tools.read_messages(days=7))
         if viewing:
             # BOTH HALVES OF THE RELATIONSHIP. Calls only, and "help me reply to this" was
             # answered from nothing — the message the owner is looking at was the one thing the
             # assistant could not see.
             calls = tools.read_call(who=viewing)
             msgs = tools.read_messages(who=viewing)
-            context = (f"CONTEXT — the owner is looking at {viewing}.\n\n{calls}\n\n{msgs}"
+            context += (f"\n\nCONTEXT — the owner is looking at {viewing}.\n\n{calls}\n\n{msgs}"
                        f"\n\nIf the owner says \"her\", \"him\", \"them\" or \"this "
                        f"person\" without naming anyone, they mean {viewing}.")
             # THIS PATH TAINTS TOO, and it did not until 2026-08-31. The gate keyed on a TOOL
