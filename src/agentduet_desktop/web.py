@@ -1082,8 +1082,13 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                 reply = "I do not know who to send that to. Open their conversation first."
             else:
                 secretary_tools.reply_to(target, draft)
-                reply = f"Sent to {target}:\n\n{draft}"
-            chat.note_sent(message, reply)
+                # THE NAME, NOT THE UID. On DDUET the identity is an account uid, so the
+                # confirmation read "Sent to d7553b51-6567-11f1-a64a-a9511a89ac64" — accurate,
+                # unreadable, and no use for checking it went to the right person, which is the
+                # only reason to show a recipient back at all.
+                from . import tools as _t
+                reply = f"Sent to {_t._display_for(target)}:\n\n{draft}"
+            chat.note_sent(message, reply, delivered=reply.startswith("Sent"))
             return web.json_response({"reply": reply,
                                       "tools": ["reply_to"] if reply.startswith("Sent") else [],
                                       "proposals": []})

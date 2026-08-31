@@ -119,7 +119,15 @@
   /* A DRAFT LOOKS DIFFERENT FROM AN ANSWER, because it is a different object: words meant for
      someone else, which have not gone anywhere. The claim that this assistant writes but never
      sends is only worth making if the owner can see it on every draft. */
-  .bub.draft{border-color:rgba(96,165,250,.4);background:rgba(37,99,235,.10);}
+  /* A DRAFT IS THE MESSAGE BEFORE IT EXISTS, so it is the same balloon WITHOUT THE FILL —
+     and sending fills it in. The visual difference is exactly the semantic one, which means
+     there is nothing to learn: outlined is provisional, filled has gone.
+     Amber was the obvious alternative and is wrong — amber reads as a warning, and a draft is
+     not one. So is dimming it, which reads as disabled, when a draft is the one thing on the
+     screen the owner SHOULD act on. */
+  .bub.draft{background:transparent;border:1px solid rgba(96,165,250,.45);}
+  .bub.draft.went{background:rgba(52,211,153,.09);border-color:rgba(52,211,153,.32);}
+  .dlbl.gone{color:var(--emerald);}
   .dlbl{display:block;font-size:.6875rem;letter-spacing:.04em;text-transform:uppercase;
         color:var(--blue300);margin-bottom:.4rem;}
   .turn.me{align-items:flex-end;}
@@ -354,8 +362,8 @@
     if (!log) return;
     log.innerHTML = TURNS.map((t, i) => t.brk ? `<div class="brk"><span>new conversation</span></div>` : `
       <div class="turn me"><div class="bub">${esc(t.q)}</div></div>
-      <div class="turn ${t.bad ? 'bad' : 'it'}"><div class="bub${t.draft ? ' draft' : ''}">${
-        t.draft ? `<span class="dlbl">Draft reply${replyTarget() ? ' to ' + esc((replyTarget().display || replyTarget().who)) : ''} — not sent</span>` : ''
+      <div class="turn ${t.bad ? 'bad' : 'it'}"><div class="bub${t.draft ? ' draft' : ''}${t.sent ? ' went' : ''}">${
+        t.draft ? `<span class="dlbl${t.sent ? ' gone' : ''}">${t.sent ? 'Sent' : 'Draft reply'}${replyTarget() ? ' to ' + esc((replyTarget().display || replyTarget().who)) : ''}${t.sent ? '' : ' — not sent'}</span>` : ''
       }${esc(t.a)}${useAsReply(t, i)}</div></div>`).join('')
       + (pending ? `<div class="turn me"><div class="bub">${esc(pending)}</div></div>
          <div class="turn it"><div class="row"><div class="dots"><i></i><i></i><i></i></div>
@@ -393,7 +401,7 @@
   // anyone. A control repeated past the point of meaning stops reading as a control.
   function useAsReply(t, i){
     const who = replyTarget();
-    if (!t.draft || i !== TURNS.length - 1 || !who || t.bad || !t.a) return '';
+    if (!t.draft || t.sent || i !== TURNS.length - 1 || !who || t.bad || !t.a) return '';
     return `<button class="useit" data-turn="${i}">Use as reply to ${esc(who.display || who.who)}</button>`;
   }
 
@@ -469,7 +477,7 @@
 
   $('newConv').onclick = async () => {
     const d = await post('/api/chat_new', {});
-    TURNS = (d.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a, draft: !!t.draft});
+    TURNS = (d.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a, draft: !!t.draft, sent: !!t.sent});
     PROPOSALS = [];
     drawChat();
     $('ask').focus();
@@ -537,7 +545,7 @@
     fetch(`/api/chat_history?t=${T}`).then(r => r.json()).catch(() => ({turns: []})),
   ]).then(([th, hist]) => {
     THREADS = th;
-    TURNS = (hist.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a, draft: !!t.draft});
+    TURNS = (hist.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a, draft: !!t.draft, sent: !!t.sent});
     drawWho();
   });
   load();

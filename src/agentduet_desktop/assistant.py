@@ -668,15 +668,33 @@ class OwnerChat:
         "send it" a no-op rather than a surprise.
         """
         for turn in reversed(self.shown):
-            if turn.get("draft") and turn.get("a"):
-                return turn["a"]
             if turn.get("break"):
                 break
+            if turn.get("sent"):
+                # ALREADY GONE. Without this, saying "send it" twice sends it twice — the draft
+                # stays in the log and nothing marked it spent. A duplicate message to a customer
+                # is not recoverable, and "I said it again by accident" is a poor explanation.
+                # Caught by reading a debug dump, not by a test; there is one now.
+                return ""
+            if turn.get("draft") and turn.get("a"):
+                return turn["a"]
         return ""
 
-    def note_sent(self, question: str, confirmation: str) -> None:
-        """Record the send as a turn, so the chat shows what left and when."""
-        self._record(question, confirmation, ["reply_to"])
+    def note_sent(self, question: str, confirmation: str, delivered: bool = True) -> None:
+        """Record the send as a turn, and mark the draft it consumed.
+
+        THE LABEL HAS TO STOP SAYING "not sent" once it has been. A balloon still claiming a
+        message is unsent after the owner watched it go is the same class of untruth as an agent
+        reporting work it did not do — and this one is worse, because it invites sending it
+        again. Found by reloading the page after the first real send.
+        """
+        if delivered:
+            for turn in reversed(self.shown):
+                if turn.get("draft"):
+                    turn["sent"] = True
+                    break
+            self._persist()
+        self._record(question, confirmation, ["reply_to"] if delivered else [])
 
     def _last_answer(self) -> str:
         """The most recent answer, skipping break markers.
