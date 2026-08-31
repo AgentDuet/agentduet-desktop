@@ -437,10 +437,22 @@ the product is.
       **Ours is built too:** `oauth.py` has PKCE `begin()`, the token exchange, the store,
       `signed_in()`, `sign_out()`, `connector_uuid()`, and a loopback `/callback` on an
       ephemeral port — which is why their side carries a `LoopbackRedirectUriValidator`.
-      **So the gap is one environment variable.** `AGENTDUET_OAUTH_URL` is unset, so
-      `oauth.available()` is false and the sign-in buttons stay hidden. We need the base URL of
-      a DEPLOYED authorization server. `scripts/oauth-desktop-sim.py` and
-      `docs/oauth-local-testing.md` in wss-edge drive the flow against a local one meanwhile.
+      **PROVEN WORKING END TO END, 2026-08-31, against the dev server.** Not a claim from
+      reading code any more: a real Google consent screen, `SIGNED IN AS stanley@b3networks.com`,
+      and a connector **auto-provisioned** — `9410b337-f753-4ab4-a566-48bbe6a62aaf`, minted by
+      `createUserOwnedAppConnector` because that identity had none. Run in a throwaway
+      `AGENTDUET_HOME`; the real instance kept `bb27e3d4-…` and grew no token store.
+      **So the gap is one environment variable, and one deploy.** `AGENTDUET_OAUTH_URL` is unset,
+      so `oauth.available()` is false and the sign-in buttons stay hidden.
+      **Tuan, 2026-08-31: it is on the DEV server, behind VPN, "not on prod yet".** Being behind
+      a VPN is what makes dev useless as the product path — the whole point is that an owner
+      installs the binary and clicks Google, and only B3 staff can reach a VPN'd host.
+      **"Needs VPN" is not true from THIS machine.** `wss-dev.internal.b3networks.com` resolves
+      to `100.100.221.234` and answers on **:8080 over plain HTTP** — the same SD-WAN route that
+      reaches `internal-apigw-eks` and the T4 box. Port 443 times out, which is what makes it
+      look unreachable if you only try HTTPS. A GET to `/oauth/authorize` with our real
+      `client_id` returns `302 → /oauth2/authorization/google`, so **`agentduet-desktop` is
+      already a registered client there** and the loopback redirect passes validation.
       **THE TRAP, and it is a live-money one:** sign-in provisions a connector on WHATEVER
       ENVIRONMENT that URL points at (`createUserOwnedAppConnector`, only when the user has
       none). Point it at dev or staging and this install silently moves off its production
