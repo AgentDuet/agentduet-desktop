@@ -105,6 +105,13 @@
   /* Who spoke, under the bubble. A reply the OWNER typed and one the agent produced look
      identical otherwise, and on a money or promise question that is the whole difference. */
   .turn .who{font-size:.6875rem;color:var(--faint);margin-top:.25rem;padding:0 .25rem;}
+  /* align-self, because .turn is a column flex container and a stretched button reads as a
+     divider rather than something to press — it looked exactly like the "new conversation"
+     rule above it. */
+  .useit{align-self:flex-start;background:transparent;border:1px dashed var(--line);
+         color:var(--muted);border-radius:.375rem;padding:.3rem .7rem;font:inherit;
+         font-size:.75rem;cursor:pointer;margin-top:.125rem;}
+  .useit:hover{border-style:solid;border-color:var(--blue400);color:var(--blue300);}
   .turn.me{align-items:flex-end;}
   .bub{padding:.65rem .85rem;border-radius:.85rem;font-size:.82rem;line-height:1.65;
     white-space:pre-wrap;overflow-wrap:anywhere;max-width:82%;}
@@ -335,9 +342,10 @@
   function drawChat(pending){
     const log = $('chat');
     if (!log) return;
-    log.innerHTML = TURNS.map(t => t.brk ? `<div class="brk"><span>new conversation</span></div>` : `
+    log.innerHTML = TURNS.map((t, i) => t.brk ? `<div class="brk"><span>new conversation</span></div>` : `
       <div class="turn me"><div class="bub">${esc(t.q)}</div></div>
-      <div class="turn ${t.bad ? 'bad' : 'it'}"><div class="bub">${esc(t.a)}</div></div>`).join('')
+      <div class="turn ${t.bad ? 'bad' : 'it'}"><div class="bub">${esc(t.a)}</div></div>
+      ${useAsReply(t, i)}`).join('')
       + (pending ? `<div class="turn me"><div class="bub">${esc(pending)}</div></div>
          <div class="turn it"><div class="row"><div class="dots"><i></i><i></i><i></i></div>
          <span class="waited" id="waited"></span></div></div>` : '')
@@ -357,6 +365,42 @@
   // The assistant may write freely to a PERSON's notes, because those stay attributed. The
   // shared notes are what everyone is told, so once a call transcript is in the conversation
   // the write waits here for a click. Nothing is saved until one arrives.
+  // THE ASSISTANT DRAFTS; THE OWNER SENDS. It wrote a good reply about a pizza price and the
+  // owner then had to select it, switch panes, paste and send — four steps that make a useful
+  // answer feel like a chore. This carries the words to the composer and stops: nothing is sent,
+  // the message is sitting in the box to be edited or discarded, and the send is still a person
+  // pressing a button. That is the invariant, not a UX preference — a draft with a send path is
+  // an agent speaking for someone.
+  function replyTarget(){
+    if (LAST_PERSON) return (THREADS.people || []).find(p => p.who === LAST_PERSON) || null;
+    const waiting = (THREADS.people || []).filter(p => (p.messages || []).some(m => m.them && !m.us));
+    return waiting.length === 1 ? waiting[0] : null;
+  }
+
+  // ONLY UNDER THE LAST ANSWER. Offered on every turn it appeared sixteen times, including
+  // under "2." and "2 from Stanley Leong." — answers to the owner that are not replies to
+  // anyone. A control repeated past the point of meaning stops reading as a control.
+  function useAsReply(t, i){
+    const who = replyTarget();
+    if (i !== TURNS.length - 1 || !who || t.bad || !t.a || t.a.length > 900) return '';
+    return `<div class="turn it"><button class="useit" data-turn="${i}">Use as reply to ${esc(who.display || who.who)}</button></div>`;
+  }
+
+  document.addEventListener('click', e => {
+    const b = e.target.closest('.useit');
+    if (!b) return;
+    const who = replyTarget();
+    const turn = TURNS[+b.dataset.turn];
+    if (!who || !turn) return;
+    PICKED = who.who; LAST_PERSON = who.who;
+    drawWho();
+    const box = $('ask');
+    box.value = turn.a;
+    box.style.height = 'auto';
+    box.style.height = Math.min(box.scrollHeight, 144) + 'px';
+    box.focus();
+  });
+
   let PROPOSALS = [];
   async function decide(id, approve){
     const d = await post('/api/proposal', {id, approve});
