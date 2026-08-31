@@ -44,8 +44,13 @@ ASSISTANT_PROMPT = """You are %s's personal assistant, running on their own comp
 %%s
 
 Their phone calls are carried to them and recorded here, and the recordings are transcribed on
-this machine. Your subject is those calls: who rang, when, what was said, and what the owner
+this machine. People also MESSAGE them, and those messages are carried too — nobody is answered
+by an agent. Your subject is both: who rang or wrote, when, what was said, and what the owner
 should do about it. Summarise, find things, and remember what they tell you to remember.
+
+When they ask you to help answer someone, WRITE THE REPLY ITSELF and nothing else — no preamble,
+no "here is a draft", no options to choose between. They will read it, change what they want and
+send it. You cannot send it, and that is deliberate: the words go out as theirs.
 
 You have tools. To use one, reply with ONLY this JSON and nothing else:
   {"tool": "<name>", "args": {...}}
@@ -107,11 +112,11 @@ def _tool_docs(registry: dict | None = None) -> str:
         doc = ((fn.__doc__ or "").strip().splitlines() or ["(undocumented)"])[0]
         lines.append(f"- {name}: {doc}\n    args: {args}")
     return "\n".join(lines)
-#: TOOLS WHOSE RESULT WAS WRITTEN BY A STRANGER. A caller talks; `read_call` hands what they
-#: said to this model. Nothing about that is hostile by default and most calls never will be —
+#: TOOLS WHOSE RESULT WAS WRITTEN BY A STRANGER. A caller talks, or someone writes to the
+#: public business slug; `read_call` and `read_messages` hand what they said to this model. Nothing about that is hostile by default and most calls never will be —
 #: but the words arrive through a channel with no signup and no gatekeeper, so they have to be
 #: treated as input from an unknown author for as long as they are in the context.
-TAINTING = {"read_call"}
+TAINTING = {"read_call", "read_messages"}
 
 #: WRITES THAT PUBLISH AN UNATTRIBUTED CLAIM. `knowledge/` is one flat, PUBLIC folder — it is
 #: what the agent tells everyone, and what the owner reads and trusts. Promoting "Pauline said
@@ -325,10 +330,23 @@ class OwnerChat:
         # here is a person and their calls, so that is what it is handed.
         context = ""
         if viewing:
+            # BOTH HALVES OF THE RELATIONSHIP. Calls only, and "help me reply to this" was
+            # answered from nothing — the message the owner is looking at was the one thing the
+            # assistant could not see.
             calls = tools.read_call(who=viewing)
-            context = (f"CONTEXT — the owner is looking at {viewing}.\n\n{calls}"
+            msgs = tools.read_messages(who=viewing)
+            context = (f"CONTEXT — the owner is looking at {viewing}.\n\n{calls}\n\n{msgs}"
                        f"\n\nIf the owner says \"her\", \"him\", \"them\" or \"this "
                        f"person\" without naming anyone, they mean {viewing}.")
+            # THIS PATH TAINTS TOO, and it did not until 2026-08-31. The gate keyed on a TOOL
+            # NAME, but the viewing context calls read_call and read_messages DIRECTLY — so the
+            # ordinary way the assistant sees a stranger's words was the one way it saw them
+            # with the gate never firing. That is the whole control bypassed on the common path.
+            #
+            # Keyed on the MARK rather than on a list of sources, so anything that ever marks
+            # untrusted content taints by construction and nobody has to remember to add it.
+            if tools.UNTRUSTED_MARK in context:
+                self.tainted = True
         history = self.history + [f"OWNER: {message}"]
         used: list[str] = []
         nudged = False
