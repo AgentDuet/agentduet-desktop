@@ -719,6 +719,20 @@ def read_call(who: str = "", when: str = "") -> str:
         return ("No transcript matches that. Transcription runs after a call, on a queue, so a "
                 "recent call may not have one yet.")
     return "\n\n".join(hits)
+def _display_for(asker: str) -> str:
+    """A person's readable name, from the session store. Falls back to the identifier.
+
+    The identity is the account uid — on DDUET it is all the relay dependably carries — so a
+    summary that names it reads as a uuid. The name is a display hint stored beside the session
+    when the message arrived; it is never what anything is looked up by.
+    """
+    try:
+        seen = json.loads((paths.RUN / "sessions.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return asker
+    return (seen.get(asker) or {}).get("display") or asker
+
+
 def read_messages(who: str = "", limit: int = 20, days: int = 0) -> str:
     """The message conversation with someone — DDUET or WhatsApp, oldest first.
 
@@ -742,8 +756,29 @@ def read_messages(who: str = "", limit: int = 20, days: int = 0) -> str:
     if not rows_:
         return ("No messages with them. Messages are carried to the owner and not answered, so "
                 "a thread exists only once someone has written.")
-    out = []
-    for r in rows_[-max(1, limit):]:
+    # A COUNTED SUMMARY FIRST, because "are there recent messages?" is arithmetic and not
+    # comprehension. Asked to derive it from the lines below, a 9B model answered "There are
+    # recent messages" — true, useless, and the owner already suspected that much. Counting is
+    # something code knows exactly, so code says it and the model only has to relay it.
+    shown = rows_[-max(1, limit):]
+    who_counts: dict[str, int] = {}
+    unanswered = 0
+    for r in shown:
+        if r.get("outcome") == "owner_reply":
+            continue
+        name = _display_for(r.get("asker") or "someone")
+        who_counts[name] = who_counts.get(name, 0) + 1
+        if not r.get("answer"):
+            unanswered += 1
+    people_bit = ", ".join(f"{n} from {w}" for w, n in who_counts.items())
+    total = sum(who_counts.values())
+    head = (f"{total} message{'' if total == 1 else 's'}"
+            + (f" ({people_bit})" if people_bit else "")
+            + (f", {unanswered} still unanswered" if unanswered else ", all answered")
+            + (f". Most recent {(shown[-1].get('at') or '')[:16].replace('T', ' ')}."
+               if shown else "."))
+    out = [head, ""]
+    for r in shown:
         when = (r.get("at") or "")[:16].replace("T", " ")
         if r.get("outcome") == "owner_reply":
             out.append(f"[{when}] the owner replied: {r.get('answer', '')}")
