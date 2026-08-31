@@ -425,30 +425,30 @@ the product is.
       being fictional and the canonical example across five files. **This file is tracked on
       purpose:** ~99% of it is why-the-code-is-like-this, which is what a contributor needs.
       Only live identifiers are withheld.
-- [ ] **OAuth sign-in — the backend contract is SETTLED, ours is not built.** Designed in
-      `B3Networks/wss-edge` (`docs/superpowers/specs/2026-08-18-client-agent-oauth-design.md`,
-      issue #52), agreed 2026-08-18. wss-edge is the authorization server and brokers Google and
-      Microsoft; **Apple is deferred**, so that button stays a stub.
-      **What it replaces:** a static `AGENTDUET_API_KEY` that only ops can mint. Sign-in returns
-      a ~30 min RS256 access token plus a rotating refresh token, and the token exchange carries
-      `connector_uuid` — **and a connector is auto-provisioned on first sign-in**, which is what
-      finally closes the "Connector provisioning" blocker above.
-      **The SDK contract, agreed and tracked in `agentduet-sdk-python#48`:** the SDK gets a
-      `token_provider()` callback. It calls it before EACH connect and sends the result as
-      `Authorization: Bearer`. The SDK knows nothing about OAuth — string in, header out — and
-      **the refresh token never enters it**. `api_key` stays for server-side use, and the
-      `x-api-key` handshake branch is untouched, so existing installs keep working.
-      **So the work on our side is the token store, not the protocol:** hold access + refresh,
-      return the cached access token while it has time left, refresh before expiry otherwise,
-      and on `invalid_grant` clear the store and show the sign-in screen.
-      **Two facts worth not re-deriving:** a still-valid access token is reusable across any
-      number of connects (the handshake checks signature, expiry and scope only), so refresh is
-      housekeeping rather than per-connect; and an expired token does NOT drop a live connection
-      — connections are tagged with `family_id` at connect and dropped only on revocation.
-      **Credential storage is the open risk.** `.env` at `0600` is fine on macOS and Linux and
-      means nothing on Windows. The fair counter raised in review: a rotating, revocable token
-      there is already better than today's static key — so this is scheduled work, not a blocker.
-      See `docs/onboarding-gap.md`.
+- [ ] **OAuth sign-in — BUILT ON BOTH SIDES. What is missing is a deployed URL.**
+      **This entry said "the backend contract is SETTLED, ours is not built" until 2026-08-31,
+      and both halves were wrong by then.** wss-edge merged the whole thing to `main` on
+      2026-08-25 — `vonhutuan-b3`, PR #53, "desktop OAuth sign-in — PKCE + federated login,
+      rotating refresh tokens, Bearer at the SM-WS and REST doors", 33 files under
+      `server/.../oauth/`, plus `./gradlew :server:oauthE2eTest` covering authorize, callback,
+      provisioning, code exchange, refresh, PKCE-negative, code-replay and
+      stale-refresh-revokes-family against a stub IdP. Tuan said he would build independently
+      first and he did; nobody closed the loop back to us.
+      **Ours is built too:** `oauth.py` has PKCE `begin()`, the token exchange, the store,
+      `signed_in()`, `sign_out()`, `connector_uuid()`, and a loopback `/callback` on an
+      ephemeral port — which is why their side carries a `LoopbackRedirectUriValidator`.
+      **So the gap is one environment variable.** `AGENTDUET_OAUTH_URL` is unset, so
+      `oauth.available()` is false and the sign-in buttons stay hidden. We need the base URL of
+      a DEPLOYED authorization server. `scripts/oauth-desktop-sim.py` and
+      `docs/oauth-local-testing.md` in wss-edge drive the flow against a local one meanwhile.
+      **THE TRAP, and it is a live-money one:** sign-in provisions a connector on WHATEVER
+      ENVIRONMENT that URL points at (`createUserOwnedAppConnector`, only when the user has
+      none). Point it at dev or staging and this install silently moves off its production
+      connector — the one the DID and the production BA route to. Check
+      `connector.environment()` before and after.
+      **What it closes:** the "Connector provisioning" release blocker above. A new user signs
+      in and gets a connector instead of stopping dead waiting on a human.
+      Credential storage on Windows remains the open risk — see `docs/onboarding-gap.md`.
 - [ ] **A B3-proxied model would DELETE deck step 4.** One credential instead of two: the owner
       authorises once and there is no model key to link, because we are the provider. Also keeps
       the knowledge inside B3's boundary, which the current "bring your own key" does not. The
