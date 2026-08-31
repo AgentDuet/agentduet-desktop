@@ -719,6 +719,34 @@ def read_call(who: str = "", when: str = "") -> str:
         return ("No transcript matches that. Transcription runs after a call, on a queue, so a "
                 "recent call may not have one yet.")
     return "\n\n".join(hits)
+def read_messages(who: str = "", limit: int = 20) -> str:
+    """The message conversation with someone — DDUET or WhatsApp, oldest first.
+
+    Marked as untrusted for the same reason `read_call` is, and it is the same risk wearing
+    different clothes: the words were written by whoever is on the other end, and they reach a
+    model that holds knowledge writes. Anyone who can message a public business slug can put
+    text in front of this assistant.
+    """
+    rows_ = [r for r in rows()
+             if r.get("network") in ("WA", "DDUET")
+             and (not who or who.strip().lower() in (r.get("asker") or "").lower())]
+    if not rows_:
+        return ("No messages with them. Messages are carried to the owner and not answered, so "
+                "a thread exists only once someone has written.")
+    out = []
+    for r in rows_[-max(1, limit):]:
+        when = (r.get("at") or "")[:16].replace("T", " ")
+        if r.get("outcome") == "owner_reply":
+            out.append(f"[{when}] the owner replied: {r.get('answer', '')}")
+            continue
+        out.append(f"[{when}] them: {untrusted(r.get('question', ''))}")
+        if r.get("answer"):
+            out.append(f"[{when}] the agent answered: {r.get('answer')}")
+        else:
+            out.append("           (not answered — waiting for the owner)")
+    return "\n".join(out)
+
+
 #: What the owner's Personal Assistant may call. Two registries rather than one so the recorder's
 #: own tools stay out of the stdio mcp's surface — the assistant needing a tool is not a reason
 #: to widen what an external assistant can call.
@@ -771,6 +799,9 @@ ASSISTANT_SHARED = {
 
 RECORDER_TOOLS = {
     "list_calls": (list_calls, {"days": "how many days back (default 7)"}),
+    "read_messages": (read_messages, {
+        "who": "the person, or empty for everyone",
+        "limit": "how many of the most recent lines (default 20)"}),
     "read_call": (read_call, {"who": "the caller, or empty for any",
                               "when": "a date like 2026-08-26, or empty for the most recent"}),
 }
