@@ -111,10 +111,13 @@
   /* INSIDE the bubble, under the words it acts on. Outside it floated between two turns and
      read as belonging to neither — a control has to sit with its subject. The rule above it is
      what separates it from the text without needing space. */
-  .useit{display:block;margin:.625rem -.25rem -.125rem;padding:.5rem .25rem 0;width:calc(100% + .5rem);
-         text-align:left;background:transparent;border:0;border-top:1px solid rgba(255,255,255,.08);
-         color:var(--blue300);font:inherit;font-size:.75rem;cursor:pointer;}
+  .acts{display:flex;gap:1rem;margin:.625rem -.25rem -.125rem;padding:.5rem .25rem 0;
+        border-top:1px solid rgba(255,255,255,.08);}
+  .useit{background:transparent;border:0;padding:0;color:var(--muted);font:inherit;
+         font-size:.75rem;cursor:pointer;}
+  .useit.send{color:var(--blue300);font-weight:500;}
   .useit:hover{color:#fff;}
+  .useit:disabled{opacity:.6;cursor:default;}
   .useit:hover{border-style:solid;border-color:var(--blue400);color:var(--blue300);}
   /* A DRAFT LOOKS DIFFERENT FROM AN ANSWER, because it is a different object: words meant for
      someone else, which have not gone anywhere. The claim that this assistant writes but never
@@ -402,15 +405,41 @@
   function useAsReply(t, i){
     const who = replyTarget();
     if (!t.draft || t.sent || i !== TURNS.length - 1 || !who || t.bad || !t.a) return '';
-    return `<button class="useit" data-turn="${i}">Use as reply to ${esc(who.display || who.who)}</button>`;
+    const name = esc(who.display || who.who);
+    // TWO ACTIONS, EACH SAYING WHAT IT DOES. One button reading "Use as reply to X" was
+    // ambiguous enough that Stanley clicked it expecting a send and got a filled text box.
+    // A control's label is a promise about what pressing it does, and that one was not keeping
+    // it. Sending is also no longer a different KIND of act from saying "send it" in the chat,
+    // which he already approved — so refusing a button for it was inconsistent rather than
+    // careful. Both still need a person to press something.
+    return `<span class="acts">
+      <button class="useit send" data-turn="${i}">Send to ${name}</button>
+      <button class="useit" data-turn="${i}">Edit first</button></span>`;
   }
 
-  document.addEventListener('click', e => {
+  document.addEventListener('click', async e => {
     const b = e.target.closest('.useit');
     if (!b) return;
     const who = replyTarget();
     const turn = TURNS[+b.dataset.turn];
     if (!who || !turn) return;
+
+    if (b.classList.contains('send')) {
+      // THROUGH THE SAME GUARDED PATH as typing "send it", rather than a second send of its
+      // own. One implementation means one set of checks — a draft must exist, it must not
+      // already have gone, and a recipient must resolve — and no chance of the button and the
+      // sentence drifting apart on which of those it enforces.
+      b.disabled = true; b.textContent = 'Sending…';
+      try {
+        const d = await post('/api/chat', {message: 'send it', viewing: who.who});
+        TURNS.push({q: 'send it', a: d.reply || '', draft: false});
+        TURNS.forEach(t => { if (t.draft && !t.sent) t.sent = true; });
+        await refresh();
+        drawChat();
+      } catch (err) { b.disabled = false; b.textContent = 'Send to ' + (who.display || who.who); }
+      return;
+    }
+
     PICKED = who.who; LAST_PERSON = who.who;
     drawWho();
     const box = $('ask');
