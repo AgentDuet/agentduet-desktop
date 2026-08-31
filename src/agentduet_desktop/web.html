@@ -291,6 +291,9 @@
     if (msgs.length) bits.push(`${msgs.length} message${msgs.length === 1 ? '' : 's'}`);
     $('tSub').textContent = bits.join(' · ');
 
+    const mb = $('mbody');
+    const nearBottom = !mb || mb.scrollHeight - mb.scrollTop - mb.clientHeight < 80;
+
     // INTERLEAVED BY TIME, because they are one relationship and not two logs. Someone who
     // rang and then wrote is one person having one conversation across two channels.
     const items = calls.map(c => ({at: c.at, call: c}))
@@ -308,7 +311,10 @@
                                 : '<div class="none">Transcript pending.</div>')}
       </div>` : msgHtml(it.msg)).join('')
       || '<div class="none">Nothing yet.</div>';
-    $('mbody').scrollTop = $('mbody').scrollHeight;
+    // FOLLOW THE CONVERSATION ONLY IF THEY WERE ALREADY AT THE BOTTOM. Someone scrolled up
+    // reading what a caller said last week should not be yanked away by an unrelated message
+    // arriving — the same mistake the model list made once a second during a download.
+    if (nearBottom) $('mbody').scrollTop = $('mbody').scrollHeight;
   }
 
   // One inbound message and whatever went back. `by` says who spoke for us, which the reader
@@ -452,6 +458,24 @@
   async function refresh(){
     THREADS = await fetch(`/api/threads?t=${T}`).then(r => r.json()).catch(() => ({people: []}));
   }
+
+  // WHAT IS ON SCREEN, cheaply. Compared before and after a poll so a tick that changed nothing
+  // redraws nothing: rebuilding innerHTML every few seconds throws away a text selection, and
+  // the model panel already taught us what a needless re-render does to someone mid-read.
+  function threadSig(){
+    return (THREADS.people || [])
+      .map(p => `${p.who}:${p.last}:${(p.messages || []).length}:${(p.calls || []).length}`)
+      .join('|');
+  }
+
+  // MESSAGES ARRIVE WHILE THE OWNER IS LOOKING AT THE PAGE. Without this they had to reload to
+  // see one, which for a product whose whole point is conversing is the same as not receiving
+  // it. Carried messages are not answered by anything, so nobody else is going to notice.
+  setInterval(async () => {
+    const before = threadSig();
+    await refresh();
+    if (threadSig() !== before) drawWho();
+  }, 5000);
 
   Promise.all([
     fetch(`/api/threads?t=${T}`).then(r => r.json()).catch(() => ({people: []})),
