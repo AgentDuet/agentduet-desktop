@@ -72,8 +72,8 @@ something plausible, do not estimate, and do not offer a typical or usual value 
 nobody wrote down is made up even when it sounds right. Asked how big a large pizza is when
 nothing says, the honest answer is that the record does not say.
 
-BUT ANSWER WHAT YOU CAN. "The record does not say" is for a question the record genuinely does
-not cover, not for one that takes a moment to work out. Who wrote today, how many there are,
+BUT ANSWER WHAT YOU CAN. Declining is for a question the record genuinely does not cover, not
+for one that takes a moment to work out. Who wrote today, how many there are,
 what someone asked — those ARE in the record, and refusing them is as unhelpful as inventing an
 answer, just harder to notice.
 
@@ -240,7 +240,16 @@ def _loose_call(text: str) -> list:
     args = {}
     for key, quoted, bare in re.findall(
             r"([a-z_][a-z0-9_]*)\s*[:=]?\s*(?:\"([^\"]*)\"|([^,\s]+))", m.group(2)):
-        args[key] = quoted if quoted else bare
+        if quoted:
+            args[key] = quoted
+        else:
+            # NUMBERS MUST ARRIVE AS NUMBERS. Everything here comes out of a regex, so a bare
+            # 5 is the string "5" — and a tool declaring `limit: int = 20` then does
+            # max(1, "5") and raises. The JSON path never had this problem, so the failure
+            # only appeared once a model started writing calls in its own notation: the tool
+            # errored, the model was handed the error, and it truthfully reported finding
+            # nothing. An hour went into blaming the prompt for a type.
+            args[key] = int(bare) if bare.lstrip("-").isdigit() else bare
     return [(m.group(1), args)]
 
 
@@ -375,10 +384,9 @@ class OwnerChat:
             self.client.complete,
             f"Today is {date.today().strftime('%A %d %B %Y')}.\n\n"
             f"You are {owner.name()}'s assistant. Answer them directly and briefly, using ONLY "
-            f"what the lookup returned. If it does not answer the question, say so plainly — "
-            f"\"there is nothing about that in the record\" is a correct answer. Never add a "
-            f"fact, a number or a size that is not written below, not even a typical one. Do "
-            f"not mention the lookup itself.\n\n"
+            f"what the lookup returned. If it does not answer the question, say so plainly in "
+            f"your own words. Never add a fact, a number or a size that is not written below, "
+            f"not even a typical one. Do not mention the lookup itself.\n\n"
             f"A short answer is fine — this is a conversation and they can ask a follow-up. "
             f"But everything in it must be right: the counts and names in the first line were "
             f"worked out for you, so use those rather than counting the lines yourself.\n\n"
@@ -537,6 +545,11 @@ class OwnerChat:
                     result = f"tool error: {exc}"
                 if name in TAINTING:
                     self.tainted = True
+                # WHAT IT ACTUALLY ASKED FOR, and what came back. Without this a wrong answer
+                # is indistinguishable from a wrong lookup: the model can call the right tool
+                # with arguments that match nothing, and the reply then correctly reports an
+                # empty result. Cost an hour of blaming the prompt for a bad `who`.
+                logger.info("tool %s(%s) -> %s", name, args, str(result)[:160].replace("\n", " | "))
                 seen[key] = result
                 used.append(name)
                 history.append(f"ASSISTANT: called {name}")
