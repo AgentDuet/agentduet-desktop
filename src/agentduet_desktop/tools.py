@@ -719,17 +719,26 @@ def read_call(who: str = "", when: str = "") -> str:
         return ("No transcript matches that. Transcription runs after a call, on a queue, so a "
                 "recent call may not have one yet.")
     return "\n\n".join(hits)
-def read_messages(who: str = "", limit: int = 20) -> str:
+def read_messages(who: str = "", limit: int = 20, days: int = 0) -> str:
     """The message conversation with someone — DDUET or WhatsApp, oldest first.
+
+    `days` narrows to the last N days, the way `list_calls` does. It was absent at first, and
+    that asymmetry made "any recent messages?" unanswerable: a count is not a window, so the
+    model could ask for twenty lines but not for this week. It cannot work the cutoff out for
+    itself either — a model has no clock, which is why the prompt now states the date.
 
     Marked as untrusted for the same reason `read_call` is, and it is the same risk wearing
     different clothes: the words were written by whoever is on the other end, and they reach a
     model that holds knowledge writes. Anyone who can message a public business slug can put
     text in front of this assistant.
     """
+    cutoff = ""
+    if days and int(days) > 0:
+        cutoff = (datetime.now() - timedelta(days=int(days))).isoformat(timespec="seconds")
     rows_ = [r for r in rows()
              if r.get("network") in ("WA", "DDUET")
-             and (not who or who.strip().lower() in (r.get("asker") or "").lower())]
+             and (not who or who.strip().lower() in (r.get("asker") or "").lower())
+             and (not cutoff or (r.get("at") or "") >= cutoff)]
     if not rows_:
         return ("No messages with them. Messages are carried to the owner and not answered, so "
                 "a thread exists only once someone has written.")
@@ -801,7 +810,8 @@ RECORDER_TOOLS = {
     "list_calls": (list_calls, {"days": "how many days back (default 7)"}),
     "read_messages": (read_messages, {
         "who": "the person, or empty for everyone",
-        "limit": "how many of the most recent lines (default 20)"}),
+        "limit": "how many of the most recent lines (default 20)",
+        "days": "only the last N days, or 0 for all of it"}),
     "read_call": (read_call, {"who": "the caller, or empty for any",
                               "when": "a date like 2026-08-26, or empty for the most recent"}),
 }

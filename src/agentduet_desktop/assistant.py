@@ -19,7 +19,7 @@ import asyncio
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import date, datetime
 
 from . import llm
 from . import owner
@@ -57,9 +57,15 @@ You have tools. To use one, reply with ONLY this JSON and nothing else:
 After you see the result, either call another tool or answer in plain text.
 To answer directly, just write the answer — no JSON.
 
-ANSWER FROM THE CALLS, NOT FROM MEMORY. A question about who called, or what someone said, is
-answered by calling list_calls or read_call first. Never guess at a name, a time or a quote.
-If there is no transcript yet, say so — transcription runs after a call, on a queue.
+Today is %%s. You have no clock of your own, so that line is the only thing that makes
+"recent", "this week" or "yesterday" mean anything — work out the dates from it.
+
+ANSWER FROM THE RECORD, NOT FROM MEMORY. Never guess at a name, a time or a quote — look it
+up first. Use list_calls and then read_call for anything about a CALL. Use read_messages for
+anything about a MESSAGE, leaving `who` empty to see everyone. A question about messages is
+never answered from the call tools. Someone may have both rung and written, so check both when
+the question is about a person rather than a channel. If there is no transcript yet, say so —
+transcription runs after a call, on a queue.
 
 You do not speak to anyone but the owner. You cannot send a message, answer a caller, or act on
 their behalf. If they ask you to reply to someone, say that this assistant only reads.
@@ -138,6 +144,22 @@ NEEDS_OWNER = {"add_knowledge", "edit_knowledge"}
 #: Measured as the fraction of DISTINCT fixed-width windows. Real prose approaches 1.0; the case
 #: above scored 0.03. The length floor matters: a short answer ("Yes." / "No calls today.") has
 #: few windows and would otherwise look degenerate for being brief.
+def _is_prompt_echo(text: str, system: str) -> bool:
+    """True when the "answer" is a line copied out of the instructions.
+
+    A weak model handed its own system prompt as plain text sometimes returns a piece of it. It
+    happened the moment the tool guidance was laid out as a lookup table: asked for recent
+    messages, glm-4-9b called the right tool and then replied with the table's first row. Prose
+    is harder to copy than a table, which is why the guidance is prose now — but the failure is
+    the model's habit rather than that one layout, so it is checked for too.
+
+    Short replies are exempt: "Yes." or a name may legitimately appear inside a long prompt, and
+    rejecting those would throw away real answers.
+    """
+    t = " ".join(text.split())
+    return len(t) > 25 and t in " ".join(system.split())
+
+
 def _degenerate(text: str, window: int = 40, floor: int = 800, ratio: float = 0.25) -> bool:
     """True when a reply is mostly the same few characters over and over."""
     if len(text) < floor:
@@ -186,6 +208,32 @@ def resolve(pid: str, approve: bool) -> str:
         return f"tool error: {exc}"
 
 
+#: The registry's own names, for recognising a call the model wrote in its own notation.
+#: Filled by `assistant_tools()` on first use so this stays in step with the registry.
+def _loose_call(text: str) -> list:
+    """A tool call a weak model wrote in shorthand instead of JSON.
+
+    glm-4-9b answers "Any recent msgs?" with `read_messages: who "", limit 20`. It has chosen
+    the right tool with the right arguments and simply not produced the JSON the prompt asks
+    for, so treating that as prose throws away a correct decision and answers the owner wrongly.
+
+    THE MODEL READS, CODE DECIDES — the same rule as everywhere else. Being generous about the
+    NOTATION costs nothing, because what makes this safe is not the syntax: the first token must
+    be an exact registered tool name, and every argument is checked by the tool itself. A reply
+    that merely mentions a tool in a sentence does not match, since the name must open the line
+    and be followed by a colon.
+    """
+    line = text.strip().splitlines()[0].strip() if text.strip() else ""
+    m = re.match(r"^([a-z_][a-z0-9_]*)\s*:\s*(.*)$", line)
+    if not m or m.group(1) not in assistant_tools():
+        return []
+    args = {}
+    for key, quoted, bare in re.findall(
+            r"([a-z_][a-z0-9_]*)\s*[:=]?\s*(?:\"([^\"]*)\"|([^,\s]+))", m.group(2)):
+        args[key] = quoted if quoted else bare
+    return [(m.group(1), args)]
+
+
 class OwnerChat:
     """Minimal tool-calling loop.
 
@@ -213,7 +261,11 @@ class OwnerChat:
         self.client = llm.client(model)
         self.model = model
         self.registry = assistant_tools()
+        # THE DATE IS BUILT PER TURN, not at construction: this object outlives midnight on a
+        # daemon that runs for weeks, and a stale "today" is worse than none — it answers
+        # "yesterday" confidently and wrongly.
         self.system = ASSISTANT_PROMPT % owner.name() % (
+            date.today().strftime("%A %d %B %Y"),
             owner.identity_block(), _subjects(), _tool_docs(self.registry))
         self.history: list[str] = []
         self.shown: list[dict] = self._load()      # what the page renders, oldest first
@@ -290,6 +342,32 @@ class OwnerChat:
             self.STORE.write_text(json.dumps(self.shown, indent=2))
         except OSError as exc:
             logger.warning("could not persist owner chat: %s", exc)
+
+    async def _answer_from_results(self, message: str, history: list[str]) -> str:
+        """Turn what the tools returned into the answer, with a NARROW prompt.
+
+        Handed the tool result on its own, glm-4-9b answers "Any recent msgs?" correctly. Given
+        the full system prompt, the running history and the same result, it replied "Who is this
+        person?" — the tool ran, the data was there, and the answer was lost between them. The
+        instructions exist for CHOOSING a tool; once one has run they are noise competing with
+        the thing actually being asked about.
+
+        BOTH EXITS FROM THE TOOL LOOP COME THROUGH HERE. The first attempt fixed only the exit
+        after the loop, and the loop's own exit — the common one, since a model usually answers
+        on the turn after its tool result — kept the old behaviour and produced the same wrong
+        reply. Same lesson as the duplicate tool calls: what is in the context shapes the answer
+        more than the model's capability does.
+        """
+        results = [h[len("TOOL_RESULT: "):] for h in history if h.startswith("TOOL_RESULT: ")]
+        if not results:
+            return ""
+        return await asyncio.to_thread(
+            self.client.complete,
+            f"Today is {date.today().strftime('%A %d %B %Y')}.\n\n"
+            f"You are {owner.name()}'s assistant. Answer them directly and briefly, from what "
+            f"the lookup returned and nothing else. Do not mention the lookup.\n\n"
+            f"THEY ASKED: {message}\n\n"
+            f"THE LOOKUP RETURNED:\n" + "\n\n".join(results[-3:]) + "\n\nANSWER:")
 
     async def _ask(self, history: list[str], context: str = "") -> str:
         # Context rides on the SYSTEM side, not in history: it is regenerated per turn from
@@ -375,9 +453,20 @@ class OwnerChat:
                                 "tool, so nothing happened. Do it now — emit the tool JSON. "
                                 "Afterwards report only what you actually did."]
                     continue
+                # A TOOL ALREADY RAN, so the answer comes from what it returned rather
+                # than from another pass over the instructions.
+                if used:
+                    narrowed = await self._answer_from_results(message, history)
+                    if narrowed:
+                        out = narrowed
                 if not used and self.CLAIMED.search(out):
                     out += ("\n\n[nothing actually happened — no tool ran this turn, so nothing "
                             "was saved, sent or changed. Ask again to have it done.]")
+                out = self._undo_echo(out, self._last_answer())
+                if _is_prompt_echo(out, self.system):
+                    logger.warning("discarded a reply copied from the prompt: %r", out[:80])
+                    out = ("That came back as a line from my own instructions rather than "
+                           "an answer. Ask again.")
                 if _degenerate(out):
                     # NEVER STORE IT. The visible log keeps it forever and `remember` replays it into
                     # every later turn, so a context that visibly repeats primes the next loop — one bad
@@ -440,7 +529,8 @@ class OwnerChat:
                 break               # asking the same thing twice more will not answer it
             continue
 
-        final = await self._ask(history + ["(answer the owner now)"], context)
+        final = (await self._answer_from_results(message, history)
+                 or await self._ask(history + ["(answer the owner now)"], context))
         # A weak model can loop on the tool call and hand the same JSON back as its "answer".
         # Rendering `{"tool": ...}` to the owner is never right — it is the machinery, not a
         # reply. The last tool result usually IS the answer, so show that instead.
@@ -452,6 +542,11 @@ class OwnerChat:
             last = last.replace("(already called this turn, same arguments) ", "")
             final = last or "No answer this turn — the model kept asking for the same tool."
         final = self._unprefix(final)
+        final = self._undo_echo(final, self._last_answer())
+        if _is_prompt_echo(final, self.system):
+            logger.warning("discarded a reply copied from the prompt: %r", final[:80])
+            final = ("That came back as a line from my own instructions rather than "
+                   "an answer. Ask again.")
         if _degenerate(final):
             # NEVER STORE IT. The visible log keeps it forever and `remember` replays it into
             # every later turn, so a context that visibly repeats primes the next loop — one bad
@@ -469,6 +564,34 @@ class OwnerChat:
     #: sometimes CONTINUES the transcript instead of answering — the reply comes back with the
     #: speaker labels in it, and the owner sees their own question quoted back. Cheap to strip,
     #: and never legitimate: the model is asked for the answer, not for the next line.
+    def _last_answer(self) -> str:
+        """The most recent answer, skipping break markers.
+
+        A break has no `a` key — it is a divider, not a turn — so indexing the last row blindly
+        raised KeyError on the first message after `new conversation`, which is precisely when
+        someone reaches for it. Found by clearing the context to get out of a repetition loop
+        and hitting a 500 instead.
+        """
+        for turn in reversed(self.shown):
+            if "a" in turn:
+                return turn["a"]
+        return ""
+
+    @staticmethod
+    def _undo_echo(text: str, previous: str) -> str:
+        """Strip a verbatim repeat of the last answer from the front of this one.
+
+        `_unprefix` removes the "ASSISTANT:" labels a weak model copies out of the history. This
+        is the same failure one level up: glm-4-9b answered "Any recent msgs?" by reproducing its
+        entire previous reply about a pizza and then appending the actual answer. The history is
+        handed over as plain OWNER:/ASSISTANT: lines, so continuing it is a very short step from
+        reading it.
+        """
+        previous = (previous or "").strip()
+        if previous and len(previous) > 20 and text.strip().startswith(previous):
+            return text.strip()[len(previous):].strip() or text.strip()
+        return text
+
     @staticmethod
     def _unprefix(text: str) -> str:
         out = []
@@ -502,4 +625,4 @@ class OwnerChat:
             if isinstance(obj, dict) and "tool" in obj:
                 out.append((obj["tool"], obj.get("args", {}) or {}))
             i = end
-        return out
+        return out or _loose_call(t)
