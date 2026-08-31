@@ -286,6 +286,21 @@ Break one of these and the secretary is a different product.
   runs post-call on a queue where nothing waits for it. The honest argument for the ANE is
   power and heat on a laptop, not wall-clock.
 
+## Where things are written down
+
+- **This file** — how to work here: layout, working rules, invariants, gotchas that bite.
+- **`docs/design.md`** — decisions and what would reverse them.
+- **`docs/platform.md`** — what we know about Nexus, wss-edge and the SDK, and how we learned
+  each thing. **Reference about somebody else's system**, which is why it is separate: it cannot
+  be read off our code, and it is the most expensive knowledge here to re-derive.
+- **The checklist below** — what is not built, who owns it, what would unblock it.
+
+**The checklist keeps lying, and that is the thing to watch.** Five items in it have claimed
+outstanding work that was already finished, and the OAuth entry said "ours is not built" for a
+week after both sides were built — nearly costing a request to another team to build what they
+had shipped. A list that lies gets skimmed, and then the real blockers on it get skimmed too.
+Clear an item in the same commit as the work, not at the next review.
+
 ## Open — the checklist
 
 Last reviewed 2026-08-11, after the WhatsApp swap, the rename, and dropping the assistant from
@@ -317,10 +332,11 @@ the product is.
       Its provider list also differs (OpenAI is offered, Qwen is not).
 - [ ] **Apple Neural Engine for transcription** — see the STT decision above. An engine change,
       and the encoder is the right thing to accelerate.
-- [ ] **A chooseable storage folder.** The mockup lets the owner pick where recordings and logs
-      go. Today `carry.RECORDINGS` is a module constant under `$AGENTDUET_HOME`, so the page can
-      only SHOW the resolved path. Making it settable means reading it at use time — the same
-      read-at-use-time rule that `local_model()` already had to learn.
+- [x] ~~**A chooseable storage folder.**~~ **DONE 2026-08-27.** `carry.RECORDINGS` was a module
+      constant, which is exactly why the page could only display it — every importer froze it at
+      import. It is `carry.recordings()` now, answered by `owner.recordings_dir()` at use time,
+      set from the settings page through a native folder chooser (`reveal.pick_folder`), and
+      `reveal.open_folder` opens it in the file manager.
 - [ ] **Apple's own STT on the Neural Engine — TRY IT, measure two things.** The alternative to
       swapping Whisper's runtime is not using Whisper at all on a Mac: `SpeechAnalyzer` /
       `SpeechTranscriber` (macOS 26, WWDC 2025) is free, on-device, built for LONG-FORM audio,
@@ -558,7 +574,10 @@ the product is.
 
 **Voice**
 
-- [ ] **The tool contract** — status-and-render landed 2026-08-05, so every OTHER tool now
+- [ ] **The tool contract** — and note the quarantine moved the subject: `search_knowledge`
+      lives on the ASKER side (`voice.py`, `permissions.py`, `wasm_host.py`), not in
+      `secretary_tools.py`, so this is a voice-path item and not an owner-surface one.
+      status-and-render landed 2026-08-05, so every OTHER tool now
       returns a status and the framework writes the sentence. `search_knowledge` is the
       exception: it still hands over 4,000 characters to paraphrase, because on a knowledge
       question the documents ARE the answer. Narrowing that to a sentence is the per-turn half
@@ -664,7 +683,10 @@ claim anyway, because it is the one a regulated buyer is actually asking about.
       docstring explains why. Checked 2026-08-11. That makes **four** items in this file that
       claimed outstanding work already done, which is worth more attention than any of them:
       the fix is to clear an item in the same commit as the work, not at the next review.
-- [ ] `README.md` still describes `secretary-sample`, not this package.
+- [x] ~~`README.md` still describes `secretary-sample`, not this package.~~ **STALE — it was
+      rewritten in the 2026-08-26 pre-public scrub and this line was not cleared.** It opens
+      "Answers your phone, or records it — on your own machine" and mentions `secretary-sample`
+      nowhere. That makes FIVE items in this file that claimed outstanding work already done.
 
 **Cleared 2026-08-03 — orphaned by the no-interface decision**
 
