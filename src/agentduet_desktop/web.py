@@ -615,7 +615,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         """
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
-        from . import calls, carry, transcribe
+        from . import calls, carry, tools, transcribe
 
         folder = carry.recordings()
         people = []
@@ -643,7 +643,55 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                     # showing a call that looks recorded and plays nothing.
                     "silent": bool(names) and audio <= len(names) * transcribe.EMPTY_WAV_BYTES,
                 })
-            people.append({"who": who, "calls": items, "last": items[0]["at"] if items else ""})
+            people.append({"who": who, "calls": items, "messages": [],
+                           "last": items[0]["at"] if items else ""})
+
+        # MESSAGES, from the query log. A person can be here with no call at all — someone who
+        # wrote to the business account and never rang — so this both fills in threads for
+        # people already listed and adds people the call log has never heard of.
+        #
+        # `question` is theirs and `answer` is ours, which is enough to render a thread. Who
+        # SENT ours matters to the reader, so it is carried: on a carried message there is no
+        # answer at all, on an owner reply the owner wrote it, and otherwise the agent did.
+        by_who = {p["who"]: p for p in people}
+        for r in tools.rows():
+            who = r.get("asker") or ""
+            # MESSAGING NETWORKS ONLY. A TELCO row is a turn inside an ANSWERED call — the
+            # agent's own transcript — and those already appear as a call with its recording.
+            # Listing them here would show one phone conversation twice, once as a call and
+            # once as a chat that never happened.
+            if not who or r.get("network") not in ("WA", "DDUET"):
+                continue
+            p = by_who.get(who)
+            if p is None:
+                p = {"who": who, "calls": [], "messages": [], "last": ""}
+                by_who[who] = p
+                people.append(p)
+            owner_sent = r.get("outcome") == "owner_reply"
+            p["messages"].append({
+                "at": r.get("at", ""),
+                "network": r.get("network", ""),
+                # An owner reply has no inbound half — its `question` is the placeholder
+                # "(owner reply)", which is machinery and must never render as something the
+                # other person said.
+                "them": "" if owner_sent else r.get("question", ""),
+                "us": r.get("answer", ""),
+                # WHO SPOKE FOR US. "owner" is a reply typed here; "agent" is the secretary
+                # answering as them; "" means nobody answered, which is what carrying looks like
+                # and is the normal case now.
+                "by": ("owner" if owner_sent else ("agent" if r.get("answer") else "")),
+            })
+        # A READABLE NAME where one arrived with the message. Joined here rather than stored on
+        # the row, so it follows whatever the last message said the person is called.
+        try:
+            seen = json.loads((paths.RUN / "sessions.json").read_text())
+        except (OSError, json.JSONDecodeError):
+            seen = {}
+        for p in people:
+            p["display"] = (seen.get(p["who"]) or {}).get("display", "")
+            p["messages"].sort(key=lambda m: m["at"])
+            latest = [p["last"]] + [m["at"] for m in p["messages"]]
+            p["last"] = max([x for x in latest if x] or [""])
         people.sort(key=lambda p: p["last"], reverse=True)
         return web.json_response({"people": people, "folder": str(folder)})
 

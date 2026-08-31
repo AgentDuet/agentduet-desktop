@@ -662,11 +662,18 @@ def reply_to(asker: str, text: str, about: str = "", close: bool | None = None) 
     sent = text if _HAS_CONTEXT.match(text) else _context_line(picked, mine) + text
 
     # Record the answer against the log so it shows in the conversation history.
+    #
+    # THE NETWORK COMES FROM THE STORED SESSION. It was hardcoded to "" — harmless while
+    # nothing read it, and wrong the moment the app grew a thread view: the owner's own reply
+    # was the one message the conversation would not show, because the view selects on network
+    # to keep answered-call turns out. Found 2026-08-31 by sending one from the composer.
+    _sessions = json.loads(SESSIONS.read_text()) if SESSIONS.exists() else {}
     RUN.mkdir(exist_ok=True)
     with LOG.open("a") as f:
         f.write(json.dumps({
             "id": None, "at": datetime.now().isoformat(timespec="seconds"),
-            "asker": asker, "question": "(owner reply)", "network": "",
+            "asker": asker, "question": "(owner reply)",
+            "network": (_sessions.get(asker) or {}).get("network", ""),
             "verified": True, "conversation": "", "outcome": "owner_reply",
             "reason": "owner:answered", "answer": sent, "sources": [],
             "briefing": {}, "topic": (picked[0].get("topic") or "") if picked else "",
