@@ -165,6 +165,48 @@ def _dduet_system(content: dict) -> str:
     return ""
 
 
+#: Openings recovered from CONVO_CREATED that are WAITING to see whether nexus also sends the
+#: real message. Keyed by session uid.
+#:
+#: The title arrives first and the text frame follows about 35ms later, so acting on the title
+#: immediately records the same message twice — once truncated to its first sentence, once
+#: whole. Waiting a moment costs nothing on a channel where nobody is being answered live, and
+#: it is the only way to tell "nexus sent no text frame" from "it has not sent it yet".
+_OPENING_WAIT_SECONDS = 3
+_pending_openings: dict[str, str] = {}
+
+
+def _dduet_opening(content: dict) -> str:
+    """The first message, when Nexus delivered only the event announcing the conversation.
+
+    A FALLBACK, NOT THE NORMAL PATH — and the first version of this got that backwards.
+
+    On 2026-08-28 "hi hi" opened a session and CONVO_CREATED was the only frame that ever came,
+    so this was written believing the opening message is never relayed. On 2026-08-31 a second
+    new conversation showed the truth: the text frame DOES arrive, about 35ms after the event,
+    same sessionUid and its own msgUid. Acting on the title immediately therefore recorded the
+    message twice — once as the title's first sentence, once whole.
+
+    So the title is held for `_OPENING_WAIT_SECONDS` and used only if no text frame turns up.
+    That still covers the "hi hi" case, whatever caused it, without inventing a duplicate in
+    the common one.
+
+    The title is the proto's "first sentence of the first message", so what it recovers is the
+    opening SENTENCE. Fine as a fallback; not something to prefer over the real frame.
+    """
+    for part in (content or {}).get("parts", []) or []:
+        if part.get("type") != "system":
+            continue
+        system = part.get("system", {})
+        if system.get("systemType") != "CONVO_CREATED":
+            continue
+        try:
+            return str(json.loads(system.get("dataJson") or "{}").get("title") or "").strip()
+        except (ValueError, TypeError):
+            return ""
+    return ""
+
+
 def _dduet_text(body: str, *, to: str, session_uid: str, ba_uid: str) -> SendDduetMessage:
     """One outbound DDUET (Nexus BaChat) text.
 
@@ -282,6 +324,37 @@ async def run_channel() -> None:
                 sessions[subscriber] = await sm.open_session(new_session_id(), subscriber)
             return sessions[subscriber]
 
+        async def use_opening_if_unclaimed(dd, msg, asker: str) -> None:
+            """The CONVO_CREATED title, used only if nexus never sent the real message.
+
+            Nexus normally follows the event with a text frame about 35ms later, and that frame
+            pops this conversation off `_pending_openings`. So this wakes up, finds nothing to
+            do, and returns — which is the expected outcome and not a failure.
+            """
+            await asyncio.sleep(_OPENING_WAIT_SECONDS)
+            opening = _pending_openings.pop(dd.session_uid, None)
+            if not opening:
+                return                      # the real message arrived; it was handled as itself
+            logger.info("DDUET: no text frame followed the conversation title on session %s — "
+                        "using the title as the first message", dd.session_uid)
+
+            from . import brain, owner, people
+            verified = people.default_verified("DDUET")
+            logger.info("← %s: %s", asker, opening)
+            if owner.messages() == owner.MESSAGES_CARRY:
+                brain.record(asker, opening, "carried", "", "", network="DDUET",
+                             verified=verified, conversation=dd.session_uid)
+                logger.info("[DDUET] %s → carried to the owner, not answered", asker)
+                return
+            result = await brain.handle_query(asker, opening, "DDUET", verified=verified,
+                                              conversation=dd.session_uid)
+            logger.info("→ [%s] %s", result["outcome"], result["reply"])
+            send = await (await session_for(msg.subscriber)).send_message(
+                _dduet_text(result["reply"], to=asker, session_uid=dd.session_uid,
+                            ba_uid=dd.ba_uid))
+            if not send.success:
+                logger.error("reply failed: %s (%s)", send.error_code, send.error_content)
+
         @sm.on_incoming_message
         async def on_message(msg: IncomingMessage):
             if msg.network not in (Network.WA, Network.DDUET):
@@ -320,6 +393,16 @@ async def run_channel() -> None:
                     return
                 conversation = dd.session_uid      # a real per-conversation key, unlike WA
                 event = _dduet_system(dd.content)
+                opening = _dduet_opening(dd.content) if event else ""
+                if opening:
+                    # HOLD IT, do not act on it. Nexus usually sends the real message a moment
+                    # later; only when it does not is the title all we will ever get.
+                    _pending_openings[dd.session_uid] = opening
+                    remember_session(asker, msg.subscriber, network="DDUET",
+                                     session_uid=dd.session_uid, ba_uid=dd.ba_uid,
+                                     display=_display_name(dd))
+                    asyncio.create_task(use_opening_if_unclaimed(dd, msg, asker))
+                    return
                 if event:
                     # Remember the session ANYWAY. This frame carries everything a reply needs —
                     # participant, session_uid, ba_uid — so recording it here means the owner can
@@ -330,6 +413,10 @@ async def run_channel() -> None:
                     logger.info("DDUET: %s event on session %s — noted, not answered",
                                 event, dd.session_uid)
                     return
+                # A REAL TEXT FRAME CANCELS ANY HELD OPENING for this conversation. It is the
+                # same message, whole rather than clipped to its first sentence, so the title
+                # copy must never also land.
+                _pending_openings.pop(dd.session_uid, None)
                 question = _first_text(dd.content)
             else:
                 question = _first_text(msg.payload)
