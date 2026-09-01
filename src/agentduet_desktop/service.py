@@ -276,6 +276,31 @@ def wait_for_exit(pid: int, timeout: float = 30.0) -> None:
         time.sleep(0.25)
 
 
+def _clear_pidfile(stopped: int) -> None:
+    """Remove the pid file, but ONLY while it still names the process we just stopped.
+
+    Nothing removed it before: the daemon writes it at start and its shutdown does not get
+    there — SIGTERM is caught somewhere in the async stack, which is why `service_stop` verifies
+    and escalates rather than trusting the signal. So a stopped instance left a file naming a
+    dead pid.
+
+    That was survivable, because `running_pid` checks `_alive` and `_is_ours`, and a recycled pid
+    is already handled there. It was still a lie on disk, and it made `status` and a hand
+    inspection disagree about whether anything was running.
+
+    THE GUARD IS THE POINT. Between the kill and here, someone may have started a new daemon —
+    `dev.sh` in another terminal, an assistant calling `service_start`. Deleting the file then
+    would orphan a LIVE daemon: nothing could find it to stop it, and the next start would bind
+    a port already held and fight it for one connector. So the file goes only if it still says
+    what we expect.
+    """
+    try:
+        if int(PIDFILE.read_text().strip()) == stopped:
+            PIDFILE.unlink(missing_ok=True)
+    except (OSError, ValueError):
+        pass                      # already gone, or replaced by something unreadable
+
+
 def service_stop() -> str:
     """Stop the daemon. Verified, not assumed.
 
@@ -290,9 +315,13 @@ def service_stop() -> str:
     for _ in range(GRACE_SECONDS * 2):
         time.sleep(0.5)
         if not _alive(pid):
+            _clear_pidfile(pid)
             return f"Stopped (pid {pid}). Nobody outside can reach this secretary now."
     os.kill(pid, FORCE)
     time.sleep(1)
     if _alive(pid):
+        # LEAVE THE FILE. It still names something real that nobody managed to kill, and the
+        # next start needs to see that rather than a clean slate.
         return f"Could NOT stop pid {pid} — it ignored both signals. Kill it by hand."
+    _clear_pidfile(pid)
     return f"Stopped (pid {pid}) — it ignored SIGTERM and had to be forced."
