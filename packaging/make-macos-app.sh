@@ -27,7 +27,15 @@ cp "$SHELL_BIN" "$APP/Contents/MacOS/AgentDuet Desktop"
 # The daemon rides ALONGSIDE it, which is where Daemon.swift looks. Contents/MacOS rather than
 # Resources because it is an executable, and codesign treats the two directories differently —
 # a Mach-O under Resources is a signing error, not a preference.
-cp "$DAEMON_BIN" "$APP/Contents/MacOS/agentduet-desktop"
+# EITHER SHAPE. macOS builds are --onedir, so PyInstaller emits a DIRECTORY holding the
+# executable plus _internal/. Copy its CONTENTS in, so the executable keeps _internal as a
+# sibling — the layout onedir needs — and so Contents/MacOS/agentduet-desktop is still the
+# executable Daemon.swift launches. A onefile binary (Linux, or an older build) copies as before.
+if [ -d "$DAEMON_BIN" ]; then
+  cp -R "$DAEMON_BIN"/. "$APP/Contents/MacOS/"
+else
+  cp "$DAEMON_BIN" "$APP/Contents/MacOS/agentduet-desktop"
+fi
 chmod +x "$APP/Contents/MacOS/AgentDuet Desktop" "$APP/Contents/MacOS/agentduet-desktop"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
