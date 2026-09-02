@@ -28,9 +28,10 @@ today. Gemini and Anthropic work for messages but the phone will not answer.
 ## macOS
 
 1. Open the `.dmg` and drag **AgentDuet Desktop** to your Applications folder.
-2. **Right-click the app → Open → Open.** Do not double-click.
-   The app is not signed yet, so a normal double-click will be refused with *"the developer
-   cannot be verified"*. This is expected. You only need to do this once.
+2. **Double-click it.** macOS asks once whether to open an app downloaded from the internet —
+   click **Open**. That is the ordinary consent prompt, not a refusal: the build is signed and
+   notarized by B3 Networks, so you will not see *"the developer cannot be verified"* and you do
+   not need the right-click trick any more.
 3. Your browser opens on the setup page. Continue at **Setting it up** below.
 
 The build is for **Apple Silicon** (M1/M2/M3/M4). Check with  Apple menu → About This Mac →
@@ -106,7 +107,8 @@ your name, and offer a callback if it cannot help.
 
 Please don't report these — they are on the list.
 
-- **macOS shows a security warning** on first open. Right-click → Open. Signing is not done yet.
+- **macOS asks once, on first open,** whether to open an app downloaded from the internet. Click
+  Open. The build is signed and notarized, so this is consent rather than a warning.
 - **No desktop notifications** except on Linux. Escalations reach you when you ask your
   assistant, not before.
 - **Nothing starts at login.** If you reboot, start it again.
