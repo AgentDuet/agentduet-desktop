@@ -421,6 +421,25 @@ the product is.
 - [ ] **Per-service on/off toggles.** The mockup's overview switches each of the four services
       independently. We have one `## Calls` mode and a `## Record calls` boolean.
 
+**Being a Mac app** (decided 2026-09-02 — see `docs/design.md`, "Being a Mac app, not a
+binary in a folder"). Ordered; each is worth doing alone.
+
+- [ ] **`--onedir` on macOS**, onefile elsewhere. 3.87s from launch to a bound site becomes
+      roughly the 0.23s source manages, and the 92 MB moves from `Contents/MacOS/` into
+      `Contents/Frameworks/` where a Mac app expects it. Touches the spec, CI's smoke paths
+      (`./dist-bin/agentduet-desktop` becomes a directory on macOS) and `sign-macos.sh` — which
+      already signs inner binaries first, so signing is the part that needs least work.
+- [ ] **Menu bar item + `LSUIElement=1` + survive window close — ONE change.** Dropping the Dock
+      icon without a status item leaves a running app nobody can find. Do it in the Swift shell:
+      it owns `NSApplication` already, and its
+      `applicationShouldTerminateAfterLastWindowClosed` returns `true`, which must be flipped
+      first. Neither shell has a single `NSStatusBar` reference today.
+- [ ] **`SMAppService` for login at start** on macOS, so it shows in System Settings → Login
+      Items. `install_login_item()` keeps its no-parameter contract; only the mechanism changes.
+- [ ] **Launch the Swift shell on a Mac at all.** It has never run — `macos-shell.yml` exists
+      because nobody had a toolchain. Swift 6.3.3 and a Mac are both available now, so this is
+      no longer blocked, and it gates the two items above.
+
 **Release blockers**
 
 - [ ] **`init` cannot take a connector**, and secrets deliberately cannot go through the
