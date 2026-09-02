@@ -1,4 +1,4 @@
-# Installing AgentDuet Desktop — alpha 2
+# Installing AgentDuet Desktop — alpha 7
 
 A secretary that runs on your own machine. It answers people who call or message you, escalates
 anything it should not decide alone, and can only act inside limits you set.
@@ -32,7 +32,8 @@ today. Gemini and Anthropic work for messages but the phone will not answer.
    click **Open**. That is the ordinary consent prompt, not a refusal: the build is signed and
    notarized by B3 Networks, so you will not see *"the developer cannot be verified"* and you do
    not need the right-click trick any more.
-3. Your browser opens on the setup page. Continue at **Setting it up** below.
+3. The app opens its own window on the setup page — macOS gets a real app window now, not a
+   browser tab. Continue at **Setting it up** below.
 
 The build is for **Apple Silicon** (M1/M2/M3/M4). Check with  Apple menu → About This Mac →
 "Chip". If it says Intel, tell Stanley — you need a different build.
@@ -87,12 +88,12 @@ you do, what the secretary is allowed to act on. That part is a conversation, no
 ## Check it is working
 
 ```bash
-agentduet-desktop --version   # e.g. 0.1.0a2 (82094ff) — binary
+agentduet-desktop --version   # e.g. 0.1.0a7 (9e1185d) — binary
 agentduet-desktop status      # what is running, and what this build can do
 ```
 
 **Always quote `--version` when reporting anything.** The version alone is not enough — several
-different builds carry the same `0.1.0a2`, so the short code after it is what identifies yours.
+different builds carry the same `0.1.0a7`, so the short code after it is what identifies yours.
 `+dirty` means it was built from an uncommitted tree, which for a build you were given should
 not happen; if you see it, say so.
 
