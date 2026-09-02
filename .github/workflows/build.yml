@@ -56,7 +56,7 @@ jobs:
         with:
           python-version: "3.12"      # the floor the SDK requires
 
-      # The SDK comes from PyPI now (1.0.0, released 2026-08-10). It used to be a wheel
+      # The SDK comes from PyPI now (the 1.1.0b* line — see the pin below). It used to be a wheel
       # committed under vendor/, because the DDUET channel lived only on a branch of a PRIVATE
       # repo that CI cannot clone — a private repo's Actions "access" setting governs actions
       # and reusable workflows, not `git clone`. Dropping DDUET for WhatsApp removed the need
@@ -64,7 +64,10 @@ jobs:
 
       - name: Install
         run: |
-          pip install "agentduet>=1.0.0"
+          # >=1.1.0b1, not >=1.0.0: the daemon imports SendDduetMessage at module level
+          # and PyPI still serves 1.0.0 as latest, so the old pin built a binary whose
+          # `run` died on an ImportError while `status` stayed perfectly healthy.
+          pip install "agentduet>=1.1.0b1"
           # Voice. A different org (AgentDuet) but PUBLIC, so no credentials. Without this the
           # binary starts fine and silently cannot answer calls: voice.available() catches the
           # ImportError and reports "voice not enabled", which reads as a config problem.
@@ -138,6 +141,21 @@ jobs:
           # loaded — after the owner has downloaded gigabytes of weights.
           grep -q "engine   : available" status.txt \
             || { echo "::error::binary has no local model engine — check the [local] extra and the spec"; exit 1; }
+
+          # AND IT MUST ACTUALLY START. Everything above is `status`, which imports almost
+          # nothing — so it stayed green through a build whose `run` was dead on arrival: the
+          # daemon's own module-level `from agentduet import SendDduetMessage` raised ImportError
+          # on a too-old SDK, and no assertion here touched it. A binary that cannot boot the
+          # daemon is not a build worth signing, let alone shipping, and only running it knows.
+          ./dist-bin/agentduet-desktop run --headless --no-channel > run.log 2>&1 &
+          for i in $(seq 1 30); do
+            grep -q "Owner site: http" run.log 2>/dev/null && break
+            sleep 1
+          done
+          grep -q "Owner site: http" run.log 2>/dev/null || {
+            echo "::error::the daemon did not start — full output follows"; cat run.log; exit 1; }
+          echo "daemon booted and bound the owner site"
+          ./dist-bin/agentduet-desktop stop || true
 
       # ---- the native shell, when asked for ---------------------------------------------------
       #
