@@ -143,7 +143,14 @@ jobs:
           # the step cannot tell "adapter missing" from "no key configured".
           DASHSCOPE_API_KEY: ci-smoke-test-not-a-real-key
         run: |
-          ./dist-bin/agentduet-desktop status | tee status.txt
+          # THE macOS PATH IS A DIRECTORY NOW. macOS builds --onedir (see the spec for why:
+          # onefile unpacked 91 MB on every launch), so PyInstaller emits
+          # dist-bin/agentduet-desktop/ holding the executable plus _internal/. Linux stays
+          # onefile, where the same path IS the executable.
+          BIN=./dist-bin/agentduet-desktop
+          [ "$RUNNER_OS" = "macOS" ] && BIN=./dist-bin/agentduet-desktop/agentduet-desktop
+          echo "smoke-testing $BIN"
+          "$BIN" status | tee status.txt
           for p in gemini anthropic qwen; do
             grep -qE "providers:.*\b$p\b" status.txt \
               || { echo "::error::binary was built without the $p provider"; exit 1; }
@@ -168,7 +175,7 @@ jobs:
           # daemon's own module-level `from agentduet import SendDduetMessage` raised ImportError
           # on a too-old SDK, and no assertion here touched it. A binary that cannot boot the
           # daemon is not a build worth signing, let alone shipping, and only running it knows.
-          ./dist-bin/agentduet-desktop run --headless --no-channel > run.log 2>&1 &
+          "$BIN" run --headless --no-channel > run.log 2>&1 &
           for i in $(seq 1 30); do
             grep -q "Owner site: http" run.log 2>/dev/null && break
             sleep 1
@@ -176,7 +183,7 @@ jobs:
           grep -q "Owner site: http" run.log 2>/dev/null || {
             echo "::error::the daemon did not start — full output follows"; cat run.log; exit 1; }
           echo "daemon booted and bound the owner site"
-          ./dist-bin/agentduet-desktop stop || true
+          "$BIN" stop || true
 
       # ---- the native shell, when asked for ---------------------------------------------------
       #
@@ -195,6 +202,8 @@ jobs:
         run: |
           packaging/make-macos-app.sh \
             macos/.build/release/AgentDuetShell dist-bin/agentduet-desktop dist-bin
+          # make-macos-app.sh now accepts either shape: a onefile binary, or the onedir tree
+          # that macOS builds produce.
           plutil -lint "dist-bin/AgentDuet Desktop.app/Contents/Info.plist"
 
       # ---- signing, and only when there is a certificate to sign with -----------------------
@@ -304,12 +313,20 @@ jobs:
           # What a user's Mac will actually decide, asked the way Gatekeeper asks it.
           spctl -a -t open --context context:primary-signature -vv "$DMG"
 
+      # TWO STEPS, one per OS, and now there IS a gain in splitting them. This used to list both
+      # paths in one step because neither cost anything extra. Since macOS went --onedir,
+      # `dist-bin/agentduet-desktop` there is a 241 MB DIRECTORY rather than a file, so a shared
+      # path would upload the whole unpacked tree alongside the DMG that already contains it.
       - uses: actions/upload-artifact@v4
+        if: runner.os == 'macOS'
         with:
           name: agentduet-desktop-${{ matrix.name }}
-          # The DMG on macOS, the bare binary on Linux. Both paths are listed because a
-          # per-OS `path` would need two upload steps for no gain.
-          path: |
-            agentduet-desktop-${{ matrix.name }}.dmg
-            dist-bin/agentduet-desktop
+          path: agentduet-desktop-${{ matrix.name }}.dmg
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os != 'macOS'
+        with:
+          name: agentduet-desktop-${{ matrix.name }}
+          path: dist-bin/agentduet-desktop
           if-no-files-found: error

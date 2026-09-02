@@ -157,28 +157,55 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
-exe = EXE(
-    pyz, a.scripts, a.binaries, a.datas,
-    name="agentduet-desktop",
-    console=True,          # it IS a terminal tool: init is an interview, run prints the URL
-    onefile=True,
-    upx=False,             # UPX compression is a reliable way to trip antivirus heuristics
-)
-
-# macOS: also wrap it in a .app, because a bare Unix executable is not something you hand to
-# someone evaluating how easy this is to start. Downloaded, it arrives without the executable
-# bit and double-clicking opens a Terminal window — which tells you nothing about the product.
-# A .app double-clicks, appears in the Dock, and behaves like software.
+# ONEDIR ON macOS, ONEFILE EVERYWHERE ELSE — and this is a startup-time decision, not tidiness.
 #
-# It is NOT signed or notarized, so the first launch still trips Gatekeeper ("the developer
-# cannot be verified"); right-click -> Open clears it once. Signing needs an Apple Developer ID
-# and is the honest fix before anyone outside the team sees this.
+# A onefile binary unpacks its ENTIRE bundle into a temp directory on every launch and then
+# imports back out of a compressed archive. Measured on an M-series Mac (a7): 3.87s from launch
+# to a bound owner site, against 0.23s for the same code from source. `--version` alone was 0.82s
+# vs 0.01s, and the gap grows with how much a command imports.
 #
-# console=True above means stdout exists but nobody sees it when launched from Finder, so the
-# daemon also logs to $AGENTDUET_HOME/run/daemon.log — otherwise a failed start is silent.
+# It is also the wrong SHAPE for a Mac app. Dropbox's Contents/MacOS holds a 108K launcher with
+# 344M laid out in Contents/Frameworks; ours held one 92M executable with Frameworks empty. A
+# .app is meant to be a directory of files, not a self-extracting archive that happens to live
+# in one.
+#
+# THE FIX IS NOT A NATIVE SHELL, which is the tempting conclusion: the Swift shell starts this
+# same frozen binary and would pay the identical seconds behind a nicer window.
+#
+# LINUX KEEPS ONEFILE, deliberately. INSTALL.md promises "the binary is a single file" there and
+# tells the owner to `chmod +x` it — which a directory cannot satisfy. Windows will want the same
+# treatment as macOS when it lands.
+#
+# CONSEQUENCE FOR ANYTHING THAT INVOKES THE BUILD: on macOS `dist-bin/agentduet-desktop` is now a
+# DIRECTORY, and the executable is `dist-bin/agentduet-desktop/agentduet-desktop`. CI's smoke
+# steps and any local script that runs the bare path must branch on the OS.
 if sys.platform == "darwin":
+    exe = EXE(
+        pyz, a.scripts,
+        exclude_binaries=True,      # the binaries go to COLLECT, not inside the executable
+        name="agentduet-desktop",
+        console=True,      # it IS a terminal tool: init is an interview, run prints the URL
+        upx=False,         # UPX compression is a reliable way to trip antivirus heuristics
+    )
+    coll = COLLECT(
+        exe, a.binaries, a.datas,
+        strip=False,
+        upx=False,
+        name="agentduet-desktop",
+    )
+    # A .app double-clicks, appears in the Dock, and behaves like software — where a bare Unix
+    # executable arrives without the executable bit and opens a Terminal window, which tells you
+    # nothing about the product.
+    #
+    # It IS signed, notarized and stapled when the certificate secret exists (build.yml), and
+    # `packaging/sign-macos.sh` does the same locally — so a normal double-click opens it and the
+    # old right-click dance is gone. It signs many inner binaries now rather than one, which both
+    # already handle by signing inner binaries first, deepest-last.
+    #
+    # console=True above means stdout exists but nobody sees it when launched from Finder, so the
+    # daemon also logs to $AGENTDUET_HOME/run/daemon.log — otherwise a failed start is silent.
     app = BUNDLE(
-        exe,
+        coll,
         name="AgentDuet Desktop.app",
         icon=None,
         bundle_identifier="com.b3networks.agentduet-desktop",
@@ -189,7 +216,17 @@ if sys.platform == "darwin":
             "CFBundleVersion": "0.1.0",
             "NSHighResolutionCapable": True,
             # It answers the phone while the owner is away, so it must not be culled when it
-            # has no visible window.
+            # has no visible window. Flipping this to True is HALF of becoming a menu bar app —
+            # see docs/design.md: without an NSStatusItem it leaves a running app nobody can
+            # find, so the two land together or not at all.
             "LSUIElement": False,
         },
+    )
+else:
+    exe = EXE(
+        pyz, a.scripts, a.binaries, a.datas,
+        name="agentduet-desktop",
+        console=True,
+        onefile=True,
+        upx=False,
     )
