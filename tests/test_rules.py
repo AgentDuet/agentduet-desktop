@@ -530,9 +530,24 @@ def test_answered_call_recording() -> None:
     # a call happens to end.
     import os as _o
     from agentduet_desktop import transcribe as _t
+    # RESOLVING A MODEL BY NAME NEEDS THE ENGINE, and this suite is meant to run without it.
+    # local_model() validates an unknown name via _repo(), which asks faster-whisper's own table
+    # rather than a hand-written map that drifts — so with no faster-whisper every name outside
+    # the legacy QUALITY map falls back to DEFAULT_MODEL, exactly as designed. tests.yml installs
+    # [gemini,anthropic,qwen] and not [stt], so these eight assertions failed on CI for days
+    # while passing on any machine with the speech extra. Installing ~430 MB on every push to fix
+    # that is the wrong trade for a suite whose value is being fast and dependency-free.
+    #
+    # So assert the name resolution only where it CAN hold, and keep the legacy-adjective
+    # assertions unconditional — those go through QUALITY, need no engine, and are the ones
+    # guarding the documented failure (an upgrade silently moving an instance to another tier).
+    engine_known = bool(_t._repo("small"))
+    if not engine_known:
+        print("     (faster-whisper absent — name-resolution checks skipped, legacy map still checked)")
     for model in _t.TIERS:
         _o.environ["SECRETARY_STT_QUALITY"] = model
-        eq(f"{model} is chosen by its own name", _t.local_model(), model)
+        if engine_known:
+            eq(f"{model} is chosen by its own name", _t.local_model(), model)
         ok(f"and {model} states its download size", _t.MODEL_MB.get(model, 0) > 0)
     # AN UPGRADE MUST NOT MOVE THE MODEL. Instances configured before 2026-08-27 hold one of
     # four adjectives, and silently jumping tier — `max` to a fallback, say — would change both
@@ -552,9 +567,10 @@ def test_answered_call_recording() -> None:
     for gone in ("tiny", "base"):
         ok(f"{gone} is not offered", gone not in _t.TIERS)
         _o.environ["SECRETARY_STT_QUALITY"] = gone
-        eq(f"but {gone} still resolves when set deliberately", _t.local_model(), gone)
-        ok(f"and {gone} appears in the list so it can be seen and changed",
-           any(r["in_use"] and r["model"] == gone for r in _t.catalogue()))
+        if engine_known:
+            eq(f"but {gone} still resolves when set deliberately", _t.local_model(), gone)
+            ok(f"and {gone} appears in the list so it can be seen and changed",
+               any(r["in_use"] and r["model"] == gone for r in _t.catalogue()))
     _o.environ.pop("SECRETARY_STT_QUALITY", None)
 
     # DOWNLOADED MEANS COMPLETE, not "a directory exists". The hub cache creates the directory
@@ -576,7 +592,8 @@ def test_answered_call_recording() -> None:
     # process's environment so a restart is not needed, and this was a module constant — so
     # changing the tier did nothing until the daemon was restarted. CLAUDE.md names this trap.
     _o.environ["SECRETARY_STT_QUALITY"] = "large-v3"
-    eq("a tier changed after import takes effect immediately", _t.local_model(), "large-v3")
+    if engine_known:
+        eq("a tier changed after import takes effect immediately", _t.local_model(), "large-v3")
     _o.environ.pop("SECRETARY_STT_QUALITY", None)
 
     # A GPU IS USED IF PRESENT, NEVER REQUIRED. CUDA is not bundled — 2-3 GB of wheels against a
