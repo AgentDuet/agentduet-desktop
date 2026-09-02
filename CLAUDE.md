@@ -295,6 +295,24 @@ Break one of these and the secretary is a different product.
 - **`chmod 0600` is a no-op on Windows.** The model key in `$AGENTDUET_HOME/.env` is unprotected there.
 - **Python ≥3.12** — the SDK requires it.
 
+- **`--onefile` COSTS ~3.6 SECONDS ON EVERY LAUNCH, and that is the "slow app" complaint**
+  (measured 2026-09-02 on an M-series Mac, a7). Time from launch to a bound owner site:
+  **3.87s frozen, 0.23s from source** — the same code, so none of it is Python being slow.
+  A onefile binary unpacks its whole 91 MB bundle into a temp directory before anything runs and
+  then imports back out of a compressed archive, per launch, every launch. `--version` alone is
+  0.82s vs 0.01s, and the gap grows with how much gets imported, which is why `run` is worse.
+  **THE FIX IS `--onedir`, NOT SWIFT.** This is the one to say out loud, because the instinct is
+  that a native shell would feel faster: `Daemon.swift` starts the same frozen binary, so the
+  3.6s happens identically behind a nicer window. onedir lays the libraries out inside
+  `Contents/` and nothing unpacks — which is also what a `.app` is supposed to BE, a directory of
+  files rather than a self-extracting archive.
+  **Linux must stay onefile.** INSTALL.md promises "the binary is a single file" and you cannot
+  `chmod +x` a directory, so the spec needs a per-platform branch rather than a flag flip.
+  Two consequences to plan for: signing covers many inner binaries instead of one (already
+  handled — `sign-macos.sh` signs inner binaries first, deepest-last), and anything reading
+  `sys._MEIPASS` now points at the bundle directory instead of a temp copy, so check
+  `paths.EXAMPLES` and the wasm plugin path before believing a green build.
+
 - **Local STT is faster-whisper on the CPU. The Apple Neural Engine is an INTENTION, not yet
   reachable** (checked 2026-08-17). CTranslate2, the runtime underneath, has CPU and CUDA
   backends only — no Metal, no Core ML, no ANE — so on a Mac it is CPU-only today and every
