@@ -160,6 +160,13 @@ def cmd_status(args) -> int:
     except Exception as exc:
         print(f"  tools    : NOT available — {type(exc).__name__}: {str(exc)[:70]}")
 
+    # THE OWNER VIEW'S SURFACE. Same class as the lines above: pywebview absent means the view
+    # silently opens in a browser instead of a window, which looks like a design choice rather
+    # than a build that shipped without the dependency.
+    from . import shell as _shell
+    _w, _wwhy = _shell.window_support()
+    print(f"  window   : {'native' if _w else 'browser — ' + _wwhy}")
+
     # An assistant is OPTIONAL, and this line says so by omission: nothing is printed when there
     # is none. It used to read "assistant: NONE found — nothing can drive this secretary", which
     # was true while the mcp was the only owner surface and became false the moment setup stopped
