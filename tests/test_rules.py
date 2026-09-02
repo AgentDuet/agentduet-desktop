@@ -1593,9 +1593,54 @@ def test_knowledge_writes() -> None:
     ok("a write states who can read it", "anyone who writes in" in pub, pub)
 
 
+def test_daemon_identity() -> None:
+    """The pid in the pid file is only OURS if we can recognise the process — including the
+    macOS bundle, whose path contains a space."""
+    print("\n  -- daemon identity: a bundle path has a space in it --")
+    import subprocess as _sp
+    from agentduet_desktop import service
+
+    class _Out:
+        def __init__(self, text): self.stdout = text
+
+    def _fake_ps(answers):
+        """Stand in for `ps`, answering per requested format."""
+        def run(cmd, **kw):
+            fmt = cmd[2]                      # "comm=" or "command="
+            return _Out(answers.get(fmt, ""))
+        return run
+
+    real_run = service.subprocess.run
+    # THE REGRESSION. The shipping macOS launch is the bundle, and "AgentDuet Desktop.app"
+    # contains a space: splitting `command=` on whitespace basenames to "AgentDuet" and matches
+    # nothing, so the daemon a Mac owner is actually running looked like somebody else's process.
+    bundle = ("/Applications/AgentDuet Desktop.app/Contents/MacOS/agentduet-desktop")
+    try:
+        service.subprocess.run = _fake_ps({"comm=": bundle, "command=": bundle})
+        ok("the macOS bundle daemon is recognised as ours", service._is_ours(4242))
+
+        # From source, the executable is python and only the arguments name the module.
+        service.subprocess.run = _fake_ps(
+            {"comm=": "/usr/bin/python3.12",
+             "command=": "/usr/bin/python3.12 -m agentduet_desktop.cli run"})
+        ok("a from-source daemon is still recognised", service._is_ours(4242))
+
+        # And the check must stay tight in the way it claims: a process that merely has the
+        # project PATH in its arguments is not the daemon. (An argument that is exactly the
+        # module name still matches, deliberately — that is what `-m agentduet_desktop.cli`
+        # looks like, and the pid would also have to be in the pid file to matter.)
+        service.subprocess.run = _fake_ps(
+            {"comm=": "/bin/bash",
+             "command=": "/bin/bash -c ls /Users/me/projects/agentduet-desktop/src"})
+        ok("a shell sitting in the source tree is not ours", not service._is_ours(4242))
+    finally:
+        service.subprocess.run = real_run
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
+    test_daemon_identity()
     test_prompts()
     test_asker_tool_surface()
     test_untrusted_marking()

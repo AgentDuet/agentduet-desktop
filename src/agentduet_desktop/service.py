@@ -107,6 +107,20 @@ def _is_ours(pid: int) -> bool:
         pass
     # No procfs (macOS): ask ps. Unavailable too — do not claim it is ours.
     try:
+        # `comm=` FIRST, and never whitespace-split it. The shipping macOS path is the bundle,
+        # and its name contains a space — "AgentDuet Desktop.app/Contents/MacOS/agentduet-desktop"
+        # — so `command=` split on whitespace yields a bogus argv whose first element basenames
+        # to "AgentDuet". Nothing matched, so _is_ours said False for the ONE launch shape a Mac
+        # owner actually uses: `status` reported "stopped" while the daemon was answering the
+        # phone, `stop` refused to stop it, and the single-instance guard let a second launch
+        # race the first for port 8899 and the connector. Linux never saw it — procfs is
+        # NUL-separated, so there was nothing to split wrongly.
+        exe = subprocess.run(["ps", "-o", "comm=", "-p", str(pid)],
+                             capture_output=True, text=True, timeout=5).stdout.strip()
+        if exe and os.path.basename(exe).startswith("agentduet-desktop"):
+            return True
+        # Still split for the from-source case, where the executable is python and only the
+        # arguments name our module.
         out = subprocess.run(["ps", "-o", "command=", "-p", str(pid)],
                              capture_output=True, text=True, timeout=5)
         return _matches(out.stdout.split())
