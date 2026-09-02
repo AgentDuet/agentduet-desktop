@@ -622,6 +622,53 @@ the tool sandbox dies the first time a customer tool is called; and macOS `secur
 cannot read a modern AES-256 PKCS#12 — it wants 3DES + SHA-1, while the obvious `-legacy` flag
 produces RC2-40, which OpenSSL 3 cannot read back to verify.
 
+### Being a Mac app, not a binary in a folder (decided 2026-09-02)
+
+Two complaints arrived on the day the first Mac was available — "it is really slow" and "the
+binary is not usually the same file as the DMG" — and they are one finding. Measured against
+Dropbox on that machine:
+
+| | Dropbox | us, a7 |
+|---|---|---|
+| Dock icon | none (`LSUIElement: 1`) | shown |
+| persistent home | menu bar item | nothing |
+| `Contents/MacOS/` | a **108K launcher** | a **92M** executable |
+| `Contents/Frameworks/` | 344M, laid out | **0B** |
+| login at start | a Login Item, visible in System Settings | our own LaunchAgent plist |
+| delivery | one `.dmg` | one `.dmg` |
+
+So the DMG was never the problem — Dropbox ships one too, and a `.pkg` would buy nothing for an
+app that drags into `/Applications`. The problem is the shape INSIDE the bundle, and the absence
+of anywhere for the app to live while it has no window.
+
+**`--onedir` on macOS, `--onefile` everywhere else.** onefile unpacks its whole bundle to a temp
+directory on every launch: 3.87s from launch to a bound owner site, against 0.23s for the same
+code from source. That is not Python being slow, and **a native shell would not fix it** — the
+Swift shell starts the same frozen binary and would pay the same seconds behind a nicer window.
+Linux keeps onefile because a single file is what INSTALLER docs promise there and you cannot
+`chmod +x` a directory.
+
+**The menu bar is where a phone-answering app lives.** It answers while the owner is away, so "no
+window, still running" is its NORMAL state — and today that state is illegible (a Dock icon like
+a document app) and fragile (closing the window ends the run; the Swift shell terminates on last
+window close). Three things land together or not at all: `NSStatusItem`, `LSUIElement=1`, and
+surviving window close. Dropping the Dock icon without a menu bar item leaves a running app
+nobody can find.
+
+**The Swift shell is the vehicle, for LIFECYCLE and not for widgets.** This reverses the earlier
+"make it justify itself beyond a window": a window is cosmetic, presence is not. It already owns
+`NSApplication`, where `LSUIElement`, a status item and "do not quit on last window" are nearly
+free; pywebview's loop assumes windows exist, so a windowless-but-alive agent works against the
+library. **The UI stays one HTML codebase** — both shells load the same local page into the same
+WKWebView, so this is not a second interface, it is ~400 Mac-only lines of shell. pywebview
+remains the Windows path and the fallback when the Swift shell is not in a build.
+
+**Login at start becomes `SMAppService`** on macOS, so it appears in System Settings → Login
+Items and can be switched off there. This REFINES "Starting at login" above rather than replacing
+it: the interface is still `install_login_item()` with no parameters, and the reasoning for that
+is unchanged. Only the macOS mechanism moves, from a plist we write to a registration the OS
+owns. Worth noting Dropbox's own LaunchAgents are for its updater, not its app.
+
 **We are not going to the Mac App Store.** It requires the sandbox, which this app's loopback
 server, home-directory writes and model download would each have to be granted around. Deferred,
 not rejected.
