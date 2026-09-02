@@ -1637,10 +1637,33 @@ def test_daemon_identity() -> None:
         service.subprocess.run = real_run
 
 
+def test_native_titlebar() -> None:
+    """The native window hides our fake traffic lights — and must not take the brand with them."""
+    print("\n  -- native titlebar: hide the dots, keep the brand --")
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    css = (src / "app.css").read_text()
+
+    # Every page nests .brand INSIDE .lights, so a rule hiding the container hides the brand too.
+    # That left Settings as the only visible child of a space-between row, so it sat against the
+    # left padding instead of the right edge — invisible in a browser, since the rule only applies
+    # under .native, which is exactly the mode nobody could see before there was a Mac to see it on.
+    nested = [f for f in ("web.html", "settings.html", "setup.html")
+              if "brand" in "".join((src / f).read_text().split("class=\"lights\"")[1:2])[:400]]
+    ok("the brand is nested inside .lights in the pages", len(nested) == 3, str(nested))
+    ok("native mode hides the DOTS, not the whole group",
+       "html.native .lights > i{display:none;}" in css)
+    ok("and never hides the group outright",
+       "html.native .lights{display:none;}" not in css)
+    # The row reserves space for the real controls; a brand at padding 0 would sit under them.
+    ok("the titlebar reserves room for macOS's own controls",
+       "html.native .titlebar{padding-left:" in css)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
     test_daemon_identity()
+    test_native_titlebar()
     test_prompts()
     test_asker_tool_surface()
     test_untrusted_marking()
