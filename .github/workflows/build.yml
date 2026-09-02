@@ -201,9 +201,10 @@ jobs:
         if: runner.os == 'macOS' && inputs.shell == 'native'
         run: |
           packaging/make-macos-app.sh \
-            macos/.build/release/AgentDuetShell dist-bin/agentduet-desktop dist-bin
-          # make-macos-app.sh now accepts either shape: a onefile binary, or the onedir tree
-          # that macOS builds produce.
+            macos/.build/release/AgentDuetShell "dist-bin/AgentDuet Desktop.app" dist-bin
+          # THE .app, NOT dist-bin/agentduet-desktop. Since macOS went --onedir the daemon loads
+          # Python from Contents/Frameworks, so it has to be assembled from the bundle
+          # PyInstaller built; the COLLECT directory launches and then cannot find libpython.
           plutil -lint "dist-bin/AgentDuet Desktop.app/Contents/Info.plist"
 
       # ---- signing, and only when there is a certificate to sign with -----------------------

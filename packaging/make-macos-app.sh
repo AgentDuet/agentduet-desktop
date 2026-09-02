@@ -27,14 +27,32 @@ cp "$SHELL_BIN" "$APP/Contents/MacOS/AgentDuet Desktop"
 # The daemon rides ALONGSIDE it, which is where Daemon.swift looks. Contents/MacOS rather than
 # Resources because it is an executable, and codesign treats the two directories differently —
 # a Mach-O under Resources is a signing error, not a preference.
-# EITHER SHAPE. macOS builds are --onedir, so PyInstaller emits a DIRECTORY holding the
-# executable plus _internal/. Copy its CONTENTS in, so the executable keeps _internal as a
-# sibling — the layout onedir needs — and so Contents/MacOS/agentduet-desktop is still the
-# executable Daemon.swift launches. A onefile binary (Linux, or an older build) copies as before.
-if [ -d "$DAEMON_BIN" ]; then
-  cp -R "$DAEMON_BIN"/. "$APP/Contents/MacOS/"
-else
+# TWO SHAPES, and the onedir one has a trap that cost a launch to find.
+#
+# A onefile binary is a single file — copy it and be done.
+#
+# A macOS onedir build must be handed as the .app PYINSTALLER BUILT, not as its COLLECT
+# directory. The bootloader notices it is running inside a bundle (its own path contains
+# Contents/MacOS) and then loads Python from ../Frameworks — so the libraries have to be in
+# Contents/Frameworks, NOT in the _internal/ sibling that the COLLECT tree ships. Hand it the
+# COLLECT tree and it launches, finds nothing, and dies with:
+#   Failed to load Python shared library '.../Contents/Frameworks/libpython3.12.dylib'
+# which reads like a broken build rather than a mis-assembled bundle.
+if [ -f "$DAEMON_BIN" ]; then
   cp "$DAEMON_BIN" "$APP/Contents/MacOS/agentduet-desktop"
+elif [ -d "$DAEMON_BIN/Contents/MacOS" ]; then
+  cp "$DAEMON_BIN/Contents/MacOS/agentduet-desktop" "$APP/Contents/MacOS/agentduet-desktop"
+  # Frameworks and Resources come across as-is; the daemon resolves both relative to Contents.
+  for _d in Frameworks Resources; do
+    [ -d "$DAEMON_BIN/Contents/$_d" ] || continue
+    mkdir -p "$APP/Contents/$_d"
+    cp -R "$DAEMON_BIN/Contents/$_d"/. "$APP/Contents/$_d/"
+  done
+else
+  echo "error: '$DAEMON_BIN' is a directory but not a .app bundle." >&2
+  echo "  On macOS pass the .app PyInstaller built — dist-bin/AgentDuet Desktop.app — and not" >&2
+  echo "  its COLLECT directory: the daemon loads Python from Contents/Frameworks." >&2
+  exit 1
 fi
 chmod +x "$APP/Contents/MacOS/AgentDuet Desktop" "$APP/Contents/MacOS/agentduet-desktop"
 
@@ -52,9 +70,14 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>${VERSION}</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
-  <!-- It answers the phone while the owner is away, so it must not be culled for having no
-       visible window. -->
-  <key>LSUIElement</key><false/>
+  <!-- A MENU BAR APP, not a Dock app. It answers the phone while the owner is away, so "no
+       window, still running" is its normal state — and a Dock icon makes it look like a
+       document app that ought to be quit when you are done reading.
+       THIS IS ONLY SAFE BECAUSE THE SHELL BUILDS AN NSStatusItem. Setting it in a bundle
+       without one leaves a running service the owner cannot reach: no Dock icon, no menu bar
+       item, nothing to click. Which is why the PyInstaller bundle in
+       packaging/agentduet-desktop.spec keeps this FALSE — pywebview has no status item. -->
+  <key>LSUIElement</key><true/>
   <!-- The window loads http://127.0.0.1. Loopback is the ONE exemption ATS grants by name;
        without this key a debug build can still be refused, and NSAllowsArbitraryLoads would
        buy the same thing by switching the policy off everywhere. -->

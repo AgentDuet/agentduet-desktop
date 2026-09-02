@@ -295,6 +295,22 @@ Break one of these and the secretary is a different product.
 - **`chmod 0600` is a no-op on Windows.** The model key in `$AGENTDUET_HOME/.env` is unprotected there.
 - **Python ≥3.12** — the SDK requires it.
 
+- **Assembling the native shell: hand it the `.app`, and sign AFTER assembling.** Two traps,
+  each of which produces a launch failure that blames the wrong thing.
+  **(1) Not the COLLECT directory.** Since macOS went `--onedir`, PyInstaller's bootloader sees
+  it is inside a bundle (its own path contains `Contents/MacOS`) and loads Python from
+  `../Frameworks` — so the libraries must be in `Contents/Frameworks`, not in the `_internal/`
+  sibling the COLLECT tree ships. Hand `make-macos-app.sh` the COLLECT dir and the app launches,
+  finds nothing and dies with `Failed to load Python shared library
+  '.../Contents/Frameworks/libpython3.12.dylib'`, which reads as a broken build.
+  **(2) A SIGNED daemon cannot be re-bundled.** A Mach-O at `Contents/MacOS/` has the bundle's
+  `Info.plist` sealed into its signature. Copy one out of a signed bundle into a bundle with a
+  different plist — the shell's declares `CFBundleExecutable=AgentDuet Desktop` — and the kernel
+  SIGKILLs it: `exit=137`, and `codesign -v` says `invalid Info.plist (plist or signature have
+  been modified)`. Nothing in the message suggests the cause. So: build unsigned, assemble, then
+  sign the finished bundle. `build.yml` already runs in that order; it was a local sequence that
+  got it wrong.
+
 - **`--onefile` COSTS ~3.6 SECONDS ON EVERY LAUNCH, and that is the "slow app" complaint**
   (measured 2026-09-02 on an M-series Mac, a7). Time from launch to a bound owner site:
   **3.87s frozen, 0.23s from source** — the same code, so none of it is Python being slow.

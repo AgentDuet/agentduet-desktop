@@ -1,9 +1,13 @@
 # Build output — the binaries are ~57 MB and are rebuilt from source; they belong on a
 # Release, never in git history. The packaged forms are listed separately because a DMG or a
 # .app can be produced anywhere, not just under dist-bin/.
-/dist/
-/dist-bin/
+# ANY dist* directory, not just the two that existed when this was written. `dist-plain/` and
+# `dist-shell/` were invented while testing the native shell and were NOT matched, so a
+# `git add -A` staged 324 build files and took .git from a few MB to 214 MB in one commit.
+/dist*/
 /build/
+# SwiftPM's output for the native shell — same class as the above.
+/macos/.build/
 *.spec.bak
 *.dmg
 *.app/
