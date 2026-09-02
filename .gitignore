@@ -17,6 +17,14 @@
 __pycache__/
 *.py[cod]
 
+# SIGNING KEY MATERIAL. Belongs in ~/.apple-signing (mode 700) and never in a repo — this is
+# only a backstop for a mis-typed path. A .p12 carries the Developer ID private key and a .p8 is
+# the App Store Connect key; either one in git history means revoking and reissuing.
+*.p12
+*.p8
+*.cer
+*.certSigningRequest
+
 # Instance data must NEVER be committed: it holds the owner's knowledge, their people, and
 # $AGENTDUET_HOME/.env with a model key and a connector credential.
 /.dduet/
