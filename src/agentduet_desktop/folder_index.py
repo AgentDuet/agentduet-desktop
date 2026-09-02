@@ -92,6 +92,14 @@ def files_under(root: pathlib.Path):
     the allowlist is only a boundary if it cannot be walked out of."""
     if not root.is_dir():
         return
+    # RESOLVE THE ROOT TOO, or the guard below rejects everything. `real` is resolved, so
+    # comparing it against an unresolved root fails whenever the root's OWN prefix crosses a
+    # symlink — on macOS that is every temp dir (/var -> /private/var) and any granted folder
+    # reached through a symlinked parent. It fails silently: no error, just an empty index and
+    # an agent that can find none of the owner's knowledge.
+    # This does not weaken the boundary: a symlink INSIDE the grant that points outside still
+    # resolves outside the resolved root, and is still rejected.
+    root = root.resolve()
     for p in sorted(root.rglob("*")):
         if not p.is_file():
             continue
