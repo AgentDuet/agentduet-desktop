@@ -8,10 +8,17 @@ import WebKit
 /// no GUI backend to fall back on, the traffic lights are drawn in HTML and have to be hidden
 /// when macOS draws its own, and there is nowhere to put a menu bar, a Dock icon or (later) a
 /// status item. None of that is reachable from Python here.
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate,
+                         NSMenuDelegate {
 
     private var window: NSWindow!
     private var webView: WKWebView!
+    /// The menu bar item. THE APP'S ONLY PERSISTENT UI: with `LSUIElement` there is no Dock
+    /// icon, so if this is nil the owner has a running phone-answering service and no way to
+    /// reach it. Held for the process lifetime deliberately — a released NSStatusItem
+    /// disappears from the menu bar.
+    private var statusItem: NSStatusItem!
+    private var stateItem: NSMenuItem!
     private let daemon = Daemon()
     private var siteURL: URL?
 
@@ -24,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
+        buildStatusItem()
         buildWindow()
         show(title: "Starting AgentDuet…", detail: "")
 
@@ -36,8 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 switch result {
                 case .success(let url):
                     self.siteURL = url
+                    self.stateItem.title = Self.answering(url)
                     self.webView.load(URLRequest(url: url))
                 case .failure(let error):
+                    self.stateItem.title = "Not running"
                     self.show(title: "AgentDuet could not start",
                               detail: error.localizedDescription)
                 }
@@ -49,11 +59,89 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         daemon.stop()
     }
 
-    /// Closing the window ends the run, which is what a person expects of an app window.
-    /// Running headless is `agentduet-desktop run --no-window`; a status-bar item is the better
-    /// answer for "keep answering with no window" and is not built, so the honest behaviour is
-    /// the predictable one.
-    func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { true }
+    /// CLOSING THE WINDOW MUST NOT STOP THE PHONE BEING ANSWERED. This returned `true` while
+    /// there was nowhere else for the app to live: with no status item, an app with no window
+    /// was unreachable, so quitting was at least honest. Now the menu bar item is that place,
+    /// so the window is a view onto a service rather than the service itself — and a secretary
+    /// that stops taking calls because you closed a window is a bug, not a convention.
+    ///
+    /// Quitting is explicit: the menu bar item's Quit, or Cmd+Q.
+    func applicationShouldTerminateAfterLastWindowClosed(_ app: NSApplication) -> Bool { false }
+
+    /// The menu bar item, and the menu behind it.
+    ///
+    /// Deliberately small: what state it is in, a way back to the window, and a way to quit.
+    /// Everything else already exists in the page the window shows, and a menu that grows into
+    /// a second interface is how the "one HTML codebase" property gets lost a line at a time.
+    private func buildStatusItem() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = statusItem.button {
+            // A TEMPLATE image, so macOS tints it for a light or dark menu bar. A coloured
+            // icon looks wrong in one of the two and there is no way to supply both.
+            let symbol = NSImage(systemSymbolName: "phone.badge.waveform",
+                                 accessibilityDescription: "AgentDuet Desktop")
+                ?? NSImage(systemSymbolName: "phone.fill",
+                           accessibilityDescription: "AgentDuet Desktop")
+            if let symbol {
+                symbol.isTemplate = true
+                button.image = symbol
+            } else {
+                button.title = "AD"      // no SF Symbol available: say something rather than nothing
+            }
+        }
+
+        let menu = NSMenu()
+        // REFRESHED EVERY TIME IT OPENS. The state line used to be written once, when
+        // daemon.start() returned, so it said "Answering" for the rest of the session no matter
+        // what happened to the daemon afterwards. A status indicator that cannot go wrong is
+        // worse than none: it is consulted precisely when something feels broken.
+        menu.delegate = self
+        stateItem = NSMenuItem(title: "Starting…", action: nil, keyEquivalent: "")
+        stateItem.isEnabled = false
+        menu.addItem(stateItem)
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Open AgentDuet", action: #selector(openWindow), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Quit AgentDuet Desktop",
+                     action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        // Items whose action lives on THIS object need it as their target; the Quit item is a
+        // responder-chain message and finds NSApp on its own.
+        for item in menu.items where item.action == #selector(openWindow) { item.target = self }
+        statusItem.menu = menu
+    }
+
+    /// The state line, refreshed as the menu opens.
+    ///
+    /// Free in the common case: we spawned the daemon, so its liveness is a question about a
+    /// child process rather than a network round trip — which also keeps a HEAD request per
+    /// menu open out of daemon.log. Only the attach case (someone else's daemon, so no Process
+    /// to ask) falls back to a probe, shown optimistically and corrected when it answers.
+    func menuWillOpen(_ menu: NSMenu) {
+        switch daemon.spawnedAndAlive {
+        case .some(true):
+            stateItem.title = siteURL.map(Self.answering) ?? "Answering"
+        case .some(false):
+            stateItem.title = "Not running"
+        case .none:
+            stateItem.title = "Checking…"
+            daemon.probe { [weak self] up in
+                guard let self else { return }
+                self.stateItem.title = up ? (self.siteURL.map(Self.answering) ?? "Answering")
+                                          : "Not running"
+            }
+        }
+    }
+
+    private static func answering(_ url: URL) -> String {
+        "Answering — \(url.host ?? "127.0.0.1"):\(url.port ?? 8899)"
+    }
+
+    /// Bring the window back after it was closed. Works because `isReleasedWhenClosed` is false
+    /// — otherwise this would message a deallocated window and crash.
+    @objc private func openWindow() {
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
 
     // MARK: - window
 
@@ -91,6 +179,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // Remembers position and size between launches, keyed by this name. Free, and its
         // absence is noticed immediately by anyone who moves a window.
         window.setFrameAutosaveName("AgentDuetMainWindow")
+        // CLOSING MUST NOT DEALLOCATE IT. A programmatically created NSWindow defaults to
+        // releasing itself on close, so reopening from the menu bar would message freed memory.
+        // With the app no longer quitting on last window close, this is load-bearing.
+        window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }

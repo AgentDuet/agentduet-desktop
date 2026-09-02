@@ -39,7 +39,11 @@ final class Daemon {
     }
 
     private var siteURLFile: URL { instanceHome.appendingPathComponent("run/site-url") }
-    private var logFile: URL { instanceHome.appendingPathComponent("run/secretary.log") }
+    /// `run/daemon.log`, which is what the daemon actually writes — see secretary_agent.py and
+    /// service.LOGFILE. This said `secretary.log` for as long as the shell existed, so the
+    /// "service did not start" dialog tailed a file that has never been created and showed the
+    /// owner an empty reason for the one failure it exists to explain.
+    private var logFile: URL { instanceHome.appendingPathComponent("run/daemon.log") }
 
     /// The daemon binary, beside this one in `Contents/MacOS`.
     ///
@@ -107,6 +111,26 @@ final class Daemon {
         let deadline = Date().addingTimeInterval(5)
         while p.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }
         if p.isRunning { kill(p.processIdentifier, SIGKILL) }
+    }
+
+    // MARK: - is it still up?
+
+    /// Did the daemon WE spawned survive? Free, synchronous, and no network — so it costs
+    /// nothing to ask every time a menu opens, and it writes no request into daemon.log.
+    ///
+    /// nil when we did not start it (someone had one running and we attached), because then we
+    /// hold no Process to ask and only the network knows — see `probe`.
+    var spawnedAndAlive: Bool? {
+        weStartedIt ? (process?.isRunning ?? false) : nil
+    }
+
+    /// Ask the network, OFF THE MAIN THREAD. `responds` blocks for up to three seconds, which
+    /// would freeze the menu it is being drawn into.
+    func probe(_ done: @escaping (Bool) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let up = self?.recordedURL().map { self?.responds($0) ?? false } ?? false
+            DispatchQueue.main.async { done(up) }
+        }
     }
 
     // MARK: - helpers

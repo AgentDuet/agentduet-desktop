@@ -127,7 +127,8 @@ def run_with_window(start_daemon, want_window: bool = True) -> int:
 
     url = site_url()
     if url is None:
-        print("  the owner site did not come up — see the log in", paths.RUN / "secretary.log")
+        # daemon.log, not secretary.log: the latter has never been written by anything.
+        print("  the owner site did not come up — see the log in", paths.RUN / "daemon.log")
         worker.join()
         return 1
 
