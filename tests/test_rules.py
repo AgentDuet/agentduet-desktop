@@ -884,8 +884,21 @@ def test_login_item() -> None:
         ok(f"{fn.__name__} takes no arguments", params == [], f"takes {params}")
 
     tmp = pathlib.Path(tempfile.mkdtemp())
-    real_unit, real_target = loginitem.LINUX_UNIT, loginitem._target
-    loginitem.LINUX_UNIT = tmp / "agentduet-desktop.service"
+    # PATCH `_unit_path`, NOT `LINUX_UNIT`. Patching the Linux constant left this test writing to
+    # the REAL path on every other platform, because the code asks `_unit_path()` which returns
+    # MAC_PLIST on darwin — so on a Mac the test installed a genuine login item in
+    # ~/Library/LaunchAgents and then failed reading the temp file it never wrote.
+    #
+    # `_activate` is stubbed for the same reason, and it is the half that actually bites: on
+    # Linux it runs `systemctl --user enable <unit name>`, which cannot find a unit in a temp
+    # directory and harmlessly fails, but on darwin it runs `launchctl load <full path>`, which
+    # SUCCEEDS — registering the real label against a throwaway path that the next login would
+    # try to launch. A test must not hand the OS something to run.
+    unit = tmp / "agentduet-desktop.service"
+    real_unit, real_target = loginitem._unit_path, loginitem._target
+    real_activate = loginitem._activate
+    loginitem._unit_path = lambda: unit
+    loginitem._activate = lambda path: "  (activation not exercised in tests)"
     exe = tmp / "bin"; exe.write_text("#!/bin/sh\n"); exe.chmod(0o755)
     link = tmp / "link"; link.symlink_to(exe)
     loginitem._target = lambda: link
@@ -893,12 +906,12 @@ def test_login_item() -> None:
         ok("nothing is registered to begin with",
            "Does not start at login" in loginitem.login_item_status())
         out = loginitem.install_login_item()
-        ok("installing writes a unit and says which file", str(loginitem.LINUX_UNIT) in out)
-        ok("it starts the daemon headless", "--headless" in loginitem.LINUX_UNIT.read_text())
+        ok("installing writes a unit and says which file", str(unit) in out)
+        ok("it starts the daemon headless", "--headless" in unit.read_text())
         # A crash loop relaunching every second while answering a phone line is worse than a
         # daemon that is down and visible in `status`.
         ok("and does not restart it forever",
-           "Restart=always" not in loginitem.LINUX_UNIT.read_text())
+           "Restart=always" not in unit.read_text())
         ok("installing twice is idempotent",
            "Already registered" in loginitem.install_login_item())
 
@@ -910,10 +923,11 @@ def test_login_item() -> None:
         loginitem._target = lambda: link
 
         ok("removing it says which file went",
-           str(loginitem.LINUX_UNIT) in loginitem.remove_login_item())
-        ok("and the file is gone", not loginitem.LINUX_UNIT.exists())
+           str(unit) in loginitem.remove_login_item())
+        ok("and the file is gone", not unit.exists())
     finally:
-        loginitem.LINUX_UNIT, loginitem._target = real_unit, real_target
+        loginitem._unit_path, loginitem._target = real_unit, real_target
+        loginitem._activate = real_activate
 
     # It registers the SYMLINK. A versioned path would keep launching the old build after an
     # update, silently, because the new one is never started.
