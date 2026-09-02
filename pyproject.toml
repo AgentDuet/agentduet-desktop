@@ -10,7 +10,13 @@ license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.12"   # the SDK requires 3.12
 dependencies = [
-  "agentduet>=1.0.0",        # released SDK: TELCO + WhatsApp
+  # >=1.1.0b1 IS REQUIRED, and the prerelease marker is load-bearing. `1.1.0b1`+ is what
+  # carries Network.DDUET / DduetMessage / SendDduetMessage, and secretary_agent.py
+  # imports SendDduetMessage AT MODULE LEVEL — so on 1.0.0 the daemon cannot boot at
+  # all ("cannot import name 'SendDduetMessage'"). PyPI still serves 1.0.0 as latest,
+  # so a plain >=1.0.0 resolved a clean install to exactly that build. Naming a
+  # prerelease here is what lets pip consider the 1.1.0b* line.
+  "agentduet>=1.1.0b1",      # released SDK: TELCO + WhatsApp + DDUET
   "aiohttp>=3.9",            # the local owner site
   "python-dotenv>=1.0",      # reads $AGENTDUET_HOME/.env
   "pyyaml>=6.0",           # writing Goose's config.yaml — YAML needs a real parser
