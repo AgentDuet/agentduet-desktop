@@ -27,6 +27,7 @@ some route on every platform rather than depending on one library being importab
 import logging
 import threading
 import time
+import sys
 import webbrowser
 
 from . import paths
@@ -71,6 +72,41 @@ def open_in_browser(url: str) -> bool:
     except Exception as exc:                     # a headless box has no browser to open
         logger.warning("could not open a browser (%s)", exc)
         return False
+
+
+def window_support() -> tuple[bool, str]:
+    """Can this build open a native window, and if not why not.
+
+    IMPORTING IS NOT ENOUGH TO ANSWER THIS, and that is the whole reason the function exists.
+    `webview` imports cleanly with no GUI backend behind it and only raises from `start()` — so
+    the failure lands after the daemon is already up, is caught by design, and reads as a
+    browser preference rather than a missing dependency. On macOS the backend is pyobjc, which
+    pip installs and PyInstaller collects, so a frozen binary CAN have a real window; on Linux
+    the bindings are system libraries that do not bundle, which is why a onefile build there
+    falls back for ever with nothing to fix in the app.
+
+    So probe the backend the platform actually uses, and report it on `status` next to the
+    providers and the speech engine — the build says what it can do rather than letting the
+    owner infer it from what happens.
+    """
+    try:
+        import webview                                            # noqa: F401
+    except ImportError:
+        return False, "pywebview is not in this build — the owner view opens in your browser"
+    if sys.platform == "darwin":
+        try:
+            import objc, WebKit                                   # noqa: F401
+        except ImportError as exc:
+            return False, f"pywebview is here but its macOS backend is not ({exc})"
+        return True, ""
+    if sys.platform.startswith("win"):
+        return True, ""                                           # WebView2, part of the OS
+    # Linux: GTK/Qt python bindings are system libraries, absent from a onefile build.
+    try:
+        import gi                                                 # noqa: F401
+        return True, ""
+    except ImportError:
+        return False, "no GUI backend on this machine — the owner view opens in your browser"
 
 
 def run_with_window(start_daemon, want_window: bool = True) -> int:

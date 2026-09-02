@@ -109,7 +109,21 @@ jobs:
             pip install --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu \
               "llama-cpp-python>=0.3"
           fi
-          pip install ".[gemini,anthropic,qwen,stt,local]" pyinstaller
+          # [ui] ON macOS AND WINDOWS ONLY. pywebview gives the owner view a real WKWebView
+          # window, and PyInstaller CAN collect the backend there because it is pyobjc — an
+          # ordinary pip package. Proven on a Mac 2026-09-02: both the onefile binary and the
+          # .app open a native window (the request user agent is bare AppleWebKit, with no
+          # Chrome token, and the process is a front app with our bundle id).
+          #
+          # Linux is left out deliberately, and it is not an oversight: there the bindings are
+          # system GTK/Qt libraries that do not bundle, so `webview.start()` raises and the run
+          # falls back to the browser regardless. Shipping it there buys weight and no window,
+          # and Linux is the platform that sets up in the console anyway.
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            pip install ".[gemini,anthropic,qwen,stt,local]" pyinstaller
+          else
+            pip install ".[gemini,anthropic,qwen,stt,local,ui]" pyinstaller
+          fi
 
       - name: Build the binary
         run: pyinstaller --noconfirm --distpath dist-bin packaging/agentduet-desktop.spec
@@ -141,6 +155,13 @@ jobs:
           # loaded — after the owner has downloaded gigabytes of weights.
           grep -q "engine   : available" status.txt \
             || { echo "::error::binary has no local model engine — check the [local] extra and the spec"; exit 1; }
+          # The window is the same shape of silent absence as the lines above: without pywebview
+          # the owner view just opens in a browser, which reads as a design choice rather than a
+          # dependency that never got installed. Not asserted on Linux, where browser IS correct.
+          if [ "$RUNNER_OS" != "Linux" ]; then
+            grep -q "window   : native" status.txt \
+              || { echo "::error::no native window — check the [ui] extra"; exit 1; }
+          fi
 
           # AND IT MUST ACTUALLY START. Everything above is `status`, which imports almost
           # nothing — so it stayed green through a build whose `run` was dead on arrival: the
