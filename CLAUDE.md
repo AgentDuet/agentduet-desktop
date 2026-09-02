@@ -127,6 +127,41 @@ lights is worse than none — so `nativeChrome()` puts `.native` on `<html>` whe
 `window.pywebview` exists and `app.css` hides ours. It listens for `pywebviewready` too, because
 the object is not always injected before the script runs.
 
+## Releasing — build, VERIFY, then tag (learned the hard way on a6)
+
+**THE TAG TRIGGERS THE BUILD HERE.** `build.yml` runs on `push: tags: ["v*"]`, so the tag is
+what produces the DMG. The global rule that "the deploy pipeline creates the git tag, not you"
+belongs to the microservices and is WRONG in this repo — do not reason with it here.
+
+The consequence people get backwards: a tag is not a label you apply afterwards, it is a
+trigger. So do not tag to mark a build you have already checked, and do not tag hoping the
+build works.
+
+**The order that works:**
+
+1. `gh workflow run build.yml --ref main` — no tag, nothing promised.
+2. **Verify the artifact.** Download it, and on a Mac: apply a quarantine attribute (only a
+   browser sets one, so `gh run download` alone does not reproduce what a tester gets), then
+   `spctl -a -t open --context context:primary-signature -vv`, `xcrun stapler validate`, and
+   **start the daemon**. `status` is not verification — see below.
+3. Tag `v0.1.0aN` and create the release. A DRAFT release may name a tag that does not exist
+   yet; publishing creates it.
+4. `attach-release.yml` with that build's **run id** + tag. It attaches a build that has
+   already happened, on purpose, so the thing shipped is the thing tested.
+
+**Why this order and not the obvious one.** `v0.1.0a6` was tagged, released, signed, notarized
+and handed to testers while its daemon could not start at all — a module-level SDK import raised
+ImportError, so `run` died instantly. It passed CI because the smoke test only called `status`,
+which imports almost nothing and reported providers, voice and engine all healthy. Tag-first
+makes the promise before the check.
+
+**So: a green `status` says nothing about whether the binary runs.** The smoke step now boots
+the daemon and waits for it to bind, and that assertion is the one that matters. Keep it.
+
+**Pushing the tag fires a SECOND build**, because of the trigger above. That is wasted minutes,
+not a problem — but attach the artifacts from the run you VERIFIED, never from the tag's build.
+PyInstaller output is not reproducible byte-for-byte, so they are different files.
+
 ## Working rules
 
 - **Never wipe `$AGENTDUET_HOME`.** No `rm -rf` on it to "start clean" — correct the specific
