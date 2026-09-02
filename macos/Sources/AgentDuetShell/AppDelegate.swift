@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 import WebKit
 
 /// The window. It renders the SAME loopback site the browser and the pywebview window render —
@@ -19,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     /// disappears from the menu bar.
     private var statusItem: NSStatusItem!
     private var stateItem: NSMenuItem!
+    private var loginItem: NSMenuItem!
     private let daemon = Daemon()
     private var siteURL: URL?
 
@@ -101,12 +103,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         menu.addItem(stateItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Open AgentDuet", action: #selector(openWindow), keyEquivalent: "")
+        loginItem = NSMenuItem(title: "Start at Login", action: #selector(toggleLoginItem),
+                               keyEquivalent: "")
+        menu.addItem(loginItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit AgentDuet Desktop",
                      action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         // Items whose action lives on THIS object need it as their target; the Quit item is a
         // responder-chain message and finds NSApp on its own.
-        for item in menu.items where item.action == #selector(openWindow) { item.target = self }
+        for item in menu.items
+        where item.action == #selector(openWindow) || item.action == #selector(toggleLoginItem) {
+            item.target = self
+        }
         statusItem.menu = menu
     }
 
@@ -117,6 +125,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     /// menu open out of daemon.log. Only the attach case (someone else's daemon, so no Process
     /// to ask) falls back to a probe, shown optimistically and corrected when it answers.
     func menuWillOpen(_ menu: NSMenu) {
+        // ASK THE OS, don't remember what we set. A login item can be switched off in System
+        // Settings -> General -> Login Items, which is the whole point of using SMAppService
+        // rather than writing a plist nobody can see — so our idea of the setting goes stale
+        // the moment the owner uses that panel.
+        switch SMAppService.mainApp.status {
+        case .enabled:
+            loginItem.state = .on
+            loginItem.title = "Start at Login"
+        case .requiresApproval:
+            // Registered, but macOS wants the owner to allow it. Saying "on" here would be a
+            // lie that costs a support round trip when it does not start.
+            loginItem.state = .mixed
+            loginItem.title = "Start at Login — allow it in System Settings"
+        default:
+            loginItem.state = .off
+            loginItem.title = "Start at Login"
+        }
+
         switch daemon.spawnedAndAlive {
         case .some(true):
             stateItem.title = siteURL.map(Self.answering) ?? "Answering"
@@ -130,6 +156,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                                           : "Not running"
             }
         }
+    }
+
+    /// Register or unregister THIS APP as a login item.
+    ///
+    /// `SMAppService.mainApp` rather than an agent plist we ship: macOS launches the app, which
+    /// is LSUIElement and so arrives quietly in the menu bar and starts its own daemon. There is
+    /// no path to embed and go stale when the app is moved, and it appears in System Settings ->
+    /// General -> Login Items where the owner can switch it off — which a plist written into
+    /// ~/Library/LaunchAgents never does.
+    @objc private func toggleLoginItem() {
+        let service = SMAppService.mainApp
+        do {
+            if service.status == .enabled {
+                try service.unregister()
+            } else {
+                try service.register()
+                removeLegacyLaunchAgent()
+            }
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Could not change the login item"
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+        }
+    }
+
+    /// The Python side writes ~/Library/LaunchAgents/<label>.plist for the same purpose
+    /// (loginitem.py, which still owns this on Linux and Windows and for a bare CLI install).
+    /// Leaving both registered means TWO daemons at login: the second loses the race for 8899
+    /// and exits, so the visible symptom is nothing at all — until it is the wrong one that
+    /// survived. One mechanism per machine.
+    private func removeLegacyLaunchAgent() {
+        let plist = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents/com.b3networks.agentduet-desktop.plist")
+        guard FileManager.default.fileExists(atPath: plist.path) else { return }
+        let unload = Process()
+        unload.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        unload.arguments = ["unload", "-w", plist.path]
+        try? unload.run()
+        unload.waitUntilExit()
+        try? FileManager.default.removeItem(at: plist)
     }
 
     private static func answering(_ url: URL) -> String {

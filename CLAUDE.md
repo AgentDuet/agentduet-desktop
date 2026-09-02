@@ -440,21 +440,32 @@ the product is.
 **Being a Mac app** (decided 2026-09-02 — see `docs/design.md`, "Being a Mac app, not a
 binary in a folder"). Ordered; each is worth doing alone.
 
-- [ ] **`--onedir` on macOS**, onefile elsewhere. 3.87s from launch to a bound site becomes
-      roughly the 0.23s source manages, and the 92 MB moves from `Contents/MacOS/` into
-      `Contents/Frameworks/` where a Mac app expects it. Touches the spec, CI's smoke paths
-      (`./dist-bin/agentduet-desktop` becomes a directory on macOS) and `sign-macos.sh` — which
-      already signs inner binaries first, so signing is the part that needs least work.
-- [ ] **Menu bar item + `LSUIElement=1` + survive window close — ONE change.** Dropping the Dock
-      icon without a status item leaves a running app nobody can find. Do it in the Swift shell:
-      it owns `NSApplication` already, and its
-      `applicationShouldTerminateAfterLastWindowClosed` returns `true`, which must be flipped
-      first. Neither shell has a single `NSStatusBar` reference today.
-- [ ] **`SMAppService` for login at start** on macOS, so it shows in System Settings → Login
-      Items. `install_login_item()` keeps its no-parameter contract; only the mechanism changes.
-- [ ] **Launch the Swift shell on a Mac at all.** It has never run — `macos-shell.yml` exists
-      because nobody had a toolchain. Swift 6.3.3 and a Mac are both available now, so this is
-      no longer blocked, and it gates the two items above.
+- [x] ~~**`--onedir` on macOS**, onefile elsewhere.~~ **DONE 2026-09-02.** Launch to a bound
+      owner site went 1.89s warm (3.87s cold) to **0.22s**, which is what the same code does
+      from source — so the frozen overhead is gone, not reduced, and it holds even running off
+      a read-only DMG. `Contents/MacOS` is a 17 MB launcher over 219 MB in `Frameworks`.
+      Cost: the DMG grew 94 MB to 118 MB.
+- [x] ~~**Menu bar item + `LSUIElement=1` + survive window close.**~~ **DONE 2026-09-02**, in
+      the Swift shell. Stanley confirmed the icon appears, closed the window, and the daemon
+      kept answering. The state line refreshes on every menu open — it was a launch-time
+      snapshot at first, which would have said "Answering" with the daemon dead.
+- [x] ~~**Launch the Swift shell on a Mac at all.**~~ **DONE 2026-09-02** — the first time it
+      has ever run. Builds with `-warnings-as-errors`, starts its own bundled daemon, and signs
+      as an assembled bundle (139 inner binaries) passing `--verify --deep --strict`.
+- [x] ~~**`SMAppService` for login at start.**~~ **BUILT 2026-09-02**, as a "Start at Login"
+      toggle in the menu bar menu. `SMAppService.mainApp`, so macOS launches the app itself —
+      no plist to embed and no path to go stale — and it appears in System Settings → General
+      → Login Items. It removes the legacy `~/Library/LaunchAgents` plist when enabled, because
+      both registered means two daemons at login and the loser of the port race exits silently.
+      **The toggle itself is not yet clicked**, so `.requiresApproval` handling is unproven.
+
+- [ ] **SHIP IT: `build.yml` still defaults to `shell=pyinstaller`.** Everything above lives in
+      the OPT-IN native shell, so a released DMG has none of it — Dock icon, no menu bar, no
+      login item. The reason for that default was "until this shell has been launched on a real
+      Mac by a real person", which has now happened, so the default is a decision to take rather
+      than a blocker. Two things to settle first: the pywebview app remains the Windows and
+      fallback path (so `[ui]` stays), and `macos-shell.yml` becomes redundant as a separate
+      compile check once `build.yml` builds the shell every time.
 
 **Release blockers**
 
