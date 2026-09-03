@@ -507,21 +507,18 @@ binary in a folder"). Ordered; each is worth doing alone.
 - [ ] **Windows binary.** Intel Mac was DROPPED 2026-08-04: `macos-13` is retired so the job
       never started, and a queued job holds its whole run open — finished builds looked
       unfinished for hours. A pre-2020 Mac cannot run our build; check the chip before sending.
-- [ ] **Notarization.** The `.app` is unsigned, so first launch needs right-click → Open.
-      **Machinery is BUILT and waiting on credentials** (2026-08-17): `build.yml` signs, notarizes
-      and staples whenever `APPLE_CERT_P12` exists, and skips cleanly when it does not, so nothing
-      changed for today's builds. `packaging/entitlements.plist` carries the hardened-runtime
-      holes, of which `allow-jit` is the one to keep: **wasmtime JITs**, so without it the tool
-      sandbox dies when a customer tool is first called.
-      Blocked on three things only the account holder can produce: a **Developer ID
-      Application** certificate, an App Store Connect API key (issuer id + key id + `.p8`),
-      and the Team ID. A CSR is already generated
-      at `~/.apple-signing/devid.csr`; the private key beside it never leaves this machine.
-      **We are NOT going to the Mac App Store** — it requires the sandbox, which this app's
-      loopback server, home-directory writes and model download would all have to be granted
-      around. Deferred, not rejected.
-      **A Mac is needed only to verify the result**, and it need not be ours: notarization can be
-      accepted while the app still fails to launch, so someone must double-click the real DMG.
+- [x] ~~**Notarization.**~~ **DONE, and VERIFIED ON A MAC 2026-09-02.** The credentials were
+      already in CI — the a6 release notes said "Signed and notarized" while this item still said
+      the app was unsigned, which is the sixth time this file has claimed outstanding work that
+      was finished. a7 ships signed, notarized and stapled: Gatekeeper answers `accepted /
+      source=Notarized Developer ID` with a quarantine attribute applied, `stapler validate`
+      passes, and it boots. INSTALL.md no longer tells anyone to right-click.
+      Signing also works LOCALLY now (`packaging/sign-macos.sh`), so an artifact can be verified
+      before a tag exists rather than after — see the Releasing section.
+      **We are NOT going to the Mac App Store**, unchanged: it requires the sandbox, which this
+      app's loopback server, home-directory writes and model download would each have to be
+      granted around. Deferred, not rejected.
+
 - [ ] **Propose/approve is NOT a fence.** Half done: **written down 2026-08-11** in
       `docs/design.md`, so the product no longer implies a protection it does not have. What
       remains is the mechanism — an approval an agent cannot perform. `toolstore.approve()` copies
