@@ -1676,11 +1676,46 @@ def test_native_titlebar() -> None:
        "html.native .titlebar{padding-left:" in css)
 
 
+def test_uninstall_tiers() -> None:
+    """Uninstall removes registrations by default and NEVER the owner's data without --data."""
+    print("\n  -- uninstall: three tiers, and data is not one of the defaults --")
+    import inspect
+    from agentduet_desktop import uninstall as u
+
+    sig = list(inspect.signature(u.uninstall).parameters)
+    ok("its flags are keyword-only", sig == ["models", "data", "apply"], str(sig))
+    src = inspect.getsource(u.uninstall)
+    # THE ASSERTION THAT MATTERS. Deleting knowledge, recordings and .env must be reachable only
+    # through an explicit flag — a default that removed them would be unrecoverable, and the
+    # reasoning is the same one behind "never wipe $AGENTDUET_HOME".
+    ok("the instance is only deleted under `if data`",
+       "if data:" in src and src.index("if data:") < src.index("_rm(paths.HOME)"))
+    ok("models are a SEPARATE decision from data", "if models or data:" in src)
+
+    # And the cache glob must never name the whole shared Hugging Face directory: it belongs to
+    # every other tool on the machine that pulls from the hub.
+    cache_src = inspect.getsource(u.speech_caches)
+    ok("only faster-whisper model dirs are matched", '"models--*faster-whisper*"' in cache_src
+       or "models--*faster-whisper*" in cache_src)
+    ok("and the hub root itself is never removed", "rmtree" not in cache_src)
+
+    # The login item is the one leftover that BREAKS rather than litters, and only the bundle can
+    # clear it — so uninstall must run before the app is trashed, and must say so.
+    ok("it tells you to trash the app last", "LAST STEP" in inspect.getsource(u.uninstall))
+    ok("the bundle is asked to unregister itself",
+       u.UNREGISTER_FLAG == "--unregister-login-item")
+    shell = (pathlib.Path(__file__).parent.parent / "macos" / "Sources" / "AgentDuetShell"
+             / "main.swift").read_text()
+    ok("and the shell answers that flag before becoming an app",
+       u.UNREGISTER_FLAG in shell and shell.index(u.UNREGISTER_FLAG) < shell.index("NSApplication.shared"))
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
     test_daemon_identity()
     test_native_titlebar()
+    test_uninstall_tiers()
     test_prompts()
     test_asker_tool_surface()
     test_untrusted_marking()

@@ -193,6 +193,12 @@ def cmd_install(args) -> int:
     return 0
 
 
+def cmd_uninstall(args) -> int:
+    from . import uninstall as _uninstall
+    print(_uninstall.uninstall(models=args.models, data=args.data, apply=not args.dry_run))
+    return 0
+
+
 def cmd_mcp(args) -> int:
     """BE the MCP server, on stdin/stdout.
 
@@ -275,6 +281,18 @@ def main(argv: list[str] | None = None) -> int:
     ins.add_argument("--rollback", metavar="VERSION", default="",
                      help="point the command back at an older installed version")
     ins.set_defaults(fn=cmd_install)
+
+    un = sub.add_parser("uninstall", help="undo what installing this left behind")
+    # SEPARATE FLAGS, because these are different decisions. Models are re-downloadable disk;
+    # the instance is knowledge, recordings and credentials. One flag for both would make
+    # "free up 5 GB" and "delete what it learned about me" the same keystroke.
+    un.add_argument("--models", action="store_true",
+                    help="also delete downloaded models (re-downloadable, gigabytes)")
+    un.add_argument("--data", action="store_true",
+                    help="also delete your instance: knowledge, people, recordings, credentials")
+    un.add_argument("--dry-run", action="store_true",
+                    help="say what would be removed and change nothing")
+    un.set_defaults(fn=cmd_uninstall)
 
     m = sub.add_parser("mcp", help="run as an MCP server on stdio (what an assistant launches)")
     m.set_defaults(fn=cmd_mcp)
