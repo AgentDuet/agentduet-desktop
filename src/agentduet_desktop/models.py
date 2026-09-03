@@ -325,6 +325,31 @@ def progress() -> dict:
     return s
 
 
+def downloading() -> tuple[str, int, int] | None:
+    """(model, MB on disk, MB total) for a fetch in flight, or None.
+
+    READ FROM DISK, unlike `progress()`, which lives in the memory of whichever process is doing
+    the fetching. That distinction is the whole point: `init` starts the download in a DETACHED
+    child and exits, so nothing about it is visible in-process afterwards — but the `.part` file
+    is right there, and its size against the catalogue's `dl_mb` is the honest answer to "how far
+    along is it".
+
+    A `.part` left by an interrupted fetch reports the same way, which is correct: the next
+    attempt resumes from it, so "partially downloaded" IS its state.
+    """
+    for name, spec in CATALOGUE.items():
+        target = path_of(name)
+        if not target:
+            continue
+        part = target.with_suffix(target.suffix + ".part")
+        try:
+            if part.is_file():
+                return name, int(part.stat().st_size / 1024 / 1024), int(spec["dl_mb"])
+        except OSError:
+            continue
+    return None
+
+
 def cancel() -> str:
     """Ask the running download to stop. The partial file is KEPT — the next attempt resumes
     from it, which on a 4.6 GB fetch over a hotel connection is the difference between an

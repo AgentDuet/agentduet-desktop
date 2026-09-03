@@ -147,7 +147,23 @@ def attach(interactive: bool = True) -> bool:
         return True
     if not interactive:
         return False
-    print("\n  No model attached yet. Paste an API key for Gemini, Claude or Qwen.")
+
+    # TWO WAYS AND A DOOR OUT. The settings page has offered local models since 2026-08-27 and
+    # this console path still asked only for an API key — so the owner without a key, who is
+    # exactly the owner this path exists for, was told to go and get one. Parity, in the same
+    # sense CLAUDE.md means it: a model reachable from one surface only is half the owners
+    # unable to choose it.
+    print("\n  No model attached yet. Two ways to fix that, and skipping is fine:")
+    print("    1  paste an API key — Gemini, Claude or Qwen")
+    print("    2  download a model that runs on this machine, no key and no account")
+    print("       (gigabytes, and it downloads in the background)")
+    choice = _prompt("\n  1, 2, or Enter to skip\n  > ").strip()
+    if choice == "2":
+        return _attach_local()
+    if choice != "1":
+        print("  Skipped. Attach one later in Settings, or run `init` again.")
+        return False
+
     print("  It is verified before it is saved, and stored only in "
           f"{paths.ENV_FILE} (owner-readable only).")
     model = _prompt("\n  Model name (e.g. gemini-2.5-flash, claude-sonnet-5, qwen3.6-flash)\n  > ").strip()
@@ -155,6 +171,84 @@ def attach(interactive: bool = True) -> bool:
     out = tools.attach_model(key, model)
     print("  " + out.replace("\n", "\n  "))
     return not out.lower().startswith(("could not", "that key"))
+
+
+def _models_coming() -> bool:
+    from . import models
+    return models.downloading() is not None
+
+
+def _self_command() -> list[str]:
+    """How to launch this program again as a child.
+
+    The INSTALLED symlink when there is one, so the download outlives the owner tidying up the
+    file they downloaded — the same reasoning as `service.handover`.
+    """
+    import sys
+    from . import install
+    link = install.installed_path()
+    if link.is_symlink() and link.resolve().is_file():
+        return [str(link)]
+    if getattr(sys, "frozen", False):
+        return [sys.executable]
+    return [sys.executable, "-m", "agentduet_desktop.cli"]
+
+
+def _attach_local() -> bool:
+    """Offer the models this machine can hold, and fetch the chosen one in the background.
+
+    DETACHED, NOT A THREAD. `init` is a short-lived process: a daemon thread would die when it
+    exits and a normal one would stop it exiting at all, so neither is "download and proceed".
+    A child in its own session survives, and `models.downloading()` reads its progress off the
+    `.part` file from anywhere — including `status`.
+
+    Returns False either way, because no model is USABLE yet and callers ask exactly that. The
+    answer-mode branch in `main` treats a fetch in flight as reason enough to carry on.
+    """
+    import subprocess
+    from . import models
+    choices = []
+    for name in models.families():
+        spec = models.spec_of(name)
+        if not spec:
+            continue
+        verdict, why = models.can_run(name)
+        if verdict == "no":          # do not offer what this machine cannot hold
+            continue
+        choices.append((name, spec, verdict, why))
+    if not choices:
+        print("\n  No local model fits this machine's memory. An API key is the way here.")
+        return False
+
+    print("\n  Models that fit this machine:")
+    for i, (name, spec, verdict, why) in enumerate(choices, 1):
+        tight = "  (tight)" if verdict == "tight" else ""
+        print(f"    {i}  {spec['name']}  —  {spec['dl_mb'] / 1024:.1f} GB download{tight}")
+    print(f"    free space: {models.disk_free_mb() / 1024:.1f} GB")
+    picked = _prompt("\n  Which one, or Enter to skip\n  > ").strip()
+    if not picked.isdigit() or not (1 <= int(picked) <= len(choices)):
+        print("  Skipped.")
+        return False
+    name, spec, _, _ = choices[int(picked) - 1]
+
+    ok, why = models.can_download(name)
+    if not ok:
+        print(f"  Cannot download {spec['name']}: {why}.")
+        return False
+    log = paths.RUN / "model-download.log"
+    try:
+        paths.RUN.mkdir(parents=True, exist_ok=True)
+        with open(log, "ab") as out:
+            subprocess.Popen(_self_command() + ["models", "download", name],
+                             stdout=out, stderr=out, stdin=subprocess.DEVNULL,
+                             start_new_session=True)
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"  Could not start the download: {exc}")
+        return False
+    print(f"\n  Downloading {spec['name']} ({spec['dl_mb'] / 1024:.1f} GB) in the background.")
+    print("  Setup carries on — the agent cannot answer with it until it lands.")
+    print(f"  Watch it with `agentduet-desktop status`, or read {log}.")
+    return False
 
 
 def sign_in(interactive: bool = True) -> bool:
@@ -481,7 +575,10 @@ def main(interactive: bool = True) -> int:
                 attach(interactive)
         else:
             print(f"  model: {llm.describe()}")
-    elif not attach(interactive):
+    # A FETCH IN FLIGHT COUNTS. attach() answers "is a model usable NOW", which is False while
+    # gigabytes are still arriving — stopping setup there would punish the owner for choosing
+    # the option we just offered them.
+    elif not attach(interactive) and not _models_coming():
         print("\n  Setup stopped: to ANSWER calls the agent needs a model."
               "\n  Run `agentduet-desktop init` again once you have a key,"
               "\n  or choose to have calls put through to you instead.")

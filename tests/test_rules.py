@@ -1144,6 +1144,24 @@ def test_setup_mode() -> None:
     # `messages` is absent for the SAME reason, and was born that way on 2026-08-28: relaying is
     # the product on that channel too, the seeded settings.md says `carry`, and "should an agent
     # answer your chats?" is not a first-run question. Both modes are edited in settings.md.
+    # A LOCAL MODEL IS CHOOSABLE FROM BOTH SURFACES. The page has offered them since
+    # 2026-08-27 while the console asked only for an API key — which sent the owner this path
+    # exists for (no key, carrying calls) off to sign up for something they will never call.
+    ok("the console offers a local model", "_attach_local" in init_src
+       and "models.families()" in init_src)
+    ok("and it never offers one this machine cannot hold",
+       'verdict == "no"' in init_src)
+    # DETACHED, NOT A THREAD, and this is the whole reason it can be called "background": init
+    # is short-lived, so a daemon thread would die with it and a normal one would stop it
+    # exiting. A child in its own session outlives both.
+    ok("the fetch is a detached child", "start_new_session=True" in init_src)
+    ok("and it goes through the `models download` command",
+       '"models", "download"' in init_src)
+    ok("progress is readable from disk by any process",
+       "def downloading" in (src / "models.py").read_text())
+    ok("choosing a download does not abort answer-mode setup",
+       "_models_coming()" in init_src)
+
     for field in ("name", "language", "transcription", "recordings"):
         ok(f"the console can set `{field}`", f'"{field}"' in init_src)
         ok(f"and so can the settings page",
