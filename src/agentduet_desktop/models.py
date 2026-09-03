@@ -469,6 +469,38 @@ def available() -> tuple[bool, str]:
     return True, ""
 
 
+def _gpu_layers(model: str) -> tuple[int, str]:
+    """How many layers to hand the GPU, and why. THE DEFAULT IS ZERO, which is the whole point.
+
+    Building with Metal or CUDA only makes offload POSSIBLE. llama-cpp-python still runs every
+    layer on the CPU unless `n_gpu_layers` is set, so build.yml has been paying extra minutes to
+    compile Metal on macOS — and claiming in its own comment that "local models use the GPU
+    instead of only the CPU" — while nothing ever asked for a single layer. Compiled-in is not
+    used.
+
+    The three cases from machine.gpu() genuinely differ:
+
+    apple  ALL of them. Unified memory means the GPU draws on the same pool that ram_mb already
+           accounts for, so there is no second budget to overflow and nothing to be careful
+           about.
+    cuda   All, but only when the card has room for the resident size plus headroom. A discrete
+           GPU is the one case where a model can be too big for the CARD rather than the
+           machine, and asking for more than fits fails at load instead of falling back.
+    none   Zero, and nothing is lost — there is nowhere to put them.
+    """
+    g = machine.gpu()
+    kind = g.get("kind", "")
+    if kind == "apple":
+        return -1, "GPU (Metal, unified memory)"
+    if kind == "cuda":
+        need_gb = (spec_of(model) or {}).get("ram_mb", 0) / 1024
+        vram = float(g.get("vram_gb", 0) or 0)
+        if vram >= need_gb * 1.15:
+            return -1, f"GPU ({vram:.1f} GB VRAM)"
+        return 0, f"CPU — {need_gb:.1f} GB does not fit {vram:.1f} GB of VRAM"
+    return 0, "CPU — no GPU detected"
+
+
 def load(model: str, context: int = 8192):
     """Bring a model into memory. Returns (engine, message).
 
@@ -487,11 +519,12 @@ def load(model: str, context: int = 8192):
     unload()
     try:
         import llama_cpp
+        layers, where = _gpu_layers(model)
         _engine = llama_cpp.Llama(model_path=str(path_of(model)), n_ctx=context,
-                                  verbose=False)
+                                  n_gpu_layers=layers, verbose=False)
         _engine_model = model
         spec = spec_of(model) or {}
-        logger.info("loaded %s (~%d MB resident)", model, spec.get("ram_mb", 0))
+        logger.info("loaded %s (~%d MB resident, %s)", model, spec.get("ram_mb", 0), where)
         return _engine, f"Loaded {spec.get('name', model)}."
     except Exception as exc:
         _engine, _engine_model = None, ""

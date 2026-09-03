@@ -1728,12 +1728,43 @@ def test_uninstall_tiers() -> None:
        u.UNREGISTER_FLAG in shell and shell.index(u.UNREGISTER_FLAG) < shell.index("NSApplication.shared"))
 
 
+def test_gpu_offload() -> None:
+    """A Metal or CUDA build only makes offload possible; something must ask for it."""
+    print("\n  -- local models: the GPU is asked for, not assumed --")
+    import unittest.mock as mock
+    from agentduet_desktop import models, machine
+
+    # THE BUG THIS PINS. llama-cpp-python defaults n_gpu_layers to 0, so every layer ran on the
+    # CPU while build.yml paid extra minutes to compile Metal and said in its own comment that
+    # local models "use the GPU instead of only the CPU". Verified on an M5: 0/19 layers before,
+    # 19/19 after.
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "models.py").read_text()
+    ok("the engine is constructed WITH n_gpu_layers", "n_gpu_layers=layers" in src)
+
+    with mock.patch.object(machine, "gpu", return_value={"kind": "apple", "vram_gb": 0.0}):
+        n, why = models._gpu_layers("gemma-3-270m")
+        ok("Apple Silicon offloads everything", n == -1, f"{n} {why}")
+    with mock.patch.object(machine, "gpu", return_value={"kind": "", "vram_gb": 0.0}):
+        n, _ = models._gpu_layers("gemma-3-270m")
+        ok("no GPU means no offload", n == 0, str(n))
+    # A DISCRETE CARD IS THE ONE CASE WITH A SECOND BUDGET: asking for more than fits fails at
+    # load rather than falling back, so it is checked against the resident size.
+    big = max(models.CATALOGUE, key=lambda k: models.CATALOGUE[k]["ram_mb"])
+    with mock.patch.object(machine, "gpu", return_value={"kind": "cuda", "vram_gb": 2.0}):
+        n, why = models._gpu_layers(big)
+        ok("a model too big for the VRAM stays on the CPU", n == 0, why)
+    with mock.patch.object(machine, "gpu", return_value={"kind": "cuda", "vram_gb": 80.0}):
+        n, _ = models._gpu_layers(big)
+        ok("and fits when the card is big enough", n == -1, str(n))
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
     test_daemon_identity()
     test_native_titlebar()
     test_uninstall_tiers()
+    test_gpu_offload()
     test_prompts()
     test_asker_tool_surface()
     test_untrusted_marking()
