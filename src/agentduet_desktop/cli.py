@@ -123,6 +123,14 @@ def cmd_status(args) -> int:
     if _ok:
         print(f"  models   : {_here} of {len(_models.CATALOGUE)} downloaded"
               + (f", {_models.loaded()} loaded" if _models.loaded() else ""))
+        # THE DETACHED FETCH, reported from its .part file. `init` tells the owner to watch it
+        # here, and it is started by a child process this one knows nothing about — so reading
+        # disk is the only way to answer, and the only way that survives a restart.
+        _live = _models.downloading()
+        if _live:
+            _n, _got, _total = _live
+            print(f"  fetching : {_n} — {_got} of {_total} MB"
+                  f" ({(_got / _total * 100) if _total else 0:.0f}%)")
 
     # WHAT HAPPENS TO A CALL, before what the call machinery can do. Which mode is active
     # changes the answer to "why did nobody answer my test call?" more than any line below it,
@@ -190,6 +198,35 @@ def cmd_install(args) -> int:
             print(f"  {'*' if v == cur else ' '} {v}")
         return 0
     print("  " + install.install().replace("\n", "\n  "))
+    return 0
+
+
+def cmd_models(args) -> int:
+    """List the local models, or fetch one.
+
+    `download` is BLOCKING on purpose: it is what `init` detaches into, and what makes the
+    "downloads in the background" promise true — the background is this process, in its own
+    session, outliving the init that started it.
+    """
+    from . import models
+    if args.action == "download":
+        if not args.name:
+            print("  which model? `agentduet-desktop models` lists them.")
+            return 2
+        print(models.download(args.name))
+        return 0
+    for name in models.families():
+        spec = models.spec_of(name)
+        if not spec:
+            continue
+        verdict, _ = models.can_run(name)
+        mark = "downloaded" if models.is_downloaded(name) else f"{spec['dl_mb'] / 1024:.1f} GB"
+        print(f"  {name:22} {spec['name']:28} {mark:12} {verdict}")
+    live = models.downloading()
+    if live:
+        got, total = live[1], live[2]
+        print(f"\n  downloading {live[0]}: {got} of {total} MB"
+              f" ({(got / total * 100) if total else 0:.0f}%)")
     return 0
 
 
@@ -281,6 +318,11 @@ def main(argv: list[str] | None = None) -> int:
     ins.add_argument("--rollback", metavar="VERSION", default="",
                      help="point the command back at an older installed version")
     ins.set_defaults(fn=cmd_install)
+
+    mo = sub.add_parser("models", help="local models: list them, or download one")
+    mo.add_argument("action", nargs="?", choices=["list", "download"], default="list")
+    mo.add_argument("name", nargs="?", default="")
+    mo.set_defaults(fn=cmd_models)
 
     un = sub.add_parser("uninstall", help="undo what installing this left behind")
     # SEPARATE FLAGS, because these are different decisions. Models are re-downloadable disk;
