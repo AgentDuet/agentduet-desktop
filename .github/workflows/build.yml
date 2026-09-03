@@ -9,10 +9,10 @@ on:
   workflow_dispatch:
     inputs:
       shell:
-        description: "macOS window: pyinstaller (shipping) or native (the Swift shell, under test)"
+        description: "macOS window: native (the Swift shell, shipping) or pyinstaller (fallback)"
         type: choice
-        options: [pyinstaller, native]
-        default: pyinstaller
+        options: [native, pyinstaller]
+        default: native
   push:
     tags: ["v*"]
 
@@ -185,23 +185,38 @@ jobs:
           echo "daemon booted and bound the owner site"
           "$BIN" stop || true
 
-      # ---- the native shell, when asked for ---------------------------------------------------
+      # ---- the native shell: THE SHIPPING PATH since 2026-09-03 --------------------------------
       #
-      # OPT-IN, and it must stay that way until somebody has launched it on a real Mac. It
+      # `!= 'pyinstaller'` RATHER THAN `== 'native'`, and this is the whole reason the flip is
+      # more than a default. A workflow_dispatch input default does NOT apply to a `push` event,
+      # and the release trigger IS a tag push — so `inputs.shell` is empty there. Written as
+      # `== 'native'` the native steps would have been skipped on every release while the
+      # default said otherwise, which is the failure that looks correct.
+      #
+      # It was opt-in until somebody had launched it on a real Mac. That happened 2026-09-02:
+      # menu bar item, no Dock icon, survives the window closing, starts its own daemon, signs
+      # as an assembled bundle. pywebview remains the Windows and fallback path — hence the
+      # explicit opt-out rather than removing the choice. It
       # replaces `dist-bin/AgentDuet Desktop.app` in place, so everything downstream — signing,
       # the DMG, notarization, stapling — runs on it unchanged rather than growing a parallel
       # path that drifts. `macos-shell.yml` is the fast compile check; this is how a tester
       # gets something to double-click.
       - name: Build the native shell (macOS)
-        if: runner.os == 'macOS' && inputs.shell == 'native'
+        if: runner.os == 'macOS' && inputs.shell != 'pyinstaller'
         working-directory: macos
         run: swift build -c release -Xswiftc -warnings-as-errors
 
       - name: Wrap it around the daemon (macOS)
-        if: runner.os == 'macOS' && inputs.shell == 'native'
+        if: runner.os == 'macOS' && inputs.shell != 'pyinstaller'
         run: |
+          # MOVE IT ASIDE FIRST. make-macos-app.sh removes <out>/AgentDuet Desktop.app before
+          # writing, and since the onedir switch its INPUT is that same bundle — so passing
+          # dist-bin as both would delete the daemon it is about to copy. Staging keeps the
+          # final path unchanged, so signing, the DMG and notarization need no branch.
+          mv "dist-bin/AgentDuet Desktop.app" "dist-bin/pyinstaller-stage.app"
           packaging/make-macos-app.sh \
-            macos/.build/release/AgentDuetShell "dist-bin/AgentDuet Desktop.app" dist-bin
+            macos/.build/release/AgentDuetShell "dist-bin/pyinstaller-stage.app" dist-bin
+          rm -rf "dist-bin/pyinstaller-stage.app"
           # THE .app, NOT dist-bin/agentduet-desktop. Since macOS went --onedir the daemon loads
           # Python from Contents/Frameworks, so it has to be assembled from the bundle
           # PyInstaller built; the COLLECT directory launches and then cannot find libpython.

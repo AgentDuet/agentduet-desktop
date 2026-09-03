@@ -465,13 +465,17 @@ binary in a folder"). Ordered; each is worth doing alone.
       obvious. Needs a designed image and Finder scripting to save the layout, so it is a
       separate job from the alias rather than the other half of one.
 
-- [ ] **SHIP IT: `build.yml` still defaults to `shell=pyinstaller`.** Everything above lives in
-      the OPT-IN native shell, so a released DMG has none of it — Dock icon, no menu bar, no
-      login item. The reason for that default was "until this shell has been launched on a real
-      Mac by a real person", which has now happened, so the default is a decision to take rather
-      than a blocker. Two things to settle first: the pywebview app remains the Windows and
-      fallback path (so `[ui]` stays), and `macos-shell.yml` becomes redundant as a separate
-      compile check once `build.yml` builds the shell every time.
+- [x] ~~**SHIP IT: `build.yml` still defaults to `shell=pyinstaller`.**~~ **DONE 2026-09-03.**
+      A release now carries the Swift shell, so a tester gets the menu bar item, no Dock icon,
+      the window surviving being closed, Start at Login and the 0.22s launch.
+      **Flipping the default was NOT enough, and the reason is worth keeping:** a
+      `workflow_dispatch` input default does not apply to a `push` event, and the release
+      trigger is a tag push — so `inputs.shell` is empty there and `== 'native'` would have
+      skipped the shell on every release while the default said otherwise. The gates read
+      `!= 'pyinstaller'` for that reason, which `tests/test_rules.py` now pins.
+      pywebview stays as the Windows and fallback path, so `[ui]` stays too, and
+      `macos-shell.yml` is now redundant as a compile check — left in place rather than deleted,
+      since it costs a couple of minutes and catches a Swift break without a full build.
 
 **Release blockers**
 

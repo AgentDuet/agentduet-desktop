@@ -1758,6 +1758,27 @@ def test_gpu_offload() -> None:
         ok("and fits when the card is big enough", n == -1, str(n))
 
 
+def test_release_ships_the_native_shell() -> None:
+    """A tag push must build the Swift shell — and a dispatch default cannot achieve that."""
+    print("\n  -- releases carry the native shell --")
+    wf = (pathlib.Path(__file__).parent.parent / ".github" / "workflows" / "build.yml").read_text()
+
+    ok("native is the default for a dispatch", "default: native" in wf)
+    # THE TRAP. workflow_dispatch input defaults do NOT apply to a `push` event, and the release
+    # trigger IS a tag push — so `inputs.shell` is EMPTY there. Gated `== 'native'` the shell
+    # steps are skipped on every release while the default claims otherwise: a build that looks
+    # right and ships the other app.
+    ok("the shell steps are not gated on == 'native'",
+       "inputs.shell == 'native'" not in wf)
+    ok("they are gated so an empty input still builds it",
+       wf.count("inputs.shell != 'pyinstaller'") == 2)
+    # And the wrapper must not be handed its own output: it deletes that bundle before writing.
+    ok("PyInstaller's bundle is staged aside before wrapping",
+       "pyinstaller-stage.app" in wf)
+    sh = (pathlib.Path(__file__).parent.parent / "packaging" / "make-macos-app.sh").read_text()
+    ok("and the wrapper refuses to eat its own input", '_abs "$DAEMON_BIN"' in sh)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -1765,6 +1786,7 @@ def main() -> None:
     test_native_titlebar()
     test_uninstall_tiers()
     test_gpu_offload()
+    test_release_ships_the_native_shell()
     test_prompts()
     test_asker_tool_surface()
     test_untrusted_marking()
