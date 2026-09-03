@@ -68,6 +68,17 @@ else
   echo "  its COLLECT directory: the daemon loads Python from Contents/Frameworks." >&2
   exit 1
 fi
+# APPLE'S STT HELPER, when it was built beside the shell. Found rather than passed, because it
+# comes out of the same `swift build` and a third argument that is almost always "the obvious
+# sibling" is a third argument to get wrong. Absent, transcribe.py falls back to Whisper — which
+# is also what happens in the pywebview build, where no Swift is compiled at all.
+_stt="$(dirname "$SHELL_BIN")/AgentDuetSTT"
+if [ -f "$_stt" ]; then
+  cp "$_stt" "$APP/Contents/MacOS/agentduet-stt"
+  chmod +x "$APP/Contents/MacOS/agentduet-stt"
+  echo "  $APP/Contents/MacOS/agentduet-stt"
+fi
+
 chmod +x "$APP/Contents/MacOS/AgentDuet Desktop" "$APP/Contents/MacOS/agentduet-desktop"
 
 cat > "$APP/Contents/Info.plist" <<PLIST

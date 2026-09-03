@@ -399,33 +399,50 @@ the product is.
       items and summaries, after the call. That is not what `llm.py` does today, which is drive a
       live agent. The providers and key handling carry over; the feature does not exist.
       Its provider list also differs (OpenAI is offered, Qwen is not).
-- [ ] **Apple Neural Engine for transcription** — see the STT decision above. An engine change,
-      and the encoder is the right thing to accelerate.
+- [ ] **Accelerating WHISPER on the ANE — now only for the languages Apple cannot serve.**
+      Re-scoped 2026-09-03, because Apple's own engine shipped and took English with it. What is
+      left is `whisper.cpp` with a Core ML encoder for Malay, Vietnamese, Tamil, Thai and the
+      rest of the list Apple has no locale for — and the ceiling there is 1.3-1.5x, since Core
+      ML accelerates the encoder only and turbo already cut the decoder to 4 layers. Weigh that
+      against a C++ dependency, a per-model `.mlmodelc` to generate and ship, and a slow
+      first-run compile on the owner's machine, for a job that runs post-call on a queue where
+      nothing waits for it. Much weaker than it looked when English was still in scope.
 - [x] ~~**A chooseable storage folder.**~~ **DONE 2026-08-27.** `carry.RECORDINGS` was a module
       constant, which is exactly why the page could only display it — every importer froze it at
       import. It is `carry.recordings()` now, answered by `owner.recordings_dir()` at use time,
       set from the settings page through a native folder chooser (`reveal.pick_folder`), and
       `reveal.open_folder` opens it in the file manager.
-- [ ] **Apple's own STT on the Neural Engine — TRY IT, measure two things.** The alternative to
-      swapping Whisper's runtime is not using Whisper at all on a Mac: `SpeechAnalyzer` /
-      `SpeechTranscriber` (macOS 26, WWDC 2025) is free, on-device, built for LONG-FORM audio,
-      and uses the ANE fully with no model of ours to ship. The older `SFSpeechRecognizer` is
-      not a candidate — it caps a request near a minute, which is useless for a call.
-      **The blocker is the language, not the licence.** Using system frameworks in an app for
-      Apple platforms is the normal permitted case, and it costs nothing. But `SpeechAnalyzer`
-      is a Swift-first async API and this app is Python in a PyInstaller binary, so the shape is
-      a **small Swift helper we bundle** — hand it a `.wav`, get text back — built on the macOS
-      runner CI already has, and signed and notarized with the app.
-      **Two measurements decide it, and both need a Mac** (queue behind the notarization check):
-      1. **Accuracy on OUR audio.** Whisper called Singaporean English Malay at 0.95 confidence.
-         Apple's model may be better or worse and nobody knows. Same recordings, same test.
-      2. **Power and heat versus `medium` on CPU.** This is the real argument — transcription is
-         post-call on a queue, so wall-clock barely matters, but fans and battery on a MacBook
-         transcribing all day do.
-      **Scope to be honest about:** macOS 26+ and Apple Silicon only, so Whisper stays for Linux,
-      Windows and older Macs regardless. This is a second engine, not a replacement.
-      The UI already offers it: `transcribe.ane_support()` reports whether a machine COULD run
-      it, and the Transcribe panel disables the option with the reason where it could not.
+- [x] ~~**Apple's own STT on the Neural Engine.**~~ **SHIPPED 2026-09-03, as the macOS default
+      for English.** `SpeechAnalyzer` runs from a bundled Swift helper (`agentduet-stt`, its own
+      SwiftPM target, copied into `Contents/MacOS` beside the daemon). Measured on a real
+      222-second call from the bank sample:
+
+      | | wall | CPU | chars |
+      |---|---|---|---|
+      | faster-whisper `large-v3-turbo` | 21.5s | **88.5s** | 729 |
+      | Apple `SpeechAnalyzer` | **1.1s** | **0.06s** | 617 |
+
+      19x faster for about a fifteen-hundredth of the CPU, comparable output, and it formats
+      what a transcript needs: spoken digits became `91234567`, a spoken domain `b3networks.com`.
+      A bare `en` resolves to the machine's own region, so a Singapore Mac gets **en-SG** — the
+      accent Whisper has mistaken for another language.
+
+      **THE LANGUAGE DECIDES THE ENGINE, and that is the whole design.** Apple has thirty
+      locales — no Malay, Vietnamese, Tamil, Thai, Indonesian or Hindi — and NO language
+      detection: told the wrong language it returns fluent nonsense rather than an error.
+      Verified on a Vietnamese call in the same sample: Whisper produced a coherent transcript
+      including the caller's name, Apple produced "wife guy, 18 charge book". So `## Transcription`
+      left empty means "Apple where it has your language, else Whisper", naming a Whisper model
+      means Whisper, and no setting can override the Language setting.
+
+      Whisper therefore stays for every language Apple lacks, every older Mac, Linux and Windows
+      — and for the pywebview fallback build, which compiles no Swift at all. `status` names the
+      engine that will actually run, and says why when a Mac falls back.
+
+      **What the language sweep found**, running Whisper's detector over all 29 real calls: one
+      outright misdetection (Vietnamese at 0.577) and roughly eight more where English scored
+      under 0.6. The detector is close to coin-flipping on this audio, which is the argument for
+      naming the language rather than guessing it.
 
 - [ ] **Bundle Inter, JetBrains Mono and Material Symbols.** The pages now load all three from
       Google Fonts, as the mockup does. On a machine with no network the text falls back to a

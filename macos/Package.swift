@@ -12,6 +12,10 @@ let package = Package(
     // current WKWebView behaviour rather than to exclude anyone realistic.
     platforms: [.macOS(.v13)],
     targets: [
-        .executableTarget(name: "AgentDuetShell", path: "Sources/AgentDuetShell")
+        .executableTarget(name: "AgentDuetShell", path: "Sources/AgentDuetShell"),
+        // Apple's on-device STT, as a command the PYTHON daemon calls — so it must be its own
+        // binary rather than part of the shell: transcription happens on a queue in the daemon,
+        // which also runs under the pywebview build and headless with no shell at all.
+        .executableTarget(name: "AgentDuetSTT", path: "Sources/AgentDuetSTT")
     ]
 )

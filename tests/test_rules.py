@@ -1779,6 +1779,54 @@ def test_release_ships_the_native_shell() -> None:
     ok("and the wrapper refuses to eat its own input", '_abs "$DAEMON_BIN"' in sh)
 
 
+def test_apple_stt_engine() -> None:
+    """Apple's engine is the default where it can serve the language, and never where it cannot."""
+    print("\n  -- speech: two engines, and the language decides --")
+    import unittest.mock as mock
+    from agentduet_desktop import transcribe as t
+
+    ENGLISH = ("en-AU", "en-GB", "en-SG", "en-US")
+
+    def routed(setting="", lang=None, locales=ENGLISH, whisper=True, mac=True):
+        with mock.patch.object(t, "apple_locales", return_value=locales), \
+             mock.patch.object(t, "_apple_bin", return_value=pathlib.Path("/x/agentduet-stt")), \
+             mock.patch.object(t, "ane_support", return_value=(True, "")), \
+             mock.patch.object(t, "_local_available", return_value=whisper), \
+             mock.patch.object(t, "_configured_language", return_value=lang), \
+             mock.patch.object(t.sys, "platform", "darwin" if mac else "linux"), \
+             mock.patch("agentduet_desktop.owner.transcription_quality", return_value=setting):
+            return t.engine()
+
+    ok("empty setting on a capable Mac means Apple", routed() == "apple")
+    # THE LANGUAGE WINS OVER THE ENGINE. Apple has thirty locales and no detection: told the
+    # wrong language it returns fluent nonsense rather than an error, so a language it lacks
+    # must route to Whisper even though Apple is faster. Verified on a real Vietnamese call
+    # where Whisper got the caller's name and Apple produced "wife guy, 18 charge book".
+    ok("a language Apple lacks routes to Whisper", routed(lang="ms") == "local")
+    ok("and so does Vietnamese", routed(lang="vi") == "local")
+    ok("a language it has stays on Apple", routed(lang="en-GB") == "apple")
+    # Choosing a Whisper model IS choosing an engine.
+    ok("an explicit Whisper model is respected", routed(setting="large-v3") == "local")
+    ok("an explicit apple is honoured", routed(setting="apple") == "apple")
+    ok("but not against an unsupported language",
+       routed(setting="apple", lang="th") == "local")
+    ok("no Apple locales installed means Whisper", routed(locales=()) == "local")
+    ok("and off macOS it is never chosen", routed(mac=False) == "local")
+    # The one case with nothing to fall back to must say so rather than pick silently.
+    ok("apple asked for, nothing available, no Whisper -> no engine",
+       routed(setting="apple", lang="th", whisper=False) == "")
+
+    ok("`available()` counts Apple as able to transcribe",
+       "in (\"local\", \"apple\")" in (pathlib.Path(__file__).parent.parent / "src"
+                                        / "agentduet_desktop" / "transcribe.py").read_text())
+
+    # The helper has to be IN the bundle or none of this runs on a tester's machine.
+    wrapper = (pathlib.Path(__file__).parent.parent / "packaging" / "make-macos-app.sh").read_text()
+    ok("the bundle carries agentduet-stt", "agentduet-stt" in wrapper)
+    pkg = (pathlib.Path(__file__).parent.parent / "macos" / "Package.swift").read_text()
+    ok("and it is built as its own target", "AgentDuetSTT" in pkg)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -1787,6 +1835,7 @@ def main() -> None:
     test_uninstall_tiers()
     test_gpu_offload()
     test_release_ships_the_native_shell()
+    test_apple_stt_engine()
     test_prompts()
     test_asker_tool_surface()
     test_untrusted_marking()
