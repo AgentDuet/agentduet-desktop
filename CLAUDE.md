@@ -459,6 +459,12 @@ binary in a folder"). Ordered; each is worth doing alone.
       both registered means two daemons at login and the loser of the port race exits silently.
       **The toggle itself is not yet clicked**, so `.requiresApproval` handling is unproven.
 
+- [ ] **A styled DMG window** — a background image with an arrow, and the window size and icon
+      positions saved into the volume's `.DS_Store`. The `/Applications` alias landed 2026-09-03,
+      which is the part that made the drag possible at all; this is the part that makes it
+      obvious. Needs a designed image and Finder scripting to save the layout, so it is a
+      separate job from the alias rather than the other half of one.
+
 - [ ] **SHIP IT: `build.yml` still defaults to `shell=pyinstaller`.** Everything above lives in
       the OPT-IN native shell, so a released DMG has none of it — Dock icon, no menu bar, no
       login item. The reason for that default was "until this shell has been launched on a real

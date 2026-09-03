@@ -102,10 +102,22 @@ echo "signature verified"
 
 # SIZE THE IMAGE EXPLICITLY. hdiutil's own estimate is too tight for an app this size and the
 # failure reads as a disk problem on the machine rather than an undersized image.
+# STAGE THE VOLUME, don't hand hdiutil the .app directly. A drag install needs somewhere to
+# drag TO: without an /Applications alias in the window, INSTALL.md's "drag AgentDuet Desktop to
+# your Applications folder" asks the owner to open a second Finder window and work out where it
+# goes. The alias is the affordance every Mac user already recognises.
+#
+# `ditto` rather than `cp -R` for the bundle: it preserves the extended attributes and the code
+# signature properly, which is the difference between a notarizable app and one that fails
+# verification for a reason the message will not name.
 MB=$(du -sm "$APP" | cut -f1)
 DMG="agentduet-desktop-macos-arm64.dmg"
+STAGE=$(mktemp -d)
+trap 'rm -rf "$STAGE"' EXIT
+ditto "$APP" "$STAGE/$(basename "$APP")"
+ln -s /Applications "$STAGE/Applications"
 echo "app is ${MB} MB; creating a $((MB + 200)) MB image"
-hdiutil create -volname "AgentDuet Desktop" -srcfolder "$APP" \
+hdiutil create -volname "AgentDuet Desktop" -srcfolder "$STAGE" \
   -size $((MB + 200))m -ov -format UDZO "$DMG" >/dev/null
 codesign --force --timestamp "${KC_ARGS[@]}" --sign "$IDENTITY" "$DMG"
 
