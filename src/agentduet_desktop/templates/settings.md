@@ -72,7 +72,29 @@ carry
 yes
 
 ## Transcription
-<!-- Which speech model runs on this machine. Whisper's own names, smallest first:
+<!-- Which speech engine and model run on this machine.
+
+     LEAVE THIS EMPTY for the best available here. On macOS 26 or newer with Apple Silicon that
+     is Apple's own on-device engine: measured on a real 222-second call it was 19x faster than
+     Whisper for about a fifteen-hundredth of the CPU, which on a laptop is the difference
+     between fans and silence. It also writes spoken digits as 91234567 and a spoken domain as
+     b3networks.com. Everywhere else, empty means Whisper's default below.
+
+     apple           prefer Apple's engine
+     (empty)         the same thing — Apple where it can serve your language, else Whisper
+
+     Neither value can override the Language setting: if Apple has no model for the language
+     you asked for, Whisper transcribes that call instead. Your language wins over your engine,
+     because a transcript in the wrong language is worse than a slower one.
+
+     Apple's engine has no language detection and only some languages — English everywhere,
+     plus Chinese, Japanese, Korean and the major European ones. It has NO Malay, Vietnamese,
+     Tamil or Thai, and told the wrong language it returns fluent nonsense rather than an error.
+     So if the Language setting below names a language it does not have, Whisper is used for
+     that instead, automatically.
+
+     Naming a Whisper model means Whisper — choosing large-v3 is choosing an engine, not asking
+     for a faster one that ignores the choice. Whisper's own names, smallest first:
 
      small           ~464 MB
      medium          ~1.5 GB
@@ -91,7 +113,7 @@ yes
 
      Transcribing happens after the call, on a queue, so nothing waits for it. If your
      transcripts are missing words, this is the dial. -->
-large-v3-turbo
+
 
 ## Language
 <!-- The language your calls are in, as a code: en, vi, zh, ms, th. Leave empty to guess.

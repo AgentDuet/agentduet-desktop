@@ -37,7 +37,11 @@ cannot be recreated — is already closed on disk before any of it starts.
 import asyncio
 import io
 import logging
+import functools
 import os
+import shutil
+import subprocess
+import sys
 import pathlib
 import wave
 
@@ -157,19 +161,137 @@ def _local_available() -> bool:
     return importlib.util.find_spec("faster_whisper") is not None
 
 
-def engine() -> str:
-    """`local`, or `` when the engine is not in this build.
+# ---- Apple's on-device engine (macOS 26+, Apple Silicon) -----------------------------------
+#
+# MEASURED BEFORE IT WAS ADOPTED, on an M5 against faster-whisper large-v3-turbo, on a real
+# 222-second call from the bank sample:
+#
+#     Whisper   21.5s wall   88.5s CPU   729 chars
+#     Apple      1.1s wall    0.06s CPU   617 chars
+#
+# Nineteen times faster and roughly fifteen hundred times less CPU for comparable output, and it
+# formats what a transcript needs — spoken digits become 91234567, a spoken domain becomes
+# b3networks.com. On a laptop transcribing all day the CPU figure is the one that matters.
+#
+# IT IS NOT A REPLACEMENT, and the reason is language, not the OS floor. Thirty locales, none of
+# them Malay, Vietnamese, Tamil, Thai, Indonesian or Hindi — while the Language setting promises
+# exactly those. Worse, it has no language detection: told the wrong language it returns fluent
+# nonsense rather than an error. Verified on a Vietnamese call in the same sample, where Whisper
+# produced a coherent transcript including the caller's name and this produced "wife guy, 18
+# charge book". So the language decides the engine, and Whisper keeps everything Apple cannot
+# serve.
 
-    It used to answer `hosted` whenever an LLM credential existed — see the module docstring for
-    why that is gone. Kept as a function returning a string rather than collapsing to a boolean,
-    because callers ask "which engine" and a second one may exist again.
+#: The bundled Swift helper. `docs/experiments` has the throwaway it grew from.
+APPLE_HELPER = "agentduet-stt"
+
+
+def _apple_bin() -> pathlib.Path | None:
+    """The helper, or None. Beside the daemon in Contents/MacOS, or on PATH in a dev checkout."""
+    if sys.platform != "darwin":
+        return None
+    override = os.getenv("SECRETARY_STT_APPLE_BIN")
+    if override:
+        p = pathlib.Path(override)
+        return p if p.is_file() and os.access(p, os.X_OK) else None
+    here = pathlib.Path(sys.executable).resolve().parent
+    for cand in (here / APPLE_HELPER, here.parent / "MacOS" / APPLE_HELPER):
+        if cand.is_file() and os.access(cand, os.X_OK):
+            return cand
+    found = shutil.which(APPLE_HELPER)
+    return pathlib.Path(found) if found else None
+
+
+@functools.lru_cache(maxsize=1)
+def apple_locales() -> tuple[str, ...]:
+    """The locales Apple has INSTALLED, cached for the process.
+
+    Installed rather than supported: thirty are supported but only the ones already on the
+    machine work without an asset download, and a transcription job is the wrong moment to
+    start fetching a language model behind the owner's back.
     """
+    b = _apple_bin()
+    if b is None:
+        return ()
+    try:
+        out = subprocess.run([str(b), "--locales"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return ()
+    if out.returncode != 0:
+        return ()
+    return tuple(line.strip() for line in out.stdout.splitlines() if line.strip())
+
+
+def apple_supports(lang: str | None) -> bool:
+    """Whether Apple has an installed locale for this language. Empty means English."""
+    want = (lang or "en").split("-")[0].strip().lower()
+    if not want:
+        return False
+    return any(loc.lower() == want or loc.lower().startswith(want + "-")
+               for loc in apple_locales())
+
+
+def _configured_language() -> str | None:
+    from . import owner
+    return os.getenv("SECRETARY_STT_LANGUAGE") or owner.language() or None
+
+
+def apple_ready() -> tuple[bool, str]:
+    """(usable now, why not) — for `status` and the settings page, not for control flow."""
+    if sys.platform != "darwin":
+        return False, "macOS only"
+    ok, why = ane_support()
+    if not ok:
+        return False, why
+    if _apple_bin() is None:
+        return False, "the agentduet-stt helper is not in this build"
+    if not apple_locales():
+        return False, "no speech locales are installed"
+    lang = _configured_language()
+    if not apple_supports(lang):
+        return False, (f"no installed locale for '{lang or 'en'}' — "
+                       f"has {', '.join(apple_locales()) or 'none'}")
+    return True, ""
+
+
+def _apple_choice() -> str:
+    """What the `## Transcription` setting says about the engine: apple, whisper, or "".
+
+    A Whisper model name means Whisper, because that is what choosing one MEANS — an owner who
+    typed large-v3 did not ask for a different engine. Empty means "best available here", which
+    is how macOS gets Apple by default without the template naming a platform.
+    """
+    from . import owner
+    value = (os.getenv("SECRETARY_STT_MODEL") or os.getenv("SECRETARY_STT_QUALITY")
+             or owner.transcription_quality() or "").strip().lower()
+    if value in ("apple", "ane", "on-device", "system"):
+        return "apple"
+    if value:
+        return "whisper"
+    return ""
+
+
+def engine() -> str:
+    """`apple`, `local`, or `` when nothing here can transcribe.
+
+    A second one DOES exist now, which is why this was never collapsed to a boolean. The order
+    is deliberate: Apple's engine wins when it is usable AND has the configured language, since
+    it is nineteen times faster for a fifteen-hundredth of the CPU. Whisper takes everything
+    else — every language Apple lacks, every older Mac, Linux and Windows.
+
+    An explicit Whisper model in `## Transcription` is respected: choosing large-v3 is choosing
+    Whisper, not asking for a faster engine that ignores the choice.
+    """
+    choice = _apple_choice()
+    if choice != "whisper" and apple_ready()[0]:
+        return "apple"
+    if choice == "apple" and not _local_available():
+        return ""            # asked for Apple, cannot have it, and no fallback exists
     return "local" if _local_available() else ""
 
 
 def available() -> tuple[bool, str]:
     """(can transcribe, why not). Checked at start-up so the owner learns before a call."""
-    if engine() == "local":
+    if engine() in ("local", "apple"):
         return True, ""
     return False, ("the speech engine is not in this build — recordings are kept, but not "
                    "transcribed. `pip install 'agentduet-desktop[stt]'` adds it; it needs no "
@@ -177,9 +299,26 @@ def available() -> tuple[bool, str]:
 
 
 def describe() -> str:
-    """One line for `status`, naming which engine would actually run."""
-    if engine() == "local":
-        return f"local ({local_model()}, on this machine)"
+    """One line for `status`, naming which engine would ACTUALLY run.
+
+    It names the engine and not the setting, because those diverge on purpose: an owner whose
+    language Apple cannot serve has left the setting empty and is nonetheless getting Whisper.
+    Reporting the setting would tell them what they asked for; this tells them what happens.
+    """
+    which = engine()
+    if which == "apple":
+        locales = ", ".join(apple_locales()[:3])
+        lang = _configured_language() or "en"
+        return f"Apple on-device ({lang}, on this machine)" + (f" — installed: {locales}…" if locales else "")
+    if which == "local":
+        why = ""
+        # SAY WHY WHISPER, when Apple was the default and something ruled it out. Otherwise a
+        # Mac owner sees Whisper, expects Apple, and has nowhere to look.
+        if sys.platform == "darwin" and _apple_choice() != "whisper":
+            ok, reason = apple_ready()
+            if not ok and reason:
+                why = f" — Apple's engine unavailable: {reason}"
+        return f"local ({local_model()}, on this machine){why}"
     return "OFF — " + available()[1]
 
 
@@ -225,6 +364,9 @@ _loaded_name = ""
 #: The older SFSpeechRecognizer exists further back but was built for dictation and caps a
 #: request at about a minute, which is useless for a call.
 ANE_MIN_MACOS = 26
+
+#: Generous: a long call on a busy machine, and the helper is 19x faster than Whisper anyway.
+APPLE_TIMEOUT = 900
 
 
 def ane_support() -> tuple[bool, str]:
@@ -352,9 +494,40 @@ def _local(path: pathlib.Path) -> str:
     return text
 
 
+def _apple(path: pathlib.Path) -> str:
+    """Apple's engine, via the bundled helper. Raises on any failure so the caller can fall back."""
+    b = _apple_bin()
+    if b is None:
+        raise TranscriptionUnavailable("the agentduet-stt helper is not in this build")
+    lang = _configured_language() or "en"
+    try:
+        out = subprocess.run([str(b), str(path), lang],
+                             capture_output=True, text=True, timeout=APPLE_TIMEOUT)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise TranscriptionUnavailable(f"agentduet-stt did not run: {exc}") from exc
+    if out.returncode != 0:
+        raise TranscriptionUnavailable(
+            f"agentduet-stt failed ({out.returncode}): {(out.stderr or '').strip()[:200]}")
+    if (out.stderr or "").strip():
+        logger.info("%s: %s", path.name, out.stderr.strip().splitlines()[-1])
+    return out.stdout.strip()
+
+
 def transcribe(path: pathlib.Path) -> str:
     """The words on one recorded leg. Raises TranscriptionUnavailable; never returns a guess."""
-    if engine() != "local":
+    which = engine()
+    if which == "apple":
+        try:
+            return _apple(path)
+        except TranscriptionUnavailable as exc:
+            # FALL BACK RATHER THAN LOSE THE RECORDING. The helper can fail for reasons that
+            # have nothing to do with this file — a locale uninstalled since start-up, a helper
+            # missing from a hand-assembled bundle — and Whisper is right here.
+            if _local_available():
+                logger.warning("%s: Apple's engine failed (%s) — using Whisper", path.name, exc)
+                return _local(path)
+            raise
+    if which != "local":
         raise TranscriptionUnavailable(available()[1])
     return _local(path)
 
