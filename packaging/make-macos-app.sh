@@ -19,6 +19,20 @@ APP="$OUT_DIR/AgentDuet Desktop.app"
 VERSION="$(grep -m1 '^version' "$(dirname "$0")/../pyproject.toml" | cut -d'"' -f2)"
 VERSION="${VERSION:-0.1.0}"
 
+# REFUSE TO EAT YOUR OWN INPUT. This removes $APP before writing it, and since macOS went
+# --onedir the daemon handed in IS a bundle — so being pointed at the output directory would
+# delete the source mid-run and leave a shell wrapped around nothing.
+# EXACTLY the bundle we are about to delete, not merely something near it. The first version of
+# this check refused anything under $OUT_DIR and so rejected the very workaround it recommends:
+# build.yml stages the daemon as a sibling, INSIDE the output directory, which is fine.
+_abs() { ( cd "$(dirname "$1")" 2>/dev/null && printf '%s/%s' "$(pwd)" "$(basename "$1")" ); }
+if [ "$(_abs "$DAEMON_BIN")" = "$(_abs "$APP")" ]; then
+  echo "error: the daemon and the output are the same bundle ('$APP')." >&2
+  echo "  This script deletes it before writing, so that would destroy the input." >&2
+  echo "  Move it aside first — build.yml stages it as pyinstaller-stage.app." >&2
+  exit 1
+fi
+
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
