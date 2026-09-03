@@ -132,6 +132,36 @@ Send Stanley:
 And say what you expected and what happened — including **"it went quiet"**, which is a real
 failure mode on calls and does not always show up anywhere else.
 
+## Uninstalling
+
+**Run this before you drag the app to the Trash:**
+
+```bash
+agentduet-desktop uninstall
+```
+
+It undoes what installing registered — the login item, the assistant registrations, the installed
+command — and leaves your data alone, telling you where it is and how big.
+
+**The order is not a preference.** Only the app itself can unregister its login item. Trash it
+first and macOS keeps an entry in System Settings → General → Login Items for an app that no
+longer exists, and nothing can remove it.
+
+Then drag **AgentDuet Desktop** from Applications to the Trash.
+
+Two extras, when you want them:
+
+| | |
+|---|---|
+| `--models` | also delete downloaded models — gigabytes, and re-downloadable |
+| `--data` | also delete `~/.agentduet-desktop`: what it knows, who contacted you, recordings, transcripts, and your keys |
+| `--dry-run` | say what would go, and change nothing |
+
+Note that keeping your data also keeps your **credentials**: `.env` holds your model key and your
+connector.
+
+---
+
 ## Where your data lives
 
 Everything is on your machine, in `~/.agentduet-desktop` — settings, what it knows, who has contacted you,
