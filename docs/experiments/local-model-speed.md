@@ -90,6 +90,27 @@ predicted.
 3. `agentduet-desktop models` marks 8B "fits" on this machine, which is true of memory and
    misleading about experience. Worth saying something about speed there.
 
+## What we are NOT going to chase (decided 2026-09-03)
+
+**Arithmetic and literal-recall accuracy from a local model on a laptop.** With thinking off,
+the 8B answered "the last 4 digits of 123455787" as `787`. That is wrong, and it is not a bug to
+fix — it is what a 4-bit 8B on 16 GB does today. Chasing it would mean a bigger model this
+machine cannot hold, or thinking, and thinking is worse:
+
+- it does not merely cost time, it **fails to terminate**. 92.2s and the whole 2048-token budget
+  spent counting digits, then truncated mid-arithmetic with no answer at all.
+- it is the same shape as the spin the `repeat_penalty` comment in llm.py already records, where
+  glm-4-9b emitted one phrase 339 times until max_tokens stopped it.
+
+So thinking stays off, and the local model is scoped to what it is good at: summarising a
+transcript, drafting a reply, answering questions about text that is in front of it. **A number
+the owner needs to be right should come from the transcript, not from the model's arithmetic** —
+which is also why Apple's speech engine writing `91234567` rather than spelling out the digits
+matters more here than any model choice.
+
+If a local model must be relied on for exact recall later, the lever is retrieval — put the
+digits in the prompt and ask it to quote them — not a larger model or a longer think.
+
 ## Method
 
 `docs/experiments/` holds the scripts. Each configuration loads the model fresh, runs the three
