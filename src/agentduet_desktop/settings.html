@@ -228,6 +228,15 @@
           <div class="lbl">Save to this machine</div>
           <label class="sw"><input type="checkbox" id="recCalls"><span class="track"></span></label>
         </div>
+        <!-- HIDDEN, NOT DISABLED, when the model cannot reason. Gemini has no dial and Claude
+             reasons adaptively already, so a switch there would promise a change it cannot
+             make — and a switch that does nothing is worse than no switch, because the reason
+             is not visible from the row. -->
+        <div class="row" id="thinkRow" hidden>
+          <div class="lbl">Let the model think first
+            <span class="sublbl" id="thinkWhy"></span></div>
+          <label class="sw"><input type="checkbox" id="thinkOn"><span class="track"></span></label>
+        </div>
         <div class="row">
           <div class="lbl">Folder</div>
           <div class="acts" style="gap:.5rem">
@@ -402,6 +411,13 @@
     $('language').value = cur.language || '';
     $('modelState').textContent = cur.model || 'unknown';
     drawAccount(cur);
+    // The row exists only for a model that can honour it — see thinking_possible. Re-read on
+    // every refresh rather than at load, because attaching a different model changes the
+    // answer: switch from Gemini to a downloaded Qwen3 and the switch has to appear.
+    $('thinkRow').hidden = !cur.thinking_possible;
+    $('thinkOn').checked = !!cur.thinking;
+    $('thinkWhy').textContent = cur.thinking
+      ? 'on — answers are much slower, and no better on simple questions' : '';
     if (cur.connector_uuid) $('cUuid').value = cur.connector_uuid;
   }
   refreshCurrent();
@@ -658,6 +674,22 @@
     const d = await post('/api/setup/setting', {field: 'recordings', value: v});
     say('mRec', d.ok, d.message);
     loadPanel();
+  };
+
+  // SAY WHAT IT COSTS, on the row. The measurements are unambiguous and an owner turning this
+  // on deserves them before the first slow answer, not after: 26s against 1.46s on a greeting,
+  // and on a question that invites re-checking it spent 6,877 reasoning tokens and 172 seconds
+  // to reach an answer it gets right in 1.0 second with this off.
+  $('thinkOn').onchange = async () => {
+    const on = $('thinkOn').checked;
+    if (on && !confirm('Thinking makes answers much slower — measured at 26s against 1.5s on a '
+        + 'simple question, and some questions do not finish at all. Turn it on anyway?')) {
+      $('thinkOn').checked = false;
+      return;
+    }
+    const d = await post('/api/setup/setting', {field: 'thinking', value: on ? 'yes' : 'no'});
+    if (!d.ok) $('thinkOn').checked = !on;
+    say('mRec', d.ok, d.message);
   };
 
   $('recCalls').onchange = async () => {

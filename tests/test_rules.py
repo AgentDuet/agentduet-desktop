@@ -1154,6 +1154,19 @@ def test_setup_mode() -> None:
     # `messages` is absent for the SAME reason, and was born that way on 2026-08-28: relaying is
     # the product on that channel too, the seeded settings.md says `carry`, and "should an agent
     # answer your chats?" is not a first-run question. Both modes are edited in settings.md.
+    # THINKING IS ON BOTH SURFACES, and on neither when the model cannot honour it.
+    ok("the console offers thinking", "def offer_thinking" in init_src)
+    ok("and the settings page does", "thinkOn" in settings_page)
+    ok("both hide it when the model cannot reason",
+       "supports_thinking()" in init_src and "thinking_possible" in settings_page)
+    ok("it is a settable heading", "thinking" in tools.SETTING_FIELDS)
+    ok("and the seeded settings.md documents it",
+       "## Thinking" in (src / "templates" / "settings.md").read_text())
+    # OFF UNLESS EXPLICIT. A typo must not silently make every answer a hundred times slower.
+    import agentduet_desktop.owner as _own
+    ok("only an explicit yes enables it", '("yes", "on", "true")' in
+       (src / "owner.py").read_text())
+
     # AND FROM THE FIRST-RUN WIZARD, which this check missed for a day because it compares
     # `init.py` against `settings.html` — the hub, not the installer. `init` offered a local
     # model and setup.html did not, so a tester who set up in the browser was never asked.
@@ -1881,8 +1894,15 @@ def test_local_models_do_not_monologue() -> None:
     ok("the switch never touches the owner's prompt",
        'prompt + (" /no_think"' not in src)
     ok("it is a system message", '"role": "system", "content": "/no_think"' in src)
-    ok("and a caller that asked for it keeps the reasoning",
-       "answer.strip() if think else" in src)
+    # THE MONOLOGUE IS NEVER SHOWN, and this assertion used to say the opposite. `think` meant
+    # two things — "reason" and "show me the reasoning" — and only the first was ever anybody's
+    # want: turning thinking on is a bid for a better ANSWER. Nothing passed think=True at the
+    # time, so no caller depended on the raw form; splitting them is what makes the toggle
+    # safe to expose, because 6,877 tokens of deliberation must not land in owner_chat.json.
+    ok("the reasoning is stripped whether or not it was asked for",
+       "_thought_answer(answer, self.model, think)" in src)
+    ok("and a run that never finished thinking says so instead of showing the monologue",
+       '"<think>" in text and "</think>" not in text' in src)
 
     strip = llm._without_thinking
     eq("a closed block is removed",

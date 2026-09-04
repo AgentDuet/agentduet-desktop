@@ -115,6 +115,23 @@ yes
      transcripts are missing words, this is the dial. -->
 
 
+## Thinking
+
+no
+
+<!-- Only some models can do this: a downloaded Qwen3 or DeepSeek-R1, or hosted Qwen. Gemini
+     and Claude ignore it — Claude reasons adaptively already — so on those it is not offered.
+
+     OFF by default, and measured rather than assumed. Asked "Hi, are you there?", Qwen3 8B
+     spent 454 tokens deliberating and 26 seconds where suppressing it answered in 1.46. On a
+     question that invites re-checking it does not converge at all: "what are the last 4 digits
+     of 12345678" exhausted 2,048 tokens with NO answer on both models and at both
+     temperatures, and given 8,192 the 1.7B needed 6,877 reasoning tokens and 172 seconds — to
+     answer what it gets right in 1.0 second with thinking off.
+
+     So this is here to experiment with, not to leave on. `yes` turns it on; anything else
+     leaves it off, because a typo must not silently make every answer a hundred times slower. -->
+
 ## Language
 <!-- The language your calls are in, as a code: en, vi, zh, ms, th. Leave empty to guess.
      Only the on-machine speech engine uses this, and guessing is unreliable on phone audio —

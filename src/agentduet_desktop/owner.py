@@ -295,6 +295,27 @@ def record_calls() -> bool:
     return first not in ("no", "off", "false")
 
 
+def thinking() -> bool:
+    """Whether a reasoning model is allowed to monologue before answering. Default OFF.
+
+    Only some models can do this at all — see `llm.supports_thinking` — so on the rest this
+    setting has no subject and is not offered.
+
+    DEFAULT OFF, AND THE MEASUREMENTS ARE WHY (docs/experiments/local-model-speed.md). On
+    "Hi, are you there?" Qwen3 8B spent 454 tokens of <think> and 26 seconds where suppressing
+    it answered in 1.46. Worse, on a question that invites re-checking — "what are the last 4
+    digits of 12345678" — it did not converge at all: 2,048 tokens exhausted with no answer on
+    both models and at both temperatures, and when the budget was raised to 8,192 the 1.7B
+    needed 6,877 reasoning tokens and 172 seconds to answer what it answers correctly in 1.0
+    second with thinking off. Both models got it right without thinking.
+
+    So this is an opt-in for someone who wants to experiment, not a quality dial to leave on.
+    Only an explicit yes turns it on: a typo must not silently make every answer 100x slower.
+    """
+    first = _first_line(_strip_guidance(_sections().get("Thinking", ""))).strip().lower()
+    return first in ("yes", "on", "true")
+
+
 def never_say() -> list[str]:
     """Topics the owner never wants stated on their behalf, however readable.
 
