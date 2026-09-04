@@ -19,7 +19,9 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14         # Apple silicon; the only macOS label we use
+    # macos-26 for the SDK, not the hardware: AgentDuetSTT uses SpeechAnalyzer, a macOS 26
+    # API, and Sonoma's SDK cannot compile it however the availability guards are written.
+    runs-on: macos-26         # Apple silicon, and the only image with the macOS 26 SDK
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
