@@ -826,7 +826,10 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             "models": models.listing(),
             "hosted": _llm.hosted_listing(),
             "loaded": models.loaded(),
-            "progress": models.progress(),
+            # progress_seen, not progress: a download started by the CLI or by init's detached
+            # child is not in THIS process's memory, and the page showing "not downloaded" while
+            # the file grows is how an owner concludes the app cannot see its own models.
+            "progress": models.progress_seen(),
             "current": os.getenv("SECRETARY_MODEL", ""),
             # Which of the two branches the owner is on, so the page opens on the right one
             # rather than making them re-declare a choice they already made. EMPTY when the
