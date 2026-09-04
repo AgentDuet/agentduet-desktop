@@ -388,8 +388,12 @@ the product is.
 
 - [ ] **Single sign-on** — Apple, Google and Microsoft, which is how the mockup gets the owner's
       identity, phone number and connector without anyone typing a uuid. `connector.OAUTH_URL`
-      and `oauth_available()` already gate the page on a backend that does not exist yet. Until
-      it does, setup shows the three buttons and a manual path beside them.
+      and `oauth_available()` already gate the page on a backend that is BUILT ON BOTH SIDES
+      and deployed only to the VPN'd dev server — see the OAuth entry under Release blockers,
+      which is the same gap. What is missing here is one environment variable and one deploy.
+      Until then setup shows the three buttons and, since 2026-09-04, a VISIBLE way past them
+      that says single sign-on is not switched on yet. That skip existed before but only as a
+      side effect of pressing a button that looked mandatory, so the screen read as blocked.
 - [ ] **Record Call has nothing behind it** — `carry.py` bridges and the recorders start, but the
       platform does not hand the app conference audio, so the directory the panel lists is empty.
       This is the mockup's FIRST service. Being added on the AgentDuet side.
