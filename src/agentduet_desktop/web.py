@@ -432,6 +432,22 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             {"key": k, "prompt": p, "optional": opt, "long": k in ("does", "contacts", "never")}
             for k, p, opt in QUESTIONS]})
 
+    async def api_provider_key(request):
+        """Check a hosted provider's key and hand back the models it can actually reach.
+
+        Separate from `api_setup_model` on purpose: that endpoint takes a key AND a model and
+        proves the pair by completing, which cannot work before the owner knows what models
+        exist. This one needs no model name.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        body = await request.json()
+        ok, msg, models = tools.save_provider_key((body.get("provider") or "").strip(),
+                                                  (body.get("key") or "").strip())
+        if ok:
+            _forget_chat()        # rebuild the owner's assistant against the new credential
+        return web.json_response({"ok": ok, "message": msg, "models": models})
+
     async def api_setup_model(request):
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
@@ -1424,6 +1440,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/api/panel", api_panel),
         web.get("/api/threads", api_threads),
         web.get("/api/models", api_models),
+        web.post("/api/provider/key", api_provider_key),
         web.get("/api/models/hf", api_hf),
         web.post("/api/models", api_model_action),
         web.post("/api/handover", api_handover),

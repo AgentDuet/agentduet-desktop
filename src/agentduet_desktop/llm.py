@@ -729,20 +729,22 @@ HOSTED = {
         models=["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5"],
         what="Strongest on instruction-following and long transcripts. Also accepts a "
              "`claude` CLI login instead of a key."),
-    # THESE TWO NAMES WERE FICTION, and they were also this module's hardcoded default, so a
-    # fresh install with a Google key and no explicit choice met `404 NOT_FOUND
-    # models/gemini-3.1-flash is not found for API version v1beta` from four call sites at once
-    # (2026-09-04). Nothing in the repo but this table ever mentioned `gemini-3.1-*`; where the
-    # name came from is unknown. Replaced with the newest Gemini names this codebase can attest
-    # to having existed — which is NOT the same as confirming Google still serves them, and
-    # cannot be from here, because we hold no Google key.
+    # AN ALIAS, NOT A VERSION — this is the lesson of 2026-09-04 and it applies to any
+    # provider that offers one. This entry said `gemini-3.1-flash` and `gemini-3.1-pro`, names
+    # Google does not serve; they were also this module's hardcoded default, so a fresh install
+    # with a Google key and no explicit choice met `404 NOT_FOUND` from four call sites at once.
     #
-    # THAT IS WHY `offered()` EXISTS. With a key the list comes from Google and this entry is
-    # only the offline fallback; without one, the field beside it is typeable. Both were added
-    # the same day, for this.
+    # A pinned version number in a compiled-in fallback is a promise about someone else's
+    # catalogue that expires without telling anyone. `gemini-flash-latest` and
+    # `gemini-pro-latest` are real names Google serves (confirmed against a live key that day,
+    # among 31 listed models) and they track the current model, so this table cannot rot the
+    # same way again.
+    #
+    # It matters less than it did, because `offered()` replaces this list with the provider's
+    # own whenever a key exists. This is the offline answer, and now it is a durable one.
     "gemini": dict(
         brand="GOOGLE", family="Gemini",
-        models=["gemini-2.5-flash", "gemini-2.5-pro"],
+        models=["gemini-flash-latest", "gemini-pro-latest"],
         what="Fast and inexpensive. The default this project was built against."),
     "dashscope": dict(
         brand="ALIBABA", family="Qwen",
@@ -803,7 +805,7 @@ _listed: dict[str, tuple[float, list[str]]] = {}
 #: prompt. Substring match, deliberately conservative: `vl` (vision-language) and `omni` DO
 #: chat and are not excluded.
 _NOT_CHAT = ("embedding", "embed", "rerank", "tts", "asr", "whisper", "speech", "audio",
-             "ocr", "moderation", "image", "video", "wan", "imagen", "veo", "aqa")
+             "transcribe", "ocr", "moderation", "image", "video", "wan", "imagen", "veo", "aqa")
 
 
 def _listing_url(name: str) -> str:
@@ -861,6 +863,73 @@ def _live_models(name: str) -> list[str] | None:
     return got or None
 
 
+def can_list(name: str) -> bool:
+    """Can we ask this provider for its models, given a key? Bedrock cannot; the rest can."""
+    return name in _LISTING
+
+
+def check_key(name: str, key: str) -> tuple[bool, str, list[str]]:
+    """Prove a key works by LISTING models with it, and hand back the names.
+
+    THIS IS THE ORDER THE OLD FLOW HAD BACKWARDS. `verify()` proves a key by COMPLETING, which
+    needs a model name — so the page had to offer a name before it was allowed to ask the
+    provider what names exist, and the only names it could offer were the ones compiled into the
+    build. Two of those were fiction, so the provider was unreachable and the owner was told
+    their key had failed.
+
+    Listing needs no model name, costs no tokens, and distinguishes the two cases properly: a
+    200 means the credential is good, a 401 means it is not. The names come back in the same
+    call, so the owner then picks from what the provider actually serves.
+
+    The key is NOT stored here. Storing is a separate step the caller takes on a True.
+    """
+    if not key:
+        return False, "Paste a key first.", []
+    if not can_list(name):
+        vendor = HOSTED.get(name, {}).get("family", name)
+        return False, (f"{vendor} has no model-listing endpoint we can use, so its key has to "
+                       f"be checked by calling a model. Choose one and use Check and save."), []
+    try:
+        got = [m for m in _LISTING[name]["pluck"](_listing_get(name, key))
+               if not any(bad in m.lower() for bad in _NOT_CHAT)]
+    except urllib.error.HTTPError as exc:
+        # Only the STATUS. Gemini authenticates by query string, so the failing URL carries the
+        # key and an HTTPError knows its URL.
+        # 400 COUNTS AS A BAD CREDENTIAL HERE, and that is specific to this call rather than a
+        # general rule. A listing request carries no model, no body and no parameters — only the
+        # key — so there is nothing else for the provider to find fault with. Google returns 400
+        # INVALID_ARGUMENT for a malformed key and 403 PERMISSION_DENIED for a revoked one;
+        # mapping only 401/403 left a mistyped key reading as "Gemini refused the request (HTTP
+        # 400)", which is the same unhelpful shape this whole change exists to remove.
+        if exc.code in (400, 401, 403):
+            return False, ("The credential was rejected — wrong, revoked, or not enabled for "
+                           "this API."), []
+        if exc.code == 429:
+            return False, ("The credential works, but the account is out of quota or over its "
+                           "spend cap. Nothing to fix in the config."), []
+        family = HOSTED.get(name, {}).get("family", name)
+        return False, f"{family} refused the request (HTTP {exc.code}).", []
+    except Exception as exc:
+        return False, (f"Could not reach the provider to check the key "
+                       f"({type(exc).__name__}). Check the network and try again."), []
+    if not got:
+        return False, ("The credential worked, but the provider listed no models this account "
+                       "can use."), []
+    # Cache it, so the page that is about to show a list does not fetch the same thing twice.
+    _listed[name] = (time.monotonic(), got)
+    return True, f"Key accepted — {len(got)} model(s) available.", got
+
+
+def _version_key(name: str):
+    """Sort newest-looking first: numbers DESCENDING, then the name.
+
+    Lexicographic ordering is wrong for model names — it puts `gemini-10-flash` under
+    `gemini-3.8-flash` because it compares "1" against "3" as text. The digits are compared as
+    numbers, negated so that higher versions come first, and the name breaks ties.
+    """
+    return (tuple(-int(n) for n in re.findall(r"\d+", name)[:4]), name)
+
+
 def offered(name: str) -> tuple[list[str], str]:
     """The models to show for a provider, and whether the provider itself said so.
 
@@ -883,11 +952,23 @@ def offered(name: str) -> tuple[list[str], str]:
     live = _live_models(name)
     if not live:
         return built, "built-in"
-    keep = [m for m in built if m in live]
-    out = keep + sorted(m for m in live if m not in keep)
+    # OUR ORDER IS DROPPED ONCE THE LIST IS LIVE, and that correction matters more than it
+    # sounds. Pinning the built-ins first put gemini-2.5-flash above gemini-3.8-flash — an
+    # older model presented as the recommendation by a table written months ago, which is the
+    # same staleness this function exists to remove, just wearing a different hat.
+    #
+    # Instead: the provider's own family first (a Gemini key also lists deep-research and
+    # antigravity models, which are not what someone picking a chat model wants at the top),
+    # newest-looking first within that, then everything else alphabetically.
+    family = (_PROVIDERS.get(name) or (name,))[0]
+    mine = sorted((m for m in live if family in m.lower()), key=_version_key)
+    rest = sorted(m for m in live if family not in m.lower())
+    out = mine + rest
+    # The model in use goes first regardless, and is kept even if the provider stopped listing
+    # it: the page marks the current selection by finding it here.
     in_use = os.getenv("SECRETARY_MODEL", "")
-    if in_use and _vendor_of_name(in_use) == _VENDOR.get(name) and in_use not in out:
-        out.append(in_use)
+    if in_use and _vendor_of_name(in_use) == _VENDOR.get(name):
+        out = [in_use] + [m for m in out if m != in_use]
     return out, "live"
 
 
@@ -917,6 +998,11 @@ def hosted_listing() -> list[dict]:
             # Falls back to the built-in list offline, which is the normal case for this product.
             "models": (asked := offered(name))[0],
             "models_from": asked[1],
+            # Whether a key alone is enough to learn this provider's models. When it is, the
+            # page asks for the key and nothing else; when it is not (Bedrock), it must still
+            # ask for a model name up front, because the only way to check that key is to call
+            # a model with it.
+            "can_list": can_list(name),
         })
     return sorted(out, key=lambda h: (not h["in_use"], h["brand"].lower()))
 

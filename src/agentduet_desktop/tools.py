@@ -618,6 +618,28 @@ def save_connector(api_key: str, connector_uuid: str) -> str:
     os.environ[connector.UUID] = connector_uuid
     return (f"Saved. Key ending {api_key[-4:]}, connector {connector_uuid}.\n"
             "The channel picks this up within a few seconds — no restart needed.")
+def save_provider_key(provider: str, key: str) -> tuple[bool, str, list[str]]:
+    """Check a hosted provider's key by LISTING its models, and store it if it works.
+
+    A key and a model choice are two decisions, and binding them together is what made a wrong
+    model name look like a wrong key. This stores the credential only — the active model is
+    untouched, which is the catalogue's already-existing "key stored, not in use" state — and
+    returns the names the provider actually serves so the owner can then choose one.
+    """
+    ok, why, models = llm.check_key(provider, key)
+    if not ok:
+        return False, f"NOT saved — {why}", []
+    var = getattr(llm._IMPLS.get(provider), "KEY", "")
+    if not var:
+        return False, f"NOT saved — {provider} has no credential variable.", []
+    _write_env({var: key})
+    # Read at use time, per the .env rule — but the RUNNING process needs it now, or the very
+    # next call still sees no credential and reports the key missing.
+    os.environ[var] = key
+    llm.forget()
+    return True, why, models
+
+
 def _write_env(values: dict) -> None:
     """Upsert keys in the instance .env, preserving everything else and the file mode."""
     path = paths.ENV_FILE
