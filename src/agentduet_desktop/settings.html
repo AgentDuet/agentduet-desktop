@@ -846,8 +846,11 @@
              every one of them was wrong — Google serves neither gemini-3.1-flash nor -pro — there
              was no way to reach a working model at all, and the provider stayed unusable until
              someone shipped a new binary. The suggestions remain, as a datalist; the field itself
-             accepts anything. `offered()` keeps those suggestions honest whenever a key exists,
-             and this covers the case where it cannot. -->
+             accepts anything. offered() keeps those suggestions honest whenever a key exists,
+             and this covers the case where it cannot.
+             NO BACKTICKS IN HERE: this comment is inside a JS template literal, so a backtick
+             ends the string and the whole page's script dies with "missing ) after argument
+             list". Cost an hour, and every string-matching test passed while it was broken. -->
         <div class="mact">
           ${h.has_key
             ? `<input class="hmodel" data-p="${esc(h.id)}" list="ml-${esc(h.id)}"

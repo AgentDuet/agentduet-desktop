@@ -2037,6 +2037,47 @@ def test_hosted_model_lists() -> None:
        "".join(str(v["models"]) for v in llm.HOSTED.values()))
 
 
+def test_pages_parse() -> None:
+    """Every page's JavaScript must PARSE. A comment broke a page and every test still passed."""
+    print("\n  -- the pages' scripts parse --")
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    pages = sorted((pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop")
+                   .glob("*.html"))
+    ok("there are pages to check", len(pages) >= 4)
+    if not node:
+        # This suite promises to run with no venv; node is a system tool and may be absent.
+        # Skipping is reported rather than silent, because a skipped check that looks like a
+        # pass is how the bug below survived in the first place.
+        print("      SKIP  node not on PATH — cannot parse-check the pages here")
+        return
+
+    # WHAT THIS CATCHES, and it is not hypothetical. A code comment written INSIDE a JS template
+    # literal contained `offered()` in backticks. A backtick ends the literal, so the whole
+    # script died with "missing ) after argument list" and the settings page rendered nothing
+    # interactive. Three tests asserting the new markup was in the file all passed, because the
+    # markup WAS in the file — as part of a string that never ran. Found by loading the page in
+    # a browser, which is not something the suite can do; parsing it is.
+    checked = 0
+    for page in pages:
+        text = page.read_text()
+        for i, block in enumerate(re.findall(r"<script\b([^>]*)>(.*?)</script>", text, re.S)):
+            attrs, body = block
+            if "src=" in attrs or ("type=" in attrs and "javascript" not in attrs):
+                continue                       # a fetched or non-JS block has nothing to parse
+            if not body.strip():
+                continue
+            tmp = TMP / f"{page.stem}-{i}.js"
+            tmp.write_text(body)
+            r = subprocess.run([node, "--check", str(tmp)], capture_output=True, text=True)
+            ok(f"{page.name} script {i} parses",
+               r.returncode == 0, " ".join(r.stderr.strip().splitlines()[:2]))
+            checked += 1
+    ok("at least one script was actually parsed", checked > 0)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -2049,6 +2090,7 @@ def main() -> None:
     test_local_models_do_not_monologue()
     test_a_failed_turn_is_reported()
     test_hosted_model_lists()
+    test_pages_parse()
     test_prompts()
     test_asker_tool_surface()
     test_untrusted_marking()
