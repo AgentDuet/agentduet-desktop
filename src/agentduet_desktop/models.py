@@ -318,6 +318,31 @@ _state: dict = {"model": "", "done_mb": 0, "total_mb": 0, "error": "", "finished
                 "cancel": False}
 
 
+def progress_seen() -> dict:
+    """`progress()`, but falling back to what is visibly on DISK when this process is idle.
+
+    A download started anywhere else — `agentduet-desktop models download`, or the detached
+    child `init` spawns — is invisible to `progress()`, which lives in the memory of whoever is
+    fetching. The page polling this one would then show "not downloaded" while a 4.7 GB file
+    grew beside it, which reads as the app being unable to see its own models.
+
+    Deliberately read-only and derived: it reports a `.part` file, never creates or resumes one.
+    """
+    live = progress()
+    if live["model"]:
+        return live
+    seen = downloading()
+    if not seen:
+        return live
+    name, done_mb, total_mb = seen
+    return {"model": name, "done_mb": done_mb, "total_mb": total_mb, "error": "",
+            "finished": "", "cancel": False,
+            "percent": int(done_mb / total_mb * 100) if total_mb else 0,
+            # SAY WHOSE IT IS. The page offers Cancel, and cancelling sets a flag this process
+            # reads — which does nothing to a fetch running in another one.
+            "elsewhere": True}
+
+
 def progress() -> dict:
     with _lock:
         s = dict(_state)

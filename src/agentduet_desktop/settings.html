@@ -733,12 +733,16 @@
       let act;
       if (busy === x.id) {
         const p = d.progress;
+        // `elsewhere` means the fetch belongs to another process — the CLI, or the detached
+        // child `init` spawns — and is only visible because its .part file is on disk. Stop
+        // sets a flag THIS daemon reads, so offering it here would be a button that reports
+        // success and changes nothing. Say where it is running instead.
         act = `<div style="flex:1">
-                 <div class="barlab"><span>Downloading…</span>
+                 <div class="barlab"><span>Downloading${p.elsewhere ? ' (started outside the app)' : '…'}</span>
                    <span>${p.done_mb} / ${p.total_mb} MB · ${p.percent}%</span></div>
                  <div class="bar"><i style="width:${p.percent}%"></i></div>
                </div>
-               <button class="act" data-cancel="1">Stop</button>`;
+               ${p.elsewhere ? '' : '<button class="act" data-cancel="1">Stop</button>'}`;
       } else if (here) {
         act = `<span class="live">in use</span>
                <button class="act" data-unload="${esc(x.id)}">Free the memory</button>
