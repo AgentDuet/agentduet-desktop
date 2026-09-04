@@ -1927,6 +1927,106 @@ def test_a_failed_turn_is_reported() -> None:
        and "chat.note_failure(message, reply)" in web_src)
 
 
+def test_hosted_model_lists() -> None:
+    """A model WE no longer serve must stop being offered — asked of the provider, not compiled in."""
+    print("\n  -- hosted model lists come from the provider --")
+    from unittest import mock
+    from agentduet_desktop import llm
+
+    GEMINI = {"models": [
+        {"name": "models/gemini-4-flash", "supportedGenerationMethods": ["generateContent"]},
+        {"name": "models/gemini-3.1-flash", "supportedGenerationMethods": ["generateContent"]},
+        {"name": "models/text-embedding-005", "supportedGenerationMethods": ["embedContent"]},
+        {"name": "models/imagen-4", "supportedGenerationMethods": ["predict"]},
+    ]}
+
+    def asking(payload, name="gemini", env=None):
+        llm._listed.clear()
+        thrower = isinstance(payload, Exception)
+        with mock.patch.dict("os.environ", env or {}), \
+             mock.patch.object(llm._IMPLS[name], "credential", classmethod(lambda cls: "SECRET")), \
+             mock.patch.object(llm, "_listing_get",
+                               (lambda n, k: (_ for _ in ()).throw(payload)) if thrower
+                               else (lambda n, k: payload)):
+            return llm.offered(name)
+
+    live, source = asking(GEMINI)
+    eq("the provider is the source", source, "live")
+    # THE WHOLE POINT. gemini-3.1-pro is in our built-in list and Google does not serve it —
+    # choosing it returned `404 NOT_FOUND models/gemini-3.1-pro`, which read as a bad key.
+    ok("a model the provider does not list is not offered", "gemini-3.1-pro" not in live)
+    ok("one it does list is", "gemini-4-flash" in live)
+    eq("a surviving built-in comes first, since our order is a recommendation",
+       live[0], "gemini-3.1-flash")
+    ok("embedding and image models are not offered as chat models",
+       not any("embedding" in m or "imagen" in m for m in live))
+
+    # An owner must be able to SEE what their instance is set to, even if it was retired.
+    kept, _ = asking(GEMINI, env={"SECRETARY_MODEL": "gemini-3.1-pro"})
+    ok("the model in use stays visible", "gemini-3.1-pro" in kept)
+
+    built, source = asking(RuntimeError("timed out"))
+    eq("an unreachable provider falls back to the built-in list", source, "built-in")
+    eq("which is exactly what the app shipped with", built, llm.HOSTED["gemini"]["models"])
+
+    # OFFLINE IS THE NORMAL CASE for this product, so no credential must mean no HTTP at all.
+    llm._listed.clear()
+    with mock.patch.object(llm._IMPLS["gemini"], "credential", classmethod(lambda cls: None)), \
+         mock.patch.object(llm, "_listing_get",
+                           lambda n, k: (_ for _ in ()).throw(AssertionError("asked anyway"))):
+        eq("with no key it does not even ask", llm.offered("gemini")[1], "built-in")
+
+    # A CLI login is a real credential for completing and not a key we can put on a GET.
+    llm._listed.clear()
+    with mock.patch.object(llm._IMPLS["anthropic"], "credential", classmethod(lambda cls: "")), \
+         mock.patch.object(llm, "_listing_get",
+                           lambda n, k: (_ for _ in ()).throw(AssertionError("asked anyway"))):
+        eq("a CLI login lists nothing rather than sending an empty key",
+           llm.offered("anthropic")[1], "built-in")
+
+    # THE KEY MUST NOT REACH A LOG. Gemini authenticates by query string, so the failing URL
+    # carries it and urllib's errors can carry the URL.
+    import logging
+    lines: list[str] = []
+
+    class Cap(logging.Handler):
+        def emit(self, record):
+            lines.append(record.getMessage())
+
+    llm.logger.addHandler(Cap())
+    was = llm.logger.level
+    llm.logger.setLevel(logging.DEBUG)
+    asking(RuntimeError("400 from ...?key=SECRET"))
+    llm.logger.setLevel(was)
+    ok("a listing failure is logged", any("could not list" in m for m in lines))
+    ok("and the credential is not in it", not any("SECRET" in m for m in lines))
+
+    # One call per provider per TTL: the settings page polls.
+    llm._listed.clear()
+    hits: list[str] = []
+    with mock.patch.object(llm._IMPLS["gemini"], "credential", classmethod(lambda cls: "S")), \
+         mock.patch.object(llm, "_listing_get", lambda n, k: (hits.append(n), GEMINI)[1]):
+        llm.offered("gemini")
+        llm.offered("gemini")
+    eq("two asks, one HTTP call", len(hits), 1)
+
+    # Every provider we claim to list must have somewhere to ask, and Bedrock deliberately
+    # does not — we hold no AWS account and have never run it.
+    for name in llm._LISTING:
+        ok(f"{name} has a listing endpoint", bool(llm._listing_url(name)))
+    ok("bedrock is not guessed at", "bedrock" not in llm._LISTING)
+    ok("and still offers its built-in list", llm.offered("bedrock")[1] == "built-in")
+
+    page = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+            / "settings.html").read_text()
+    ok("the page says when the list is the built-in fallback", "models_from" in page)
+    # AND A NAME WE DO NOT KNOW MUST STILL BE REACHABLE. With a <select> the provider was
+    # unusable the moment every built-in name was wrong, which is exactly what happened.
+    ok("the hosted model field can be typed into", 'input class="hmodel"' in page)
+    ok("with the known names still offered as suggestions", "<datalist" in page)
+    ok("and no dropdown that would forbid the rest", 'select class="hmodel"' not in page)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -1938,6 +2038,7 @@ def main() -> None:
     test_apple_stt_engine()
     test_local_models_do_not_monologue()
     test_a_failed_turn_is_reported()
+    test_hosted_model_lists()
     test_prompts()
     test_asker_tool_surface()
     test_untrusted_marking()

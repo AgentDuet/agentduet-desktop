@@ -835,18 +835,37 @@
         </div>
         <div class="mwhat">${esc(h.what)}</div>
         ${h.in_use ? `<div class="mfacts"><span>${esc(h.model)}</span></div>` : ''}
+        <!-- WHERE THE LIST CAME FROM. With a key we ask the provider, so a retired model is not
+             offered; without one (or offline) the list is whatever was built into this app, and
+             may name something the provider has since dropped. Only worth saying in the second
+             case, and only once a key exists — otherwise it is noise on every card. -->
+        ${h.has_key && h.models_from !== 'live'
+          ? `<div class="mwhat">Could not reach ${esc(h.family)} to list its models — showing the
+               list built into this app, which may be out of date.</div>` : ''}
+        <!-- TYPEABLE, NOT A DROPDOWN. A <select> can only offer names this build knows, so when
+             every one of them was wrong — Google serves neither gemini-3.1-flash nor -pro — there
+             was no way to reach a working model at all, and the provider stayed unusable until
+             someone shipped a new binary. The suggestions remain, as a datalist; the field itself
+             accepts anything. `offered()` keeps those suggestions honest whenever a key exists,
+             and this covers the case where it cannot. -->
         <div class="mact">
           ${h.has_key
-            ? `<select class="hmodel" data-p="${esc(h.id)}">
-                 ${h.models.map(m => `<option ${m === h.model ? 'selected' : ''}>${esc(m)}</option>`).join('')}
-               </select>
+            ? `<input class="hmodel" data-p="${esc(h.id)}" list="ml-${esc(h.id)}"
+                      value="${esc(h.in_use ? h.model : (h.models[0] || ''))}"
+                      placeholder="model name" spellcheck="false">
+               <datalist id="ml-${esc(h.id)}">
+                 ${h.models.map(m => `<option>${esc(m)}</option>`).join('')}
+               </datalist>
                <button class="act use" data-use="${esc(h.id)}">Use this</button>
                <button class="act" data-forget="${esc(h.id)}">Forget this key</button>`
             : `<input class="hkey" type="password" data-p="${esc(h.id)}"
                       placeholder="${esc(h.key_env)}" autocomplete="off">
-               <select class="hmodel" data-p="${esc(h.id)}">
+               <input class="hmodel" data-p="${esc(h.id)}" list="ml-${esc(h.id)}"
+                      value="${esc(h.models[0] || '')}" placeholder="model name"
+                      spellcheck="false">
+               <datalist id="ml-${esc(h.id)}">
                  ${h.models.map(m => `<option>${esc(m)}</option>`).join('')}
-               </select>
+               </datalist>
                <button class="act get" data-save="${esc(h.id)}">Check and save</button>`}
         </div>
         <details class="sizes">
