@@ -62,14 +62,74 @@ same wall time, the way faster-whisper burns 37 for 14 seconds of audio.
 
 ## Why a bigger model cannot be made faster here
 
-Decoding is memory-bandwidth-bound — every token reads the whole model out of memory:
+Decoding is memory-bandwidth-bound — every token reads the whole model out of memory. That was
+asserted from one data point and has since been **checked**, on 2026-09-04, because one number in
+it was wrong (below).
 
-    4.795 GB x 23.9 tok/s ~= 115 GB/s
+| model | file | decode | prefill | file x decode |
+|---|---|---|---|---|
+| llama-3.2-3b Q4_K_M | 1.88 GB | 54.5 tok/s | 528 tok/s | **102 GB/s** |
+| qwen3-8b Q4_K_M | 4.68 GB | 24.4 tok/s | 227 tok/s | **114 GB/s** |
 
-A base M-series chip has roughly 120 GB/s, so an 8B at Q4 is running at ~95% of everything this
-machine has. There is no setting that improves it. The only lever is a smaller model, and the
-scaling is close to linear in file size: 4.8 GB -> 1.9 GB measured 2.25x faster, against 2.5x
-predicted.
+Three things there, and each is a separate argument:
+
+1. **The product is near-constant across a 2.5x difference in model size** — 102 against 114
+   GB/s, 11% apart. That is the signature of a fixed ceiling being hit. If decode were
+   compute-bound the product would fall with size, not hold.
+2. **tok/s scales as 1/size** — 2.23x measured for a 2.49x size ratio.
+3. **The same weights, batched, go ~10x faster per token.** Prefill reads the identical model to
+   process 1,200 tokens at once and reaches 528 / 227 tok/s. So the arithmetic on those weights
+   is not what costs the time; reading them is. This is the control, and it is the one that rules
+   out the alternative explanation.
+
+### The test that does not need a bandwidth figure at all
+
+Everything above multiplies a file size by a token rate. That product is arithmetic, not a
+counter reading — it would come out the same if something else were the limit, so on its own it
+does not answer a challenge. This does. **One pass over the weights, N tokens wide, and how the
+cost grows with N:**
+
+| tokens per step | 3b: ms | x cost of 1 | 8b: ms | x cost of 1 |
+|---|---|---|---|---|
+| 1 | 18.1 | 1.00x | 40.7 | 1.00x |
+| 2 | 18.8 | **1.04x** | 42.5 | **1.04x** |
+| 4 | 25.1 | 1.39x | 58.1 | 1.43x |
+| 16 | 64.2 | 3.55x | 151.2 | 3.71x |
+| 32 | 66.1 | 3.66x | 153.9 | 3.78x |
+| 128 | 245.0 | 13.6x | 577.1 | 14.2x |
+| 256 | 509.3 | 28.2x | 1235.0 | 30.3x |
+
+**Doubling the arithmetic costs 4% more time.** That cannot happen if the arithmetic is the
+bottleneck — two tokens is twice the multiply-adds, and it is free. What is not free is the pass
+over the weights, and there is exactly one of those either way. Past about 32 the curve turns
+linear (128 -> 256 doubles the cost), which is the arithmetic finally becoming the constraint.
+A stopwatch, no bandwidth number, either measured or quoted.
+
+**Why the number is large is not mysterious, and it is not waste.** Generating one token needs
+every weight exactly once, so 4.68 GB moves per token by construction — there is no shorter
+path. Each of those bytes carries about 3.5 floating-point operations at Q4. A machine like this
+needs roughly two orders of magnitude more arithmetic per byte before compute becomes the
+constraint, so the GPU spends most of a token waiting for weights to arrive. Which is also why
+**"GPU 99% busy" is not evidence of compute-bound** — busy means work is scheduled, not that the
+ALUs are doing anything. And it is why batching is the whole economics of hosted inference: read
+the weights once, serve 32 users' tokens. It does nothing for one person typing one question.
+
+**Two wrong harnesses before this one**, both worth knowing about because each looked fine:
+a single-token `eval` against an EMPTY cache reported 4 ms for a step that takes 41, and timing
+the FIRST step after `reset()` reported 191 ms, because llama.cpp re-plans its compute graph when
+the batch shape changes. The check that catches both: the batch=1 row must equal the rate the
+model actually generates at. It does — 18.1 ms and 40.7 ms against 55 and 24 tok/s.
+
+**The correction: the ceiling was compared against the wrong chip.** This said "a base M-series
+chip has roughly 120 GB/s, so an 8B is at ~95% of everything this machine has". 120 GB/s is
+**M4's** figure and this is an **M5**, which Apple rates at 153 GB/s (their number, not measured
+here). So the honest version is ~75% of rated peak, not 95%. A single-threaded streaming loop on
+this machine measures 113 GB/s (numpy triad, 4.8 GB read+write) — itself a floor rather than the
+ceiling, since it is one thread.
+
+What survives unchanged is the conclusion, because it never depended on the last 25%: **no
+setting improves this**, and the only lever is a smaller model. Even reaching 100% of rated peak
+would buy a third more tokens per second, against 2.2x for dropping from 8B to 3B.
 
 ## What follows
 
