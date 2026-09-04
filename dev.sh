@@ -12,6 +12,19 @@ cd "$(dirname "$0")"
 VENV=.venv-build          # the venv holding the working agentduet SDK
 [ -x "$VENV/bin/python" ] || { echo "no $VENV — see CLAUDE.md Build"; exit 1; }
 
+# FROM SOURCE MEANS FROM src/, and this line is the only thing that makes that true.
+#
+# The venv holds a NON-EDITABLE install of this package — a real directory in site-packages,
+# copied at install time — and `python -m agentduet_desktop.cli` finds that copy, not this tree.
+# So every edit since the last `pip install` was invisible: the daemon started, reported the
+# right version, and ran old code. Found 2026-09-04 after a fix to an error message did not
+# appear in the message, having been "tested from source" for an hour.
+#
+# PYTHONPATH rather than an editable install, deliberately: this venv is also what builds the
+# binary, and how PyInstaller resolves an editable package is not something to discover during
+# a release.
+export PYTHONPATH="src${PYTHONPATH:+:$PYTHONPATH}"
+
 # Stop whatever holds the port, binary or source. Never pkill -f: it matches this script.
 "$VENV/bin/python" -m agentduet_desktop.cli stop 2>/dev/null || true
 sleep 1

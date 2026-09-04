@@ -23,6 +23,10 @@ WHAT DIFFERS BETWEEN PROVIDERS, and why it is handled here rather than pushed up
 import json
 import logging
 import os
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 import re
 import pathlib
 
@@ -569,6 +573,18 @@ def verify(model: str = "") -> tuple[bool, str]:
         if "429" in text or "RESOURCE_EXHAUSTED" in text:
             return False, ("The credential works, but the account is out of quota or over "
                            "its spend cap (429). Nothing to fix in the config.")
+        # A MODEL NAME THAT DOES NOT EXIST IS NOT A CREDENTIAL PROBLEM, and it read as one.
+        # Our model lists are hardcoded, so a provider renaming or retiring a model turns the
+        # whole provider unusable with a raw vendor 404 in the owner's face — "NOT saved: Call
+        # failed: 404 NOT_FOUND. models/gemini-3.1-pro is not found for API version v1beta".
+        # The key in that case is fine and was proven so by reaching the API at all; only the
+        # name is wrong, and the owner cannot tell those apart from what they were shown.
+        if "404" in text or "NOT_FOUND" in text or "not found for API version" in text:
+            return False, (f"The credential reached {_vendor_of_name(m)}, so "
+                           f"the key is good — but they do not offer a model called \"{m}\" on "
+                           f"this API. Our model list is built into the app, so it goes stale "
+                           f"when a provider renames or retires one. Try another model from the "
+                           f"list; if none of them work, the list needs updating.")
         return False, f"Call failed: {text[:160]}"
     if not out:
         return False, "The model returned nothing — it may have declined the request."
@@ -579,6 +595,21 @@ def verify(model: str = "") -> tuple[bool, str]:
 #: right for a log and wrong for a settings page — nobody bought a "dashscope".
 _VENDOR = {"gemini": "Google", "anthropic": "Anthropic", "dashscope": "Alibaba",
            "local": "this machine", "xai": "xAI", "bedrock": "Amazon"}
+
+
+def _vendor_of_name(model: str) -> str:
+    """The vendor a model NAME belongs to, ignoring what is currently configured.
+
+    `provider()` deliberately lets `SECRETARY_PROVIDER` win over its own argument, which is
+    right for routing a call and wrong for describing a name: asked about `gemini-3.1-pro`
+    while a local model is attached, it answers "local", and a message built on that told the
+    owner their Google key had reached "this machine".
+    """
+    name = (model or "").lower()
+    for prov, prefixes in _PROVIDERS.items():
+        if any(p in name for p in prefixes):
+            return _VENDOR.get(prov, prov)
+    return "the provider"
 
 
 def recognised(model: str) -> bool:
@@ -665,7 +696,8 @@ def describe(model: str = "") -> str:
 # repository can be listed exactly; a hosted catalogue cannot, not without a key and a different
 # API per vendor. These are starting points taken from what this codebase already used, and the
 # free-text field beside them is not a fallback — it is the normal way to reach anything newer.
-# Listing live models per provider once a key exists is worth doing and is not done.
+# Listing live models per provider once a key exists IS now done — see `offered()`.
+# The lists below became the offline fallback and the preferred ORDER, not the claim.
 
 #: TAG IS THE COMPANY, HEADING IS THE NAME PEOPLE KNOW — the same shape as the local cards,
 #: which read META / Llama 3.2 3B. Hosted used to read ANTHROPIC / Anthropic: the API's internal
@@ -697,6 +729,137 @@ HOSTED = {
 }
 
 
+#: How each provider names its own models, given a credential. One GET, one JSON body.
+#:
+#: BEDROCK IS ABSENT ON PURPOSE. We hold no AWS account and have never run it, so a guess at its
+#: listing shape would be untested code wearing the same clothes as the tested ones. It keeps its
+#: built-in list and says so.
+_LISTING = {
+    "gemini": dict(
+        url="https://generativelanguage.googleapis.com/v1beta/models?pageSize=200",
+        auth="query",
+        # Only what can actually answer a prompt. The same endpoint lists embedding and
+        # image models, and offering one as a chat model reproduces this bug pointing the
+        # other way — a name in our dropdown that 404s the moment it is chosen.
+        pluck=lambda d: [m["name"].split("/")[-1] for m in d.get("models", [])
+                         if "generateContent" in m.get("supportedGenerationMethods", [])]),
+    "anthropic": dict(
+        url="https://api.anthropic.com/v1/models?limit=100",
+        auth="x-api-key",
+        pluck=lambda d: [m["id"] for m in d.get("data", []) if m.get("id")]),
+    "dashscope": dict(
+        url="",                                  # region-dependent; see `_listing_url`
+        auth="bearer",
+        pluck=lambda d: [m["id"] for m in d.get("data", []) if m.get("id")]),
+    "xai": dict(
+        url="https://api.x.ai/v1/models",
+        auth="bearer",
+        pluck=lambda d: [m["id"] for m in d.get("data", []) if m.get("id")]),
+}
+
+#: Short, because a settings page is waiting on it. A provider that does not answer in this long
+#: is treated as unreachable and the built-in list is shown — the page must never hang on a
+#: vendor, and an install with no network is the normal case for this product.
+LISTING_TIMEOUT = 6
+
+#: One listing per provider per five minutes. The page polls, and a fresh HTTP call per poll
+#: would be both slow and rude.
+LISTING_TTL = 300
+_listed: dict[str, tuple[float, list[str]]] = {}
+
+#: Names that are not chat models. The OpenAI-compatible listings return everything an account
+#: can reach — embeddings, speech, image and video generation — and none of those can answer a
+#: prompt. Substring match, deliberately conservative: `vl` (vision-language) and `omni` DO
+#: chat and are not excluded.
+_NOT_CHAT = ("embedding", "embed", "rerank", "tts", "asr", "whisper", "speech", "audio",
+             "ocr", "moderation", "image", "video", "wan", "imagen", "veo", "aqa")
+
+
+def _listing_url(name: str) -> str:
+    """The listing endpoint, resolving anything region-dependent at use time."""
+    spec = _LISTING.get(name) or {}
+    if name == "dashscope":
+        # Same region convention as the completion endpoint above, read from the environment
+        # rather than captured, per the .env rule.
+        region = (os.getenv("DASHSCOPE_REGION") or "intl").strip().lower()
+        host = "dashscope-intl.aliyuncs.com" if region == "intl" else "dashscope.aliyuncs.com"
+        return f"https://{host}/compatible-mode/v1/models"
+    return spec.get("url", "")
+
+
+def _listing_get(name: str, key: str) -> dict:
+    """One authenticated GET, returning parsed JSON. Raises on anything unexpected."""
+    spec = _LISTING[name]
+    url, headers = _listing_url(name), {"User-Agent": "agentduet-desktop"}
+    auth = spec["auth"]
+    if auth == "query":
+        url = f"{url}{'&' if '?' in url else '?'}key={urllib.parse.quote(key)}"
+    elif auth == "x-api-key":
+        headers |= {"x-api-key": key, "anthropic-version": "2023-06-01"}
+    else:
+        headers["Authorization"] = f"Bearer {key}"
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=LISTING_TIMEOUT) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _live_models(name: str) -> list[str] | None:
+    """What the provider says it serves, or None if we could not ask."""
+    if name not in _LISTING:
+        return None
+    impl = _IMPLS.get(name)
+    key = impl.credential() if impl else None
+    # None means no credential. "" means signed in some other way — an Anthropic CLI login —
+    # which is a real credential for COMPLETING but not a key we can put on a GET.
+    if not key:
+        return None
+    now = time.monotonic()
+    if (hit := _listed.get(name)) and now - hit[0] < LISTING_TTL:
+        return hit[1]
+    try:
+        got = [m for m in _LISTING[name]["pluck"](_listing_get(name, key))
+               if not any(bad in m.lower() for bad in _NOT_CHAT)]
+    except Exception as exc:
+        # THE EXCEPTION TEXT IS DELIBERATELY DROPPED. Gemini authenticates by query string, so
+        # the failing URL carries the owner's key — and urllib's errors can carry the URL. Only
+        # the class name is logged; it is enough to tell a timeout from a 401.
+        logger.debug("could not list %s models: %s", name, type(exc).__name__)
+        return None
+    if got:
+        _listed[name] = (now, got)
+    return got or None
+
+
+def offered(name: str) -> tuple[list[str], str]:
+    """The models to show for a provider, and whether the provider itself said so.
+
+    THE POINT OF THIS IS THE REMOVAL, not the addition. Our lists are compiled into the app, so
+    a provider retiring a name leaves it in the dropdown until someone ships a new build — and
+    choosing it produced `404 NOT_FOUND models/gemini-3.1-pro is not found`, which reads as the
+    owner's key being broken. Asking the provider means a name we cannot serve stops being
+    offered at all.
+
+    Built-ins the provider still serves come FIRST, in our order, because that order is a
+    recommendation the vendor's own listing does not carry. Everything else follows
+    alphabetically. The model in use is always present, even if the provider stopped listing it:
+    the page marks the current selection by finding it here, and an owner must be able to see
+    what their instance is actually set to.
+    """
+    spec = HOSTED.get(name)
+    if not spec:
+        return [], "built-in"
+    built = list(spec["models"])
+    live = _live_models(name)
+    if not live:
+        return built, "built-in"
+    keep = [m for m in built if m in live]
+    out = keep + sorted(m for m in live if m not in keep)
+    in_use = os.getenv("SECRETARY_MODEL", "")
+    if in_use and _vendor_of_name(in_use) == _VENDOR.get(name) and in_use not in out:
+        out.append(in_use)
+    return out, "live"
+
+
 def hosted_listing() -> list[dict]:
     """Every hosted provider, what it costs the owner to use, and whether we already hold a key.
 
@@ -719,7 +882,10 @@ def hosted_listing() -> list[dict]:
             "how": "" if cred is None else ("api key" if cred else "signed in"),
             "in_use": name == live_prov,
             "model": live_model if name == live_prov else "",
-            "models": spec["models"],
+            # Asked of the provider when we hold a key, so a retired model stops being offered.
+            # Falls back to the built-in list offline, which is the normal case for this product.
+            "models": (asked := offered(name))[0],
+            "models_from": asked[1],
         })
     return sorted(out, key=lambda h: (not h["in_use"], h["brand"].lower()))
 
