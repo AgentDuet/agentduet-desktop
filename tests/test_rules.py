@@ -1837,6 +1837,40 @@ def test_apple_stt_engine() -> None:
     ok("and it is built as its own target", "AgentDuetSTT" in pkg)
 
 
+def test_local_models_do_not_monologue() -> None:
+    """A reasoning model's <think> is for the model. The owner waits for it and never sees it."""
+    print("\n  -- local models: thinking off by default --")
+    from agentduet_desktop import llm, models
+
+    ok("qwen3 is known to reason", models.thinks("qwen3-8b"))
+    ok("and deepseek-r1 too", models.thinks("deepseek-r1-7b"))
+    ok("llama is not", not models.thinks("llama-3.2-3b"))
+
+    # MEASURED, not assumed: 10.84s per turn with thinking against 1.50s without, because it
+    # wrote 237 tokens where 18 were needed. See docs/experiments/local-model-speed.md.
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "llm.py").read_text()
+    ok("the switch is only added when thinking was not asked for",
+       'models.thinks(self.model) and not think' in src)
+    # IT GOES IN A SYSTEM MESSAGE, never onto the owner's text. This GGUF's template does not
+    # strip `/no_think`, so appended it becomes part of the question: asked "What's the last 4
+    # digits of 12345678" the model replied that the question was incomplete and quoted the
+    # switch back, taking 13 seconds. In a system message it cannot.
+    ok("the switch never touches the owner's prompt",
+       'prompt + (" /no_think"' not in src)
+    ok("it is a system message", '"role": "system", "content": "/no_think"' in src)
+    ok("and a caller that asked for it keeps the reasoning",
+       "answer.strip() if think else" in src)
+
+    strip = llm._without_thinking
+    eq("a closed block is removed",
+       strip("<think>deliberating at length</think>Hello."), "Hello.")
+    eq("text either side survives", strip("A<think>x</think>B"), "AB")
+    # TRUNCATION leaves no closing tag, and returning "" would turn a slow answer into a silent
+    # one — so the tag goes and the words stay.
+    eq("an unclosed block keeps its words", strip("<think>ran out of room"), "ran out of room")
+    eq("ordinary text is untouched", strip("  Just an answer.  "), "Just an answer.")
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -1846,6 +1880,7 @@ def main() -> None:
     test_gpu_offload()
     test_release_ships_the_native_shell()
     test_apple_stt_engine()
+    test_local_models_do_not_monologue()
     test_prompts()
     test_asker_tool_surface()
     test_untrusted_marking()

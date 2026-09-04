@@ -26,6 +26,29 @@ per second (12 vs 22) while being seven times faster, because a short answer is 
 reading the 600-token prompt rather than writing 18 tokens. Wall time per turn is what an owner
 experiences.
 
+## Thinking does not just cost time — at these settings it produces nothing
+
+Asked *"What's the last 4 digits of 12345678"*:
+
+| | wall | result |
+|---|---|---|
+| `/no_think` | **4.0s** | `### Final Answer: 5678` |
+| thinking on | **92.2s** | **no answer** — 6,118 characters, all of it an UNCLOSED `<think>` block |
+
+The thinking run spent the whole `max_tokens=2048` budget counting the digits, restating the
+number and decomposing 12,345,678 into millions and thousands, then stopped mid-sentence:
+"…12,000,000 + 345,000 = 12,345,000. Then add 678 to get 12,". It never emitted `</think>`, so
+it never began the answer.
+
+That is the case for the default, and it is stronger than speed: at this app's settings a
+reasoning model reliably returns NOTHING on a question a 3B answers instantly. It is also why
+`_without_thinking` keeps the words of an unclosed block instead of returning "" — the
+alternative here is ninety-two seconds of silence.
+
+A CAUTION ON MEASURING THIS. The first check for correctness was `"5678" in answer`, which is
+worthless: the question contains 12345678, so any reply that repeats it passes. Read what the
+model concluded, not whether the digits appear.
+
 ## Is it using the GPU? Yes.
 
 | | |
@@ -50,8 +73,18 @@ predicted.
 
 ## What follows
 
-1. **A reasoning model needs thinking suppressed for this app**, or it is unusable: 7.2x, and the
-   monologue is stored and shown to the owner because nothing strips `<think>`.
+1. ~~**A reasoning model needs thinking suppressed for this app**~~ **DONE 2026-09-03.**
+   `llm._Local.complete` appends Qwen3's `/no_think` switch unless the caller passed
+   `think=True`, and strips `<think>` from what it returns. The same question that took 26
+   seconds in the app answers in **1.46s**. The `think` parameter already existed on that
+   interface and nobody ever passed True, so thinking had been unintended all along — it was
+   simply never implemented for the local provider, whose chat template reasons by default.
+
+   **The switch goes in a SYSTEM message.** Appending `/no_think` to the owner's prompt looked
+   equivalent and is not: this GGUF's template does not strip it, so it arrives as literal text.
+   Asked *"What's the last 4 digits of 12345678"* the model replied that the question was
+   incomplete, quoted the switch back, and took 13.2s. From a system message the same question
+   answers in 3.66s, against 92s with thinking left on.
 2. **A non-reasoning model is the better default on 16 GB.** Llama 3.2 3B was the fastest here
    AND produced the most visible answer, at 40% of the resident memory.
 3. `agentduet-desktop models` marks 8B "fits" on this machine, which is true of memory and
