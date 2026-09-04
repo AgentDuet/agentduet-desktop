@@ -1099,7 +1099,20 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         # Who the owner is looking at. Without it, "what did she want?" has no "her" — the
         # assistant sits beside a conversation it cannot see, and the owner retypes a name the
         # screen is already showing.
-        return web.json_response(await _chat().turn(message, viewing))
+        try:
+            return web.json_response(await _chat().turn(message, viewing))
+        except Exception as exc:
+            # A MODEL FAILURE IS NOT A SERVER ERROR, and it used to be reported as one.
+            # `RuntimeError: llama_decode returned -3` — two processes each holding a 6 GB model
+            # on a 16 GB machine — arrived as a bare HTTP 500: an empty balloon, no cause, and
+            # on reload a conversation in which the question had never been asked. The owner is
+            # the one who can act on it, so it is answered rather than swallowed.
+            logger.exception("chat turn failed")
+            reply = f"That did not go through — {exc}".strip()
+            chat = _chat()
+            if chat is not None:
+                chat.note_failure(message, reply)
+            return web.json_response({"reply": reply, "tools": [], "proposals": []})
 
     async def api_chat_new(request):
         """Start a new conversation: drop the model's context, keep the owner's record."""

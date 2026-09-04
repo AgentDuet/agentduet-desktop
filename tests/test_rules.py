@@ -1871,6 +1871,62 @@ def test_local_models_do_not_monologue() -> None:
     eq("ordinary text is untouched", strip("  Just an answer.  "), "Just an answer.")
 
 
+def test_a_failed_turn_is_reported() -> None:
+    """A model that fails mid-answer must SAY so. It used to raise, and become an HTTP 500."""
+    print("\n  -- a failed turn is reported, not swallowed --")
+    from unittest import mock
+    from agentduet_desktop import assistant, llm, models
+
+    # THE ONE THAT HAPPENED. Two processes each holding a 6 GB model on a 16 GB machine, and
+    # `llama_decode returned -3` was the whole of what the owner was told — by way of a 500,
+    # so in practice they were told nothing at all.
+    class Boom:
+        def __init__(self, err):
+            self.err = err
+
+        def create_chat_completion(self, **kw):
+            raise self.err
+
+    def failing(err):
+        with mock.patch.object(models, "load", return_value=(Boom(err), "")), \
+             mock.patch.object(models, "thinks", return_value=False):
+            try:
+                llm._Local("qwen3-8b", "").complete("hi")
+            except Exception as exc:
+                return exc
+        return None
+
+    decode = failing(RuntimeError("llama_decode returned -3"))
+    ok("a decode failure names the model", "qwen3-8b" in str(decode))
+    ok("and blames memory, which is what it almost always is", "memory" in str(decode))
+    ok("and says what to do about it", "smaller one" in str(decode))
+    # The raw code stays in the message: it is the only part worth pasting into a bug report.
+    ok("the original error is still quoted", "llama_decode returned -3" in str(decode))
+    ok("and chained, so a traceback still shows the cause",
+       isinstance(decode.__cause__, RuntimeError))
+
+    other = failing(ValueError("gguf header is corrupt"))
+    ok("an unrecognised failure is not dressed up as memory", "memory" not in str(other))
+    ok("but still names the model and the cause",
+       "qwen3-8b" in str(other) and "gguf header is corrupt" in str(other))
+
+    # THE OWNER'S QUESTION SURVIVES IT. The exception used to take the turn with it, so a
+    # reload showed a conversation in which nothing had been asked.
+    chat = object.__new__(assistant.OwnerChat)
+    chat.shown = []
+    chat.STORE = TMP / "owner_chat.json"      # never the real one
+    chat.note_failure("who called?", "I could not answer that. out of memory")
+    eq("the question is kept", chat.shown[-1]["q"], "who called?")
+    ok("with the explanation as the answer", "out of memory" in chat.shown[-1]["a"])
+    eq("and no tool is claimed to have run", chat.shown[-1]["tools"], [])
+
+    web_src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+               / "web.py").read_text()
+    ok("the chat endpoint catches what the turn raises",
+       "await _chat().turn(message, viewing))" in web_src
+       and "chat.note_failure(message, reply)" in web_src)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -1881,6 +1937,7 @@ def main() -> None:
     test_release_ships_the_native_shell()
     test_apple_stt_engine()
     test_local_models_do_not_monologue()
+    test_a_failed_turn_is_reported()
     test_prompts()
     test_asker_tool_surface()
     test_untrusted_marking()

@@ -713,6 +713,15 @@ class OwnerChat:
             self._persist()
         self._record(question, confirmation, ["reply_to"] if delivered else [])
 
+    def note_failure(self, question: str, explanation: str) -> None:
+        """Record a turn that never reached an answer, so the failure is IN the transcript.
+
+        A raised exception used to take the owner's question with it — the page showed nothing
+        and a reload showed a conversation in which the question had never been asked. The
+        explanation stands in as the answer; it is the only honest thing to keep.
+        """
+        self._record(question, explanation, [])
+
     def _last_answer(self) -> str:
         """The most recent answer, skipping break markers.
 
