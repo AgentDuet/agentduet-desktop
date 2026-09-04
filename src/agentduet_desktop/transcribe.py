@@ -193,8 +193,13 @@ def _apple_bin() -> pathlib.Path | None:
     if override:
         p = pathlib.Path(override)
         return p if p.is_file() and os.access(p, os.X_OK) else None
-    here = pathlib.Path(sys.executable).resolve().parent
-    for cand in (here / APPLE_HELPER, here.parent / "MacOS" / APPLE_HELPER):
+    # BOTH the resolved and unresolved interpreter directory. In a frozen bundle sys.executable
+    # IS the binary, so resolving is right; in a venv it is a SYMLINK to the real interpreter,
+    # so resolving walks out of the venv entirely and the helper sitting in its bin/ is missed.
+    exe = pathlib.Path(sys.executable)
+    roots = {exe.parent, exe.resolve().parent}
+    cands = [r / APPLE_HELPER for r in roots] + [r.parent / "MacOS" / APPLE_HELPER for r in roots]
+    for cand in cands:
         if cand.is_file() and os.access(cand, os.X_OK):
             return cand
     found = shutil.which(APPLE_HELPER)
@@ -312,11 +317,15 @@ def describe() -> str:
         return f"Apple on-device ({lang}, on this machine)" + (f" — installed: {locales}…" if locales else "")
     if which == "local":
         why = ""
-        # SAY WHY WHISPER, when Apple was the default and something ruled it out. Otherwise a
-        # Mac owner sees Whisper, expects Apple, and has nowhere to look.
-        if sys.platform == "darwin" and _apple_choice() != "whisper":
+        # SAY WHY WHISPER. Two different reasons, and both leave a Mac owner staring at Whisper
+        # with nowhere to look: either Apple's engine cannot run here, or it can and their
+        # settings.md still holds the model name seeded before Apple existed — which every
+        # instance created before 2026-09-03 does, because templates seed once.
+        if sys.platform == "darwin":
             ok, reason = apple_ready()
-            if not ok and reason:
+            if _apple_choice() == "whisper" and ok:
+                why = " — Apple's on-device engine is available here; clear `## Transcription` in settings.md to use it"
+            elif _apple_choice() != "whisper" and not ok and reason:
                 why = f" — Apple's engine unavailable: {reason}"
         return f"local ({local_model()}, on this machine){why}"
     return "OFF — " + available()[1]

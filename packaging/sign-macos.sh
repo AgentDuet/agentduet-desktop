@@ -34,6 +34,19 @@ ENTITLEMENTS="$HERE/entitlements.plist"
 KEYCHAIN="${AGENTDUET_SIGNING_KEYCHAIN:-$HOME/Library/Keychains/agentduet-signing.keychain-db}"
 SIGNDIR="$HOME/.apple-signing"
 
+if [ -f "$KEYCHAIN" ] && [ -f "$SIGNDIR/keychain-pw" ]; then
+  if security unlock-keychain -p "$(cat "$SIGNDIR/keychain-pw")" "$KEYCHAIN" 2>/dev/null; then
+    security set-keychain-settings "$KEYCHAIN" 2>/dev/null      # no auto-lock while we work
+  else
+    # REBUILD RATHER THAN PROMPT. If the stored password no longer opens it — seen after a macOS
+    # update — codesign would raise a GUI dialog asking for a random string nobody knows, and
+    # then fail errSecInternalComponent. Everything the keychain holds came from $SIGNDIR and is
+    # still there, so throwing it away and remaking it costs a second and needs no human.
+    echo "the signing keychain would not unlock — rebuilding it from $SIGNDIR"
+    security delete-keychain "$KEYCHAIN" 2>/dev/null || rm -f "$KEYCHAIN"
+  fi
+fi
+
 # BUILD THE KEYCHAIN IF IT IS NOT THERE, from the key and certificate in ~/.apple-signing. Doing
 # it here rather than by hand matters because two of the steps are not guessable:
 #
@@ -63,6 +76,12 @@ if [ ! -f "$KEYCHAIN" ] && [ -f "$SIGNDIR/devid.key" ] && [ -f "$SIGNDIR/develop
   security list-keychains -d user -s $(security list-keychains -d user | tr -d '"' | xargs) "$KEYCHAIN"
 fi
 
+# UNLOCK IT FIRST, every time. A keychain relocks on reboot, and a locked one makes codesign
+# raise a GUI password prompt — for the keychain's OWN password, which is the random string in
+# keychain-pw and nothing like the owner's login password, so the dialog is unanswerable by
+# anyone who did not create it. This script created it and stored that password; not using it
+# was the gap. It went unnoticed because a keychain is unlocked at the moment it is made, so the
+# first run after setup always worked and the second one after a reboot did not.
 if [ -f "$KEYCHAIN" ]; then
   KC_ARGS=(--keychain "$KEYCHAIN")
   FIND_IN=("$KEYCHAIN")
@@ -74,7 +93,7 @@ fi
 
 # Ask the keychain which identity it holds rather than rebuilding its name from the team id: the
 # name embeds the legal entity, and a rename would break this for a reason nobody would guess.
-IDENTITY=$(security find-identity -v -p codesigning "${FIND_IN[@]}" \
+IDENTITY=$(security find-identity -v -p codesigning ${FIND_IN[@]+"${FIND_IN[@]}"} \
            | awk '/Developer ID Application/ {print $2; exit}')
 if [ -z "$IDENTITY" ]; then
   echo "No 'Developer ID Application' identity in any keychain, so there is nothing to sign with."
@@ -85,15 +104,21 @@ if [ -z "$IDENTITY" ]; then
 fi
 echo "signing with identity $IDENTITY"
 
+# SWEEP UP AFTER A KILLED RUN FIRST. codesign writes <name>.cstemp while it works and removes
+# it on success; interrupt it and the stub survives. The next run's `find` then lists a file
+# that codesign refuses and xargs reports non-zero — which, under `set -e`, aborts signing
+# halfway through with a message about a file nobody asked to sign.
+find "$APP" -name "*.cstemp" -delete 2>/dev/null || true
+
 # INNER BINARIES FIRST. A bundle's signature covers its contents, so signing the outer .app
 # before its dylibs invalidates the outer one. `--deep` looks like the shortcut and is deprecated
 # by Apple precisely because it applies the same entitlements to nested code that should not have
 # them.
 find "$APP" -type f \( -name "*.dylib" -o -name "*.so" -o -perm +111 \) -print0 \
-  | xargs -0 -I{} codesign --force --options runtime --timestamp "${KC_ARGS[@]}" \
+  | xargs -0 -I{} codesign --force --options runtime --timestamp ${KC_ARGS[@]+"${KC_ARGS[@]}"} \
       --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" {}
 
-codesign --force --options runtime --timestamp "${KC_ARGS[@]}" \
+codesign --force --options runtime --timestamp ${KC_ARGS[@]+"${KC_ARGS[@]}"} \
   --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$APP"
 
 # --strict, because a signature that merely exists is not one Gatekeeper accepts.
@@ -119,7 +144,7 @@ ln -s /Applications "$STAGE/Applications"
 echo "app is ${MB} MB; creating a $((MB + 200)) MB image"
 hdiutil create -volname "AgentDuet Desktop" -srcfolder "$STAGE" \
   -size $((MB + 200))m -ov -format UDZO "$DMG" >/dev/null
-codesign --force --timestamp "${KC_ARGS[@]}" --sign "$IDENTITY" "$DMG"
+codesign --force --timestamp ${KC_ARGS[@]+"${KC_ARGS[@]}"} --sign "$IDENTITY" "$DMG"
 
 if ! xcrun notarytool history --keychain-profile "$PROFILE" >/dev/null 2>&1; then
   echo
