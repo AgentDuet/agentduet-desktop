@@ -1943,7 +1943,10 @@ def test_hosted_model_lists() -> None:
     def asking(payload, name="gemini", env=None):
         llm._listed.clear()
         thrower = isinstance(payload, Exception)
-        with mock.patch.dict("os.environ", env or {}), \
+        # SECRETARY_MODEL is pinned to the front of the list when set, and something in the
+        # import chain loads the instance .env — so without clearing it these assertions
+        # depended on whichever model the developer happened to be using.
+        with mock.patch.dict("os.environ", {"SECRETARY_MODEL": "", **(env or {})}), \
              mock.patch.object(llm._IMPLS[name], "credential", classmethod(lambda cls: "SECRET")), \
              mock.patch.object(llm, "_listing_get",
                                (lambda n, k: (_ for _ in ()).throw(payload)) if thrower
@@ -1956,10 +1959,34 @@ def test_hosted_model_lists() -> None:
     # choosing it returned `404 NOT_FOUND models/gemini-3.1-pro`, which read as a bad key.
     ok("a model the provider does not list is not offered", "gemini-3.1-pro" not in live)
     ok("one it does list is", "gemini-4-flash" in live)
-    eq("a surviving built-in comes first, since our order is a recommendation",
-       live[0], "gemini-3.1-flash")
+    # NOT the built-in order any more: our table said 3.1 first, Google serves 4, and a
+    # months-old recommendation must not outrank the provider's own newest.
+    eq("the newest of the provider's own family comes first", live[0], "gemini-4-flash")
     ok("embedding and image models are not offered as chat models",
        not any("embedding" in m or "imagen" in m for m in live))
+
+    # ORDER. A real Gemini key lists 31 models, including deep-research and antigravity ones,
+    # and our built-in order pinned gemini-2.5-flash above gemini-3.8-flash — an older model
+    # recommended by a months-old table, which is the staleness this whole function removes.
+    LIVE = ["gemini-2.5-flash", "antigravity-preview-05-2026", "gemini-3.8-flash",
+            "deep-research-preview-04-2026", "gemini-10-flash", "gemini-3.1-flash"]
+    llm._listed.clear()
+    with mock.patch.dict("os.environ", {"SECRETARY_MODEL": ""}), \
+         mock.patch.object(llm._IMPLS["gemini"], "credential", classmethod(lambda c: "K")), \
+         mock.patch.object(llm, "_live_models", lambda n: LIVE):
+        order = llm.offered("gemini")[0]
+    eq("the newest of the provider's own family comes first", order[0], "gemini-10-flash")
+    ok("compared as numbers, not text — 10 above 3.8",
+       order.index("gemini-10-flash") < order.index("gemini-3.8-flash"))
+    ok("and 3.8 above 2.5", order.index("gemini-3.8-flash") < order.index("gemini-2.5-flash"))
+    ok("models from another family sort last",
+       order.index("gemini-2.5-flash") < order.index("deep-research-preview-04-2026"))
+    llm._listed.clear()
+    with mock.patch.dict("os.environ", {"SECRETARY_MODEL": "gemini-2.5-flash"}), \
+         mock.patch.object(llm._IMPLS["gemini"], "credential", classmethod(lambda c: "K")), \
+         mock.patch.object(llm, "_live_models", lambda n: LIVE):
+        eq("but whatever is in use comes first of all",
+           llm.offered("gemini")[0][0], "gemini-2.5-flash")
 
     # An owner must be able to SEE what their instance is set to, even if it was retired.
     kept, _ = asking(GEMINI, env={"SECRETARY_MODEL": "gemini-3.1-pro"})
@@ -2020,11 +2047,36 @@ def test_hosted_model_lists() -> None:
     page = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
             / "settings.html").read_text()
     ok("the page says when the list is the built-in fallback", "models_from" in page)
-    # AND A NAME WE DO NOT KNOW MUST STILL BE REACHABLE. With a <select> the provider was
-    # unusable the moment every built-in name was wrong, which is exactly what happened.
-    ok("the hosted model field can be typed into", 'input class="hmodel"' in page)
-    ok("with the known names still offered as suggestions", "<datalist" in page)
-    ok("and no dropdown that would forbid the rest", 'select class="hmodel"' not in page)
+    # THE INVARIANT IS NOT "no dropdown" — an early version of this test said that, which was
+    # the wrong lesson from the same bug. A list you can SEE is the right control for the common
+    # case; what must also be true is that a name the list does not contain stays reachable.
+    ok("a keyed card shows the models as a list", 'select class="hmodel"' in page)
+    ok("and a name that is not on it can still be typed", 'hmodel typed' in page)
+    ok("reached by an explicit affordance, not by guessing", "data-typed=" in page)
+    # And the ORDER: a key alone is enough to learn the models, so it is asked for alone.
+    ok("a listable provider asks for the key by itself", "data-checkkey=" in page)
+    ok("which the server answers by listing, not by completing", "/api/provider/key" in page)
+    ok("the two model controls cannot be confused", ".typed[data-p=" in page)
+
+    # NOTHING TO DOWNLOAD MEANS NOTHING TO DO. A hosted model already running still offered
+    # "Use this", a button whose only effect is to re-attach what is attached.
+    ok("a running hosted model says so instead of offering an action", "'In use'" in page)
+    ok("and the button knows what is actually attached", "data-current=" in page)
+    ok("kept true as the selection changes", "syncUse" in page)
+
+    # WAITING IS A STATE. Checking a key is a round trip; the only feedback was a greyed button.
+    ok("a hosted wait shows the same bar a download does", ".bar.wait" in page)
+    ok("indeterminate, because the length is genuinely unknown", "@keyframes slide" in page)
+    ok("and it says what it is waiting on", "Checking the key with" in page)
+    # A PERCENTAGE WOULD HAVE TO BE INVENTED, and an invented one can be timed with a stopwatch.
+    ok("without claiming a percentage", "wait\"><i></i>" in page)
+
+    # `check_key` needs no model name — that inversion is the whole fix.
+    ok("every listable provider can be key-checked", all(llm.can_list(n) for n in llm._LISTING))
+    ok("and one without a listing endpoint says so plainly",
+       "no model-listing endpoint" in llm.check_key("bedrock", "x")[1])
+    eq("an empty key is refused before any request",
+       llm.check_key("gemini", "")[1], "Paste a key first.")
 
     # THE DEFAULT MODEL HAS ONE HOME. It was a literal in four functions, so a name Google does
     # not serve became the fallback for `client`, `configured`, `verify` and `summary` at once.

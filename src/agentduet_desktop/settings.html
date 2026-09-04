@@ -46,6 +46,11 @@
     background:rgba(16,185,129,.18);padding:.15rem .5rem;border-radius:999px;}
   .bar{height:.35rem;border-radius:999px;background:var(--slate700);overflow:hidden;}
   .bar i{display:block;height:100%;background:var(--accent);transition:width .3s;}
+  /* INDETERMINATE, for work whose length we genuinely cannot know — a round trip to a
+     provider. Same shell as the download bar, because it is the same kind of waiting from the
+     owner's side; a fake percentage would be a lie they could time with a stopwatch. */
+  .bar.wait i{width:34%;animation:slide 1.15s ease-in-out infinite;transition:none;}
+  @keyframes slide{0%{margin-left:0}50%{margin-left:66%}100%{margin-left:0}}
   .barlab{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;
     color:var(--faint);font-variant-numeric:tabular-nums;}
   .mrow{display:flex;align-items:center;gap:.7rem;padding:.6rem .7rem;border-radius:.6rem;
@@ -318,8 +323,12 @@
       </div>
 
       <div id="paneHosted" hidden>
-        <div id="hostedList"></div>
+        <!-- THE MESSAGE GOES ABOVE THE LIST. It was below it — under five provider cards, off
+             the bottom of a scrolling dialog — so choosing a model reported success into empty
+             space. All the owner saw was the card being pinned to the top, which is a side
+             effect of sorting, not feedback: "It just get moved to the top and nothing." -->
         <div id="mModelH"></div>
+        <div id="hostedList"></div>
       </div>
 
       <div id="paneLocal">
@@ -358,8 +367,20 @@
   const T = new URLSearchParams(location.search).get('t') || '';
   const $ = id => document.getElementById(id);
   const esc = s => (s || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
-  const say = (el, ok, text) =>
+  // WAITING IS A STATE, and it was not shown anywhere. Checking a key is a round trip to a
+  // provider and takes seconds; the only feedback was the button greying out, so the same
+  // "nothing happened" that hid the model-selection result also hid every wait before it.
+  const waiting = (el, label) => {
+    $(el).innerHTML = `<div class="msg"><div class="barlab"><span>${esc(label)}</span>
+      <span>working…</span></div><div class="bar wait"><i></i></div></div>`;
+    try { $(el).scrollIntoView({block: 'nearest', behavior: 'smooth'}); } catch (e) {}
+  };
+  const say = (el, ok, text) => {
     $(el).innerHTML = `<div class="msg ${ok ? 'ok' : 'no'}">${esc(text)}</div>`;
+    // Being in the right place is not enough when the pane scrolls: a message the owner has
+    // to hunt for is the same as no message. Nearest edge only, so the view does not jump.
+    try { $(el).scrollIntoView({block: 'nearest', behavior: 'smooth'}); } catch (e) {}
+  };
   async function post(path, body){
     const r = await fetch(`${path}?t=${T}`, {method:'POST',
       headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
@@ -842,33 +863,40 @@
         ${h.has_key && h.models_from !== 'live'
           ? `<div class="mwhat">Could not reach ${esc(h.family)} to list its models — showing the
                list built into this app, which may be out of date.</div>` : ''}
-        <!-- TYPEABLE, NOT A DROPDOWN. A <select> can only offer names this build knows, so when
-             every one of them was wrong — Google serves neither gemini-3.1-flash nor -pro — there
-             was no way to reach a working model at all, and the provider stayed unusable until
-             someone shipped a new binary. The suggestions remain, as a datalist; the field itself
-             accepts anything. offered() keeps those suggestions honest whenever a key exists,
-             and this covers the case where it cannot.
-             NO BACKTICKS IN HERE: this comment is inside a JS template literal, so a backtick
-             ends the string and the whole page's script dies with "missing ) after argument
-             list". Cost an hour, and every string-matching test passed while it was broken. -->
+        <!-- THE KEY FIRST, THEN THE LIST. A model name and a credential are two decisions,
+             and asking for both at once is what made a wrong name look like a wrong key: the
+             only names on offer were compiled into the build, two of them were fiction, and
+             the page reported NOT saved as though the key had failed.
+             So with a listable provider this asks for the key alone, checks it by LISTING
+             models (no tokens, and a 401 is unambiguous), and only then offers a real choice.
+             Bedrock has no listing endpoint, so it keeps the old key-and-model form — the
+             only way to check that key is to call a model with it.
+             A SELECT, not an input with a datalist: the datalist had no arrow and showed
+             nothing unless what you typed prefix-matched, so a real list looked like no list.
+             Typing is still reachable, behind the link, for a name too new to be listed.
+             NO BACKTICKS IN THIS COMMENT: it sits inside a JS template literal, and one
+             backtick ends the string and kills the whole script. -->
         <div class="mact">
           ${h.has_key
-            ? `<input class="hmodel" data-p="${esc(h.id)}" list="ml-${esc(h.id)}"
-                      value="${esc(h.in_use ? h.model : (h.models[0] || ''))}"
+            ? `<select class="hmodel" data-p="${esc(h.id)}"
+                       data-current="${esc(h.in_use ? h.model : '')}">
+                 ${h.models.map(m => `<option ${m === h.model ? 'selected' : ''}>${esc(m)}</option>`).join('')}
+               </select>
+               <input class="hmodel typed" data-p="${esc(h.id)}" hidden
                       placeholder="model name" spellcheck="false">
-               <datalist id="ml-${esc(h.id)}">
-                 ${h.models.map(m => `<option>${esc(m)}</option>`).join('')}
-               </datalist>
-               <button class="act use" data-use="${esc(h.id)}">Use this</button>
+               <button class="act use" data-use="${esc(h.id)}"
+                       ${h.in_use ? 'disabled' : ''}>${h.in_use ? 'In use' : 'Use this'}</button>
+               <a class="link" data-typed="${esc(h.id)}">Type a name instead</a>
                <button class="act" data-forget="${esc(h.id)}">Forget this key</button>`
+            : h.can_list
+            ? `<input class="hkey" type="password" data-p="${esc(h.id)}"
+                      placeholder="${esc(h.key_env)}" autocomplete="off">
+               <button class="act get" data-checkkey="${esc(h.id)}">Check key</button>`
             : `<input class="hkey" type="password" data-p="${esc(h.id)}"
                       placeholder="${esc(h.key_env)}" autocomplete="off">
-               <input class="hmodel" data-p="${esc(h.id)}" list="ml-${esc(h.id)}"
-                      value="${esc(h.models[0] || '')}" placeholder="model name"
-                      spellcheck="false">
-               <datalist id="ml-${esc(h.id)}">
+               <select class="hmodel" data-p="${esc(h.id)}">
                  ${h.models.map(m => `<option>${esc(m)}</option>`).join('')}
-               </datalist>
+               </select>
                <button class="act get" data-save="${esc(h.id)}">Check and save</button>`}
         </div>
         <details class="sizes">
@@ -883,12 +911,79 @@
         </details>
       </div>`).join('');
 
-    const pick = (p, cls) => (document.querySelector(`.${cls}[data-p="${p}"]`) || {}).value || '';
+    // TWO CONTROLS CARRY THE MODEL NAME on a keyed card: the select, and the input revealed by
+    // "Type a name instead". querySelector returns the first, so reading blindly would have sent
+    // the dropdown's value while the owner watched their typed name sit there ignored. The
+    // visible one wins.
+    const pick = (p, cls) => {
+      const typed = document.querySelector(`.${cls}.typed[data-p="${p}"]`);
+      if (typed && !typed.hidden) return typed.value.trim();
+      const el = document.querySelector(`.${cls}:not(.typed)[data-p="${p}"]`)
+              || document.querySelector(`.${cls}[data-p="${p}"]`);
+      return (el || {}).value || '';
+    };
     const send = async body => {
+      waiting('mModelH', body.name ? `Attaching ${body.name}` : 'Working');
       const r = await post('/api/models', body);
-      say('mModelH', r.ok, r.message);
+      // NAME THE MODEL BACK. The server's own message does not always contain it, and the one
+      // question the owner has after pressing Use this is which model they are now on.
+      say('mModelH', r.ok, r.ok && body.name ? `${r.message} Now using ${body.name}.` : r.message);
       if (r.ok) { refreshCurrent(); loadModels(); }
     };
+
+    // CHECK THE KEY ALONE, by listing. On success the card re-renders into its keyed state,
+    // whose select is populated from what the provider just told us it serves.
+    $('hostedList').querySelectorAll('[data-checkkey]').forEach(el => el.onclick = async () => {
+      const p = el.dataset.checkkey;
+      const key = (document.querySelector(`.hkey[data-p="${p}"]`) || {}).value || '';
+      const family = el.closest('.mcard').querySelector('.nm');
+      waiting('mModelH', `Checking the key with ${family ? family.textContent.trim() : p}`);
+      el.disabled = true;
+      const was = el.textContent;
+      el.textContent = 'Checking…';
+      const r = await post('/api/provider/key', {provider: p, key: key.trim()});
+      el.textContent = was;
+      el.disabled = false;
+      say('mModelH', r.ok, r.ok
+        ? `${r.message} Now choose one and press Use this.` : r.message);
+      if (r.ok) { refreshCurrent(); loadModels(); }
+    });
+
+    // NOTHING TO DOWNLOAD MEANS NOTHING TO DO. A hosted model that is already running still
+    // offered "Use this" — a button whose whole effect is to re-attach what is attached, which
+    // reads as an action and is not one. The local cards have said "in use" for months; this is
+    // the same state, and it has to follow the SELECTION rather than the render, because
+    // picking a different model from the same provider makes the button meaningful again.
+    const syncUse = p => {
+      const btn = document.querySelector(`[data-use="${p}"]`);
+      const sel = document.querySelector(`select.hmodel[data-p="${p}"]`);
+      if (!btn || !sel) return;
+      const same = pick(p, 'hmodel') === (sel.dataset.current || '\u0000');
+      btn.disabled = same;
+      btn.textContent = same ? 'In use' : 'Use this';
+    };
+    $('hostedList').querySelectorAll('select.hmodel').forEach(sel => {
+      sel.onchange = () => syncUse(sel.dataset.p);
+    });
+    $('hostedList').querySelectorAll('.hmodel.typed').forEach(inp => {
+      inp.oninput = () => syncUse(inp.dataset.p);
+    });
+
+    // The escape hatch for a model too new to be listed. Deliberately a link rather than a
+    // second field on show: the list is right almost always, and two inputs asking for the
+    // same thing is how the wrong one gets filled in.
+    $('hostedList').querySelectorAll('[data-typed]').forEach(el => el.onclick = () => {
+      const p = el.dataset.typed;
+      const sel = document.querySelector(`select.hmodel[data-p="${p}"]`);
+      const inp = document.querySelector(`.hmodel.typed[data-p="${p}"]`);
+      if (!inp) return;
+      const showing = !inp.hidden;
+      inp.hidden = showing;
+      if (sel) sel.hidden = !showing;
+      el.textContent = showing ? 'Type a name instead' : 'Choose from the list';
+      if (!showing) { inp.value = sel ? sel.value : ''; inp.focus(); }
+      syncUse(p);
+    });
     $('hostedList').querySelectorAll('[data-use]').forEach(el => el.onclick = () =>
       send({action: 'use_hosted', name: pick(el.dataset.use, 'hmodel'), provider: el.dataset.use}));
     $('hostedList').querySelectorAll('[data-other]').forEach(el => el.onclick = () => {
