@@ -1,4 +1,4 @@
-# Installing AgentDuet Desktop — alpha 7
+# Installing AgentDuet Desktop — alpha 8
 
 A secretary that runs on your own machine. It answers people who call or message you, escalates
 anything it should not decide alone, and can only act inside limits you set.
@@ -88,12 +88,12 @@ you do, what the secretary is allowed to act on. That part is a conversation, no
 ## Check it is working
 
 ```bash
-agentduet-desktop --version   # e.g. 0.1.0a7 (9e1185d) — binary
+agentduet-desktop --version   # e.g. 0.1.0a8 (<commit>) — binary
 agentduet-desktop status      # what is running, and what this build can do
 ```
 
 **Always quote `--version` when reporting anything.** The version alone is not enough — several
-different builds carry the same `0.1.0a7`, so the short code after it is what identifies yours.
+different builds carry the same `0.1.0a8`, so the short code after it is what identifies yours.
 `+dirty` means it was built from an uncommitted tree, which for a build you were given should
 not happen; if you see it, say so.
 
