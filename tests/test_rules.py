@@ -410,9 +410,15 @@ def test_carry_mode() -> None:
         # With no key, transcription is not necessarily off — the LOCAL engine is the whole
         # point of the fallback. What must hold is that it ANSWERS: hosted is unavailable, and
         # the engine is either local or nothing, never an exception.
-        with mock.patch.object(transcribe, "_local_available", return_value=False):
+        # APPLE'S ENGINE IS HELD OFF FOR THIS BLOCK, and that is not a convenience. These four
+        # assertions are about the HOSTED-versus-local question and were written when local was
+        # the only on-machine engine. Since 2026-09-03 a Mac with the helper genuinely has a
+        # second one, so leaving it live makes them assert "no engine" on a machine that has one
+        # — a true fact about Apple's engine failing a test about DashScope keys.
+        no_apple = mock.patch.object(transcribe, "_apple_bin", return_value=None)
+        with no_apple, mock.patch.object(transcribe, "_local_available", return_value=False):
             eq("with no key and no local engine, transcription is off", transcribe.engine(), "")
-        with mock.patch.object(transcribe, "_local_available", return_value=True):
+        with no_apple, mock.patch.object(transcribe, "_local_available", return_value=True):
             eq("with no key but a local engine, it still works", transcribe.engine(), "local")
     except Exception as exc:
         ok("asking for an absent credential does not raise", False, f"{type(exc).__name__}: {exc}")
@@ -795,10 +801,14 @@ def test_transcribe_queue() -> None:
     saved_key = _os2.environ.get("DASHSCOPE_API_KEY")
     _os2.environ["DASHSCOPE_API_KEY"] = "a-key-that-must-change-nothing"
     try:
-        with mock.patch.object(transcribe, "_local_available", return_value=True):
+        # Apple's engine held off for the same reason as the block above: the question here is
+        # whether a MODEL KEY can move transcription off this machine, and a second on-machine
+        # engine answering "apple" would fail that test while proving its point.
+        no_apple2 = mock.patch.object(transcribe, "_apple_bin", return_value=None)
+        with no_apple2, mock.patch.object(transcribe, "_local_available", return_value=True):
             eq("a model key does not move transcription off this machine",
                transcribe.engine(), "local")
-        with mock.patch.object(transcribe, "_local_available", return_value=False):
+        with no_apple2, mock.patch.object(transcribe, "_local_available", return_value=False):
             eq("and with no engine it is empty, not a remote fallback", transcribe.engine(), "")
     finally:
         if saved_key is None:
