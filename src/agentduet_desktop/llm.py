@@ -157,7 +157,17 @@ class _Local:
         if models.thinks(self.model) and not think:
             msgs.append({"role": "system", "content": "/no_think"})
         msgs.append({"role": "user", "content": prompt})
-        out = engine.create_chat_completion(
+        try:
+            out = self._generate(engine, msgs)
+        except Exception as exc:
+            raise RuntimeError(_local_failure(exc, self.model)) from exc
+        answer = out["choices"][0]["message"]["content"] or ""
+        # A caller that ASKED for reasoning gets to keep it; everyone else gets the answer only.
+        # Nobody passes think=True today, which is why the monologue was reaching owner_chat.json.
+        return answer.strip() if think else _without_thinking(answer)
+
+    def _generate(self, engine, msgs):
+        return engine.create_chat_completion(
             messages=msgs,
             temperature=TEMPERATURE,
             # NOT llama.cpp's default. `create_chat_completion` defaults this to 1.0 — no
@@ -172,12 +182,26 @@ class _Local:
             # Room for a transcript summary. A cap small enough to truncate does not error; it
             # returns a confident half-answer, which is worse.
             max_tokens=2048)
-        answer = out["choices"][0]["message"]["content"] or ""
-        # A caller that ASKED for reasoning gets to keep it; everyone else gets the answer only.
-        # Nobody passes think=True today, which is why the monologue was reaching owner_chat.json.
-        return answer.strip() if think else _without_thinking(answer)
 
 
+def _local_failure(exc: Exception, model: str) -> str:
+    """Turn a llama.cpp failure into something an owner can act on.
+
+    `RuntimeError: llama_decode returned -3` reached the page as a bare HTTP 500 — no message,
+    no cause, nothing to do about it. It is almost always memory: a second process holding a
+    model is enough on 16 GB, where one 8B is already ~6 GB resident. Seen exactly that way here,
+    with the daemon and a terminal each loading one.
+
+    The context being full produces the same class of error, so both are named rather than
+    guessing between them.
+    """
+    text = str(exc)
+    if "llama_decode" in text or "llama_batch" in text:
+        return (f"{model} could not generate a reply. This is almost always memory — another "
+                f"process holding a model is enough, since an 8B needs about 6 GB resident. "
+                f"Close anything else running a model, or pick a smaller one in Settings. "
+                f"(A full context window gives the same error.) [{text}]")
+    return f"{model} failed: {text}"
 
 
 def _without_thinking(text: str) -> str:
