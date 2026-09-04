@@ -420,6 +420,38 @@ LANGUAGES = [("en", "English"), ("vi", "Vietnamese"), ("zh", "Chinese"),
              ("ms", "Malay"), ("th", "Thai")]
 
 
+def offer_thinking(interactive: bool = True) -> None:
+    """Offer reasoning mode, but ONLY if the attached model can honour it.
+
+    Asked here for parity with the settings page — a setting reachable from one surface is a
+    setting half the owners cannot change, and this file has drifted from that page twice.
+
+    SKIPPED SILENTLY when the model cannot reason, which is most of them: Gemini has no dial
+    and Claude reasons adaptively already. Asking anyway would be a question whose answer
+    changes nothing.
+
+    The numbers are in the prompt because they decide the answer. Measured on an M5
+    (docs/experiments/local-model-speed.md): 26s against 1.46s on a greeting, and on a question
+    that invites re-checking it burned 6,877 reasoning tokens and 172 seconds to reach an answer
+    it gets right in 1.0 second with thinking off.
+    """
+    if not interactive:
+        return
+    from . import llm, owner, tools
+    if not llm.supports_thinking():
+        return
+    print("\n  Let the model think before answering?")
+    print("  It writes out its reasoning first. On this model that is much slower and rarely")
+    print("  better: a greeting took 26 seconds against 1.5, and a simple arithmetic question")
+    print("  did not finish at all until the token budget was quadrupled.")
+    now = "yes" if owner.thinking() else "no"
+    pick = _prompt(f"\n  yes/no [{now}]: ").strip().lower()
+    if not pick:
+        return
+    tools.set_setting("thinking", "yes" if pick in ("y", "yes", "on", "true") else "no")
+    print(f"  -> thinking is {'on' if owner.thinking() else 'off'}")
+
+
 def choose_language(interactive: bool = True) -> None:
     """Pin the transcription language.
 
@@ -593,6 +625,8 @@ def main(interactive: bool = True) -> int:
     who_you_are(interactive)
     choose_language(interactive)
     choose_quality(interactive)
+    # After the model is chosen, since whether this question exists depends on which model.
+    offer_thinking(interactive)
     where_recordings_go(interactive)
     offer_speech_model(interactive)
     installed = offer_install(interactive)

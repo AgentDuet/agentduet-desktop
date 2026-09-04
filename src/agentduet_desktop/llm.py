@@ -161,23 +161,35 @@ class _Local:
         #
         # DeepSeek-R1 does not honour the switch — it always reasons — so the strip below is
         # what makes those models usable at all, at the cost of generating tokens nobody reads.
+        # THE OWNER'S SETTING DECIDES, and an explicit argument still wins. Nothing passes
+        # think=True today, so before the toggle existed this was always the suppressed path.
+        think = think or thinking_on(self.model)
         msgs = []
         if models.thinks(self.model) and not think:
             msgs.append({"role": "system", "content": "/no_think"})
         msgs.append({"role": "user", "content": prompt})
         try:
-            out = self._generate(engine, msgs)
+            out = self._generate(engine, msgs, think)
         except Exception as exc:
             raise RuntimeError(_local_failure(exc, self.model)) from exc
         answer = out["choices"][0]["message"]["content"] or ""
-        # A caller that ASKED for reasoning gets to keep it; everyone else gets the answer only.
-        # Nobody passes think=True today, which is why the monologue was reaching owner_chat.json.
-        return answer.strip() if think else _without_thinking(answer)
+        # THE MONOLOGUE IS STRIPPED EITHER WAY, which splits what `think` used to mean. It said
+        # both "reason" and "show me the reasoning"; those are different wants, and the second
+        # was never anybody's — turning thinking on is a bid for a better ANSWER. What the owner
+        # must not get is 7,000 tokens of deliberation in their chat history.
+        return _thought_answer(answer, self.model, think)
 
-    def _generate(self, engine, msgs):
+    def _generate(self, engine, msgs, think: bool = False):
         return engine.create_chat_completion(
             messages=msgs,
-            temperature=TEMPERATURE,
+            # TEMPERATURE 0 IS WRONG FOR REASONING, and this is not a preference. Qwen warns
+            # that greedy decoding sends its thinking mode into endless repetition, and that is
+            # exactly what was measured: at temperature 0 the 8B exhausted 2,048 tokens with no
+            # answer on all three test questions. Their recommended sampling for thinking mode
+            # is 0.6 / 0.95 / 20, so thinking brings its own — while everything else stays at 0,
+            # where a settings page and a summary want determinism.
+            temperature=0.6 if think else TEMPERATURE,
+            **({"top_p": 0.95, "top_k": 20} if think else {}),
             # NOT llama.cpp's default. `create_chat_completion` defaults this to 1.0 — no
             # penalty at all — while llama.cpp's own CLI uses 1.1, so leaving it unset silently
             # buys "repetition is free". With TEMPERATURE at 0 that is near-greedy decoding with
@@ -189,7 +201,13 @@ class _Local:
             repeat_penalty=1.1,
             # Room for a transcript summary. A cap small enough to truncate does not error; it
             # returns a confident half-answer, which is worse.
-            max_tokens=2048)
+            #
+            # REASONING NEEDS FAR MORE, measured rather than guessed: on "what are the last 4
+            # digits of 12345678" the 1.7B spent 6,877 tokens of <think> before answering, and
+            # 2,048 produced nothing at all — not a poor answer, an empty one. 8,192 is enough
+            # for that case and is the honest cost of the setting; the truncation path below
+            # covers what happens when even that runs out.
+            max_tokens=8192 if think else 2048)
 
 
 def _local_failure(exc: Exception, model: str) -> str:
@@ -210,6 +228,24 @@ def _local_failure(exc: Exception, model: str) -> str:
                 f"Close anything else running a model, or pick a smaller one in Settings. "
                 f"(A full context window gives the same error.) [{text}]")
     return f"{model} failed: {text}"
+
+
+def _thought_answer(answer: str, model: str, think: bool) -> str:
+    """What the owner sees after a reasoning turn: the answer, never the monologue.
+
+    AND AN HONEST FAILURE WHEN IT DID NOT FINISH. A run that hits its token budget mid-thought
+    has no closing tag and no answer — `_without_thinking` keeps the words in that case, which
+    is right when a normal reply was truncated and badly wrong here: it would hand the owner
+    thousands of tokens of deliberation as though it were the reply. Measured on both models
+    and at both temperatures, so it is the expected outcome of a hard question rather than an
+    edge case.
+    """
+    text = (answer or "").strip()
+    if think and "<think>" in text and "</think>" not in text:
+        return ("The model was still working through it when it ran out of room, so there is no "
+                f"answer to show. Ask again more simply, or turn thinking off for {model} in "
+                "Settings — it answers most questions faster and just as well without it.")
+    return _without_thinking(text)
 
 
 def _without_thinking(text: str) -> str:
@@ -372,13 +408,22 @@ class _DashScope:
         defence: some builds put a literal `<think>` block in the content instead, and that
         would break `_json` parsing rather than raising.
         """
+        # THE SAME SETTING AS THE LOCAL ENGINE. These are the only two implementations that
+        # honour thinking, so the toggle has to reach both or it means one thing on a downloaded
+        # Qwen and nothing on the hosted one.
+        think = think or thinking_on(self.model)
         body = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": TEMPERATURE,
+            # Reasoning brings its own sampling here too — DashScope serves the same Qwen3
+            # family, and greedy decoding is what makes it loop. 0 elsewhere, where the callers
+            # want a deterministic classification.
+            "temperature": 0.6 if think else TEMPERATURE,
             "max_tokens": MAX_TOKENS,
             "enable_thinking": bool(think),
         }
+        if think:
+            body |= {"top_p": 0.95, "top_k": 20}
         if not think:
             return _strip_thinking(self._once(body)).strip()
         body["stream"] = True
@@ -615,6 +660,41 @@ def verify(model: str = "") -> tuple[bool, str]:
 #: right for a log and wrong for a settings page — nobody bought a "dashscope".
 _VENDOR = {"gemini": "Google", "anthropic": "Anthropic", "dashscope": "Alibaba",
            "local": "this machine", "xai": "xAI", "bedrock": "Amazon"}
+
+
+def supports_thinking(model: str = "") -> bool:
+    """Can this model be told to reason before answering — and will anything honour it?
+
+    NOT every provider, and that is the whole reason this function exists rather than a
+    `models.thinks()` call at the point of use. Four of the five hosted implementations accept
+    `think` and ignore it: Gemini flash has no dial, and Claude 5's reasoning is adaptive and
+    already on, so a toggle there would promise the owner a change it cannot make. The two that
+    honour it are the local engine and DashScope, whose compatible endpoint enables Qwen3
+    reasoning on a streamed request.
+    """
+    from . import models
+    m = model or os.getenv("SECRETARY_MODEL") or ""
+    if not m:
+        return False
+    if models.thinks(m):                        # a local reasoning family
+        return True
+    # Hosted Qwen. Asked of the NAME, never of `provider()`: that function deliberately lets
+    # SECRETARY_PROVIDER win over its own argument, so with a Gemini model attached it answers
+    # "gemini" for `qwen3.6-flash` and this returned False for a model that does support
+    # reasoning. Second time that trap has bitten today, hence the note.
+    return any(pre in m.lower() for pre in _PROVIDERS["dashscope"])
+
+
+def thinking_on(model: str = "") -> bool:
+    """Whether reasoning is enabled RIGHT NOW: the owner asked for it, and this model can.
+
+    Read at use time from settings.md, per the .env/settings rule — a value the owner can
+    change must not be captured at import.
+    """
+    if not supports_thinking(model):
+        return False
+    from . import owner
+    return owner.thinking()
 
 
 def _vendor_of_name(model: str) -> str:

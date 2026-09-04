@@ -231,7 +231,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                       "never_say": "The never-say list", "calls": "What happens to a call",
                       "record_calls": "Call recording", "language": "Language",
                       "transcription": "Transcription quality",
-                      "recordings": "Recordings folder"}
+                      "recordings": "Recordings folder", "thinking": "Thinking"}
 
     def _saved(field: str, value: str) -> str:
         """How the page says a setting was stored. The ONLY phrasing for it."""
@@ -407,11 +407,17 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         # $AGENTDUET_HOME differs by platform and by install, and a Mac owner told to look in
         # /home/... would reasonably conclude the feature had not run. Sent as an absolute path
         # so it can be pasted into a file manager.
-        from . import carry, owner as _own
+        from . import carry, llm as _llm, owner as _own
         cur["calls"] = _own.calls()
         cur["transcription"] = _own.transcription_quality()
         cur["language"] = _own.language()
         cur["record_calls"] = _own.record_calls()
+        # THE TOGGLE ONLY EXISTS FOR SOME MODELS. Gemini has no dial and Claude reasons
+        # adaptively already, so showing a switch there would promise a change it cannot make.
+        # The page hides the row rather than disabling it: a switch that does nothing is worse
+        # than no switch, and the reason is not visible from the row itself.
+        cur["thinking"] = _own.thinking()
+        cur["thinking_possible"] = _llm.supports_thinking()
         cur["recordings_dir"] = str(carry.recordings() / carry.ANSWERED)
         cur["carried_dir"] = str(carry.recordings())
         # False until the backend has a sign-in endpoint. The page uses it to decide whether to

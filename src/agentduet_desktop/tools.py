@@ -304,7 +304,11 @@ SETTING_FIELDS = {"name": "Name", "pronoun": "Pronoun", "voice": "Voice",
                   "transcription": "Transcription",
                   # Where the audio goes. An absolute path; anything else falls back to the
                   # default rather than raising — see owner.recordings_dir().
-                  "recordings": "Recordings"}
+                  "recordings": "Recordings",
+                  # Whether a reasoning model monologues first. Only meaningful on some models
+                  # (llm.supports_thinking), and off unless the value is an explicit yes —
+                  # measured at ~100x slower on a question it answers correctly without.
+                  "thinking": "Thinking"}
 def _section_bullets(doc: pathlib.Path, heading: str) -> list[str]:
     """The `- ` bullets under one `## ` heading."""
     if not doc.is_file():
