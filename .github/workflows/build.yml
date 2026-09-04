@@ -22,7 +22,15 @@ jobs:
       fail-fast: false          # a Windows failure must not hide a working Mac build
       matrix:
         include:
-          - os: macos-14        # Apple silicon
+          # macos-26, NOT macos-14, and the reason is the SDK rather than the hardware.
+          # AgentDuetSTT calls SpeechAnalyzer/SpeechTranscriber, which are macOS 26 APIs. The
+          # `@available(macOS 26.0, *)` guard in that code governs RUNTIME — it still has to
+          # COMPILE, and macos-14 is Sonoma, whose SDK has no such symbols. The build failed
+          # there with "cannot find SpeechTranscriber in scope" while succeeding on a developer
+          # Mac running 26.6.2, which is exactly the shape of bug a CI runner exists to catch.
+          # The deployment target stays macOS 13 (Package.swift), so the binary still runs on
+          # older Macs and reports "needs macOS 26" rather than crashing.
+          - os: macos-26        # Apple silicon, and the only image with the macOS 26 SDK
             name: macos-arm64
           # NO INTEL MAC BUILD — removed 2026-08-04, deliberately.
           #
