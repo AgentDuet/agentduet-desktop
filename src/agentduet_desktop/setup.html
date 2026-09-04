@@ -43,6 +43,16 @@
   .ptop .tile{background:rgba(37,99,235,.2);border:1px solid rgba(59,130,246,.3);}
   .field{display:flex;flex-direction:column;gap:.5rem;}
   .frow{display:flex;gap:.5rem;}
+  /* The model row. Matches the folder field rather than inventing a look: it is the same kind
+     of question, asked once, on the same panel. */
+  #setupModel{width:100%;padding:.5rem .6rem;border-radius:.5rem;background:var(--slate900);
+    color:#fff;border:1px solid var(--line);font:inherit;font-size:.8rem;}
+  .opt{font-size:10px;color:var(--faint);font-weight:400;text-transform:uppercase;
+    letter-spacing:.04em;margin-left:.4rem;}
+  .hint{font-size:11px;color:var(--faint);line-height:1.45;margin:0;}
+  .skiprow{padding-top:.75rem;}
+  .skiprow a{color:var(--faint);text-decoration:underline;}
+  .skiprow a:hover{color:#fff;}
   .frow input{flex:1;}
   .browse{padding:.5rem .75rem;background:var(--slate800);color:#fff;border-radius:.5rem;
     font:inherit;font-size:.75rem;font-weight:500;border:1px solid rgba(255,255,255,.1);
@@ -99,6 +109,13 @@
         <span>Continue with Microsoft</span></button>
     </div>
     <div id="mSso"></div>
+    <!-- THE SKIP HAS TO BE VISIBLE. Single sign-on is not deployed yet, so every one of the
+         buttons above answers "not connected — continue" and moves on. That made skipping a
+         side effect of pressing something that looks mandatory, and a tester reads the screen
+         as blocked. The buttons stay, being the design we agreed; what was missing was a way
+         past them that says so. -->
+    <p class="foot skiprow"><a href="#" id="skipSso">Set up without signing in</a>
+      <span id="skipWhy"></span></p>
     <p class="foot">B3Networks Power Mobile AI Protocol • v1.0</p>
   </div>
 
@@ -120,6 +137,22 @@
           <button class="browse" id="doBrowse">
             <span class="material-symbols-rounded">folder</span> Browse</button>
         </div>
+      </div>
+
+      <!-- OPTIONAL, AND IT STARTS IN THE BACKGROUND. The console `init` has offered a local
+           model since 2026-09-04 and this page never did, so a tester who set up here was
+           never asked and had to find Settings afterwards. Only local models are offered:
+           starting a multi-gigabyte download early is the thing that benefits from being
+           asked now, whereas a hosted key is a 20-second job that belongs in the one place
+           that does it well. The download outlives this page and attaches itself when it
+           lands. -->
+      <div class="field">
+        <label>AI model <span class="opt">optional</span></label>
+        <select id="setupModel">
+          <option value="">Choose later in Settings</option>
+        </select>
+        <p class="hint" id="modelHint">A model is only needed for the assistant and for
+          summaries. Recording and transcription work without one.</p>
       </div>
 
       <div class="numcard">
@@ -195,10 +228,15 @@
   // and the token goes with the tab. Arriving from Settings is the opposite case — the daemon
   // is theirs and running, and stopping it to back out of a screen they opened by choice is a
   // trap. So that path gets Cancel, which only navigates.
+  // Straight past sign-in. Not a hidden path: the link is on screen, and when single sign-on
+  // is not deployed it says so beside itself rather than after a wasted click.
+  $('skipSso').onclick = e => { e.preventDefault(); show('setup'); };
+
   const FROM = new URLSearchParams(location.search).get('from') || '';
   let DONE = false;
   fetch(`/api/setup/current?t=${T}`).then(r => r.json()).then(d => {
     OAUTH = !!d.oauth_available;
+    $('skipWhy').textContent = OAUTH ? '' : '— single sign-on is not switched on yet';
     DONE = !!d.setup_done;
     if (FROM === 'settings' || DONE) {
       $('doCancel').parentElement.hidden = true;
@@ -207,6 +245,27 @@
     $('folder').value = d.carried_dir || '';
     $('num').textContent = d.phone || '—';
     if (d.phone) { $('lineNum').textContent = d.phone; $('lineBadge').classList.add('on'); }
+  }).catch(() => {});
+
+  // ONE GATE, ANSWERED BY THE SERVER. `offerable` folds together memory (can this load) and
+  // disk (is there room for the file) — two different questions that this page first got
+  // wrong by filtering on the disk one, which would have offered a 9 GB download to a machine
+  // with no memory to load it. The console asks the same field, so the two setup surfaces
+  // cannot disagree about which models exist for this machine.
+  fetch(`/api/models?t=${T}`).then(r => r.json()).then(d => {
+    const sel = $('setupModel');
+    (d.models || []).filter(m => m.offerable).forEach(m => {
+      const o = document.createElement('option');
+      o.value = m.id;
+      o.textContent = m.state === 'downloaded'
+        ? `${m.name} — already on this machine`
+        : `${m.name} — ${m.dl_gb} GB download`;
+      sel.appendChild(o);
+    });
+    if (!(d.models || []).some(m => m.offerable)) {
+      $('modelHint').textContent = 'No local model fits this machine\u2019s memory. '
+        + 'Attach a hosted provider in Settings instead.';
+    }
   }).catch(() => {});
 
   $('doBrowse').onclick = () => say('mDone', false,
@@ -218,6 +277,14 @@
     // — there it is a daemon restart fired from a Settings button.
     if (DONE) { location.href = '/?t=' + T; return; }
     $('doDone').disabled = true;
+    const want = $('setupModel').value;
+    if (want) {
+      // Started, not waited for. A multi-gigabyte fetch must not hold the installer open, and
+      // the server's download is a detached child that attaches the model when it lands.
+      const m = await post('/api/models', {action: 'download', name: want});
+      say('mDone', m.ok, m.ok ? `${m.message} It continues in the background.` : m.message);
+      if (!m.ok) { $('doDone').disabled = false; return; }
+    }
     const d = await post('/api/handover', {});
     $('doDone').disabled = false;
     if (d.ok) { location.href = '/?t=' + T; return; }

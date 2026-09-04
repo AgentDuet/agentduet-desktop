@@ -623,6 +623,13 @@ def listing() -> list[dict]:
             "dl_gb": round(spec["dl_mb"] / 1024, 1), "ram_gb": round(spec["ram_mb"] / 1024, 1),
             "state": state(name), "fit": fit, "why": why,
             "can_download": room, "room_why": room_why,
+            # ONE ANSWER TO "may this be offered", computed here so no surface has to
+            # reconstruct it. The two gates are about different resources — `can_run` is
+            # memory, `can_download` is disk, and its docstring says so — and a first-run
+            # wizard that filtered on the disk one offered a 9 GB fetch to a machine with no
+            # memory to load it, which is exactly the refusal-after-download the split exists
+            # to prevent. `init` had it right and the page did not; now neither decides.
+            "offerable": fit != "no" and (state(name) == "downloaded" or room),
             "in_use": name == live,
             # The other weights of this family, carried inline: the list is small and a
             # second round trip to expand one row is a spinner for nothing.

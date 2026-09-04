@@ -1154,6 +1154,29 @@ def test_setup_mode() -> None:
     # `messages` is absent for the SAME reason, and was born that way on 2026-08-28: relaying is
     # the product on that channel too, the seeded settings.md says `carry`, and "should an agent
     # answer your chats?" is not a first-run question. Both modes are edited in settings.md.
+    # AND FROM THE FIRST-RUN WIZARD, which this check missed for a day because it compares
+    # `init.py` against `settings.html` — the hub, not the installer. `init` offered a local
+    # model and setup.html did not, so a tester who set up in the browser was never asked.
+    setup_page = (src / "setup.html").read_text()
+    ok("the wizard offers a model too", "setupModel" in setup_page)
+    ok("optional, and it says so", 'value=""' in setup_page and "Choose later" in setup_page)
+    ok("and the fetch is not waited for", "continues in the background" in setup_page)
+
+    # ONE GATE, NOT TWO. `can_run` is memory and `can_download` is disk — different questions,
+    # and the wizard first filtered on the disk one. On a 16 GB Mac with 371 GB free that
+    # offered gpt-oss-20b: a 10.8 GB download for a model needing 14.1 GB of memory. So the
+    # server answers "may this be offered" once and both surfaces read that field.
+    ok("the wizard filters on the shared field", "m.offerable" in setup_page)
+    ok("which the console's gate agrees with", "can_run(name)" in init_src)
+    from agentduet_desktop import models as _models
+    listed = {m["id"]: m for m in _models.listing()}
+    for mid, m in listed.items():
+        if m["fit"] == "no":
+            ok(f"{mid} cannot be offered: {m['why'][:44]}", not m["offerable"])
+        if m["state"] == "downloaded":
+            ok(f"{mid} is already here, so it is offerable", m["offerable"])
+    ok("something was actually checked", bool(listed))
+
     # A LOCAL MODEL IS CHOOSABLE FROM BOTH SURFACES. The page has offered them since
     # 2026-08-27 while the console asked only for an API key — which sent the owner this path
     # exists for (no key, carrying calls) off to sign up for something they will never call.
