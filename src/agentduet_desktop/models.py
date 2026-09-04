@@ -204,6 +204,22 @@ CATALOGUE = {
 
 # ---- what is on disk -----------------------------------------------------------------------
 
+#: Families that REASON OUT LOUD by default — they emit a <think> monologue before answering.
+#: Prefixes rather than a flag on every catalogue row: it is a property of the family, and a
+#: hand-maintained per-model boolean is one more thing to forget when a model is added.
+REASONING_FAMILIES = ("qwen3-", "deepseek-r1-")
+
+
+def thinks(model: str) -> bool:
+    """Does this model monologue before answering?
+
+    Measured on an M5 (docs/experiments/local-model-speed.md): Qwen3 8B took 10.84s per turn
+    thinking and 1.50s with it suppressed — 7.2x — because it wrote 237 tokens where 18 were
+    needed. On "Hi, are you there?" that was 454 tokens of <think> and 41 characters of reply.
+    """
+    return model.lower().startswith(REASONING_FAMILIES)
+
+
 def spec_of(model: str) -> dict | None:
     """The catalogue entry, or a custom one the owner added. Curated wins on a name clash."""
     return CATALOGUE.get(model) or custom().get(model)

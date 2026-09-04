@@ -23,6 +23,7 @@ WHAT DIFFERS BETWEEN PROVIDERS, and why it is handled here rather than pushed up
 import json
 import logging
 import os
+import re
 import pathlib
 
 from . import paths
@@ -140,8 +141,24 @@ class _Local:
         # LOADED ONCE AND KEPT. `models.load` returns the resident engine when it is already the
         # one asked for, so a second summary does not re-read gigabytes from disk. Releasing it
         # is the owner's call, through unload — see the three states in models.py.
+        # ASK IT NOT TO THINK, IN A SYSTEM MESSAGE — never by appending to the owner's text.
+        #
+        # Qwen3 and friends monologue before answering, and for this app that is 7.2x of wall
+        # time for nothing an owner sees: on "Hi, are you there?" the 8B wrote 454 tokens of
+        # <think> and 41 characters of reply. `/no_think` is Qwen3's own switch and this GGUF's
+        # template does NOT strip it, so it arrives as literal text — appended to the question
+        # it becomes part of the question. Asked "What's the last 4 digits of 12345678", the
+        # model answered "the question is incomplete... this seems like a typo", spent 13
+        # seconds on it, and quoted the switch back. A system message cannot do that.
+        #
+        # DeepSeek-R1 does not honour the switch — it always reasons — so the strip below is
+        # what makes those models usable at all, at the cost of generating tokens nobody reads.
+        msgs = []
+        if models.thinks(self.model) and not think:
+            msgs.append({"role": "system", "content": "/no_think"})
+        msgs.append({"role": "user", "content": prompt})
         out = engine.create_chat_completion(
-            messages=[{"role": "user", "content": prompt}],
+            messages=msgs,
             temperature=TEMPERATURE,
             # NOT llama.cpp's default. `create_chat_completion` defaults this to 1.0 — no
             # penalty at all — while llama.cpp's own CLI uses 1.1, so leaving it unset silently
@@ -155,9 +172,27 @@ class _Local:
             # Room for a transcript summary. A cap small enough to truncate does not error; it
             # returns a confident half-answer, which is worse.
             max_tokens=2048)
-        return (out["choices"][0]["message"]["content"] or "").strip()
+        answer = out["choices"][0]["message"]["content"] or ""
+        # A caller that ASKED for reasoning gets to keep it; everyone else gets the answer only.
+        # Nobody passes think=True today, which is why the monologue was reaching owner_chat.json.
+        return answer.strip() if think else _without_thinking(answer)
 
 
+
+
+def _without_thinking(text: str) -> str:
+    """Drop a reasoning model's <think> monologue, which is for the model and not the owner.
+
+    It was being stored in owner_chat.json and rendered: 1,816 characters of deliberation about
+    a two-word greeting, in front of 41 characters of answer. The same class of bug as showing
+    model-facing text anywhere else.
+
+    An UNCLOSED block means the model was still thinking when max_tokens ran out. The tag is
+    removed and the text kept, because a truncated thought is at least something; returning ""
+    would turn a slow answer into a silent one.
+    """
+    without = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
+    return without.replace("<think>", "").replace("</think>", "").strip()
 
 
 class _Anthropic:
