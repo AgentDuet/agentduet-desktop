@@ -2026,6 +2026,16 @@ def test_hosted_model_lists() -> None:
     ok("with the known names still offered as suggestions", "<datalist" in page)
     ok("and no dropdown that would forbid the rest", 'select class="hmodel"' not in page)
 
+    # THE DEFAULT MODEL HAS ONE HOME. It was a literal in four functions, so a name Google does
+    # not serve became the fallback for `client`, `configured`, `verify` and `summary` at once.
+    eq("the fallback model is the catalogue's own first pick",
+       llm.fallback_model(), llm.HOSTED[llm.DEFAULT_PROVIDER]["models"][0])
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "llm.py").read_text()
+    ok("and no function spells a vendor's model name into its control flow",
+       'or "gemini' not in src and "or 'gemini" not in src)
+    ok("the names proven absent are gone", "gemini-3.1" not in
+       "".join(str(v["models"]) for v in llm.HOSTED.values()))
+
 
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")

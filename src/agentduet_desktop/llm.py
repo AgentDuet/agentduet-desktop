@@ -54,6 +54,10 @@ logger = logging.getLogger("secretary.llm")
 #: qwen is matched by its full catalogue id (`qwen3-8b`), never by the bare word.
 _PROVIDERS = {"gemini": ("gemini",), "anthropic": ("claude",), "dashscope": ("qwen",)}
 
+#: Where an unrecognised name is routed, and whose first catalogue entry is the
+#: fallback model. Named once so the two cannot drift apart.
+DEFAULT_PROVIDER = "gemini"
+
 #: Gemini honours it; the Claude 5 family rejects any non-default value with a 400, so the
 #: Anthropic path cannot send it. Consequence worth knowing rather than hiding: borderline
 #: escalate-or-answer decisions are repeatable on Gemini and only mostly repeatable on
@@ -83,7 +87,7 @@ def provider(model: str = "") -> str:
     for prov, prefixes in _PROVIDERS.items():
         if any(p in name for p in prefixes):
             return prov
-    return "gemini"
+    return DEFAULT_PROVIDER
 
 
 class _Gemini:
@@ -504,13 +508,29 @@ _IMPLS = {"gemini": _Gemini, "anthropic": _Anthropic, "dashscope": _DashScope,
 _cached: dict[str, object] = {}
 
 
+def fallback_model() -> str:
+    """The model to assume when nothing is configured and a caller needs a name anyway.
+
+    FOUR FUNCTIONS SPELLED THIS OUT AS A LITERAL, and a literal in control flow is a guess
+    about someone else's catalogue that nobody will revisit. `gemini-3.1-flash` was that guess
+    in `client`, `configured`, `verify` and `summary` — and Google does not serve it, so a
+    fresh install with a Gemini key and no explicit choice hit `404 NOT_FOUND` from four
+    directions. Now the name lives once, in HOSTED, where `offered()` can also correct it.
+
+    The catalogue's own first entry, because HOSTED lists each provider's models in our
+    preferred order — the same order `offered()` keeps at the top of the page.
+    """
+    picks = HOSTED.get(DEFAULT_PROVIDER, {}).get("models") or []
+    return picks[0] if picks else ""
+
+
 def client(model: str = ""):
     """The live client for `model`, or None when no key is configured.
 
     Cached per (provider, model). Returning None rather than raising is deliberate: the
     agent must degrade to escalating everything when no model is attached, not crash.
     """
-    m = model or os.getenv("SECRETARY_MODEL") or "gemini-3.1-flash"
+    m = model or os.getenv("SECRETARY_MODEL") or fallback_model()
     prov = provider(m)
     hit = _cached.get(f"{prov}:{m}")
     if hit is not None:
@@ -546,7 +566,7 @@ def configured(model: str = "") -> bool:
     an assistant is curious; spending a token and a round-trip on each one is a cost nobody
     agreed to.
     """
-    return client(model or os.getenv("SECRETARY_MODEL") or "gemini-3.1-flash") is not None
+    return client(model or os.getenv("SECRETARY_MODEL") or fallback_model()) is not None
 
 
 def verify(model: str = "") -> tuple[bool, str]:
@@ -560,7 +580,7 @@ def verify(model: str = "") -> tuple[bool, str]:
     key, a spend cap needs a billing change, and both are otherwise reported as "the model
     isn't working".
     """
-    m = model or os.getenv("SECRETARY_MODEL") or "gemini-3.1-flash"
+    m = model or os.getenv("SECRETARY_MODEL") or fallback_model()
     c = client(m)
     if c is None:
         return False, f"No credential found for {provider(m)}."
@@ -657,7 +677,7 @@ def describe(model: str = "") -> str:
     authenticated. Distinguishing "key" from "signed in" matters: an expired OAuth login
     looks exactly like no model attached (everything escalates), so the owner needs to be
     able to see which one they have."""
-    m = model or os.getenv("SECRETARY_MODEL") or "gemini-3.1-flash"
+    m = model or os.getenv("SECRETARY_MODEL") or fallback_model()
     prov = provider(m)
     impl = _IMPLS[prov]
     cred = impl.credential()
@@ -709,9 +729,20 @@ HOSTED = {
         models=["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5"],
         what="Strongest on instruction-following and long transcripts. Also accepts a "
              "`claude` CLI login instead of a key."),
+    # THESE TWO NAMES WERE FICTION, and they were also this module's hardcoded default, so a
+    # fresh install with a Google key and no explicit choice met `404 NOT_FOUND
+    # models/gemini-3.1-flash is not found for API version v1beta` from four call sites at once
+    # (2026-09-04). Nothing in the repo but this table ever mentioned `gemini-3.1-*`; where the
+    # name came from is unknown. Replaced with the newest Gemini names this codebase can attest
+    # to having existed — which is NOT the same as confirming Google still serves them, and
+    # cannot be from here, because we hold no Google key.
+    #
+    # THAT IS WHY `offered()` EXISTS. With a key the list comes from Google and this entry is
+    # only the offline fallback; without one, the field beside it is typeable. Both were added
+    # the same day, for this.
     "gemini": dict(
         brand="GOOGLE", family="Gemini",
-        models=["gemini-3.1-flash", "gemini-3.1-pro"],
+        models=["gemini-2.5-flash", "gemini-2.5-pro"],
         what="Fast and inexpensive. The default this project was built against."),
     "dashscope": dict(
         brand="ALIBABA", family="Qwen",
