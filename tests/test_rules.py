@@ -1186,6 +1186,17 @@ def test_setup_mode() -> None:
        "Choosing the folder is not built yet" not in setup_page)
     ok("a cancelled dialog is not reported as a failure",
        "d.ok && !d.changed" in setup_page)
+    # A DEAD DAEMON MUST NOT LOOK LIKE A DEAD BUTTON. fetch REJECTS when the process behind the
+    # page is gone, and the rejection propagated out of every click handler: no message, no
+    # movement, the button left disabled. Reported as "Complete Setup does nothing" — from a
+    # stale tab whose instance had been stopped.
+    for page_name in ("setup.html", "settings.html"):
+        text = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+                / page_name).read_text()
+        ok(f"{page_name} survives the daemon going away",
+           "is not running behind this page" in text)
+        ok(f"{page_name} returns the failure in the shape callers expect",
+           "return {ok: false, message:" in text)
 
     # ONE GATE, NOT TWO. `can_run` is memory and `can_download` is disk — different questions,
     # and the wizard first filtered on the disk one. On a 16 GB Mac with 371 GB free that
