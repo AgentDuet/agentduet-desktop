@@ -345,8 +345,28 @@
     }
   }).catch(() => {});
 
-  $('doBrowse').onclick = () => say('mDone', false,
-    'Choosing the folder is not built yet. It is set by AGENTDUET_HOME.');
+  // THE CHOOSER HAS EXISTED SINCE 2026-08-27 and this button said it did not, telling the
+  // owner to set AGENTDUET_HOME — which is not even the right variable: this is the RECORDINGS
+  // folder, `## Recordings`, not the instance directory. A stub outliving the thing it stood in
+  // for, on the one screen a new owner sees.
+  //
+  // The same endpoint the settings page uses, so there is one implementation of "ask the
+  // desktop for a folder" and one place it can go wrong.
+  $('doBrowse').onclick = async () => {
+    $('doBrowse').disabled = true;
+    say('mDone', true, 'Choose a folder in the window that just opened…');
+    const d = await post('/api/pick-folder', {});
+    $('doBrowse').disabled = false;
+    // A CANCELLED DIALOG IS NOT A FAILURE. Someone closing a chooser has not done anything
+    // wrong, and reporting it in red is how a screen teaches people to distrust its messages.
+    if (d.ok && !d.changed) { $('mDone').innerHTML = ''; return; }
+    say('mDone', d.ok, d.message);
+    if (!d.ok) return;
+    // Show what was chosen, read back from the instance rather than from the reply, so the
+    // field states what is actually stored.
+    const cur = await fetch(`/api/setup/current?t=${T}`).then(r => r.json()).catch(() => ({}));
+    if (cur.carried_dir) $('folder').value = cur.carried_dir;
+  };
 
   $('doDone').onclick = async () => {
     // A RE-RUN JUST GOES BACK. Handover promotes the installed copy and stands this one down,

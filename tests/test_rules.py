@@ -1174,6 +1174,18 @@ def test_setup_mode() -> None:
     ok("the wizard offers a model too", "setupModel" in setup_page)
     ok("optional, and it says so", 'value=""' in setup_page and "Choose later" in setup_page)
     ok("and the fetch is not waited for", "continues in the background" in setup_page)
+    # THE FOLDER CHOOSER EXISTS, and the wizard's Browse button claimed for ten days that it
+    # did not — telling the owner to set AGENTDUET_HOME, which is not even the right variable
+    # (this is `## Recordings`, not the instance directory). A stub that outlived the feature it
+    # stood in for, on the first screen a new owner sees.
+    ok("the wizard's Browse opens the real chooser", "/api/pick-folder" in setup_page)
+    # The SENTENCE, not the variable name: the comment explaining this fix mentions
+    # AGENTDUET_HOME on purpose, and an assertion that forbids the string anywhere fails on its
+    # own documentation.
+    ok("and no longer claims the feature is missing",
+       "Choosing the folder is not built yet" not in setup_page)
+    ok("a cancelled dialog is not reported as a failure",
+       "d.ok && !d.changed" in setup_page)
 
     # ONE GATE, NOT TWO. `can_run` is memory and `can_download` is disk — different questions,
     # and the wizard first filtered on the disk one. On a 16 GB Mac with 371 GB free that
