@@ -2196,6 +2196,45 @@ def test_pages_parse() -> None:
     ok("at least one script was actually parsed", checked > 0)
 
 
+def test_the_line_is_a_number() -> None:
+    """The header's line must be a number to ring, not whatever a channel called a subscriber."""
+    print("\n  -- the line badge shows a NUMBER --")
+    import json as _json
+    import tempfile as _tempfile
+    from agentduet_desktop import status
+
+    # E.164 CAPS AT 15 DIGITS, and the absence of that bound is the whole bug: the pattern was
+    # written to reject a uuid (it does) and a long numeric identifier walked past it. After the
+    # first real WhatsApp message the header offered `1151661421362480` — a Meta
+    # `phone_number_id`, sixteen digits — as the Power Mobile Line.
+    for value, want in [("1151661421362480", False),          # WhatsApp phone_number_id
+                        ("bb27e3d4-6df2-4af8-8e2b-ca8d2cda4cba", False),   # a DDUET connector
+                        ("123456", False),                     # too short for any DID
+                        ("+6562796918", True), ("6562796918", True),
+                        ("+65 6279 6918", True), ("+1 (555) 010-9999", True)]:
+        eq(f"{value!r:40} is a number", status._looks_like_a_number(value), want)
+
+    # AND THE RECOVERY PATH GOES THROUGH THE CHECK. It assigned _state["number"] directly while
+    # the docstring claimed the shape check kept bad values out — so the one path that needed
+    # the check was the one that skipped it.
+    tmp = pathlib.Path(_tempfile.mkdtemp())
+    status.NUMBER_FILE = tmp / "channel-number"
+    sessions = tmp / "sessions.json"
+    sessions.write_text(_json.dumps(
+        {"wa": {"subscriber": "1151661421362480", "last_seen": "2026-09-07"}}))
+    status._state["number"] = ""
+    status.load_number(sessions)
+    eq("a WhatsApp subscriber alone leaves the line unknown", status._state["number"], "")
+    # An older row holding a real DID is still recovered — one unusable subscriber does not mean
+    # no call ever happened.
+    sessions.write_text(_json.dumps(
+        {"wa": {"subscriber": "1151661421362480", "last_seen": "2026-09-07"},
+         "call": {"subscriber": "+6562796918", "last_seen": "2026-09-06"}}))
+    status._state["number"] = ""
+    status.load_number(sessions)
+    eq("but a real DID in an older row is", status._state["number"], "+6562796918")
+
+
 def test_owner_writes_to_their_own_agent() -> None:
     """A WhatsApp message from the OWNER'S number is their assistant, not a person to answer."""
     print("\n  -- the owner, writing to their own agent --")
@@ -2310,6 +2349,7 @@ def main() -> None:
     test_local_models_do_not_monologue()
     test_a_failed_turn_is_reported()
     test_hosted_model_lists()
+    test_the_line_is_a_number()
     test_owner_writes_to_their_own_agent()
     test_inbound_whatsapp_shape()
     test_pages_parse()
