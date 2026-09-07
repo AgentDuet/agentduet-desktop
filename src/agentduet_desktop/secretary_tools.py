@@ -586,6 +586,50 @@ def discard_draft(asker: str) -> str:
         return "No draft for them."
     DRAFTS.write_text(json.dumps(data, indent=2))
     return "Draft discarded."
+def _readable(asker: str) -> str:
+    """A name for a confirmation. The uid is what we act on; a person cannot check a uid."""
+    from . import tools
+    name = tools._display_for(asker)
+    return name if name and name != asker else asker
+
+
+def resolve_asker(who: str) -> tuple[str, str]:
+    """The session key for `who`, and a refusal when the name is ambiguous.
+
+    THE TOOL THAT SHOWS AND THE TOOL THAT SENDS DISAGREED. `read_messages` names people by
+    their display hint — "Stanley Leong" — because on DDUET the identity is an account uid and
+    a summary full of uuids is unreadable. `reply_to` then looked that string up in the session
+    store, whose keys ARE the uids. So the assistant did the only thing it could, passed the
+    name it had been shown, and the lookup missed.
+
+    The failure was silent in the worst way: with no session found, reply_to reported "Stanley
+    Leong has never written in, so there is no conversation to reply into" — about someone who
+    had written in four minutes earlier. A wrong reason sends the owner looking at the platform.
+
+    AN AMBIGUOUS NAME IS REFUSED, never guessed. Sending to the wrong person is the one mistake
+    this must not make easy, and two people called Stanley is not hypothetical in a contact
+    list. An UNKNOWN name passes through untouched, because writing to someone who has never
+    been seen is a thing reply_to deliberately supports.
+    """
+    who = (who or "").strip()
+    if not who:
+        return "", ""
+    try:
+        sessions = json.loads(SESSIONS.read_text()) if SESSIONS.exists() else {}
+    except (OSError, json.JSONDecodeError):
+        return who, ""
+    if who in sessions:
+        return who, ""
+    hits = [k for k, v in sessions.items()
+            if (v.get("display") or "").strip().lower() == who.lower()]
+    if len(hits) == 1:
+        return hits[0], ""
+    if len(hits) > 1:
+        return "", (f"More than one conversation is with someone called {who!r}. "
+                    f"Name them by identifier: {', '.join(hits)}.")
+    return who, ""
+
+
 def reply_to(asker: str, text: str, about: str = "", close: bool | None = None) -> str:
     """Answer someone as the owner, and close the thread you answered.
 
@@ -598,11 +642,21 @@ def reply_to(asker: str, text: str, about: str = "", close: bool | None = None) 
     is queued only when their chat session is still live, since DDUET is passive and we
     cannot open a conversation.
     """
-    _d = _drafts()
-    if _d.pop((asker or "").strip().lower(), None) is not None:
-        DRAFTS.write_text(json.dumps(_d, indent=2))   # sent: the draft is no longer pending
     if not asker or not text:
         return "Give an identity and the reply text."
+    # A NAME BECOMES THE KEY BEFORE ANYTHING ELSE RUNS, so the escalation match, the record and
+    # the delivery all agree on who this is. Resolving later would have fixed only whichever
+    # step someone noticed.
+    spoken = asker
+    asker, why = resolve_asker(asker)
+    if why:
+        return why
+    _d = _drafts()
+    # Under BOTH spellings: a draft written against the displayed name is keyed by that name,
+    # and it must still be cleared when the reply goes out under the uid.
+    for key in {(spoken or "").strip().lower(), (asker or "").strip().lower()}:
+        if key and _d.pop(key, None) is not None:
+            DRAFTS.write_text(json.dumps(_d, indent=2))
 
     mine = [g for g in open_escalations() if g["asker"].strip().lower() == asker.strip().lower()]
     # Nothing open is NOT a reason to refuse. The owner writing to someone unprompted — "your
@@ -695,14 +749,18 @@ def reply_to(asker: str, text: str, about: str = "", close: bool | None = None) 
         # Held, not dropped. Closing the escalation while nothing was sent made the queue
         # claim it was handled when the person had heard nothing.
         asker_actions.queue_reply(asker, sent)
-        return (f"Closed: {what}.{tail} HELD for delivery — {asker} has never written in, so "
-                f"there is no conversation to reply into and we cannot start one. I will send "
-                f"this the moment they write. It is visible as awaiting delivery until then.")
+        return (f"Closed: {what}.{tail} HELD for delivery — {_readable(asker)} has never "
+                f"written in, so there is no conversation to reply into and we cannot start "
+                f"one. I will send this the moment they write. It is visible as awaiting "
+                f"delivery until then.")
 
     with OUTBOX.open("a") as f:
         f.write(json.dumps({"asker": asker, "text": sent,
                             "queued_at": datetime.now().isoformat(timespec="seconds")}) + "\n")
-    return f"Closed: {what}.{tail} Sending to {asker} now."
+    # THE NAME, NOT THE UID. `web.py` learned this on the first real send: "Sent to
+    # d7553b51-6567-11f1-a64a-a9511a89ac64" is accurate, unreadable, and no use at all for the
+    # one thing a confirmation is for — checking it went to the right person.
+    return f"Closed: {what}.{tail} Sending to {_readable(asker)} now."
 # Deliberately narrow: "open"/"close" only. "last order 20:30" and "we are open on Sunday" are
 # legitimate facts, and a looser trigger refused both.
 _HOURS_WORD = re.compile(r"\b(open|opens|opening|close|closes|closing)\b", re.I)
