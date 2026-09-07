@@ -11,8 +11,18 @@
 <link rel="stylesheet" href="/app.css">
 <style>
   /* login */
+  /* SCROLLS WHEN IT HAS TO. A centred flex column silently overflows BOTH ends once its
+     content is taller than the view: revealing the connector fields pushed the last button off
+     the bottom, where it collided with the Quit line and rendered one through the other. Seen
+     in a screenshot; the widths all measured correctly, which is why the numbers looked fine.
+     `justify-content:center` is kept for the short case and stops centring once it overflows. */
   .view{flex:1;display:none;flex-direction:column;align-items:center;justify-content:center;
-    padding:2rem;}
+    overflow-y:auto;
+    /* The bottom pad clears `.quit`, which is absolutely positioned over the window's floor.
+       Before the view could scroll, nothing ever reached down there; now that it can, the
+       footer line scrolled under the Quit link and the two rendered through each other
+       ("Power MQuitle AI Protocol"). Only visible in a screenshot. */
+    padding:2rem 2rem 3.25rem;}
   .view.on{display:flex;}
   #v-login{text-align:center;gap:1.5rem;}
   .glyph{width:5rem;height:5rem;border-radius:1.5rem;background:rgba(37,99,235,.2);
@@ -50,15 +60,29 @@
   .opt{font-size:10px;color:var(--faint);font-weight:400;text-transform:uppercase;
     letter-spacing:.04em;margin-left:.4rem;}
   .hint{font-size:11px;color:var(--faint);line-height:1.45;margin:0;}
-  .skiprow{padding-top:.75rem;}
+  /* A LINK, NOT A BUTTON. Boxing these was the second wrong answer: three bordered boxes under
+     three bordered sign-in buttons read as six competing choices, and it looked heavy. Faint
+     grey small print was the first wrong answer — invisible on a projector. Blue and a size up
+     carries across a room without adding another box to the screen.
+     NOT `--accent` (#2563eb): as TEXT on this near-black background it measures 3.4:1, under
+     the 4.5:1 floor and muddy on a projector. `--blue400` is 7.0:1 and `--blue300` 9.8:1, and
+     both already exist in app.css for link text — this is the same choice `.link` makes there,
+     one size up. `--accent` stays right for a FILLED button, where it is a background carrying
+     white text. */
+  .altway{background:none;border:0;padding:.35rem;margin-top:.25rem;font:inherit;
+    font-size:.9375rem;font-weight:600;color:var(--blue400);cursor:pointer;}
+  .altway:hover{color:var(--blue300);text-decoration:underline;}
   /* The manual pair. Same field styling as the folder row on the next screen — it is the same
      kind of question, and inventing a second look for it would read as a different product. */
-  .manual{display:flex;flex-direction:column;gap:.75rem;padding-top:.75rem;text-align:left;}
+  .manual{width:100%;max-width:20rem;display:flex;flex-direction:column;gap:.75rem;
+    padding-top:.75rem;text-align:left;}
+  /* MONOSPACE, and sized so all 36 characters of a uuid are visible at once. Both values are
+     copy-pasted and then read back to check — a field showing half of one cannot be checked,
+     and these are exactly the two values a silent install turns on. */
   .manual input{width:100%;padding:.5rem .6rem;border-radius:.5rem;background:var(--slate900);
-    color:#fff;border:1px solid var(--line);font:inherit;font-size:.8rem;}
+    color:#fff;border:1px solid var(--line);font-family:var(--mono);font-size:.7rem;
+    letter-spacing:-.01em;}
   .manual label{font-size:11px;color:var(--faint);}
-  .skiprow a{color:var(--faint);text-decoration:underline;}
-  .skiprow a:hover{color:#fff;}
   .frow input{flex:1;}
   .browse{padding:.5rem .75rem;background:var(--slate800);color:#fff;border-radius:.5rem;
     font:inherit;font-size:.75rem;font-weight:500;border:1px solid rgba(255,255,255,.1);
@@ -75,8 +99,13 @@
     justify-content:center;gap:.5rem;box-shadow:0 10px 15px -3px rgba(0,0,0,.3);}
   .go:hover{background:#3b82f6;}
   .go .material-symbols-rounded{font-size:.875rem;}
-  .quit{position:absolute;bottom:.6rem;left:0;right:0;text-align:center;font-size:11px;
-    color:var(--faint);}
+  /* OPAQUE, because it floats over a view that now scrolls. Padding alone only fixed one
+     scroll position: the line is absolutely positioned over the window's floor, so whatever
+     scrolls past it renders THROUGH it — the footer came out as "Power MQuitle AI Protocol".
+     A background means content disappears behind it instead, which is what it looked like
+     before the view could scroll at all. */
+  .quit{position:absolute;bottom:0;left:0;right:0;text-align:center;font-size:11px;
+    color:var(--faint);background:var(--bg);padding:.5rem 0 .6rem;}
   .quit a{color:var(--faint);}
 </style>
 </head>
@@ -125,8 +154,7 @@
          pair was only enterable from Settings, which is INSIDE the hub — reachable, but after
          you have already been told sign-in is unavailable and pushed past it. Asking here is
          asking at the moment the owner is thinking about credentials. -->
-    <p class="foot skiprow"><a href="#" id="showManual">Use a connector and API key</a>
-      <span id="manualWhy"></span></p>
+    <button class="altway" id="showManual">Use a connector and API key</button>
     <div class="manual" id="manualBox" hidden>
       <div class="field">
         <label>Connector uuid</label>
@@ -140,8 +168,7 @@
       <button class="go" id="doManual"><span>Check and continue</span>
         <span class="material-symbols-rounded">arrow_forward</span></button>
     </div>
-    <p class="foot skiprow"><a href="#" id="skipSso">Set up without signing in</a>
-      <span id="skipWhy"></span></p>
+    <button class="altway" id="skipSso">Set up without signing in</button>
     <p class="foot">B3Networks Power Mobile AI Protocol • v1.0</p>
   </div>
 
@@ -287,9 +314,6 @@
   let DONE = false;
   fetch(`/api/setup/current?t=${T}`).then(r => r.json()).then(d => {
     OAUTH = !!d.oauth_available;
-    $('skipWhy').textContent = OAUTH ? '' : '— single sign-on is not switched on yet';
-    // When sign-on cannot provision one, the manual pair is not a fallback — it is the path.
-    $('manualWhy').textContent = OAUTH ? '' : '— the way in until then';
     DONE = !!d.setup_done;
     if (FROM === 'settings' || DONE) {
       $('doCancel').parentElement.hidden = true;
