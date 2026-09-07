@@ -528,7 +528,9 @@
     $('av').textContent = (D.name || '?').split(/\s+/).map(w => w[0] || '')
       .join('').slice(0, 2).toUpperCase() || '–';
     $('phone').textContent = D.phone || '—';
-    if (D.phone) { $('lineNum').textContent = D.phone; $('lineBadge').classList.add('on'); }
+    // THE LINE, not the owner's own mobile — see the panel endpoint. `$('phone')` above is
+    // legitimately theirs; this badge is the number callers reach, learned from a real call.
+    if (D.line) { $('lineNum').textContent = D.line; $('lineBadge').classList.add('on'); }
 
     const live = ['live', 'connecting', 'retrying'].indexOf(D.channel) >= 0;
     $('ovPill').className = 'pill' + (live ? '' : ' off');

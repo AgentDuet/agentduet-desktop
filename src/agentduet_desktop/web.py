@@ -411,6 +411,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         cur["transcription"] = _own.transcription_quality()
         cur["language"] = _own.language()
         cur["record_calls"] = _own.record_calls()
+        # As above: the badge on the setup screen means the LINE, not the owner's own number.
+        cur["line"] = (secretary_tools.state().get("channel") or {}).get("number", "")
         # THE TOGGLE ONLY EXISTS FOR SOME MODELS. Gemini has no dial and Claude reasons
         # adaptively already, so showing a switch there would promise a change it cannot make.
         # The page hides the row rather than disabling it: a switch that does nothing is worse
@@ -590,6 +592,12 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         return web.json_response({
             "name": _own.name() if _own.name() != _own.DEFAULT_NAME else "",
             "phone": _own.phone(),
+            # THE LINE CALLS ARRIVE ON, which is what the "Power Mobile Line" badge means and
+            # never what it showed: both pages rendered `phone`, the OWNER'S OWN mobile, whose
+            # docstring says it is never disclosed to anyone. Invisible while `## Phone` was
+            # empty, which is why it survived. The real value is learned from an inbound call —
+            # see status.py — so it is blank until one arrives, and the badge stays hidden.
+            "line": (secretary_tools.state().get("channel") or {}).get("number", ""),
             "calls": _own.calls(),
             "channel": (secretary_tools.state().get("channel") or {}).get("channel", ""),
             "storage": str(carry.recordings()),
