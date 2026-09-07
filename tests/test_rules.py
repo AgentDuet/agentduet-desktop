@@ -2196,6 +2196,56 @@ def test_pages_parse() -> None:
     ok("at least one script was actually parsed", checked > 0)
 
 
+def test_a_reply_finds_the_person_it_was_shown() -> None:
+    """The tool that shows and the tool that sends must agree on who somebody is."""
+    print("\n  -- a reply resolves the name the assistant was shown --")
+    import json as _json
+    import tempfile as _tempfile
+
+    tmp = pathlib.Path(_tempfile.mkdtemp())
+    was = secretary_tools.SESSIONS
+    secretary_tools.SESSIONS = tmp / "sessions.json"
+    try:
+        secretary_tools.SESSIONS.write_text(_json.dumps({
+            "d7553b51-6567-11f1-a64a-a9511a89ac64": {"network": "DDUET",
+                                                     "display": "Stanley Leong"},
+            "6596918851": {"network": "WA", "display": ""},
+        }))
+        # `read_messages` names people by their display hint, because on DDUET the identity is
+        # an account uid and a summary full of uuids is unreadable. `reply_to` then looked that
+        # name up in the session store, whose keys ARE the uids — so the assistant passed the
+        # only string it had been given and the lookup missed.
+        eq("a display name resolves to the session key",
+           secretary_tools.resolve_asker("Stanley Leong")[0],
+           "d7553b51-6567-11f1-a64a-a9511a89ac64")
+        eq("case does not matter", secretary_tools.resolve_asker("stanley leong")[0],
+           "d7553b51-6567-11f1-a64a-a9511a89ac64")
+        eq("an identifier still works",
+           secretary_tools.resolve_asker("6596918851")[0], "6596918851")
+        # An UNKNOWN name passes through: writing to someone never seen is deliberately allowed.
+        eq("an unknown name is not rejected",
+           secretary_tools.resolve_asker("Nobody Yet")[0], "Nobody Yet")
+
+        # AMBIGUITY IS REFUSED, NEVER GUESSED. Sending to the wrong person is the one mistake
+        # this must not make easy, and two contacts sharing a name is not hypothetical.
+        secretary_tools.SESSIONS.write_text(_json.dumps(
+            {"uid-a": {"display": "Stanley Leong"}, "uid-b": {"display": "stanley leong"}}))
+        key, why = secretary_tools.resolve_asker("Stanley Leong")
+        eq("an ambiguous name resolves to nothing", key, "")
+        ok("and says so, naming the candidates",
+           "More than one" in why and "uid-a" in why and "uid-b" in why)
+    finally:
+        secretary_tools.SESSIONS = was
+
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+           / "secretary_tools.py").read_text()
+    # The old failure asserted the OPPOSITE of the truth — "Stanley Leong has never written in"
+    # about someone who had written four minutes earlier — which sends the owner to blame the
+    # platform. It resolves before that branch can be reached now.
+    ok("the name is resolved before anything else runs", "asker, why = resolve_asker(asker)" in src)
+    ok("and a confirmation names the person, not their uid", "_readable(asker)" in src)
+
+
 def test_a_turn_says_where_it_came_from() -> None:
     """One assistant, two doors — so a turn has to say which one it came through."""
     print("\n  -- a turn says where it came from --")
@@ -2425,6 +2475,7 @@ def main() -> None:
     test_local_models_do_not_monologue()
     test_a_failed_turn_is_reported()
     test_hosted_model_lists()
+    test_a_reply_finds_the_person_it_was_shown()
     test_a_turn_says_where_it_came_from()
     test_the_hub_does_not_invent_a_sign_in_state()
     test_the_line_is_a_number()
