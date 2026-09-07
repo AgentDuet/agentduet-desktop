@@ -59,14 +59,13 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
     state = {"chat": chat}
 
     def _chat():
-        if state["chat"] is None:
-            model = os.getenv("SECRETARY_MODEL", "")
-            if model and llm.client(model):
-                state["chat"] = OwnerChat(model)
-        return state["chat"]
+        # THE SHARED ONE, not a private instance. A WhatsApp message from the owner's own number
+        # reaches the same assistant, and both surfaces persist to the same file — two instances
+        # would silently overwrite each other's history.
+        return assistant.owner_chat()
 
     def _forget_chat():
-        state["chat"] = None
+        assistant.forget_owner_chat()
 
     sockets: set[web.WebSocketResponse] = set()          # owner view — full state
     asker_sockets: set[web.WebSocketResponse] = set()    # asker side — pings only

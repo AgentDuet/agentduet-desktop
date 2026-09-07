@@ -295,6 +295,32 @@ def record_calls() -> bool:
     return first not in ("no", "off", "false")
 
 
+def is_own_number(value: str) -> bool:
+    """Is this the OWNER'S number — the person who installed this, writing to their own agent?
+
+    Set `## Phone` and a WhatsApp message from that number reaches the owner's assistant instead
+    of being filed as a stranger who needs answering. Empty means nobody matches, which is the
+    right default: an unset setting must never make the first caller the owner.
+
+    NORMALISED, because the two sides are written differently and neither is wrong. Meta hands
+    us a bare `wa_id` (`6596918851`); a person writing E.164 in settings types `+65 9691 8851`.
+    So both are reduced to digits.
+
+    A COUNTRY CODE MAY BE PRESENT ON ONE SIDE ONLY. `wa_id` always carries it, and someone may
+    have written their local number without it, so a suffix match is accepted — but only when
+    the shorter side is at least 8 digits, which is a full local subscriber number here. Without
+    that floor, a settings value of `88` would match half the planet.
+    """
+    mine = re.sub(r"\D", "", phone() or "")
+    theirs = re.sub(r"\D", "", value or "")
+    if not mine or not theirs:
+        return False
+    if mine == theirs:
+        return True
+    short, long = sorted((mine, theirs), key=len)
+    return len(short) >= 8 and long.endswith(short)
+
+
 def thinking() -> bool:
     """Whether a reasoning model is allowed to monologue before answering. Default OFF.
 
