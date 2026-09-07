@@ -2330,6 +2330,16 @@ def test_owner_writes_to_their_own_agent() -> None:
     ok("a failure is sent back rather than swallowed",
        "That did not go through" in src)
 
+    # SILENCE READS AS BROKEN on a channel with no typing indicator. Measured: a "help me
+    # reply" turn ran eight hosted-model round trips and took 62 seconds, and was reported as
+    # stuck while it was still working.
+    ok("a slow owner turn acknowledges itself", "OWNER_ACK_AFTER" in src)
+    ok("only when it is actually slow, via a timeout rather than always",
+       "asyncio.wait_for(asyncio.shield(work), OWNER_ACK_AFTER)" in src)
+    # `shield`, or the timeout cancels the work it is waiting for and the owner gets an
+    # acknowledgement followed by nothing at all.
+    ok("and the timeout does not cancel the work", "asyncio.shield" in src)
+
     # ONE ASSISTANT, ONE HISTORY. Both surfaces persist to OwnerChat.STORE, so a second
     # instance would silently overwrite the owner's own conversation.
     ok("the assistant is shared, not built per surface", "def owner_chat" in

@@ -111,6 +111,12 @@ CONNECTOR_POLL_SECONDS = 3
 WA_API_VERSION = "v23.0"
 
 
+#: How long the owner's own turn may run before it says something. Twelve seconds is past the
+#: fast path — a plain question answers in one to five — and well inside the point where someone
+#: staring at a phone decides nothing is coming.
+OWNER_ACK_AFTER = 12
+
+
 async def _owner_answer(question: str) -> str:
     """What the owner's assistant says to the owner's own message. Always returns something.
 
@@ -490,7 +496,26 @@ async def run_channel() -> None:
             if dd is None and owner_settings.is_own_number(asker):
                 logger.info("[WA] %s is the owner's own number — to their assistant, "
                             "not filed as a person", asker)
-                answer = await _owner_answer(question)
+                # SIXTY-TWO SECONDS OF SILENCE READS AS BROKEN, and that is measured: a
+                # "help me reply" turn ran eight hosted-model round trips at 2-17s each and the
+                # owner reported it stuck while it was still working. In the app a typing
+                # indicator covers this; on WhatsApp there is nothing, and the owner cannot tell
+                # a slow turn from a dead daemon.
+                #
+                # One extra message, and only when it is actually slow — a fast turn (most of
+                # them, 1-5s) sends nothing but its answer. `shield` because the timeout must
+                # not cancel the work it is waiting on.
+                work = asyncio.create_task(_owner_answer(question))
+                try:
+                    answer = await asyncio.wait_for(asyncio.shield(work), OWNER_ACK_AFTER)
+                except asyncio.TimeoutError:
+                    logger.info("[WA] the owner's turn is past %ss — acknowledging it",
+                                OWNER_ACK_AFTER)
+                    ack = await (await session_for(msg.subscriber)).send_message(
+                        _wa_text("Working on that.", to=asker))
+                    if not ack.success:
+                        logger.error("could not acknowledge the owner: %s", ack.error_code)
+                    answer = await work
                 back = await (await session_for(msg.subscriber)).send_message(
                     _wa_text(answer, to=asker))
                 if not back.success:
