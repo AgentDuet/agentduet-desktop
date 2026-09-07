@@ -524,7 +524,12 @@
 
   async function load(){
     const D = await fetch(`/api/panel?t=${T}`).then(r => r.json()).catch(() => ({}));
-    $('who').textContent = D.name || 'Not signed in';
+    // AN EMPTY NAME IS NOT A SIGN-IN STATE. This said "Not signed in", which is a claim about
+    // the connector and a false one: it appeared on an instance whose channel was live on an
+    // API key, and it sent Stanley to ask for a connector that was already configured. The
+    // element is the profile chip — avatar, name, number — so an unknown name reads the same
+    // way as the unknown number directly below it, which is the dash this element ships with.
+    $('who').textContent = D.name || '—';
     $('av').textContent = (D.name || '?').split(/\s+/).map(w => w[0] || '')
       .join('').slice(0, 2).toUpperCase() || '–';
     $('phone').textContent = D.phone || '—';
