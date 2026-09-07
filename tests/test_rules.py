@@ -1228,6 +1228,37 @@ def test_setup_mode() -> None:
        '"models", "download"' in init_src)
     ok("progress is readable from disk by any process",
        "def downloading" in (src / "models.py").read_text())
+
+    # ---- THE CA ROOTS ARE PACKAGED ON PURPOSE ---------------------------------------------
+    #
+    # a9 was signed, notarized, stapled and could not open a single connection: a frozen build
+    # carries its own OpenSSL whose compiled-in CA path names the BUILD machine, so it loaded no
+    # roots and every handshake failed. `cacert.pem` was in the bundle only because PyInstaller's
+    # certifi hook fires off some dependency's import — nothing pinned it.
+    #
+    # `entry.py` is deliberately silent when the file is missing, so that the owner site still
+    # comes up. That is right, and it is why these two checks exist: without them a dependency
+    # change could drop certifi and reproduce a9 with every build green.
+    spec_src = (pathlib.Path(__file__).parent.parent / "packaging"
+                / "agentduet-desktop.spec").read_text()
+    ok("the spec names certifi rather than inheriting it",
+       'collect_data_files("certifi")' in spec_src)
+    ok("and imports it so the hook fires", '"certifi",' in spec_src)
+    entry_src = (pathlib.Path(__file__).parent.parent / "entry.py").read_text()
+    ok("the frozen entry point points OpenSSL at the bundled roots",
+       "SSL_CERT_FILE" in entry_src)
+    ok("before anything that could connect is imported",
+       entry_src.index("_trust_the_bundled_cas()")
+       < entry_src.index("from agentduet_desktop.cli import main"))
+    ok("an operator's own CA bundle still wins", "setdefault" in entry_src)
+    ok("and it knows the --onedir layout, where data is a sibling of MacOS/",
+       '"Resources"' in entry_src and '"Frameworks"' in entry_src)
+    workflow = (pathlib.Path(__file__).parent.parent / ".github" / "workflows"
+                / "build.yml").read_text()
+    ok("CI proves TLS with a real handshake, not by booting",
+       "models download gemma-3-270m" in workflow)
+    ok("and fails the build when the roots are missing",
+       "cannot verify TLS" in workflow)
     ok("choosing a download does not abort answer-mode setup",
        "_models_coming()" in init_src)
 
