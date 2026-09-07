@@ -492,7 +492,7 @@ async def run_channel() -> None:
             #     never promote the first person who writes.
             #   * SAID OUT LOUD in the log, every time, so a message that took this path is
             #     visible rather than inferred.
-            from . import owner as owner_settings
+            from . import assistant as assistant_module, owner as owner_settings
             if dd is None and owner_settings.is_own_number(asker):
                 logger.info("[WA] %s is the owner's own number — to their assistant, "
                             "not filed as a person", asker)
@@ -505,6 +505,24 @@ async def run_channel() -> None:
                 # One extra message, and only when it is actually slow — a fast turn (most of
                 # them, 1-5s) sends nothing but its answer. `shield` because the timeout must
                 # not cancel the work it is waiting on.
+                chat_now = assistant_module.owner_chat()
+                # "SEND IT" IS CODE ON BOTH SURFACES NOW. Reaching the model with a send
+                # instruction is how the owner got told "the assistant only reads" — true of
+                # the model, which has no send tool by design, and false of the product.
+                sent = assistant_module.send_if_asked(chat_now, question)
+                if sent is not None:
+                    back = await (await session_for(msg.subscriber)).send_message(
+                        _wa_text(sent, to=asker))
+                    if not back.success:
+                        logger.error("could not confirm the send to the owner: %s",
+                                     back.error_code)
+                    return
+
+                # SHOW IT BEFORE THINKING ABOUT IT. The turn used to be recorded only when it
+                # finished, so a question asked from the phone left the owner's own thread
+                # silent for the whole turn and then both halves landed together.
+                if chat_now is not None:
+                    chat_now.begin(question, via="whatsapp")
                 work = asyncio.create_task(_owner_answer(question))
                 try:
                     answer = await asyncio.wait_for(asyncio.shield(work), OWNER_ACK_AFTER)

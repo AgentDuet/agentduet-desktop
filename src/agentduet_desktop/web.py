@@ -1066,17 +1066,6 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             asyncio.create_task(_stand_down())
         return web.json_response({"ok": ok, "message": msg})
 
-    def _sole_unanswered():
-        """The one person waiting on a reply, or "" when it is not exactly one.
-
-        Never a guess. With nobody waiting there is nothing to answer, and with two the choice is
-        the owner's — an unprompted send to the wrong customer is not recoverable.
-        """
-        from . import tools as _t
-        waiting = {r.get("asker") for r in _t.rows()
-                   if r.get("network") in ("WA", "DDUET") and not r.get("answer")
-                   and r.get("outcome") != "owner_reply" and r.get("asker")}
-        return next(iter(waiting)) if len(waiting) == 1 else ""
 
     async def api_chat(request):
         if not authed(request):
@@ -1089,40 +1078,13 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         message = body.get("message", "")
         viewing = (body.get("viewing") or "").strip()
 
-        # "SEND IT" — THE CONTEXT SPLIT, AND THERE IS NO MODEL ON THIS PATH.
-        #
-        # The concern is an assistant that has READ a stranger's message and can also SEND, so
-        # that a stranger's words can put a message on the wire. Splitting the two per turn does
-        # not fix it by itself: the message stays in the history, and separating the TOOLS
-        # without separating the EXPOSURE is not separation. So the sending turn gets no history.
-        #
-        # And with no history there is nothing for a model to do — the words already exist, the
-        # owner has read them, and the recipient comes from the thread. A model here would add an
-        # injection surface and no capability, so the send is code: take the draft, take the
-        # thread, hand both to the same `reply_to` the composer uses.
-        #
-        # Three conditions, all required. The instruction must be ONLY a send instruction; a
-        # DRAFT must exist, so "2." can never be sent by saying two words; and a recipient must
-        # resolve, because sending to the wrong person is the one mistake this must not make easy.
-        chat = _chat()
-        if chat is not None and assistant.send_intent(message):
-            draft = chat.last_draft()
-            target = viewing or _sole_unanswered()
-            if not draft:
-                reply = "Nothing is drafted. Ask me to reply to someone first, then say send."
-            elif not target:
-                reply = "I do not know who to send that to. Open their conversation first."
-            else:
-                secretary_tools.reply_to(target, draft)
-                # THE NAME, NOT THE UID. On DDUET the identity is an account uid, so the
-                # confirmation read "Sent to d7553b51-6567-11f1-a64a-a9511a89ac64" — accurate,
-                # unreadable, and no use for checking it went to the right person, which is the
-                # only reason to show a recipient back at all.
-                from . import tools as _t
-                reply = f"Sent to {_t._display_for(target)}:\n\n{draft}"
-            chat.note_sent(message, reply, delivered=reply.startswith("Sent"))
-            return web.json_response({"reply": reply,
-                                      "tools": ["reply_to"] if reply.startswith("Sent") else [],
+        # "SEND IT" IS CODE, NOT A MODEL TURN — see `assistant.send_if_asked`, which both owner
+        # surfaces now call. It used to live here, which is why the owner asking from WhatsApp
+        # got a model turn and was told the assistant can only read.
+        sent = assistant.send_if_asked(_chat(), message, viewing)
+        if sent is not None:
+            return web.json_response({"reply": sent, "tools":
+                                      ["reply_to"] if sent.startswith("Sent") else [],
                                       "proposals": []})
 
         # Who the owner is looking at. Without it, "what did she want?" has no "her" — the

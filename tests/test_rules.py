@@ -2196,6 +2196,62 @@ def test_pages_parse() -> None:
     ok("at least one script was actually parsed", checked > 0)
 
 
+def test_an_incoming_question_shows_before_it_is_answered() -> None:
+    """A question from the phone appears at once. It used to wait for its own answer."""
+    print("\n  -- an incoming question shows immediately --")
+    from agentduet_desktop import assistant
+
+    chat = object.__new__(assistant.OwnerChat)
+    chat.shown = []
+    chat.STORE = TMP / "owner_chat_pending.json"
+
+    chat.begin("what is waiting?", via="whatsapp")
+    eq("the question is recorded on arrival", len(chat.shown), 1)
+    eq("with no answer yet", chat.shown[-1]["a"], "")
+    ok("marked pending, so the page can show it waiting", chat.shown[-1]["pending"])
+    eq("and already labelled with its channel", chat.shown[-1]["via"], "whatsapp")
+
+    # THE ANSWER FILLS THAT SLOT. Appending beside it would show the question twice — once
+    # waiting and once answered.
+    chat._record("what is waiting?", "one message from Stanley Leong.", [], via="whatsapp")
+    eq("the answer fills the slot rather than adding a turn", len(chat.shown), 1)
+    ok("and the turn is no longer pending", not chat.shown[-1].get("pending"))
+
+    # A FAILURE FILLS IT TOO, keeping the channel: note_failure knows nothing about where the
+    # question came from, so the slot has to carry it.
+    chat.shown = []
+    chat._pending_at = None
+    chat.begin("something", via="whatsapp")
+    chat.note_failure("something", "That did not go through — boom")
+    eq("a failed turn also fills the slot", len(chat.shown), 1)
+    eq("keeping the channel it arrived on", chat.shown[-1].get("via"), "whatsapp")
+
+    page = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+            / "web.html").read_text()
+    ok("a waiting question draws the dots, not an empty bubble",
+       "t.pending && !t.a" in page and '<div class="dots">' in page)
+    ok("and the poll notices when the answer lands in it", "last.pending ? 1 : 0" in page)
+
+
+def test_sending_is_code_on_both_surfaces() -> None:
+    """"Send it" never reaches a model. It reached one on WhatsApp, which has no send tool."""
+    print("\n  -- sending is code, on both surfaces --")
+    ok("there is one implementation", "def send_if_asked" in
+       (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+        / "assistant.py").read_text())
+    for name in ("web.py", "secretary_agent.py"):
+        text = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+                / name).read_text()
+        ok(f"{name} calls it", "send_if_asked(" in text)
+    web_src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+               / "web.py").read_text()
+    # It lived in web.make_app's closure, so the owner asking from their phone got a model turn
+    # and was told "the assistant only reads" — true of the model, false of the product. The
+    # comment it replaced warned that a second implementation is how the two surfaces drift.
+    ok("and web.py no longer has its own copy",
+       "def _sole_unanswered" not in web_src and "chat.note_sent(message, reply" not in web_src)
+
+
 def test_a_reply_finds_the_person_it_was_shown() -> None:
     """The tool that shows and the tool that sends must agree on who somebody is."""
     print("\n  -- a reply resolves the name the assistant was shown --")
@@ -2475,6 +2531,8 @@ def main() -> None:
     test_local_models_do_not_monologue()
     test_a_failed_turn_is_reported()
     test_hosted_model_lists()
+    test_an_incoming_question_shows_before_it_is_answered()
+    test_sending_is_code_on_both_surfaces()
     test_a_reply_finds_the_person_it_was_shown()
     test_a_turn_says_where_it_came_from()
     test_the_hub_does_not_invent_a_sign_in_state()
