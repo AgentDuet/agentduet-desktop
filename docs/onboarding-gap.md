@@ -12,7 +12,7 @@ least control.
 
 | # | Step | State |
 |---|---|---|
-| 1 | Download package | **partial** — builds exist, not for every platform, and unsigned |
+| 1 | Download package | **partial** — signed, notarized and stapled since a5; still Apple Silicon and Linux only |
 | 2 | Install & run on PC | **done** |
 | 3 | OAuth creates the API key | **missing** — platform side |
 | 4 | OAuth auto-links the model key | **missing** — platform side |
@@ -32,11 +32,13 @@ Linux and macOS (Apple Silicon).
   to be platform-specific: the GUI window has no backend inside a one-file binary on Linux and
   is expected to work through WebView2 instead, and the file mode that protects the stored model
   key is a no-op on Windows.
-- **Notarization.** The macOS bundle is unsigned, so a first launch needs right-click → Open.
-  For a customer who was told to download and run, that reads as a broken download.
+- **Notarization is DONE**, and this said otherwise for a month. `v0.1.0a8` is signed,
+  notarized and stapled; Gatekeeper answers `accepted / source=Notarized Developer ID` with a
+  quarantine attribute applied, and it opens on a double-click. Signing works locally as well as
+  in CI, so an artifact can be checked before it is tagged.
 - **Intel Mac was dropped** — the runner image is retired. A pre-2020 Mac cannot run this build.
-- The published release trails the working tree by a long way and should not be handed to anyone
-  as a current example.
+- **The published release is current**: `v0.1.0a8`, cut 2026-09-07 from the commit whose DMG was
+  booted and checksum-matched before the tag existed.
 
 **Ours.** All of it.
 
@@ -63,10 +65,19 @@ because there is no Windows build to test it with.
 **Required.** The customer authorises in a browser, and a key plus a connector come back without
 anybody at our end doing anything.
 
-**Have.** Nothing. Credentials are typed in by hand, and the connector identifier is issued by a
-person on request.
+**Have.** More than this said. OAuth is built on BOTH sides — wss-edge merged PKCE, federated
+login and rotating refresh tokens to `main` on 2026-08-25, and our `oauth.py` has the PKCE
+begin, the token exchange, the store and a loopback callback. It was driven end to end against
+the dev server on 2026-08-31: a real Google consent screen, and a connector auto-provisioned.
+Credentials can also be typed by hand in three places now — the settings page, the wizard's
+sign-in screen, and `.env`.
 
-**Missing.** The authorisation endpoint, and self-serve connector provisioning behind it.
+**Missing.** A DEPLOYED authorisation URL. Dev only, and dev is not reachable for a customer.
+
+**And a second thing, proven 2026-09-07: a provisioned connector is not enough.** Sign-in mints
+one, but no business account is bound to it, so it receives nothing while reporting healthy on
+both sides — three WhatsApp messages were delivered by Meta and vanished. Whatever closes this
+step has to bind the new connector to a BA as well as create it.
 
 **One constraint that must survive the design:** a connector accepts **one client**. A second
 client on the same connector makes the call-answer handshake race, and the symptom is a call that

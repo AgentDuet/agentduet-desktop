@@ -706,6 +706,27 @@ here, which is how this document grew a second copy of itself.
    site fails to bind.
 8. **A new install carries calls; answering is opt-in.** The recorder is the product a new owner
    gets, and it needs no model key. Choosing to answer requires one.
+9. **The owner reaches their assistant from their own WhatsApp number** (2026-09-07). A message
+   from the number in `## Phone` goes to the owner's assistant instead of being filed as a
+   person to answer, and the reply comes back on that channel. The two surfaces share ONE
+   assistant object, so it is one thread whether it was typed in the window or on a phone —
+   both persist to the same file, and a second instance would silently overwrite the owner's
+   own history.
+   **What this costs, stated plainly:** the owner's assistant holds the owner's tools, and this
+   is a second door to it, authenticated by caller id rather than by the loopback token. Meta
+   authenticates the sending account, so the claim is real; a hijacked WhatsApp account inherits
+   it, so it is weaker than the token. Taken deliberately, on Stanley's explicit call. WhatsApp
+   only — a DDUET participant is an account uid, never a number — fails closed when `## Phone`
+   is empty, and logged every time it fires.
+10. **"Send it" is code on every surface, never a model tool** (2026-09-07 — the principle is
+   older, the sharing is new). An assistant that has read a stranger's message and can also send
+   is how a stranger's words reach the wire, so the model has no send capability and the send is
+   a keyword handled by `assistant.send_if_asked`: a send-only instruction, an existing draft,
+   and a recipient that resolves. It lived inside `web.make_app`, so the owner asking from their
+   phone got a model turn and was told the assistant can only read — true of the model and false
+   of the product. An explicit "send to <name>" must resolve to somebody who has written in,
+   because "send to Bob and tell him we close at six" parses as a recipient with a sentence for
+   a name, and refusing the whole thing is the safe reading.
 
 ## Open
 
@@ -735,11 +756,14 @@ here, which is how this document grew a second copy of itself.
 2. **Conference audio for carried calls.** The bridge works and both people can talk, but the
    platform does not hand the app the media yet, so the recorder — the first thing a new install
    is for — records nothing. Not ours to build.
-3. **The token store for OAuth.** The contract is settled: the SDK gets a `token_provider()`
-   callback, calls it before each connect, and knows nothing about OAuth. Our side is a store and
-   a refresh clock — hold access + refresh, return the cached token while it has time left,
-   refresh before expiry, clear on `invalid_grant`. Buildable against a stub before the endpoint
-   exists.
+3. **A DEPLOYED OAuth endpoint** — that is the whole remainder, and this item used to say the
+   token store was still to build. It is built: `oauth.py` has `_read`/`_write` with an atomic
+   write (a torn write is a sign-out, because the refresh token rotates), `refresh()`,
+   `token_provider()`, and `secretary_agent` passes that callback to the SDK. It was driven end
+   to end against the dev server on 2026-08-31.
+   **And a deployed endpoint alone still will not finish onboarding**: sign-in mints a connector
+   with no business account bound to it, which receives nothing while reporting healthy — see
+   `docs/platform.md`. Provisioning has to bind as well as create.
 
 Done items are not listed here. `git log` has them.
 

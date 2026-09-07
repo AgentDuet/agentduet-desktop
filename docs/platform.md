@@ -138,6 +138,60 @@ templates — neither of WhatsApp's limits applies.
 That makes DDUET the cheaper route to delivering a held reply, and the strongest argument for
 carrying both channels rather than treating WA as the replacement.
 
+## WhatsApp inbound: three hops, and the routing decision is NOT in wss-edge
+
+**Established 2026-09-07 by reading the platform's own OpenSearch logs, then the `wss-edge` tree
+over the GitHub API.** Cost about an hour, after three test messages vanished with our app
+connected and listening.
+
+```
+Meta ──▶ inbox                          ──▶ wss-edge                                    ──▶ SDK
+         POST /public/whatsapp/webhooks      POST /internal/v1/connector/wa/inboundMessage
+         (decides WHICH connector)           (is TOLD the connector uuid)
+```
+
+**`wss-edge` does no lookup.** `MsgInboundService.ingestWAMessage(String connectorUuid, …)`
+takes the uuid as a parameter, and `WaInboundController` reads it from the request body. Its
+`WAChannelConfig` holds only an outbound webhook url. So the business-account → connector
+binding lives UPSTREAM, in `inbox`, and reading `wss-edge` cannot answer "which connector does
+this BA route to". Files: `server/src/main/java/com/hoiio/api/wssedge/api/WaInboundController.java`
+and `.../service/wa/{MsgInboundService,WaConnectorClient,WaMetrics}.java`.
+
+**The connector's environment is baked in at creation.** `misc-tools/temp_onboard_agent.py`
+creates one with `POST /callcenter/internal/v1/connector/apps`, whose body carries
+`sbcNodes[].httpNotifyEndpoint` = `{host, path: internal/v1/call/notify, path4wa:
+internal/v1/connector/wa/inboundMessage, port}` — with the prod host `172.22.10.16` and a
+commented-out dev `172.22.11.10`. The api key comes from
+`POST /wssedge/internal/v1/app/generate-api-key` with the connector uuid. This is what Hallie
+meant on 2026-08-28 by a connector "routing to exp AgentDuet's environment".
+
+**A connector with no BA bound to it receives nothing, silently.** OAuth minted
+`bff72a4e-…` and it verified, connected, and subscribed with `inbound_message=True` — and three
+messages Meta had delivered went nowhere, because the shared BA forwards to a different
+connector. Everything reports healthy on both sides. The only way to see it is the platform log,
+where the inbound POST names the connector it went to.
+
+**The payload we receive is Meta's envelope, untouched** — `WaInboundController` forwards
+`request.content.content`:
+
+```
+entry[0].changes[0].value.messages[0].text.body       the message
+entry[0].changes[0].value.contacts[0].wa_id           participant (the customer's number)
+entry[0].changes[0].value.metadata.phone_number_id    subscriber — a Meta ID, NOT dialable
+```
+
+`subscriber` being an identifier rather than a number is worth holding onto: displayed under
+the word "number" it reads as the line to ring, and a 16-digit id passes a naive phone-shape
+check (E.164 caps at 15).
+
+**Status webhooks share the envelope and carry no `messages` array.** `wss-edge` drops them
+(`hasMessages` → "No messages in inbound payload, ignoring"), so a connector never sees
+delivered/read receipts.
+
+**Meta only delivers from allow-listed numbers on the shared sandbox**, so a message from an
+unregistered phone is dropped upstream of everything above and looks identical to the app not
+receiving.
+
 ## OAuth: built, working, dev-only
 
 wss-edge merged desktop OAuth to `main` on **2026-08-25** — `vonhutuan-b3`, PR #53, PKCE plus

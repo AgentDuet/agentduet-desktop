@@ -189,7 +189,14 @@ Break one of these and the secretary is a different product.
 5. **An edit must match exactly once** (`edit_knowledge`), and every edit is journalled.
 6. **Drafting has no send path.** `draft_reply` cannot send; only `reply_to` sends.
 7. **A grant cannot be walked out of** via symlink (`folder_index`).
-8. **The owner site binds loopback only**, with a per-machine token.
+8. **The owner site binds loopback only**, with a per-machine token. **THE SITE IS NO LONGER
+   THE ONLY DOOR, since 2026-09-07** — a WhatsApp message from the number in `## Phone` reaches
+   the owner's assistant, which holds the owner's tools. That door is authenticated by caller
+   id: a real claim, since Meta authenticates the sending account, and weaker than the token,
+   because a hijacked WhatsApp account inherits it. Stanley's call, made explicitly. It is
+   WhatsApp only (a DDUET participant is an account uid, never a number), it fails closed with
+   `## Phone` empty, and it logs every time it fires. Do not describe the owner surface as
+   loopback-only without this sentence.
 9. **The asker-facing surface never imports the owner registry** (`canvas.py` must not import `tools`).
 
 `tests/test_rules.py` covers most of these and runs with **no model and no venv** (156 checks).
@@ -372,7 +379,8 @@ Clear an item in the same commit as the work, not at the next review.
 
 ## Open — the checklist
 
-Last reviewed 2026-08-11, after the WhatsApp swap, the rename, and dropping the assistant from
+Last reviewed 2026-09-07, after a8 shipped and a day of real WhatsApp traffic. Before that,
+2026-08-11, after the WhatsApp swap, the rename, and dropping the assistant from
 setup. Items that existed only because of the owner interface were removed on 2026-08-03 — see
 the Cleared note at the end.
 
@@ -500,16 +508,27 @@ binary in a folder"). Ordered; each is worth doing alone.
 
 **Release blockers**
 
-- [ ] **`init` cannot take a connector**, and secrets deliberately cannot go through the
-      assistant (`save_connector` is outside `OWNER_TOOLS` — a credential typed into chat goes
-      to the model provider and lands in `owner_chat.json`). With no interface that leaves no
-      way to configure the product. `init` is the answer.
+- [ ] **`init` cannot take a connector** — and it is now the ONLY surface that cannot. The
+      settings page has taken the pair for months, and since 2026-09-07 so has the wizard's
+      sign-in screen, which is where an owner is already thinking about credentials. Both post
+      to `/api/setup/connector`, which proves the pair by opening a real session before saving.
+      Secrets still deliberately cannot go through the assistant (`save_connector` is outside
+      `OWNER_TOOLS` — a credential typed into chat goes to the model provider and lands in
+      `owner_chat.json`). So this is no longer "no way to configure the product"; it is the
+      Linux console path, which per the platform section is the one that must not drift.
 - [ ] **Connector provisioning.** Every install needs its OWN `AGENTDUET_CONNECTOR_UUID` — one
       client per connector, and a second races `call.answer()`. A new user installs cleanly and
       then stops dead waiting on a human.
       **An answer is designed, not built** (2026-08-18): wss-edge auto-provisions a connector on
-      first sign-in, keyed to the verified email, with no org involvement. So this closes when
-      OAuth lands rather than needing its own solution — see the OAuth item below.
+      first sign-in, keyed to the verified email, with no org involvement.
+      **BUT OAUTH DOES NOT CLOSE THIS ON ITS OWN — proven 2026-09-07.** Signing in minted
+      `bff72a4e-…`, which verified and connected perfectly and received NOTHING: three WhatsApp
+      messages were delivered by Meta and vanished, because no business account is bound to
+      that connector. A connector is necessary and not sufficient. The binding lives outside
+      `wss-edge` (whose `ingestWAMessage` is TOLD the uuid by its caller) — `inbox` receives
+      Meta's webhook at `POST /public/whatsapp/webhooks` and decides which connector to forward
+      to. So provisioning must ALSO bind the new connector to a BA, or a signed-in owner gets a
+      working channel that no message can reach. Ask Hallie, who owns the WhatsApp side.
 
 
 - [x] ~~**Publish the SDK.**~~ **RESOLVED 2026-08-11, by dropping the requirement.** `agentduet`
@@ -678,11 +697,17 @@ binary in a folder"). Ordered; each is worth doing alone.
       number is proven at registration, and `SELF_VOUCHING_NETWORKS` had said "WHATSAPP" for
       months while the SDK enum is "WA", so the intent had never fired. It grants the profile and
       their own history; `knowledge/` is public to everyone either way, so disclosure is unchanged.
-- [ ] **Confirm the INBOUND WhatsApp payload shape.** Still not known. `wa_echo_bot.py` proves
-      only the OUTBOUND shape — it replies with a fixed string and never reads a body.
-      `_first_text` now accepts Meta flat (`text.body`), Meta wrapped (`messages[].text.body`) and
-      the old Nexus `parts`, and **logs any payload it cannot read, in full**. Narrow it once a
-      real message has been seen; not before.
+- [x] ~~**Confirm the INBOUND WhatsApp payload shape.**~~ **DONE 2026-09-07, and all three
+      guesses were wrong.** `wss-edge` passes Meta's webhook envelope straight through
+      (`WaInboundController` forwards `request.content.content`), so the body is four levels
+      down: `entry[0].changes[0].value.messages[0].text.body`. `participant` is
+      `contacts[0].wa_id`. None of the shapes `_first_text` accepted — flat `text.body`, a
+      top-level `messages` array, the old Nexus `parts` — matched it, so the first real message
+      would have been logged as unreadable. Read out of the platform's own logs rather than
+      guessed, and the payload is a verbatim fixture in `tests/test_rules.py` because the
+      nesting IS the finding. Every level is iterated rather than indexed at [0]: Meta batches
+      entries and changes under load. Status webhooks (delivered/read) share the envelope with
+      no `messages` array and are dropped by `wss-edge`, so we never see a delivery receipt.
 - [ ] **Per-owner WABA.** **Shared sandbox number** — fine to test, unusable as product until
       per-owner numbers land (~September, on the platform side). The sandbox participant and
       `phone_number_id` are live identifiers and are kept out of this file; ask the platform team.
