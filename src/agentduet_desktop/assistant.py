@@ -436,7 +436,7 @@ class OwnerChat:
             return []
 
     def _record(self, question: str, answer: str, used: list[str], full: str = "",
-                draft: bool = False) -> None:
+                draft: bool = False, via: str = "") -> None:
         """Append one visible turn. Tool results are deliberately NOT stored — they are
         diagnostics, they are large, and they are stale the moment the queue changes.
 
@@ -446,6 +446,12 @@ class OwnerChat:
         """
         turn = {"q": question, "a": answer, "tools": used,
                 "at": datetime.now().isoformat(timespec="seconds")}
+        # WHERE IT CAME FROM, when it was not this machine. The owner can now reach this same
+        # assistant from WhatsApp, and a thread that mixes both without saying which is which
+        # leaves them unable to tell what they asked on their phone from what they typed here —
+        # which matters most for the answers, since those went somewhere.
+        if via:
+            turn["via"] = via
         # A DRAFT, decided from what the owner asked for. Stored on the turn so the page can
         # label it and so "send it" has one unambiguous referent.
         if draft and answer:
@@ -516,7 +522,8 @@ class OwnerChat:
         r"(added|updated|saved|stored|recorded|noted|written|sent|replied|granted|revoked|"
         r"resolved|closed|booked|cancelled|removed|deleted)\b", re.I)
 
-    async def turn(self, message: str, viewing: str = "", label: str = "") -> dict:
+    async def turn(self, message: str, viewing: str = "", label: str = "",
+                   via: str = "") -> dict:
         """One owner turn. `label` is what gets REMEMBERED in place of `message`.
 
         Setup drives this with a 3 KB instruction block. Recording that verbatim put the whole
@@ -618,7 +625,7 @@ class OwnerChat:
                              "than keep it. Ask again. If it keeps happening the model is too small for "
                              "this, or the conversation has grown repetitive — New conversation clears it.")
                 remember(history + [f"ASSISTANT: {out}"])
-                self._record(shown_as, out, used, full=message, draft=draft_intent(message))
+                self._record(shown_as, out, used, full=message, draft=draft_intent(message), via=via)
                 return {"reply": out, "tools": used, "proposals": _proposals(),
                         "draft": draft_intent(message) and bool(out)}
 
@@ -704,7 +711,7 @@ class OwnerChat:
                      "than keep it. Ask again. If it keeps happening the model is too small for "
                      "this, or the conversation has grown repetitive — New conversation clears it.")
         remember(history + [f"ASSISTANT: {final}"])
-        self._record(shown_as, final, used, full=message, draft=draft_intent(message))
+        self._record(shown_as, final, used, full=message, draft=draft_intent(message), via=via)
         return {"reply": final, "tools": used, "proposals": _proposals(),
                 "draft": draft_intent(message) and bool(final)}
 

@@ -117,6 +117,14 @@ h2{font-size:1rem;font-weight:700;color:var(--ink);}
 /* A second line under a row label, for a cost worth stating where the switch is rather than in
    a dialog nobody reads twice. Lives here with `.lbl` because it is a variant of it, not
    because two pages use it yet. */
+/* WHERE A TURN CAME FROM, when it was not this window. Both halves of the exchange carry it,
+   because the answer is the half that left the machine.
+   A TAG, NOT A HEADING. Full width above the text it read as a section title for the bubble;
+   floated right with a border it reads as what it is — a small label stuck on the corner of
+   the balloon. The left margin keeps the text off it when a line runs long. */
+.via{float:right;margin:-.1rem 0 .15rem .5rem;padding:.05rem .3rem;border-radius:.3rem;
+  border:1px solid currentColor;font-size:9px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--blue300);opacity:.85;}
 .sublbl{display:block;font-size:10px;font-weight:400;color:var(--faint);margin-top:.15rem;}
 .lbl3{font-size:.75rem;font-weight:600;color:#cbd5e1;}
 .note{font-size:11px;color:var(--faint);line-height:1.6;}

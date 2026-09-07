@@ -364,8 +364,9 @@
     const log = $('chat');
     if (!log) return;
     log.innerHTML = TURNS.map((t, i) => t.brk ? `<div class="brk"><span>new conversation</span></div>` : `
-      <div class="turn me"><div class="bub">${esc(t.q)}</div></div>
+      <div class="turn me"><div class="bub">${t.via ? `<span class="via">${esc(t.via)}</span>` : ''}${esc(t.q)}</div></div>
       <div class="turn ${t.bad ? 'bad' : 'it'}"><div class="bub${t.draft ? ' draft' : ''}${t.sent ? ' went' : ''}">${
+        t.via ? `<span class="via">${esc(t.via)}</span>` : ''}${
         t.draft ? `<span class="dlbl${t.sent ? ' gone' : ''}">${t.sent ? 'Sent' : 'Draft reply'}${replyTarget() ? ' to ' + esc((replyTarget().display || replyTarget().who)) : ''}${t.sent ? '' : ' — not sent'}</span>` : ''
       }${esc(t.a)}${useAsReply(t, i)}</div></div>`).join('')
       + (pending ? `<div class="turn me"><div class="bub">${esc(pending)}</div></div>
@@ -506,7 +507,7 @@
 
   $('newConv').onclick = async () => {
     const d = await post('/api/chat_new', {});
-    TURNS = (d.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a, draft: !!t.draft, sent: !!t.sent});
+    TURNS = (d.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a, draft: !!t.draft, sent: !!t.sent, via: t.via || ''});
     PROPOSALS = [];
     drawChat();
     $('ask').focus();
@@ -581,7 +582,7 @@
     fetch(`/api/chat_history?t=${T}`).then(r => r.json()).catch(() => ({turns: []})),
   ]).then(([th, hist]) => {
     THREADS = th;
-    TURNS = (hist.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a, draft: !!t.draft, sent: !!t.sent});
+    TURNS = (hist.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a, draft: !!t.draft, sent: !!t.sent, via: t.via || ''});
     drawWho();
   });
   load();

@@ -131,7 +131,9 @@ async def _owner_answer(question: str) -> str:
         return ("No model is attached, so I cannot answer that yet. Attach one in Settings on "
                 "the machine running AgentDuet.")
     try:
-        out = await chat.turn(question)
+        # NAMED, so the owner's own thread says which of these they asked from their phone.
+        # The reply is tagged by the same field: it is the half that went somewhere.
+        out = await chat.turn(question, via="whatsapp")
         return (out or {}).get("reply") or "I had nothing to say to that."
     except Exception as exc:
         logger.exception("the owner's assistant failed on a message from their own number")
