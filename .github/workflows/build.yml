@@ -193,6 +193,35 @@ jobs:
           echo "daemon booted and bound the owner site"
           "$BIN" stop || true
 
+          # AND IT MUST REACH THE INTERNET OVER TLS. This is the a9 assertion.
+          #
+          # Everything above it passed on a9 — every provider listed, voice available, the
+          # daemon booted and bound — and that release could not open a single connection: a
+          # frozen build carries its own OpenSSL whose compiled-in CA path points at the
+          # machine that BUILT it, so `create_default_context()` loaded no roots and every
+          # handshake failed to verify. It was signed, notarized, stapled and handed to a
+          # tester. Booting proves imports; only a connection proves TLS.
+          #
+          # `models download` is the cheapest real handshake we have: same urllib path as
+          # everything else, no credentials, and it dies instantly when the roots are missing.
+          # The smallest model in the catalogue is 0.24 GB and the check does not need all of
+          # it — bytes on disk are the proof, so it is stopped after a few seconds.
+          set +e
+          timeout 45 "$BIN" models download gemma-3-270m > tls.log 2>&1
+          set -e
+          cat tls.log
+          if grep -qiE "ssl|certificate verif|CERTIFICATE_VERIFY" tls.log; then
+            echo "::error::the frozen binary cannot verify TLS — certifi is not packaged, or entry.py did not find cacert.pem"
+            exit 1
+          fi
+          if [ -z "$(find "$AGENTDUET_HOME/models" -type f -size +1M 2>/dev/null | head -1)" ]; then
+            echo "::error::no bytes arrived over TLS — the binary reached nothing"
+            cat tls.log
+            exit 1
+          fi
+          echo "TLS works: the binary fetched real bytes from a public host"
+          rm -rf "$AGENTDUET_HOME/models"
+
       # ---- the native shell: THE SHIPPING PATH since 2026-09-03 --------------------------------
       #
       # `!= 'pyinstaller'` RATHER THAN `== 'native'`, and this is the whole reason the flip is

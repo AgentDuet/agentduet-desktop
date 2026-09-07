@@ -54,6 +54,19 @@ datas = collect_data_files("agentduet_desktop",
                                      # artifact for every platform.
                                      "wasm/**/*"])
 
+# THE CA ROOTS, NAMED ON PURPOSE — and this is load-bearing, not tidiness.
+#
+# `certifi/cacert.pem` was in the bundle by ACCIDENT: PyInstaller's certifi hook fires only
+# because some dependency imports certifi, and nothing here pinned that. A frozen build carries
+# its own OpenSSL whose compiled-in CA path points at the machine that built it, so without this
+# file `ssl.create_default_context()` loads no roots and EVERY handshake fails to verify. That
+# shipped as a9: signed, notarized, stapled, and unable to reach the platform at all.
+#
+# `entry.py` reads it and is deliberately SILENT when it is missing, so the owner site still
+# comes up — which means a dependency change that dropped certifi would reproduce a9 with CI
+# still green. Naming it here is what stops that.
+datas += collect_data_files("certifi")
+
 # THE WASM RUNTIME'S NATIVE LIBRARY, ADDED BY HAND.
 #
 # `--collect-all wasmtime` DOES NOT WORK, and fails in the worst way: the build succeeds, the
@@ -109,6 +122,9 @@ hiddenimports = [
     "google.genai", "anthropic", "httpx",
     # aiohttp resolves parts of itself dynamically.
     *collect_submodules("aiohttp"),
+    # Paired with the `datas` entry above: the data file is what OpenSSL reads, the module is
+    # what makes the hook collect it in the first place.
+    "certifi",
     # NOT collect_submodules("mcp"): that imports every submodule to enumerate it, and
     # `mcp.cli` calls sys.exit(1) at import time when its optional CLI extras are absent —
     # which aborts the BUILD. Only the server surface is actually used.
