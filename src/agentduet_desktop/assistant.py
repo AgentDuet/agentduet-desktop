@@ -327,6 +327,59 @@ def send_intent(message: str) -> bool:
 _shared: dict = {"chat": None, "model": ""}
 
 
+def sole_unanswered() -> str:
+    """The one person waiting on a reply, or "" when it is not exactly one.
+
+    Never a guess. With nobody waiting there is nothing to answer, and with two the choice is
+    the owner's — an unprompted send to the wrong customer is not recoverable.
+    """
+    from . import tools
+    waiting = {r.get("asker") for r in tools.rows()
+               if r.get("network") in ("WA", "DDUET") and not r.get("answer")
+               and r.get("outcome") != "owner_reply" and r.get("asker")}
+    return next(iter(waiting)) if len(waiting) == 1 else ""
+
+
+def send_if_asked(chat, message: str, viewing: str = "") -> str | None:
+    """Handle "send it" as CODE. Returns what to tell the owner, or None if this is not a send.
+
+    SHARED BY BOTH OWNER SURFACES, and it was not. This lived inside `web.make_app`, so the
+    owner asking from their WhatsApp got a model turn instead — and the model has no send tool
+    by design, so it answered that it can only read. Reported as "llm says the assistant only
+    reads", which was the assistant telling the truth about itself on a path that had never
+    been given the code half.
+
+    The comment this replaces warned about exactly this: implementing sending a second time is
+    "how the two owner surfaces drift apart". One function, called by both.
+
+    THERE IS NO MODEL ON THIS PATH, and that is the invariant rather than an optimisation. The
+    concern is an assistant that has READ a stranger's message and can also SEND, so that a
+    stranger's words could put a message on the wire. The words already exist, the owner has
+    read them, and the recipient comes from the thread — so a model here would add an injection
+    surface and no capability.
+
+    Three conditions, all required: the instruction must be ONLY a send instruction; a draft
+    must exist, so "2." can never be sent by saying two words; and a recipient must resolve,
+    because sending to the wrong person is the one mistake this must not make easy.
+    """
+    if chat is None or not send_intent(message):
+        return None
+    from . import secretary_tools, tools
+    draft = chat.last_draft()
+    target = viewing or sole_unanswered()
+    if not draft:
+        reply = "Nothing is drafted. Ask me to reply to someone first, then say send."
+    elif not target:
+        reply = "I do not know who to send that to. Open their conversation first."
+    else:
+        secretary_tools.reply_to(target, draft)
+        # THE NAME, NOT THE UID. On DDUET the identity is an account uid, so a confirmation
+        # naming it is accurate, unreadable, and no use for checking it went to the right person.
+        reply = f"Sent to {tools._display_for(target)}:\n\n{draft}"
+    chat.note_sent(message, reply, delivered=reply.startswith("Sent"))
+    return reply
+
+
 def owner_chat(model: str = ""):
     """The owner's assistant, built once and shared by every surface. None if no model is attached.
 
@@ -435,6 +488,26 @@ class OwnerChat:
         except (OSError, json.JSONDecodeError):
             return []
 
+    def begin(self, question: str, via: str = "") -> None:
+        """Show a question NOW, before the model has answered it.
+
+        A turn was only recorded once it COMPLETED, which is fine at the keyboard — the page
+        draws its own pending bubble from local state while it waits. It is not fine for a
+        question that arrived over WhatsApp: nothing local knows about it, so the owner's thread
+        stayed silent for the whole turn and then both halves appeared at once. On a turn that
+        ran 62 seconds that is a minute of a conversation that looks like it never happened.
+
+        The slot is filled in by `_record` when the answer lands, rather than a second turn
+        being appended, so the thread never shows the question twice.
+        """
+        turn = {"q": question, "a": "", "tools": [],
+                "at": datetime.now().isoformat(timespec="seconds"), "pending": True}
+        if via:
+            turn["via"] = via
+        self.shown = (self.shown + [turn])[-60:]
+        self._pending_at = len(self.shown) - 1
+        self._persist()
+
     def _record(self, question: str, answer: str, used: list[str], full: str = "",
                 draft: bool = False, via: str = "") -> None:
         """Append one visible turn. Tool results are deliberately NOT stored — they are
@@ -458,7 +531,18 @@ class OwnerChat:
             turn["draft"] = True
         if full and full != question:
             turn["q_full"] = full
-        self.shown = (self.shown + [turn])[-60:]
+        # FILL THE SLOT `begin` OPENED, rather than appending beside it — otherwise a question
+        # shown early would appear twice, once waiting and once answered.
+        at = getattr(self, "_pending_at", None)
+        if at is not None and 0 <= at < len(self.shown) and self.shown[at].get("pending"):
+            # Keep the channel the slot was opened with. A failure is recorded through
+            # note_failure, which knows nothing about where the question came from.
+            if not turn.get("via") and self.shown[at].get("via"):
+                turn["via"] = self.shown[at]["via"]
+            self.shown[at] = turn
+            self._pending_at = None
+        else:
+            self.shown = (self.shown + [turn])[-60:]
         self._persist()
 
     def _persist(self) -> None:
