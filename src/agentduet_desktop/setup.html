@@ -324,6 +324,12 @@
       $('backRow').hidden = false;
     }
     $('folder').value = d.carried_dir || '';
+    // Prefill from the files an operator left in their home directory, so a reset instance is
+    // one click. The uuid is filled in; the key is not sent here at all — the endpoint reads
+    // `~/.agentduet` when the field is blank, so the secret never reaches the page.
+    if (d.offer_uuid && !$('mUuid').value) $('mUuid').value = d.offer_uuid;
+    if (d.offer_key) $('mKey').placeholder = 'from ~/.agentduet';
+    if (d.offer_uuid || d.offer_key) $('manualBox').hidden = false;
     // THE LINE, not the owner's own number. This badge says "Power Mobile Line" and rendered
     // `phone`, which owner.py documents as never disclosed to anyone. It is learned from an
     // inbound call only, so it stays hidden until one has arrived — which on a first run is
