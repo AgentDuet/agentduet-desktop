@@ -2196,6 +2196,37 @@ def test_pages_parse() -> None:
     ok("at least one script was actually parsed", checked > 0)
 
 
+def test_a_turn_says_where_it_came_from() -> None:
+    """One assistant, two doors — so a turn has to say which one it came through."""
+    print("\n  -- a turn says where it came from --")
+    from agentduet_desktop import assistant
+
+    chat = object.__new__(assistant.OwnerChat)
+    chat.shown = []
+    chat.STORE = TMP / "owner_chat_via.json"
+    chat._record("from the phone", "answered", [], via="whatsapp")
+    chat._record("typed here", "answered", [])
+    eq("a tagged turn carries it", chat.shown[0].get("via"), "whatsapp")
+    ok("and an untagged one has no empty field to render",
+       "via" not in chat.shown[1])
+
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+           / "secretary_agent.py").read_text()
+    ok("the WhatsApp path names itself", 'chat.turn(question, via="whatsapp")' in src)
+
+    page = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+            / "web.html").read_text()
+    # BOTH HALVES. The answer is the half that left the machine, so tagging only the question
+    # would leave the owner unable to see which replies went to their phone.
+    eq("both bubbles render the tag", page.count('<span class="via">'), 2)
+    ok("and it survives the mapping into the renderer", page.count("via: t.via || ''") == 2)
+    # A TAG, NOT A HEADING. Full width above the text it read as a section title for the bubble.
+    css = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+           / "app.css").read_text()
+    ok("the tag sits on the right of the balloon", ".via{float:right" in css)
+    ok("and has a border, so it reads as a tag", "border:1px solid currentColor" in css)
+
+
 def test_the_hub_does_not_invent_a_sign_in_state() -> None:
     """An empty name is an empty name. The hub said "Not signed in" and meant neither."""
     print("\n  -- the hub reports what it knows --")
@@ -2363,6 +2394,7 @@ def main() -> None:
     test_local_models_do_not_monologue()
     test_a_failed_turn_is_reported()
     test_hosted_model_lists()
+    test_a_turn_says_where_it_came_from()
     test_the_hub_does_not_invent_a_sign_in_state()
     test_the_line_is_a_number()
     test_owner_writes_to_their_own_agent()
