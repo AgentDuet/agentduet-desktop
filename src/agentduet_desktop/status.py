@@ -69,6 +69,20 @@ def set_voice(on: bool) -> None:
 #: rendering nothing.
 _E164 = re.compile(r"^\+?[0-9][0-9 ()-]{5,}$")
 
+#: E.164 allows at most 15 digits. THE BOUND IS THE POINT, and its absence is what let a
+#: WhatsApp `phone_number_id` — `1151661421362480`, sixteen digits — be displayed as the line
+#: to ring. The character class above rejects a uuid, which is what it was written for, and a
+#: long numeric identifier walks straight past it. Seven at the floor: shorter than any DID this
+#: product will ever answer on.
+#:
+#: An honest limit: a 15-digit identifier would still fool this. The bound is right because
+#: E.164 says so, not because Meta's ids happen to be longer.
+_DIGITS_MIN, _DIGITS_MAX = 7, 15
+
+
+def _looks_like_a_number(value: str) -> bool:
+    return bool(_E164.match(value)) and _DIGITS_MIN <= len(re.sub(r"\D", "", value)) <= _DIGITS_MAX
+
 
 def set_number(number: str) -> None:
     """Learned from an inbound CALL. First one wins for display purposes.
@@ -78,7 +92,7 @@ def set_number(number: str) -> None:
     restart and only came back if someone rang again.
     """
     number = (number or "").strip()
-    if number and not _state["number"] and _E164.match(number):
+    if number and not _state["number"] and _looks_like_a_number(number):
         _state["number"] = number
         try:
             NUMBER_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -118,8 +132,20 @@ def load_number(sessions_file) -> None:
             return
         data = json.loads(sessions_file.read_text())
         for entry in sorted(data.values(), key=lambda e: e.get("last_seen", ""), reverse=True):
-            if entry.get("subscriber"):
-                _state["number"] = entry["subscriber"]
+            if not entry.get("subscriber"):
+                continue
+            # THROUGH `set_number`, NOT PAST IT. This assigned `_state["number"]` directly while
+            # the docstring above claimed "set_number's shape check is what keeps those out" —
+            # so the one path that most needed the check was the one that skipped it. The store
+            # holds a subscriber per channel and only a CALL's is a phone number: WhatsApp's is
+            # the BA's `phone_number_id` and DDUET's is the connector uuid.
+            #
+            # It showed: after the first real WhatsApp message the header offered
+            # `1151661421362480` as the "Power Mobile Line" — sixteen digits of Meta identifier
+            # presented as a number to ring. Keep trying the older rows, since one unusable
+            # subscriber does not mean a call never happened.
+            set_number(entry["subscriber"])
+            if _state["number"]:
                 return
     except (OSError, ValueError) as exc:
         logger.debug("could not recover the number from sessions: %s", exc)
