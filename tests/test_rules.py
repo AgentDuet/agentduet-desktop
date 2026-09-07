@@ -2216,15 +2216,36 @@ def test_a_turn_says_where_it_came_from() -> None:
 
     page = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
             / "web.html").read_text()
-    # BOTH HALVES. The answer is the half that left the machine, so tagging only the question
+    # BOTH HALVES. The answer is the half that left the machine, so labelling only the question
     # would leave the owner unable to see which replies went to their phone.
-    eq("both bubbles render the tag", page.count('<span class="via">'), 2)
-    ok("and it survives the mapping into the renderer", page.count("via: t.via || ''") == 2)
-    # A TAG, NOT A HEADING. Full width above the text it read as a section title for the bubble.
+    # The INTERPOLATION, not the identifier: the third occurrence is the function's own
+    # definition, which is how this first read 3 and failed.
+    eq("both bubbles carry the label", page.count("${viaLine(t)}"), 2)
+    # EVERY mapping must carry it, not a fixed number of them — an earlier version of this
+    # counted two and broke the moment a third was added for the poll below.
+    eq("every place that maps turns carries it",
+       page.count("via: t.via || ''"), page.count("t.break ? {brk: true}"))
+
+    # IT READS AFTER THE MESSAGE, NOT BEFORE IT, and it is not shouted. The frontend-design
+    # skill lists a tracked-out all-caps label, and a label placed above the content it
+    # describes, as two of the commonest tells of a generated page — and the first two versions
+    # of this were exactly that. It is metadata about the message, in a timestamp's register.
     css = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
            / "app.css").read_text()
-    ok("the tag sits on the right of the balloon", ".via{float:right" in css)
-    ok("and has a border, so it reads as a tag", "border:1px solid currentColor" in css)
+    via_rule = css[css.index(".via{"):css.index("}", css.index(".via{"))]
+    ok("the label is not all caps", "text-transform" not in via_rule)
+    ok("nor boxed", "border" not in via_rule)
+    ok("it sits below the message", "margin-top" in via_rule)
+    ok("and says what it means, named properly",
+       "via ${esc(VIA_NAMES" in page and "whatsapp: 'WhatsApp'" in page)
+
+    # AND IT APPEARS WITHOUT A RELOAD. The history was fetched once at page load, from a time
+    # when the only way to add a turn was to type it here — so a question asked from WhatsApp
+    # was answered on the owner's phone while this panel showed the thread as it stood when the
+    # page opened. Reported as "the messages are still not appearing".
+    ok("the owner's own thread is polled, not just loaded", "refreshChat()" in page)
+    ok("and not while a local turn is in flight", "if (BUSY) return;" in page)
+    ok("redrawing only on a real change", "chatSig()" in page)
 
 
 def test_the_hub_does_not_invent_a_sign_in_state() -> None:
