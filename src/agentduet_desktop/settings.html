@@ -391,9 +391,21 @@
     try { $(el).scrollIntoView({block: 'nearest', behavior: 'smooth'}); } catch (e) {}
   };
   async function post(path, body){
-    const r = await fetch(`${path}?t=${T}`, {method:'POST',
-      headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-    return r.json();
+    // A DEAD DAEMON MUST NOT LOOK LIKE A DEAD BUTTON. When the process behind the page is gone
+    // — quit, crashed, or a stale tab from an instance that has since stopped — fetch REJECTS.
+    // The rejection propagated out of every click handler, so nothing was said, nothing moved,
+    // and the button stayed disabled: "Complete Setup does nothing". Every caller already
+    // handles {ok, message}, so a transport failure is returned in that shape instead of thrown.
+    try {
+      const r = await fetch(`${path}?t=${T}`, {method:'POST',
+        headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+      if (!r.ok && r.status === 401) return {ok: false, message:
+        'This page is signed out. Reopen it from the app.'};
+      return await r.json();
+    } catch (e) {
+      return {ok: false, message:
+        'AgentDuet is not running behind this page any more. Start it again and reopen this page.'};
+    }
   }
 
   $('back').href = '/?t=' + T;
