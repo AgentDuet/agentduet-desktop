@@ -2267,6 +2267,36 @@ def test_sending_is_code_on_both_surfaces() -> None:
     ok("a draft records who it is for", 'turn["draft_for"] = who' in a_src)
     ok("taken from the call that made it", 'name == "draft_reply"' in a_src)
     ok("and send prefers it", "chat.last_draft_for() or sole_unanswered()" in a_src)
+
+    # "send to <someone>" — the same instruction with the recipient said out loud. Needed
+    # because the alternative was a dead end: told "I do not know who to send that to", every
+    # way of answering that question was itself refused as a compound instruction.
+    eq("an explicit recipient is read", assistant.send_target("send to Stanley Leong"),
+       "Stanley Leong")
+    eq("case and punctuation do not matter",
+       assistant.send_target("Send it to Stanley Leong."), "Stanley Leong")
+    eq("a pronoun means the draft's own recipient, not a person called them",
+       assistant.send_target("send it to them"), "")
+    ok("and a bare send is still a send", assistant.send_intent("send"))
+
+    # AN EXPLICIT NAME MUST RESOLVE TO SOMEONE WE KNOW. "send to Bob and tell him we close at
+    # six" parses as a recipient called "Bob and tell him we close at six" — a compound
+    # instruction wearing a name, whose second half is content that has to be drafted and read
+    # before it goes anywhere. Refusing the unknown name declines the whole sentence.
+    ok("an unknown name is refused rather than passed through", "if not _known(key)" in a_src)
+    ok("and the owner is told who they can choose", "_waiting_names()" in a_src)
+    # The STRING LITERAL, closing quote included — not the phrase, which appears in the comment
+    # explaining why it was removed. Third time today an assertion has failed on its own
+    # documentation; a bare substring check cannot tell code from prose.
+    ok("no instruction that only makes sense in the window",
+       'Open their conversation first."' not in a_src)
+
+    # THE OWNER IS NOT WAITING ON THEMSELVES. Their own messages arrived as ordinary inbound
+    # before their number was known, so one sat in the log as an unanswered stranger — which
+    # made two conversations look open, so "send" refused to choose and the real recipient
+    # could not be reached at all.
+    ok("the owner is excluded from who is waiting",
+       "waiting = {w for w in waiting if not owner.is_own_number(w)}" in a_src)
     page2 = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
              / "web.html").read_text()
     ok("the window labels the draft with that name", "draftWho(t)" in page2)
