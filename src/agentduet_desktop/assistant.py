@@ -278,6 +278,30 @@ _SEND_INTENT = re.compile(
     r"(?:\s+(?:to\s+them|to\s+him|to\s+her|now|please))*[.!]?$",
     re.I)
 
+#: "send to Stanley Leong" — the same instruction with the recipient said out loud.
+#:
+#: Needed because the alternative was a dead end: with two conversations open the owner was
+#: told "I do not know who to send that to", and every way of answering that question was
+#: itself refused as a compound instruction. Naming the recipient is not the ambiguity this
+#: guards against — it RESOLVES it, and it is the one form where nothing has to be inferred.
+_SEND_TO = re.compile(
+    r"^(?:ok(?:ay)?[,\s]+)?(?:yes[,\s]+)?(?:please\s+)?"
+    r"send(?:\s+(?:it|that|this|the\s+reply|the\s+message))?\s+to\s+(?P<who>.+?)[.!]?$",
+    re.I)
+
+
+def send_target(message: str) -> str:
+    """The recipient named in a "send to …" instruction, or "".
+
+    Excludes the pronouns `_SEND_INTENT` already treats as part of a bare send: "send it to
+    them" means the draft's own recipient, not somebody called "them".
+    """
+    m = _SEND_TO.match((message or "").strip())
+    if not m:
+        return ""
+    who = m.group("who").strip()
+    return "" if who.lower() in ("them", "him", "her", "it") else who
+
 
 #: THE OWNER ASKING FOR WORDS TO SEND SOMEONE, rather than an answer for themselves.
 #:
@@ -333,11 +357,43 @@ def sole_unanswered() -> str:
     Never a guess. With nobody waiting there is nothing to answer, and with two the choice is
     the owner's — an unprompted send to the wrong customer is not recoverable.
     """
-    from . import tools
+    from . import owner, tools
     waiting = {r.get("asker") for r in tools.rows()
                if r.get("network") in ("WA", "DDUET") and not r.get("answer")
                and r.get("outcome") != "owner_reply" and r.get("asker")}
+    # NOT THE OWNER. Their own messages arrived as ordinary inbound before their number was
+    # known, so one sits in the log as an unanswered stranger — which made two conversations
+    # look open, so "send" refused to choose and the real recipient could not be reached. They
+    # cannot be waiting on a reply from themselves.
+    waiting = {w for w in waiting if not owner.is_own_number(w)}
     return next(iter(waiting)) if len(waiting) == 1 else ""
+
+
+def _sessions() -> dict:
+    from . import paths
+    try:
+        return json.loads((paths.RUN / "sessions.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _known(who: str) -> bool:
+    """Has this person ever written in? A session is the only proof we have of that."""
+    return bool(who) and who in _sessions()
+
+
+def _waiting_names() -> str:
+    """The people with an unanswered message, by name, for an owner being asked to choose."""
+    from . import owner, tools
+    seen, out = set(), []
+    for r in tools.rows():
+        who = r.get("asker")
+        if (r.get("network") in ("WA", "DDUET") and not r.get("answer")
+                and r.get("outcome") != "owner_reply" and who
+                and who not in seen and not owner.is_own_number(who)):
+            seen.add(who)
+            out.append(tools._display_for(who) or who)
+    return " or ".join(out[:4])
 
 
 def send_if_asked(chat, message: str, viewing: str = "") -> str | None:
@@ -362,7 +418,8 @@ def send_if_asked(chat, message: str, viewing: str = "") -> str | None:
     must exist, so "2." can never be sent by saying two words; and a recipient must resolve,
     because sending to the wrong person is the one mistake this must not make easy.
     """
-    if chat is None or not send_intent(message):
+    named = send_target(message)
+    if chat is None or not (send_intent(message) or named):
         return None
     from . import secretary_tools, tools
     draft = chat.last_draft()
@@ -370,10 +427,31 @@ def send_if_asked(chat, message: str, viewing: str = "") -> str | None:
     # window; the draft's own recipient is the model repeating back who they asked for; and
     # sole_unanswered is the last resort, which only answers when exactly one person is waiting.
     target = viewing or chat.last_draft_for() or sole_unanswered()
+    if named:
+        # AN EXPLICIT NAME MUST RESOLVE TO SOMEONE WE ALREADY KNOW, and this is a guard rather
+        # than a convenience. "send to Bob and tell him we close at six" parses as a recipient
+        # called "Bob and tell him we close at six" — a compound instruction wearing a name,
+        # whose second half is new content that has to be drafted and read before it goes
+        # anywhere. Refusing an unknown name declines the whole sentence, which is the safe
+        # reading. Writing to somebody never seen is still possible from the composer, where
+        # the owner types the recipient into a field rather than into a sentence.
+        key, why = secretary_tools.resolve_asker(named)
+        if why:
+            return why
+        if not _known(key):
+            return (f"I have no conversation with {named!r}. Say who from: "
+                    f"{_waiting_names() or 'nobody has written in yet'}.")
+        target = key
     if not draft:
         reply = "Nothing is drafted. Ask me to reply to someone first, then say send."
     elif not target:
-        reply = "I do not know who to send that to. Open their conversation first."
+        # NAME THE CANDIDATES. "Open their conversation first" is an instruction for the window
+        # and nonsense on a phone, where there is nothing to open — and it left the owner with
+        # no way forward, since every way of answering "who?" was itself refused as a compound
+        # instruction.
+        reply = ("I do not know who to send that to. Say " +
+                 (f'"send to {_waiting_names()}"' if _waiting_names()
+                  else "who it is for") + ".")
     else:
         secretary_tools.reply_to(target, draft)
         # THE NAME, NOT THE UID. On DDUET the identity is an account uid, so a confirmation
