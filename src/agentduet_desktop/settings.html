@@ -654,7 +654,7 @@
     say('mRec', d.ok, d.message);
   };
   $('pickRec').onclick = async () => {
-    say('mRec', true, 'Choose a folder in the window that just opened…');
+    // Same as the wizard: the chooser is visible, so announcing it narrates the obvious.
     const d = await post('/api/pick-folder', {});
     // A cancelled dialog is not a failure. Clearing the line beats reporting one.
     if (d.ok && !d.changed) { $('mRec').innerHTML = ''; return; }

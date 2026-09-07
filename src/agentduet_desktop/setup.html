@@ -348,8 +348,9 @@
   // The same endpoint the settings page uses, so there is one implementation of "ask the
   // desktop for a folder" and one place it can go wrong.
   $('doBrowse').onclick = async () => {
+    // No "a window just opened" line. The window is on screen; saying so narrates what the
+    // owner can already see, and the disabled button is the only status this needs.
     $('doBrowse').disabled = true;
-    say('mDone', true, 'Choose a folder in the window that just opened…');
     const d = await post('/api/pick-folder', {});
     $('doBrowse').disabled = false;
     // A CANCELLED DIALOG IS NOT A FAILURE. Someone closing a chooser has not done anything
