@@ -259,6 +259,10 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         from . import connector
         body = await request.json()
         key, uuid = (body.get("key") or "").strip(), (body.get("uuid") or "").strip()
+        # A BLANK FIELD FALLS BACK TO THE FILE, so a reset instance is one click. `~/.agentduet`
+        # and `~/.connector` live outside $AGENTDUET_HOME on purpose — wiping the instance to
+        # simulate a fresh install must not wipe the credential. Anything typed still wins.
+        key, uuid = connector.fill_from_files(key, uuid)
         if not key or not uuid:
             return web.json_response({"ok": False, "message": "Both fields are needed."})
         if connector.in_use(uuid):
@@ -413,6 +417,11 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         cur["record_calls"] = _own.record_calls()
         # As above: the badge on the setup screen means the LINE, not the owner's own number.
         cur["line"] = (secretary_tools.state().get("channel") or {}).get("number", "")
+        # PREFILL, WITHOUT THE SECRET. The uuid is an identifier and typing it again is the
+        # friction this removes; the key stays on disk and the endpoint reads it when the field
+        # is left blank, so it never enters the page.
+        from . import connector as _conn
+        cur["offer_uuid"], cur["offer_key"] = _conn.offered_pair()
         # THE TOGGLE ONLY EXISTS FOR SOME MODELS. Gemini has no dial and Claude reasons
         # adaptively already, so showing a switch there would promise a change it cannot make.
         # The page hides the row rather than disabling it: a switch that does nothing is worse

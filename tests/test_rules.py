@@ -2426,6 +2426,63 @@ def test_the_hub_does_not_invent_a_sign_in_state() -> None:
        "D.name || '—'" in web_page)
 
 
+def test_the_binary_can_reach_the_platform() -> None:
+    """A frozen build must trust its own CA bundle. a9 shipped unable to connect at all."""
+    print("\n  -- the frozen build trusts its bundled CAs --")
+    src = (pathlib.Path(__file__).parent.parent / "entry.py").read_text()
+    # a9 failed EVERY channel attempt with `AuthenticationError: SSL/TLS error during
+    # connection`, retrying every two minutes forever, while the same commit from source
+    # connected in under a second — twenty seconds apart, same connector, same network. The
+    # CA bundle was in the app; nothing pointed Python at it. A frozen build carries its own
+    # OpenSSL, whose compiled-in CA path is the build machine's.
+    ok("the entry point sets a CA file", "SSL_CERT_FILE" in src)
+    ok("only when frozen", 'getattr(sys, "frozen", False)' in src)
+    ok("and before anything can connect", src.index("_trust_the_bundled_cas()")
+       < src.index("from agentduet_desktop.cli import main"))
+    ok("without overriding an operator's own choice", "os.environ.setdefault" in src)
+    # --onedir puts the executable in Contents/MacOS and the data in Resources/Frameworks, so
+    # the sibling paths matter as much as _MEIPASS.
+    ok("it looks where --onedir actually puts it",
+       '"Resources" / "certifi"' in src and '"Frameworks" / "certifi"' in src)
+
+
+def test_a_declined_window_declines_the_browser() -> None:
+    """`--no-window` meant no frame and said nothing about a tab, so throwaways seized one."""
+    print("\n  -- no window means no browser --")
+    cli = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+           / "cli.py").read_text()
+    shell = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+             / "shell.py").read_text()
+    ok("the flag is passed through", "no_browser=args.no_window or args.headless" in cli)
+    ok("and honoured at the first-run open", "first_run and not no_browser" in shell)
+    # A fresh $AGENTDUET_HOME is a first run BY DEFINITION, which is why every throwaway
+    # instance opened a tab — the condition was right and the flag simply did not reach it.
+    ok("the url is still printed either way", 'print(f"  owner view: {url}")' in shell)
+
+
+def test_one_pair_of_credential_files() -> None:
+    """Dev-from-source and the installed app read the same two files, so they differ in less."""
+    print("\n  -- one credential pair for both surfaces --")
+    from agentduet_desktop import connector
+
+    ok("the SDK's own key file is the key source", str(connector.KEY_FILE).endswith("/.agentduet"))
+    ok("and the uuid sits beside it", str(connector.UUID_FILE).endswith("/.connector"))
+    # NEITHER IS INSIDE $AGENTDUET_HOME, deliberately: wiping the instance to simulate a fresh
+    # install must not wipe the credential, or every reset needs the platform team.
+    from agentduet_desktop import paths
+    for f in (connector.KEY_FILE, connector.UUID_FILE):
+        ok(f"{f.name} survives wiping the instance", not str(f).startswith(str(paths.HOME)))
+    # PREFILL WITHOUT THE SECRET: the uuid is an identifier, the key stays on disk.
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+           / "connector.py").read_text()
+    ok("offered_pair reports only that a key exists", '"yes" if _from_file(KEY_FILE)' in src)
+    web = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+           / "web.py").read_text()
+    ok("and a blank field falls back to the file", "connector.fill_from_files(key, uuid)" in web)
+    submitted = connector.fill_from_files("typed", "typed-uuid")
+    eq("anything typed still wins", submitted, ("typed", "typed-uuid"))
+
+
 def test_the_line_is_a_number() -> None:
     """The header's line must be a number to ring, not whatever a channel called a subscriber."""
     print("\n  -- the line badge shows a NUMBER --")
@@ -2594,6 +2651,9 @@ def main() -> None:
     test_a_reply_finds_the_person_it_was_shown()
     test_a_turn_says_where_it_came_from()
     test_the_hub_does_not_invent_a_sign_in_state()
+    test_the_binary_can_reach_the_platform()
+    test_a_declined_window_declines_the_browser()
+    test_one_pair_of_credential_files()
     test_the_line_is_a_number()
     test_owner_writes_to_their_own_agent()
     test_inbound_whatsapp_shape()

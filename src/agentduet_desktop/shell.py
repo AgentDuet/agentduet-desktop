@@ -109,7 +109,8 @@ def window_support() -> tuple[bool, str]:
         return False, "no GUI backend on this machine — the owner view opens in your browser"
 
 
-def run_with_window(start_daemon, want_window: bool = True) -> int:
+def run_with_window(start_daemon, want_window: bool = True,
+                    no_browser: bool = False) -> int:
     """Run the daemon on a worker thread and show the owner's view.
 
     `start_daemon` is a callable that blocks — the daemon's own entry point.
@@ -173,7 +174,15 @@ def run_with_window(start_daemon, want_window: bool = True) -> int:
     # which is the same fallback the site's needs_setup() uses so the two cannot disagree.
     from . import connector
     first_run = not (paths.RUN / "setup-done").exists() and not connector.configured()
-    if first_run and open_in_browser(url):
+    # AND NOT WHEN A BROWSER WAS DECLINED. `--no-window` suppressed the native window and left
+    # this alone, which is not what anyone asking for no window means: every throwaway instance
+    # started to check the wizard is a "first run" by definition, so a development session opens
+    # a tab per instance on somebody's screen. Seen doing exactly that, several times, before
+    # anyone worked out which of the two browser paths was firing.
+    #
+    # The url is still printed, so nothing becomes unfindable — that is what made the first-run
+    # open safe to make conditional in the first place.
+    if first_run and not no_browser and open_in_browser(url):
         print(f"  owner view opened: {url}")
     else:
         print(f"  owner view: {url}")

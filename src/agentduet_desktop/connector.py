@@ -25,6 +25,7 @@ matters: the owner is adding or changing one.
 import asyncio
 import logging
 import os
+import pathlib
 
 logger = logging.getLogger("dduet.connector")
 
@@ -45,6 +46,46 @@ UUID = "AGENTDUET_CONNECTOR_UUID"
 #: happen. Set it, and sign-in becomes the primary path with "Enter key manually instead" beside
 #: it. No redesign when the backend lands, and nothing misleading before it does.
 OAUTH_URL = "AGENTDUET_OAUTH_URL"
+
+
+#: The two files an operator may leave in their home directory, read when the instance has no
+#: credential of its own.
+#:
+#: WHY THIS EXISTS: dev-from-source and the installed app were configured separately, so every
+#: difference between them was a variable in any bug hunt — and the a9 TLS failure took two
+#: experiments to attribute precisely because the two were not otherwise identical. One pair of
+#: files, read by both, removes that.
+#:
+#: `~/.agentduet` is the SDK's own convention for the api key and already existed. `~/.connector`
+#: is ours, alongside it, holding just the uuid. Both are a single line, and neither is inside
+#: `$AGENTDUET_HOME` on purpose: wiping the instance to simulate a fresh install must NOT wipe
+#: the credential, or every reset needs a trip to the platform team.
+KEY_FILE = pathlib.Path.home() / ".agentduet"
+UUID_FILE = pathlib.Path.home() / ".connector"
+
+
+def _from_file(path: pathlib.Path) -> str:
+    """One stripped line, or "". Never raises — a missing file is the normal case."""
+    try:
+        return path.read_text().strip().splitlines()[0].strip()
+    except (OSError, IndexError):
+        return ""
+
+
+def offered_pair() -> tuple[str, str]:
+    """The uuid and whether a key is available, for prefilling a form. NEVER the key itself.
+
+    The uuid is an identifier and showing it saves the retyping this exists to avoid. The key is
+    a credential: it stays on disk, the page is told only that one is there, and
+    `/api/setup/connector` reads the file when the field is left blank. So a fresh install is one
+    click, and the secret never enters the DOM or this process's replies.
+    """
+    return _from_file(UUID_FILE), ("yes" if _from_file(KEY_FILE) else "")
+
+
+def fill_from_files(key: str, uuid: str) -> tuple[str, str]:
+    """Whatever was submitted, with blanks filled from the files. Submitted values always win."""
+    return (key or _from_file(KEY_FILE)), (uuid or _from_file(UUID_FILE))
 
 
 def oauth_available() -> bool:

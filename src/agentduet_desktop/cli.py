@@ -63,7 +63,10 @@ def cmd_run(args) -> int:
             return secretary_agent.run() or 0
         # The owner's view is the primary surface, so it is opened for them rather than
         # printed as a URL they have to notice, copy and paste with a token attached.
-        return shell.run_with_window(secretary_agent.run, want_window=not args.no_window)
+        # A DECLINED WINDOW DECLINES THE BROWSER. `--no-window` meant no native frame and
+        # said nothing about a tab, so every fresh throwaway instance seized one.
+        return shell.run_with_window(secretary_agent.run, want_window=not args.no_window,
+                                     no_browser=args.no_window or args.headless)
     finally:
         PIDFILE.unlink(missing_ok=True)
 
