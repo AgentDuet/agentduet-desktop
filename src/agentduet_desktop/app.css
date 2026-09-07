@@ -126,7 +126,6 @@ h2{font-size:1rem;font-weight:700;color:var(--ink);}
    So: below the message, sentence case, no box. It is metadata about the message — the same
    register as a timestamp — and it should read after the words, not before them. */
 .via{display:block;margin-top:.3rem;font-size:10.5px;font-weight:400;color:var(--faint);}
-.turn.me .via{text-align:right;}
 .sublbl{display:block;font-size:10px;font-weight:400;color:var(--faint);margin-top:.15rem;}
 .lbl3{font-size:.75rem;font-weight:600;color:#cbd5e1;}
 .note{font-size:11px;color:var(--faint);line-height:1.6;}
