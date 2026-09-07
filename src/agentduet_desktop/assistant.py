@@ -18,6 +18,7 @@ function-calling API, so swapping models does not rewrite the loop.
 import asyncio
 import json
 import logging
+import os
 import re
 from datetime import date, datetime
 
@@ -311,6 +312,40 @@ def send_intent(message: str) -> bool:
     the payload, so it declines to try.
     """
     return bool(_SEND_INTENT.match((message or "").strip()))
+
+
+#: THE OWNER HAS ONE ASSISTANT, not one per surface.
+#:
+#: It used to be built inside `web.make_app`'s closure, which was fine while the only way in was
+#: the loopback page. The moment a second surface needed it — a WhatsApp message from the
+#: owner's own number — a second instance would have been built, and both persist to the SAME
+#: file (`OwnerChat.STORE`). Two instances means last-writer-wins on the owner's history: ask
+#: something on your phone, reload the app, and the question is gone.
+#:
+#: Shared, so the two surfaces are one conversation. Asking from the phone and then opening the
+#: app shows the same thread, which is also the behaviour anyone would expect.
+_shared: dict = {"chat": None, "model": ""}
+
+
+def owner_chat(model: str = ""):
+    """The owner's assistant, built once and shared by every surface. None if no model is attached.
+
+    Rebuilt when the attached model changes, since the client is bound to it.
+    """
+    from . import llm
+    m = model or os.getenv("SECRETARY_MODEL", "")
+    if not m or not llm.client(m):
+        return None
+    if _shared["chat"] is None or _shared["model"] != m:
+        _shared["chat"] = OwnerChat(m)
+        _shared["model"] = m
+    return _shared["chat"]
+
+
+def forget_owner_chat() -> None:
+    """Drop the shared assistant, so the next caller builds one against the current credential."""
+    _shared["chat"] = None
+    _shared["model"] = ""
 
 
 class OwnerChat:

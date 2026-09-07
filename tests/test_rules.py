@@ -2173,6 +2173,108 @@ def test_pages_parse() -> None:
     ok("at least one script was actually parsed", checked > 0)
 
 
+def test_owner_writes_to_their_own_agent() -> None:
+    """A WhatsApp message from the OWNER'S number is their assistant, not a person to answer."""
+    print("\n  -- the owner, writing to their own agent --")
+    from unittest import mock
+    from agentduet_desktop import assistant, owner, secretary_agent as sa
+
+    for setting, incoming, want in [
+        ("+6596918851", "6596918851", True),      # E.164 stored, bare wa_id inbound
+        ("+65 9691 8851", "6596918851", True),    # spaces are how a person writes it
+        ("96918851", "6596918851", True),         # local number stored, wa_id carries the code
+        ("+6596918851", "6598768643", False),     # somebody else
+        ("", "6596918851", False),                # UNSET MUST MATCH NOBODY
+        ("88", "6596918851", False),              # too short to be a subscriber number
+    ]:
+        with mock.patch.object(owner, "phone", lambda s=setting: s):
+            eq(f"phone={setting!r:16} from={incoming!r:12}",
+               owner.is_own_number(incoming), want)
+
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+           / "secretary_agent.py").read_text()
+    # WA ONLY. On DDUET the participant is an account uid, never a number, so the comparison has
+    # no subject there and the owner path must not be reachable.
+    ok("the owner path is WhatsApp only",
+       "if dd is None and owner_settings.is_own_number(asker)" in src)
+    ok("and it goes to the owner's assistant, not the asker brain",
+       "_owner_answer(question)" in src and "_owner_answer" in src)
+    ok("a failure is sent back rather than swallowed",
+       "That did not go through" in src)
+
+    # ONE ASSISTANT, ONE HISTORY. Both surfaces persist to OwnerChat.STORE, so a second
+    # instance would silently overwrite the owner's own conversation.
+    ok("the assistant is shared, not built per surface", "def owner_chat" in
+       (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+        / "assistant.py").read_text())
+    web_src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+               / "web.py").read_text()
+    ok("and the page uses that one", "assistant.owner_chat()" in web_src)
+    ok("with one place to forget it", "assistant.forget_owner_chat()" in web_src)
+
+    # The wizard's fourth way in — the only one that works while sign-on is undeployed.
+    setup_page = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+                  / "setup.html").read_text()
+    ok("the wizard can take a connector and key", "doManual" in setup_page)
+    ok("verified through the same endpoint Settings uses",
+       "/api/setup/connector" in setup_page)
+    ok("and a failed pair does not advance the wizard", "if (d.ok) { $('mKey').value = ''" in
+       setup_page)
+
+
+def test_inbound_whatsapp_shape() -> None:
+    """The real WA payload, from a real message. This was a guess for weeks and was wrong."""
+    print("\n  -- inbound WhatsApp: the confirmed shape --")
+    from agentduet_desktop import secretary_agent as sa
+
+    # VERBATIM from the platform's own logs, 2026-09-07 03:41:23Z — the message that finally
+    # settled this. `wss-edge`'s WaInboundController forwards `request.content.content`, so what
+    # reaches the SDK is Meta's webhook envelope untouched. Kept in full rather than trimmed:
+    # the nesting IS the finding, and a reader needs to see how deep the body sits.
+    REAL = {
+        "object": "whatsapp_business_account",
+        "entry": [{
+            "id": "355853387610994",
+            "changes": [{
+                "field": "messages",
+                "value": {
+                    "messaging_product": "whatsapp",
+                    "metadata": {"display_phone_number": "6562796998",
+                                 "phone_number_id": "1151661421362480"},
+                    "contacts": [{"profile": {"name": "Stanley Leong"},
+                                  "wa_id": "6596918851",
+                                  "user_id": "SG.1343522307300585"}],
+                    "messages": [{"from": "6596918851", "id": "wamid.HBgK",
+                                  "timestamp": "1788752481",
+                                  "text": {"body": "Test4"}, "type": "text"}],
+                },
+            }],
+        }],
+    }
+    eq("the body is read from the real envelope", sa._first_text(REAL), "Test4")
+    # NONE of the three original guesses matched this, which is why it matters that the envelope
+    # is tried first: a message would have arrived, been logged as unreadable, and gone nowhere.
+    ok("the envelope is tried before the flatter guesses",
+       'payload.get("entry"' in (pathlib.Path(__file__).parent.parent / "src"
+                                 / "agentduet_desktop" / "secretary_agent.py").read_text())
+
+    # A status webhook shares the envelope and carries no messages. wss-edge drops those, so we
+    # should not see one — but it must not be mistaken for a message either.
+    eq("a status webhook yields no text", sa._first_text(
+        {"entry": [{"changes": [{"field": "statuses",
+                                 "value": {"statuses": [{"status": "read"}]}}]}]}), "")
+    # EVERY level is iterated, not indexed at [0]: Meta documents entry and changes as arrays
+    # and batches them under load, so taking the first would silently drop the rest.
+    eq("a batched envelope finds a message in a later entry", sa._first_text(
+        {"entry": [{"changes": [{"field": "statuses", "value": {}}]},
+                   {"changes": [{"field": "messages",
+                                 "value": {"messages": [{"text": {"body": "second"}}]}}]}]}),
+       "second")
+    # DDUET is a different channel and still uses the older typed parts.
+    eq("DDUET's parts still work", sa._first_text(
+        {"parts": [{"type": "text", "text": {"body": "from dduet"}}]}), "from dduet")
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -2185,6 +2287,8 @@ def main() -> None:
     test_local_models_do_not_monologue()
     test_a_failed_turn_is_reported()
     test_hosted_model_lists()
+    test_owner_writes_to_their_own_agent()
+    test_inbound_whatsapp_shape()
     test_pages_parse()
     test_prompts()
     test_asker_tool_surface()

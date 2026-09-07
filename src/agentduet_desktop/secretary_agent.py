@@ -111,24 +111,67 @@ CONNECTOR_POLL_SECONDS = 3
 WA_API_VERSION = "v23.0"
 
 
+async def _owner_answer(question: str) -> str:
+    """What the owner's assistant says to the owner's own message. Always returns something.
+
+    NOT `brain.handle_query`: that is the ASKER path, which answers a stranger from public
+    knowledge and cannot act. This is the owner's own surface — the same object the app's chat
+    panel drives, which is why `owner_chat()` is shared: ask from the phone, open the app, and
+    it is one thread.
+
+    Sending is the caller's job, because `session_for` is a closure inside `register()`.
+
+    A FAILURE IS REPORTED, never swallowed. The owner is standing at their phone waiting, and
+    silence there is indistinguishable from the message never having arrived — which is exactly
+    the hour that was just spent finding out messages were going to another connector.
+    """
+    from . import assistant
+    chat = assistant.owner_chat()
+    if chat is None:
+        return ("No model is attached, so I cannot answer that yet. Attach one in Settings on "
+                "the machine running AgentDuet.")
+    try:
+        out = await chat.turn(question)
+        return (out or {}).get("reply") or "I had nothing to say to that."
+    except Exception as exc:
+        logger.exception("the owner's assistant failed on a message from their own number")
+        return f"That did not go through — {exc}"
+
+
 def _first_text(payload: dict) -> str:
     """The message body, whichever shape it arrives in.
 
-    THE INBOUND SHAPE IS NOT CONFIRMED. The outbound one is — `examples/wa_echo_bot.py` in the
-    SDK shows it exactly — but that bot replies with a fixed string and never reads an inbound
-    body, so it proves nothing about the direction we need. Meta's message object nests the body
-    under `text.body`, sometimes inside a `messages` array; the older Nexus form used typed
-    `parts`. All three are accepted rather than guessing one, and anything unrecognised is logged
-    in full, because the first real message is what settles this.
+    THE INBOUND WA SHAPE IS NOW CONFIRMED, from a real message on 2026-09-07 — read out of the
+    platform's own logs rather than guessed. `wss-edge` passes Meta's webhook envelope straight
+    through (`WaInboundController` forwards `request.content.content`), so the body is nested
+    four levels down:
 
-    Narrow this once a real payload has been seen. Until then the tolerance is deliberate.
+        entry[0].changes[0].value.messages[0].text.body
+
+    None of the three shapes this function originally accepted matched that, so the first real
+    message would have been logged as unreadable — the guesses were `text.body`, a top-level
+    `messages` array, and the older Nexus `parts`. The Meta envelope is now tried FIRST, and the
+    rest are kept: `parts` is DDUET's form and still live on that channel, and the flatter Meta
+    shapes cost nothing to accept in case the relay ever unwraps one for us.
+
+    Every level is iterated rather than indexed at [0]. Meta documents `entry` and `changes` as
+    arrays and batches them under load, so taking the first would silently drop the rest — and
+    `field` must be checked, because a status webhook shares this envelope with no `messages`
+    at all (wss-edge drops those, but nothing guarantees we are the only producer).
     """
+    for entry in payload.get("entry", []) or []:              # Meta webhook envelope
+        for change in entry.get("changes", []) or []:
+            if change.get("field") not in (None, "messages"):
+                continue
+            for m in (change.get("value") or {}).get("messages", []) or []:
+                if isinstance(m.get("text"), dict) and m["text"].get("body"):
+                    return m["text"]["body"]
     if isinstance(payload.get("text"), dict):                 # Meta, flat
         return payload["text"].get("body", "")
     for m in payload.get("messages", []) or []:               # Meta, wrapped
         if isinstance(m.get("text"), dict):
             return m["text"].get("body", "")
-    for part in payload.get("parts", []) or []:               # Nexus MessageContent
+    for part in payload.get("parts", []) or []:               # Nexus MessageContent (DDUET)
         if part.get("type") == "text":
             return part.get("text", {}).get("body", "")
     logger.warning("could not read a text body from an inbound message — raw payload: %s",
@@ -421,6 +464,39 @@ async def run_channel() -> None:
             else:
                 question = _first_text(msg.payload)
             logger.info("← %s: %s", asker, question)
+
+            # THE OWNER, WRITING TO THEIR OWN AGENT — not a stranger who needs answering.
+            #
+            # Filing the owner as an asker is wrong twice over: they appear in `people/` as
+            # someone to be answered, and what they wanted was their assistant.
+            #
+            # KNOW WHAT THIS OPENS, because it is the one door this product otherwise does not
+            # have. The owner's assistant holds the owner's tools; until now it was reachable
+            # only from a loopback page with a per-machine token. This adds a second way in,
+            # authenticated by caller id. That is a real claim — Meta authenticates the sending
+            # account at registration, which is why `SELF_VOUCHING_NETWORKS` already trusts WA
+            # for identity — but it is weaker than the token, because a hijacked WhatsApp
+            # account inherits it. So:
+            #
+            #   * WA ONLY. On DDUET the participant is an account uid, never a number, so the
+            #     comparison has no subject and the owner path must not be reachable there.
+            #   * FAIL CLOSED. `## Phone` empty means nobody matches — an unset setting must
+            #     never promote the first person who writes.
+            #   * SAID OUT LOUD in the log, every time, so a message that took this path is
+            #     visible rather than inferred.
+            from . import owner as owner_settings
+            if dd is None and owner_settings.is_own_number(asker):
+                logger.info("[WA] %s is the owner's own number — to their assistant, "
+                            "not filed as a person", asker)
+                answer = await _owner_answer(question)
+                back = await (await session_for(msg.subscriber)).send_message(
+                    _wa_text(answer, to=asker))
+                if not back.success:
+                    # The owner asked and got nothing. Loud, because they are waiting.
+                    logger.error("could not reply to the owner: %s (%s)",
+                                 back.error_code, back.error_content)
+                return
+
             remember_session(asker, msg.subscriber,
                              network=("DDUET" if dd is not None else "WA"),
                              session_uid=(dd.session_uid if dd is not None else ""),

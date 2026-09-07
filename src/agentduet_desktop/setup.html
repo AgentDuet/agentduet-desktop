@@ -51,6 +51,12 @@
     letter-spacing:.04em;margin-left:.4rem;}
   .hint{font-size:11px;color:var(--faint);line-height:1.45;margin:0;}
   .skiprow{padding-top:.75rem;}
+  /* The manual pair. Same field styling as the folder row on the next screen — it is the same
+     kind of question, and inventing a second look for it would read as a different product. */
+  .manual{display:flex;flex-direction:column;gap:.75rem;padding-top:.75rem;text-align:left;}
+  .manual input{width:100%;padding:.5rem .6rem;border-radius:.5rem;background:var(--slate900);
+    color:#fff;border:1px solid var(--line);font:inherit;font-size:.8rem;}
+  .manual label{font-size:11px;color:var(--faint);}
   .skiprow a{color:var(--faint);text-decoration:underline;}
   .skiprow a:hover{color:#fff;}
   .frow input{flex:1;}
@@ -114,6 +120,26 @@
          side effect of pressing something that looks mandatory, and a tester reads the screen
          as blocked. The buttons stay, being the design we agreed; what was missing was a way
          past them that says so. -->
+    <!-- THE FOURTH WAY IN, and today the only one that works. Single sign-on would provision a
+         connector for you; it is not deployed, so an install needs the pair a human issued. That
+         pair was only enterable from Settings, which is INSIDE the hub — reachable, but after
+         you have already been told sign-in is unavailable and pushed past it. Asking here is
+         asking at the moment the owner is thinking about credentials. -->
+    <p class="foot skiprow"><a href="#" id="showManual">Use a connector and API key</a>
+      <span id="manualWhy"></span></p>
+    <div class="manual" id="manualBox" hidden>
+      <div class="field">
+        <label>Connector uuid</label>
+        <input type="text" id="mUuid" spellcheck="false" autocomplete="off"
+               placeholder="00000000-0000-0000-0000-000000000000">
+      </div>
+      <div class="field">
+        <label>API key</label>
+        <input type="password" id="mKey" autocomplete="off" placeholder="AGENTDUET_API_KEY">
+      </div>
+      <button class="go" id="doManual"><span>Check and continue</span>
+        <span class="material-symbols-rounded">arrow_forward</span></button>
+    </div>
     <p class="foot skiprow"><a href="#" id="skipSso">Set up without signing in</a>
       <span id="skipWhy"></span></p>
     <p class="foot">B3Networks Power Mobile AI Protocol • v1.0</p>
@@ -232,11 +258,38 @@
   // is not deployed it says so beside itself rather than after a wasted click.
   $('skipSso').onclick = e => { e.preventDefault(); show('setup'); };
 
+  // Reveal on demand rather than always on show: three sign-in buttons plus two credential
+  // fields is a wall, and most of a first run is not about credentials at all.
+  $('showManual').onclick = e => {
+    e.preventDefault();
+    const box = $('manualBox');
+    box.hidden = !box.hidden;
+    if (!box.hidden) $('mUuid').focus();
+  };
+
+  $('doManual').onclick = async () => {
+    const uuid = $('mUuid').value.trim(), key = $('mKey').value.trim();
+    if (!uuid || !key) { say('mSso', false, 'Both the connector uuid and the API key are needed.');
+      return; }
+    $('doManual').disabled = true;
+    say('mSso', true, 'Checking with the platform…');
+    // The SAME endpoint Settings uses, so it is verified by opening a real session before it is
+    // stored — a wrong pair fails here instead of looking fine and receiving nothing.
+    const d = await post('/api/setup/connector', {key, uuid});
+    $('doManual').disabled = false;
+    say('mSso', d.ok, d.message);
+    // Only advance on success. Moving on from a failed credential is how an install ends up
+    // looking configured and silent.
+    if (d.ok) { $('mKey').value = ''; setTimeout(() => show('setup'), 900); }
+  };
+
   const FROM = new URLSearchParams(location.search).get('from') || '';
   let DONE = false;
   fetch(`/api/setup/current?t=${T}`).then(r => r.json()).then(d => {
     OAUTH = !!d.oauth_available;
     $('skipWhy').textContent = OAUTH ? '' : '— single sign-on is not switched on yet';
+    // When sign-on cannot provision one, the manual pair is not a fallback — it is the path.
+    $('manualWhy').textContent = OAUTH ? '' : '— the way in until then';
     DONE = !!d.setup_done;
     if (FROM === 'settings' || DONE) {
       $('doCancel').parentElement.hidden = true;
