@@ -369,6 +369,15 @@
     return `<span class="via">via ${esc(VIA_NAMES[t.via] || t.via)}</span>`;
   }
 
+  // WHO THE DRAFT NAMED, preferred over reconstructing a recipient from the thread list.
+  // `replyTarget()` guesses when more than one person is waiting, and this is the label someone
+  // reads before saying "send".
+  function draftWho(t){
+    if (t.draft_for_name) return t.draft_for_name;
+    const r = replyTarget();
+    return r ? (r.display || r.who) : '';
+  }
+
   function drawChat(pending){
     const log = $('chat');
     if (!log) return;
@@ -376,7 +385,8 @@
       <div class="turn me"><div class="bub">${esc(t.q)}${viaLine(t)}</div></div>
       ${t.pending && !t.a ? `<div class="turn it"><div class="dots"><i></i><i></i><i></i></div></div>` : `
       <div class="turn ${t.bad ? 'bad' : 'it'}"><div class="bub${t.draft ? ' draft' : ''}${t.sent ? ' went' : ''}">${
-        t.draft ? `<span class="dlbl${t.sent ? ' gone' : ''}">${t.sent ? 'Sent' : 'Draft reply'}${replyTarget() ? ' to ' + esc((replyTarget().display || replyTarget().who)) : ''}${t.sent ? '' : ' — not sent'}</span>` : ''
+        t.draft ? `<span class="dlbl${t.sent ? ' gone' : ''}">${t.sent ? 'Sent' : 'Draft reply'}${
+          draftWho(t) ? ' to ' + esc(draftWho(t)) : ''}${t.sent ? '' : ' — not sent'}</span>` : ''
       }${esc(t.a)}${viaLine(t)}${useAsReply(t, i)}</div></div>`}`).join('')
       + (pending ? `<div class="turn me"><div class="bub">${esc(pending)}</div></div>
          <div class="turn it"><div class="row"><div class="dots"><i></i><i></i><i></i></div>
@@ -516,7 +526,7 @@
 
   $('newConv').onclick = async () => {
     const d = await post('/api/chat_new', {});
-    TURNS = (d.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a, draft: !!t.draft, sent: !!t.sent, via: t.via || '', pending: !!t.pending});
+    TURNS = (d.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a, draft: !!t.draft, sent: !!t.sent, via: t.via || '', pending: !!t.pending, draft_for_name: t.draft_for_name || ''});
     PROPOSALS = [];
     drawChat();
     $('ask').focus();
@@ -596,7 +606,7 @@
     const hist = await fetch(`/api/chat_history?t=${T}`).then(r => r.json()).catch(() => null);
     if (!hist) return;
     const next = (hist.turns || []).map(t => t.break ? {brk: true}
-      : {q: t.q, a: t.a, draft: !!t.draft, sent: !!t.sent, via: t.via || '', pending: !!t.pending});
+      : {q: t.q, a: t.a, draft: !!t.draft, sent: !!t.sent, via: t.via || '', pending: !!t.pending, draft_for_name: t.draft_for_name || ''});
     const before = chatSig();
     TURNS = next;
     // Redraw only on a real change: rebuilding innerHTML every five seconds throws away a text
@@ -615,7 +625,7 @@
     fetch(`/api/chat_history?t=${T}`).then(r => r.json()).catch(() => ({turns: []})),
   ]).then(([th, hist]) => {
     THREADS = th;
-    TURNS = (hist.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a, draft: !!t.draft, sent: !!t.sent, via: t.via || '', pending: !!t.pending});
+    TURNS = (hist.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a, draft: !!t.draft, sent: !!t.sent, via: t.via || '', pending: !!t.pending, draft_for_name: t.draft_for_name || ''});
     drawWho();
   });
   load();

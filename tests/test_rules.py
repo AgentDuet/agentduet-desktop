@@ -2236,6 +2236,7 @@ def test_an_incoming_question_shows_before_it_is_answered() -> None:
 def test_sending_is_code_on_both_surfaces() -> None:
     """"Send it" never reaches a model. It reached one on WhatsApp, which has no send tool."""
     print("\n  -- sending is code, on both surfaces --")
+    from agentduet_desktop import assistant
     ok("there is one implementation", "def send_if_asked" in
        (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
         / "assistant.py").read_text())
@@ -2250,6 +2251,33 @@ def test_sending_is_code_on_both_surfaces() -> None:
     # comment it replaced warned that a second implementation is how the two surfaces drift.
     ok("and web.py no longer has its own copy",
        "def _sole_unanswered" not in web_src and "chat.note_sent(message, reply" not in web_src)
+
+    # A BARE "send" IS THE KEYWORD, any case, and a compound instruction is refused: a regex
+    # cannot tell which half of "send this to Stanley" is the payload.
+    for word in ("send", "Send", "SEND", "send it", "Send it.", "ok send"):
+        ok(f"{word!r} is a send", assistant.send_intent(word))
+    for word in ("sending", "send this to Stanley", "send a message to Bob saying hi"):
+        ok(f"{word!r} is not", not assistant.send_intent(word))
+
+    # WHO IT GOES TO IS THE RECIPIENT THE MODEL NAMED, not a reconstruction from the thread
+    # list — that guesses whenever more than one person is waiting, on the one action where
+    # being wrong cannot be taken back.
+    a_src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+             / "assistant.py").read_text()
+    ok("a draft records who it is for", 'turn["draft_for"] = who' in a_src)
+    ok("taken from the call that made it", 'name == "draft_reply"' in a_src)
+    ok("and send prefers it", "chat.last_draft_for() or sole_unanswered()" in a_src)
+    page2 = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+             / "web.html").read_text()
+    ok("the window labels the draft with that name", "draftWho(t)" in page2)
+    # On WhatsApp there is no label and no button, so the message carries both.
+    sa_src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+              / "secretary_agent.py").read_text()
+    # A fragment without the nested quotes: the source line contains a quoted keyword, and
+    # escaping it through this assertion is how the check failed while the code was right.
+    ok("and the phone is told who and how",
+       "_owner_draft_note" in sa_src and "to send it." in sa_src
+       and "Draft for {name}" in sa_src)
 
 
 def test_a_reply_finds_the_person_it_was_shown() -> None:

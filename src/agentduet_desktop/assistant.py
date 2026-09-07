@@ -366,7 +366,10 @@ def send_if_asked(chat, message: str, viewing: str = "") -> str | None:
         return None
     from . import secretary_tools, tools
     draft = chat.last_draft()
-    target = viewing or sole_unanswered()
+    # WHOEVER THE DRAFT NAMED, first. `viewing` is the owner pointing at a conversation in the
+    # window; the draft's own recipient is the model repeating back who they asked for; and
+    # sole_unanswered is the last resort, which only answers when exactly one person is waiting.
+    target = viewing or chat.last_draft_for() or sole_unanswered()
     if not draft:
         reply = "Nothing is drafted. Ask me to reply to someone first, then say send."
     elif not target:
@@ -519,6 +522,15 @@ class OwnerChat:
         """
         turn = {"q": question, "a": answer, "tools": used,
                 "at": datetime.now().isoformat(timespec="seconds")}
+        # WHO IT WOULD GO TO, so "send" is never a guess about the recipient. Stored as the
+        # identifier AND the name: the identifier is what sends, the name is what a person can
+        # check before saying send.
+        who = getattr(self, "_draft_for", "")
+        if draft and who:
+            from . import tools as _t
+            turn["draft_for"] = who
+            turn["draft_for_name"] = _t._display_for(who) or who
+        self._draft_for = ""
         # WHERE IT CAME FROM, when it was not this machine. The owner can now reach this same
         # assistant from WhatsApp, and a thread that mixes both without saying which is which
         # leaves them unable to tell what they asked on their phone from what they typed here —
@@ -760,6 +772,12 @@ class OwnerChat:
                 # empty result. Cost an hour of blaming the prompt for a bad `who`.
                 logger.info("tool %s(%s) -> %s", name, args, str(result)[:160].replace("\n", " | "))
                 seen[key] = result
+                # WHO THE DRAFT IS FOR, taken from the call that made it rather than guessed
+                # later. The page labelled a draft using `replyTarget()`, which reconstructs a
+                # recipient from the thread list — right when exactly one person is waiting and
+                # a guess otherwise. The model named someone when it drafted; that is the answer.
+                if name == "draft_reply" and isinstance(args, dict) and args.get("asker"):
+                    self._draft_for = str(args["asker"])
                 used.append(name)
                 history.append(f"ASSISTANT: called {name}")
                 history.append(f"TOOL_RESULT: {result}")
@@ -803,6 +821,21 @@ class OwnerChat:
     #: sometimes CONTINUES the transcript instead of answering — the reply comes back with the
     #: speaker labels in it, and the owner sees their own question quoted back. Cheap to strip,
     #: and never legitimate: the model is asked for the answer, not for the next line.
+    def last_draft_for(self) -> str:
+        """Who the most recent unsent draft is addressed to, or "".
+
+        The recipient the MODEL named when it drafted, so "send" is never a guess about who.
+        Before this, the target was reconstructed from the thread list — correct when exactly
+        one person is waiting, and a coin flip otherwise, on the one action where being wrong
+        is not recoverable.
+        """
+        for turn in reversed(self.shown):
+            if turn.get("break") or turn.get("sent"):
+                break
+            if turn.get("draft") and turn.get("draft_for"):
+                return str(turn["draft_for"])
+        return ""
+
     def last_draft(self) -> str:
         """The most recent turn MARKED as a draft — what "send it" refers to.
 

@@ -117,6 +117,25 @@ WA_API_VERSION = "v23.0"
 OWNER_ACK_AFTER = 12
 
 
+def _owner_draft_note(chat, answer: str) -> str:
+    """Wrap a drafted reply so the owner knows who it is for and how to send it.
+
+    Only when the turn actually produced an unsent draft — an ordinary answer is returned
+    untouched, because appending "reply send" to "you have one message" would be an invitation
+    to send something that does not exist.
+    """
+    if chat is None or not answer:
+        return answer
+    draft = chat.last_draft()
+    if not draft or draft.strip() not in answer:
+        return answer
+    from . import tools
+    who = chat.last_draft_for()
+    name = (tools._display_for(who) or who) if who else ""
+    head = f"Draft for {name}:" if name else "Draft:"
+    return f'{head}\n\n{draft}\n\nReply "send" to send it.'
+
+
 async def _owner_answer(question: str) -> str:
     """What the owner's assistant says to the owner's own message. Always returns something.
 
@@ -534,6 +553,13 @@ async def run_channel() -> None:
                     if not ack.success:
                         logger.error("could not acknowledge the owner: %s", ack.error_code)
                     answer = await work
+
+                # A DRAFT NEEDS ITS RECIPIENT AND ITS VERB, on a channel that has neither a
+                # label nor a button. In the window the draft carries "Draft reply to Stanley
+                # Leong — not sent" and a Send control; over WhatsApp the owner would otherwise
+                # receive a bare paragraph and have to guess both who it is for and how to
+                # release it. This is the affordance, not an explanation of one.
+                answer = _owner_draft_note(chat_now, answer)
                 back = await (await session_for(msg.subscriber)).send_message(
                     _wa_text(answer, to=asker))
                 if not back.success:
