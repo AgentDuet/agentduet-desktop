@@ -1,10 +1,10 @@
 """AgentDuet Desktop — a personal secretary that answers external parties on your behalf.
 
-The framework. Everything the owner can change lives in $AGENTDUET_HOME (default ~/.dduet),
+The framework. Everything the owner can change lives in $AGENTDUET_HOME (default ~/.agentduet-desktop),
 seeded once from `templates/`; working capabilities to copy are in `examples/`.
 """
 
-__version__ = "0.1.0a9"
+__version__ = "0.1.0a10"
 
 #: Set at build time by the PyInstaller spec so a bug report identifies the exact build. An
 #: alpha moves faster than its version number: "0.1.0a2" is true of a dozen different binaries,
