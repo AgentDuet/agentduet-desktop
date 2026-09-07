@@ -2196,6 +2196,20 @@ def test_pages_parse() -> None:
     ok("at least one script was actually parsed", checked > 0)
 
 
+def test_the_hub_does_not_invent_a_sign_in_state() -> None:
+    """An empty name is an empty name. The hub said "Not signed in" and meant neither."""
+    print("\n  -- the hub reports what it knows --")
+    web_page = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+                / "web.html").read_text()
+    # It rendered the profile chip's NAME, falling back to a claim about the connector — on an
+    # instance whose channel was live on an API key. It read as broken while everything worked,
+    # and cost a round trip asking for a connector that was already configured.
+    ok("the profile chip does not claim a sign-in state",
+       "|| 'Not signed in'" not in web_page)
+    ok("an unknown name reads like the unknown number beside it",
+       "D.name || '—'" in web_page)
+
+
 def test_the_line_is_a_number() -> None:
     """The header's line must be a number to ring, not whatever a channel called a subscriber."""
     print("\n  -- the line badge shows a NUMBER --")
@@ -2349,6 +2363,7 @@ def main() -> None:
     test_local_models_do_not_monologue()
     test_a_failed_turn_is_reported()
     test_hosted_model_lists()
+    test_the_hub_does_not_invent_a_sign_in_state()
     test_the_line_is_a_number()
     test_owner_writes_to_their_own_agent()
     test_inbound_whatsapp_shape()
