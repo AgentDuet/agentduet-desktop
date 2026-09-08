@@ -173,7 +173,13 @@ PyInstaller output is not reproducible byte-for-byte, so they are different file
 ## Working rules
 
 - **Never wipe `$AGENTDUET_HOME`.** No `rm -rf` on it to "start clean" — correct the specific
-  file or key instead. Clearing it destroys the owner's setup, the knowledge they have built up
+  file or key instead. **To rehearse a fresh install, `./rehearse.sh park` / `restore`** moves it
+  aside and back; a same-volume rename, so 16 GB of models is instant and nothing is destroyed.
+  It touches ONLY what the app owns: `~/.connector` and `~/.agentduet` are never written by this
+  app — `connector._from_file` only reads them, to prefill the wizard — so parking them defeats
+  the purpose of the reset they look like part of. The first version of that script moved them,
+  and the 2026-09-08 rehearsal duly reported the prefill as broken when the script had hidden
+  its own input. Clearing it destroys the owner's setup, the knowledge they have built up
   by using the agent, and `run/secretary.pid`, after which a second launch cannot see the first
   and both fight for port 8899. Use a throwaway `AGENTDUET_HOME=/tmp/...` for experiments.
 - **Check what is already running before starting anything** (`status`, or `ss -ltnp | grep 8899`).

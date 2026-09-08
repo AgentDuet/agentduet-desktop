@@ -1202,6 +1202,34 @@ def test_setup_mode() -> None:
     # and the wizard first filtered on the disk one. On a 16 GB Mac with 371 GB free that
     # offered gpt-oss-20b: a 10.8 GB download for a model needing 14.1 GB of memory. So the
     # server answers "may this be offered" once and both surfaces read that field.
+    # ---- THE REHEARSAL RESET TOUCHES ONLY WHAT THE APP OWNS --------------------------------
+    #
+    # Both of these are mistakes the script actually made on 2026-09-08. It moved ~/.connector
+    # and ~/.agentduet, which the app never writes and which exist to PREFILL the wizard — so the
+    # rehearsal reported the prefill broken while the reset was hiding its input. And it moved
+    # the whole instance including models/, so a wizard test cost a multi-gigabyte re-download of
+    # weights that were already on the disk.
+    reh = (pathlib.Path(__file__).parent.parent / "rehearse.sh").read_text()
+    # THE PROPERTY IS "never MOVES them", not "never mentions them" — it reports whether they
+    # are present, which is exactly the state the rehearsal needed to see and could not.
+    _moves = [l for l in reh.splitlines()
+              if not l.lstrip().startswith("#") and "mv " in l
+              and (".connector" in l or ".agentduet\"" in l or "$HOME/.agentduet " in l)]
+    ok("the reset never moves the prefill files", not _moves)
+    ok("but it does report whether they are there", "prefill:" in reh)
+    ok("and it says why they are left alone", "_from_file" in reh)
+    ok("models are skipped, not parked", "case \"$(basename \"$item\")\" in models) continue" in reh)
+    ok("a download in flight is never moved out from under its writer",
+       "writing into leaves it writing to a path that no longer exists" in reh)
+    ok("it refuses while the app is running", "_running &&" in reh)
+    ok("and verifies the move rather than assuming it", 'ERROR: run/ is still in place' in reh)
+    ok("nothing is deleted on a name clash", "kept both copies" in reh)
+    # "the live one wins" is wrong on its own: the live copy is often the rehearsal's unfinished
+    # download, and keeping it leaves a model reporting itself absent with 5 GB of it on disk
+    # twice. Hit on the first real restore, 2026-09-08.
+    ok("a complete model beats a half-finished one", "COMPLETE BEATS PARTIAL" in reh)
+    ok("and completeness is judged by the file, not the folder", '_whole() { ls "$1"/*.gguf' in reh)
+
     # ---- A STORED KEY MUST LOOK STORED -----------------------------------------------------
     #
     # `offered_pair` returned the literal "yes" and the page turned that into a placeholder
