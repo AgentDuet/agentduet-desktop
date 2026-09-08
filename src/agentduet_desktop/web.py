@@ -705,7 +705,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         """
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
-        from . import calls, carry, tools, transcribe
+        from . import asker_actions, calls, carry, tools, transcribe
 
         folder = carry.recordings()
         people = []
@@ -769,14 +769,22 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             # agent's own transcript — and those already appear as a call with its recording.
             # Listing them here would show one phone conversation twice, once as a call and
             # once as a chat that never happened.
-            if not who or r.get("network") not in ("WA", "DDUET"):
+            # AN OWNER REPLY PASSES WHATEVER THE NETWORK SAYS. It is logged with the network
+            # of their stored session, and someone who has never written in HAS no session — so
+            # the owner's own message was recorded with network "" and then discarded right
+            # here. The same condition that makes a reply undeliverable (there is no
+            # conversation to reply into) was also making it invisible, so the composer looked
+            # like it did nothing at all. Ours is ours: we know it happened, whatever channel
+            # it is still waiting for.
+            owner_sent = r.get("outcome") == "owner_reply"
+            if not who or (not owner_sent
+                           and r.get("network") not in ("WA", "DDUET")):
                 continue
             p = by_who.get(who)
             if p is None:
                 p = {"who": who, "calls": [], "messages": [], "last": ""}
                 by_who[who] = p
                 people.append(p)
-            owner_sent = r.get("outcome") == "owner_reply"
             p["messages"].append({
                 "at": r.get("at", ""),
                 "network": r.get("network", ""),
@@ -790,6 +798,23 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                 # and is the normal case now.
                 "by": ("owner" if owner_sent else ("agent" if r.get("answer") else "")),
             })
+        # STILL WAITING, and the QUEUE is what says so. `reply_to` holds an undeliverable
+        # reply in the person's own file and flushes it the next time they write, so asking the
+        # queue needs no second flag and cannot go stale: a message that has left it has gone
+        # out, and the mark disappears on its own without anything having to remember to clear
+        # it. Only asked for people the owner has actually written to.
+        for p_ in people:
+            if not any(m["by"] == "owner" for m in p_["messages"]):
+                continue
+            try:
+                waiting = {h.get("text", "")
+                           for h in asker_actions.pending_replies(p_["who"])}
+            except (OSError, json.JSONDecodeError):
+                waiting = set()
+            for m in p_["messages"]:
+                if m["by"] == "owner" and m["us"] in waiting:
+                    m["held"] = True
+
         # A READABLE NAME where one arrived with the message. Joined here rather than stored on
         # the row, so it follows whatever the last message said the person is called.
         try:
@@ -1451,8 +1476,28 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         text = (body.get("text") or "").strip()
         if not who or not text:
             return web.json_response({"error": "need an asker and text"}, status=400)
-        return web.json_response({"result": secretary_tools.reply_to(who, text),
-                                  "state": secretary_tools.state()})
+        # DID IT GO OUT? ASK THE QUEUE, do not read the prose. `reply_to` answers in a
+        # sentence written for the assistant, which is the right thing for it to return and the
+        # wrong thing to pattern-match: it explains the gap and what the owner will see next,
+        # neither of which belongs on screen, and any rewording breaks the match silently.
+        # The delivery queue growing by one IS the fact, so the page gets told rather than
+        # guessing.
+        from . import asker_actions
+        key, why = secretary_tools.resolve_asker(who)
+        if why:
+            return web.json_response({"result": why, "note": why, "held": True,
+                                      "state": secretary_tools.state()})
+        before = len(asker_actions.pending_replies(key))
+        result = secretary_tools.reply_to(who, text)
+        held = len(asker_actions.pending_replies(key)) > before
+        return web.json_response({
+            "result": result,
+            # The OUTCOME, and nothing else. Not what we will do about it, and not a
+            # description of the message the owner can see sitting there unsent.
+            "note": ("Not delivered — nothing has arrived from them, so there is no "
+                     "conversation to send into." if held else "Sent."),
+            "held": held,
+            "state": secretary_tools.state()})
 
     async def api_resolve(request):
         if not authed(request):
