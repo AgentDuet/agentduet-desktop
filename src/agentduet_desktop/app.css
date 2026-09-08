@@ -157,6 +157,11 @@ input[readonly]{font-family:var(--mono);}
   font-family:inherit;text-decoration:none;}
 .link:hover{text-decoration:underline;}
 
+/* An action's reply, inside the model card it belongs to. It used to go to one div below the
+   whole list, and say() scrolls its target into view — so a click on any card threw the panel
+   to the bottom. Empty until something is said, so it costs no space. */
+.mcard .cmsg:not(:empty){margin-top:.5rem;}
+
 /* the design's peer-checked switch, as plain css */
 .sw{position:relative;display:inline-flex;align-items:center;cursor:pointer;flex-shrink:0;}
 .sw input{position:absolute;opacity:0;width:0;height:0;}
