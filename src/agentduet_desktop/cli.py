@@ -129,9 +129,7 @@ def cmd_status(args) -> int:
         # THE DETACHED FETCH, reported from its .part file. `init` tells the owner to watch it
         # here, and it is started by a child process this one knows nothing about — so reading
         # disk is the only way to answer, and the only way that survives a restart.
-        _live = _models.downloading()
-        if _live:
-            _n, _got, _total = _live
+        for _n, _got, _total in _models.downloading():
             print(f"  fetching : {_n} — {_got} of {_total} MB"
                   f" ({(_got / _total * 100) if _total else 0:.0f}%)")
 
@@ -225,11 +223,13 @@ def cmd_models(args) -> int:
         verdict, _ = models.can_run(name)
         mark = "downloaded" if models.is_downloaded(name) else f"{spec['dl_mb'] / 1024:.1f} GB"
         print(f"  {name:22} {spec['name']:28} {mark:12} {verdict}")
-    live = models.downloading()
-    if live:
-        got, total = live[1], live[2]
-        print(f"\n  downloading {live[0]}: {got} of {total} MB"
+    for name, got, total in models.downloading():
+        print(f"\n  downloading {name}: {got} of {total} MB"
               f" ({(got / total * 100) if total else 0:.0f}%)")
+    _running, _waiting = models.slots()
+    if _waiting:
+        print(f"  {_waiting} waiting for a slot ({models.MAX_CONCURRENT_DOWNLOADS} at a time):"
+              f" {', '.join(models.queued())}")
     return 0
 
 

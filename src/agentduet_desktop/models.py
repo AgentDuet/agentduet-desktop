@@ -361,75 +361,98 @@ def forget_failure(model: str) -> None:
 
 
 _lock = threading.Lock()
-_state: dict = {"model": "", "done_mb": 0, "total_mb": 0, "error": "", "finished": "",
-                "cancel": False}
+
+#: TWO AT A TIME, and the reason is not speed. One connection split three ways makes every
+#: download slower and none of them finish sooner. What a cap actually buys is disk: the
+#: `can_download` check below is PER MODEL, so three 5 GB fetches each pass it individually and
+#: together fill the volume. Two also keeps things moving when one stalls.
+MAX_CONCURRENT_DOWNLOADS = 2
+
+#: Model -> live progress, one entry per RUNNING fetch. It was a single global slot until
+#: 2026-09-08, which meant asking for a second model answered "Already downloading qwen3-8b" —
+#: a refusal where the owner meant "and this one too".
+_jobs: dict[str, dict] = {}
+
+#: Models asked for while both slots were busy, in the order they were asked for. A queued
+#: model MUST say so on its card: a queue nobody can see is the same failure as the silent
+#: download this whole area has been fixing all day.
+_waiting: list[str] = []
 
 
-def progress_seen() -> dict:
-    """`progress()`, but falling back to what is visibly on DISK when this process is idle.
+def slots() -> tuple[int, int]:
+    """(running, waiting) — what the page needs to explain itself."""
+    with _lock:
+        return len(_jobs), len(_waiting)
+
+
+def queued() -> list[str]:
+    """Models waiting for a slot, in turn order."""
+    with _lock:
+        return list(_waiting)
+
+
+def _percent(done_mb: int, total_mb: int) -> int:
+    return int(done_mb * 100 / total_mb) if total_mb else 0
+
+
+def jobs() -> dict:
+    """Every fetch this process is running: model -> progress."""
+    with _lock:
+        out = {m: dict(j) for m, j in _jobs.items()}
+    for m, j in out.items():
+        j["model"] = m
+        j["percent"] = _percent(j["done_mb"], j["total_mb"])
+    return out
+
+
+def jobs_seen() -> dict:
+    """`jobs()`, plus any fetch visible only as a growing `.part` on disk.
 
     A download started anywhere else — `agentduet-desktop models download`, or the detached
-    child `init` spawns — is invisible to `progress()`, which lives in the memory of whoever is
-    fetching. The page polling this one would then show "not downloaded" while a 4.7 GB file
-    grew beside it, which reads as the app being unable to see its own models.
+    child `init` spawns — is invisible to `jobs()`, which lives in the memory of whoever is
+    fetching. The page showing "not downloaded" while a 4.7 GB file grew beside it reads as the
+    app being unable to see its own models.
 
-    Deliberately read-only and derived: it reports a `.part` file, never creates or resumes one.
+    Those entries are marked `elsewhere`, because Stop sets a flag THIS process reads, which
+    does nothing to another one's fetch — so offering the button would be a lie.
+
+    IN FLIGHT MEANS GROWING. `downloading()` answers "is there a partial file", which is right
+    for "how far along is this" and wrong for "is a fetch live". A `.part` abandoned days ago
+    satisfies the first and not the second, and treating it as live is what silently disabled
+    every download button until 2026-09-08.
     """
-    live = progress()
-    if live["model"]:
-        return live
-    seen = downloading()
-    if not seen:
-        return live
-    name, done_mb, total_mb = seen
-    # IN FLIGHT MEANS GROWING. `downloading()` answers "is there a partial file", which is the
-    # right question for "how far along is this model" and the WRONG one for "is a fetch running
-    # somewhere else". A `.part` abandoned days ago satisfies the first and not the second.
-    #
-    # Reporting it as in-flight had one visible consequence and it was severe: the page sets its
-    # single `busy` flag from this, which renders EVERY download button disabled, and because the
-    # entry is also marked `elsewhere` the Stop button is hidden — so a 3.2 GB leftover from an
-    # interrupted fetch silently blocked all downloads with nothing in the UI able to clear it.
-    # Found on 2026-09-08, made visible by `rehearse.sh` keeping models/ across a reset: parking
-    # the whole instance used to hide the stale file too.
-    #
-    # A stale `.part` is not lost — the Download button resumes from it, which is what
-    # `downloading()` reporting it as partial is for.
-    target = path_of(name)
-    if target:
+    out = jobs()
+    for name, done_mb, total_mb in downloading():
+        if name in out:
+            continue
+        target = path_of(name)
+        if not target:
+            continue
         part = target.with_suffix(target.suffix + ".part")
         try:
             if time.time() - part.stat().st_mtime > STALE_PART_SECONDS:
-                return live
+                continue
         except OSError:
-            return live
-    return {"model": name, "done_mb": done_mb, "total_mb": total_mb, "error": "",
-            "finished": "", "cancel": False,
-            "percent": int(done_mb / total_mb * 100) if total_mb else 0,
-            # SAY WHOSE IT IS. The page offers Cancel, and cancelling sets a flag this process
-            # reads — which does nothing to a fetch running in another one.
-            "elsewhere": True}
+            continue
+        out[name] = {"model": name, "done_mb": done_mb, "total_mb": total_mb, "error": "",
+                     "cancel": False, "percent": _percent(done_mb, total_mb),
+                     "elsewhere": True}
+    return out
 
 
-def progress() -> dict:
-    with _lock:
-        s = dict(_state)
-    s["percent"] = int(s["done_mb"] * 100 / s["total_mb"]) if s["total_mb"] else 0
-    return s
+def downloading() -> list[tuple[str, int, int]]:
+    """(model, MB on disk, MB total) for every partial file, READ FROM DISK.
 
-
-def downloading() -> tuple[str, int, int] | None:
-    """(model, MB on disk, MB total) for a fetch in flight, or None.
-
-    READ FROM DISK, unlike `progress()`, which lives in the memory of whichever process is doing
-    the fetching. That distinction is the whole point: `init` starts the download in a DETACHED
-    child and exits, so nothing about it is visible in-process afterwards — but the `.part` file
-    is right there, and its size against the catalogue's `dl_mb` is the honest answer to "how far
-    along is it".
+    Unlike `jobs()`, which lives in the memory of whichever process is fetching. That
+    distinction is the whole point: `init` starts the download in a DETACHED child and exits, so
+    nothing about it is visible in-process afterwards — but the `.part` file is right there, and
+    its size against the catalogue's `dl_mb` is the honest answer to "how far along is it".
 
     A `.part` left by an interrupted fetch reports the same way, which is correct: the next
-    attempt resumes from it, so "partially downloaded" IS its state.
+    attempt resumes from it, so "partially downloaded" IS its state. Whether it is RUNNING is a
+    different question — see `jobs_seen()`, which additionally requires the file to be growing.
     """
+    out = []
     for name, spec in CATALOGUE.items():
         target = path_of(name)
         if not target:
@@ -437,29 +460,98 @@ def downloading() -> tuple[str, int, int] | None:
         part = target.with_suffix(target.suffix + ".part")
         try:
             if part.is_file():
-                return name, int(part.stat().st_size / 1024 / 1024), int(spec["dl_mb"])
+                out.append((name, int(part.stat().st_size / 1024 / 1024), int(spec["dl_mb"])))
         except OSError:
             continue
-    return None
+    return out
 
 
-def cancel() -> str:
-    """Ask the running download to stop. The partial file is KEPT — the next attempt resumes
-    from it, which on a 4.6 GB fetch over a hotel connection is the difference between an
-    interruption and starting again."""
+def partial_mb(model: str) -> int:
+    """MB already on disk for an unfinished `model`, or 0. What makes a button say Resume."""
+    for name, got, _total in downloading():
+        if name == model:
+            return got
+    return 0
+
+
+#: THE ONE-ENTRY QUEUE, and it is a different queue from `_waiting`. That one is "which
+#: downloads are pending"; this is "which model should become the model IN USE when its bytes
+#: land". Downloading is not choosing, so "Use this" on a model that has not arrived has to mean
+#: something other than nothing happening.
+#:
+#: One entry, newest wins. A list would change the model in use repeatedly as unrelated
+#: downloads finished, in an order set by file size rather than by the owner.
+_wanted = ""
+
+
+def want(model: str) -> str:
+    """Queue `model` to become the model in use when its download finishes. Replaces any
+    previous want. Pass "" to drop the intent without touching the download."""
+    global _wanted
     with _lock:
-        if not _state["model"]:
-            return "Nothing is downloading."
-        _state["cancel"] = True
-        return f"Stopping {_state['model']}."
+        was, _wanted = _wanted, model
+    if not model:
+        return "No model is queued to be used."
+    if was and was != model:
+        logger.info("queued %s to be used when it lands (replacing %s)", model, was)
+    return f"{(spec_of(model) or {}).get('name', model)} will be used when it finishes."
+
+
+def wanted() -> str:
+    """Which model is queued to be used when it lands, or ''."""
+    with _lock:
+        return _wanted
+
+
+def claim_wanted(model: str) -> bool:
+    """True if `model` is the queued one — and clears it, so it fires once.
+
+    Checked at COMPLETION, not captured when the download started. That is the whole mechanism:
+    a want expressed while the bytes were arriving still counts, and one replaced since does not.
+    """
+    global _wanted
+    with _lock:
+        if _wanted != model:
+            return False
+        _wanted = ""
+        return True
+
+
+def cancel(model: str = "") -> str:
+    """Ask one download to stop — or every one of them, with no argument.
+
+    Cancels a QUEUED model too, which is the case a running-only version gets wrong: a model
+    waiting for a slot has no job to flag, so "Stop" on it did nothing at all.
+
+    The partial file is KEPT: the next attempt resumes from it, which on a 4.6 GB fetch over a
+    hotel connection is the difference between an interruption and starting again.
+    """
+    with _lock:
+        running = [m for m in _jobs if not model or m == model]
+        for m in running:
+            _jobs[m]["cancel"] = True
+        dropped = [m for m in _waiting if not model or m == model]
+        for m in dropped:
+            _waiting.remove(m)
+    touched = running + dropped
+    if not touched:
+        return f"{model} is not downloading." if model else "Nothing is downloading."
+    for m in touched:
+        if wanted() == m:
+            want("")
+    return "Stopping " + ", ".join(touched) + "."
 
 
 def download(model: str) -> str:
     """Fetch the weights. BLOCKING and slow — gigabytes — so call it off the event loop.
 
+    WAITS FOR A SLOT rather than refusing. At most `MAX_CONCURRENT_DOWNLOADS` run at once and
+    the rest queue in the order they were asked for, so a third request is "in a moment", not
+    "no". Only a second fetch of the SAME model is refused — two writers on one `.part` file.
+
     Resumes from a previous partial file with a Range request. Writes to `<name>.part` and
-    renames only on success, so an interrupted download can never be mistaken for a usable
-    model by `is_downloaded`.
+    renames only on success, so an interrupted download can never be mistaken for a usable model
+    by `is_downloaded`.
     """
     spec = spec_of(model)
     if not spec:
@@ -467,11 +559,36 @@ def download(model: str) -> str:
     ok, why = can_download(model)
     if not ok:
         return f"Cannot download {spec['name']}: {why}."
+
     with _lock:
-        if _state["model"]:
-            return f"Already downloading {_state['model']}."
-        _state.update(model=model, done_mb=0, total_mb=spec["dl_mb"], error="", finished="",
-                      cancel=False)
+        if model in _jobs:
+            return f"Already downloading {spec['name']}."
+        if model in _waiting:
+            return f"{spec['name']} is already waiting for a slot."
+        _waiting.append(model)
+
+    # FAIR AND CANCELLABLE. Whoever has waited longest goes next, and a model cancelled while
+    # queued leaves without ever having opened a connection — `cancel()` removes it from
+    # `_waiting`, which is what this notices.
+    while True:
+        with _lock:
+            if model not in _waiting:
+                return f"Stopped before {spec['name']} started."
+            if len(_jobs) < MAX_CONCURRENT_DOWNLOADS and _waiting[0] == model:
+                _waiting.remove(model)
+                _jobs[model] = {"done_mb": 0, "total_mb": spec["dl_mb"], "error": "",
+                                "cancel": False}
+                break
+        time.sleep(0.25)
+
+    def _note(**kw) -> None:
+        with _lock:
+            if model in _jobs:
+                _jobs[model].update(**kw)
+
+    def _stopping() -> bool:
+        with _lock:
+            return bool(_jobs.get(model, {}).get("cancel"))
 
     target = path_of(model)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -489,35 +606,33 @@ def download(model: str) -> str:
             if not resuming:
                 have = 0
             total = int(resp.headers.get("Content-Length") or 0) + have
-            with _lock:
-                _state["total_mb"] = int(total / 1024 / 1024) or spec["dl_mb"]
-                _state["done_mb"] = int(have / 1024 / 1024)
+            _note(total_mb=int(total / 1024 / 1024) or spec["dl_mb"],
+                  done_mb=int(have / 1024 / 1024))
             with open(part, "ab" if resuming else "wb") as out:
                 got = have
                 while True:
-                    with _lock:
-                        if _state["cancel"]:
-                            return f"Stopped. {int(got / 1024 / 1024)} MB kept — it will resume."
+                    if _stopping():
+                        return f"Stopped. {int(got / 1024 / 1024)} MB kept — it will resume."
                     chunk = resp.read(1024 * 1024)
                     if not chunk:
                         break
                     out.write(chunk)
                     got += len(chunk)
-                    with _lock:
-                        _state["done_mb"] = int(got / 1024 / 1024)
+                    _note(done_mb=int(got / 1024 / 1024))
         part.replace(target)
-        with _lock:
-            _state["finished"] = model
         logger.info("downloaded %s (%.1f GB)", model, target.stat().st_size / 1024**3)
         return f"Downloaded {spec['name']}."
     except Exception as exc:
-        with _lock:
-            _state["error"] = f"{type(exc).__name__}: {exc}"
+        _note(error=f"{type(exc).__name__}: {exc}")
         logger.warning("download of %s failed: %s", model, exc)
         return f"Could not download {spec['name']}: {exc}"
     finally:
+        # THE ERROR MUST OUTLIVE THE JOB. Dropping the slot without keeping the reason is how a
+        # failed fetch became "the progress bar never appeared" — see `_failed` above.
         with _lock:
-            _state.update(model="", cancel=False)
+            j = _jobs.pop(model, None)
+        if j and j.get("error"):
+            note_failure(model, j["error"])
 
 
 def delete(model: str) -> str:

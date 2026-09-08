@@ -1253,6 +1253,45 @@ def test_setup_mode() -> None:
     ok("the server fills blanks from the files",
        "fill_from_files" in (src / "web.py").read_text())
 
+    # ---- TWO DOWNLOADS AT A TIME, THE REST IN A VISIBLE QUEUE ------------------------------
+    #
+    # It was one global slot, so asking for a second model answered "Already downloading
+    # qwen3-8b" — a refusal where the owner meant "and this one too" — and finishing a download
+    # took over the model in use, so comparing two meant adopting each as it landed.
+    mods = (src / "models.py").read_text()
+    webs = (src / "web.py").read_text()
+    ok("downloads are keyed per model", "_jobs: dict[str, dict]" in mods)
+    ok("with a cap", "MAX_CONCURRENT_DOWNLOADS = 2" in mods)
+    ok("and the cap is about disk, not speed", "PER MODEL" in mods)
+    ok("the rest queue in the order asked", "_waiting: list[str]" in mods)
+    ok("a third request waits rather than being refused", "time.sleep(0.25)" in mods)
+    ok("only a second fetch of the SAME model is refused", "if model in _jobs:" in mods)
+    # A queue nobody can see is the same failure as a silent download.
+    ok("the queue is served to the page", '"queued": models.queued()' in webs)
+    ok("and its position is shown", "in line" in settings_page)
+    ok("a queued model can be dropped, which needs no job to flag",
+       "dropped = [m for m in _waiting" in mods)
+    # The sentence has to be true when it is written: create_task only SCHEDULES the fetch, so
+    # asking queued() straight afterwards reported "Downloading" for a model about to wait.
+    ok("the reply asks the slots before starting, not after",
+       "at_capacity = running >= models.MAX_CONCURRENT_DOWNLOADS" in webs)
+
+    ok("download and use are separate verbs", 'if act in ("use", "load")' in webs)
+    ok("download no longer switches the model in use", "then_use=False" in webs)
+    ok("a want is claimed at completion, not captured at the start",
+       "claim_wanted(target)" in webs and "def claim_wanted" in mods)
+    ok("and the newest want replaces the older one", "was, _wanted = _wanted, model" in mods)
+
+    ok("each download draws its own bar", 'data-bar="${esc(x.id)}"' in settings_page)
+    ok("and every bar is patched each tick", "querySelectorAll('[data-bar]')" in settings_page)
+    ok("no button is disabled by another model's download",
+       "${busy ? 'disabled' : ''}" not in settings_page.split("modelList")[-1])
+    # A Range request resumes either way; the label was offering to fetch what it would skip.
+    ok("a partly-downloaded model offers Resume", "Resume from" in settings_page)
+    ok("and the page is told how much is already there", '"partial":' in webs)
+    # [data-use] belongs to the hosted-provider list, which does a document-wide query on it.
+    ok("model cards use their own attribute", "data-usemodel=" in settings_page)
+
     # ---- AN ACTION SPEAKS IN ITS OWN CARD --------------------------------------------------
     #
     # Every model action wrote to a single #mPull div BELOW the whole list, and say() scrolls its
