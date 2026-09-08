@@ -46,7 +46,13 @@ if _sha:
         f'BUILT = "{_built}"\n')
 
 datas = collect_data_files("agentduet_desktop",
-                           includes=["*.html", "*.css", "templates/**/*", "examples/**/*",
+                           includes=["*.html", "*.css",
+                                     # The brand mark, served at /logo.png and used as the
+                                     # favicon. Without this the frozen build serves a 404 where
+                                     # every page shows its logo — which looks like a broken
+                                     # asset rather than a missing packaging line.
+                                     "*.png",
+                                     "templates/**/*", "examples/**/*",
                                      # Prompts are DATA. Without this the binary builds
                                      # clean and voice dies at render time on a real call.
                                      "prompts/**/*",

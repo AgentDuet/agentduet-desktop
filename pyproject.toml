@@ -69,4 +69,8 @@ where = ["src"]
 version = {attr = "agentduet_desktop.__version__"}
 
 [tool.setuptools.package-data]
-agentduet_desktop = ["*.html", "*.css", "templates/**/*", "examples/**/*", "prompts/**/*", "wasm/**/*"]
+# `*.png` is the brand mark, served at /logo.png and used as the favicon and to generate the
+# app icon. It must be listed HERE as well as in the PyInstaller spec: the spec's
+# collect_data_files resolves the INSTALLED package, so a data file missing from this line is
+# missing from the frozen build no matter what the spec says.
+agentduet_desktop = ["*.html", "*.css", "*.png", "templates/**/*", "examples/**/*", "prompts/**/*", "wasm/**/*"]

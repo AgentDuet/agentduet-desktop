@@ -252,6 +252,20 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response({"ok": False, "message": out})
         return web.json_response({"ok": True, "message": _saved(field, value)})
 
+    async def logo(request):
+        """The brand mark. NO TOKEN, deliberately.
+
+        Everything else on this site is behind the per-machine token, because everything else is
+        the owner's data. This is a logo: it is in the binary, identical for every install, and
+        reveals nothing. Requiring the token would mean the favicon 404s — browsers do not send
+        query strings they were not given — which is the noise this route exists to stop.
+        """
+        path = pathlib.Path(__file__).parent / "logo.png"
+        if not path.is_file():
+            return web.Response(status=404)
+        return web.Response(body=path.read_bytes(), content_type="image/png",
+                            headers={"Cache-Control": "max-age=86400"})
+
     async def api_setup_login_item(request):
         """Record whether this machine should start the app at login, and make it so.
 
@@ -1440,6 +1454,9 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/setup/about", api_setup_about),
         web.post("/api/setup/connector", api_setup_connector),
         web.post("/api/setup/login-item", api_setup_login_item),
+        web.get("/logo.png", logo),
+        # Browsers ask for this unprompted, and the console filled with a 404 on every page load.
+        web.get("/favicon.ico", logo),
         web.post("/api/quit", api_quit),
         web.get("/api/setup/current", api_setup_current),
         web.get("/api/setup/questions", api_setup_questions),

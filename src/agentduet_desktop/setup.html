@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link rel="icon" href="/logo.png">
 <link rel="stylesheet" href="/app.css">
 <style>
   /* login */
@@ -115,7 +116,7 @@
   <div class="titlebar">
     <div class="lights">
       <i></i><i></i><i></i>
-      <div class="brand"><div class="ad">AD</div><span>AgentDuet</span></div>
+      <div class="brand"><img class="ad" src="/logo.png" alt=""><span>AgentDuet</span></div>
     </div>
     <div class="linebadge" id="lineBadge">
       <span class="dot"></span><span class="l">Power Mobile Line:</span>
@@ -284,7 +285,7 @@
       const who = b.dataset.p;
       // GOOGLE IS THE ONLY WORKING PROVIDER. Microsoft is refused upstream because Entra does
       // not issue `email_verified`, and Apple was never in v1 — both stay visible per the
-      // mockup, and say so when pressed rather than failing at the provider.
+      // agreed design, and say so when pressed rather than failing at the provider.
       if (OAUTH && who === 'Google') {
         location.href = `/api/connector/signin?t=${T}&provider=google`; return;
       }

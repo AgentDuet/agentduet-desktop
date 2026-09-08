@@ -1202,6 +1202,45 @@ def test_setup_mode() -> None:
     # and the wizard first filtered on the disk one. On a 16 GB Mac with 371 GB free that
     # offered gpt-oss-20b: a 10.8 GB download for a model needing 14.1 GB of memory. So the
     # server answers "may this be offered" once and both surfaces read that field.
+    # ---- THE BRAND MARK IS A REAL ASSET NOW ------------------------------------------------
+    #
+    # It was the letters "AD" in a blue square, the bundle declared NO icon at all (so Finder,
+    # the Dock and the DMG showed the blank generic application icon), and there was no favicon
+    # — every page load logged a 404 for one.
+    logo = src / "logo.png"
+    _root = pathlib.Path(__file__).parent.parent
+    spec_src_l = (_root / "packaging" / "agentduet-desktop.spec").read_text()
+    web_src_l = (src / "web.py").read_text()
+    web_page_l = (src / "web.html").read_text()
+    ok("the mark ships with the package", logo.is_file())
+    ok("and is a PNG", logo.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n")
+
+    # LISTED IN BOTH PLACES OR IT IS IN NEITHER. The PyInstaller spec's collect_data_files
+    # resolves the INSTALLED package, so a data file missing from pyproject's package-data is
+    # missing from the frozen build however the spec is written. Found the hard way: the first
+    # build after adding the logo shipped without it, and the same mechanism had been serving
+    # a7-era pages out of a stale site-packages copy for every local build.
+    pyproject = (pathlib.Path(__file__).parent.parent / "pyproject.toml").read_text()
+    ok("the wheel carries *.png", '"*.png"' in pyproject)
+    ok("and so does the frozen build", '"*.png"' in spec_src_l)
+
+    for page_name, page_text in (("web.html", web_page_l), ("setup.html", setup_page),
+                                 ("settings.html", settings_page)):
+        ok(f"{page_name} shows the mark, not the letters",
+           'class="ad" src="/logo.png"' in page_text)
+        ok(f"{page_name} has a favicon", 'rel="icon" href="/logo.png"' in page_text)
+    ok("the letters are gone", '<div class="ad">AD</div>' not in settings_page)
+    ok("the mark is served", 'web.get("/logo.png", logo)' in web_src_l)
+    ok("and the favicon route exists, which is what was 404ing",
+       'web.get("/favicon.ico", logo)' in web_src_l)
+
+    # THE APP ICON. Generated from the same PNG at bundle time rather than committed, so one
+    # source of truth cannot drift from a second copy.
+    mk = (pathlib.Path(__file__).parent.parent / "packaging" / "make-macos-app.sh").read_text()
+    ok("the bundle declares an icon", "CFBundleIconFile" in mk)
+    ok("generated from the one asset", "logo.png" in mk and "iconutil" in mk)
+    ok("padded square rather than stretched", "--padColor" in mk)
+
     # ---- START AT LOGIN: ASKED, NOT ASSUMED ------------------------------------------------
     #
     # The product only works while it is running, and a dead daemon announces nothing — so the
