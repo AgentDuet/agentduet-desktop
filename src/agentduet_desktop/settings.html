@@ -396,15 +396,24 @@
   // provider and takes seconds; the only feedback was the button greying out, so the same
   // "nothing happened" that hid the model-selection result also hid every wait before it.
   const waiting = (el, label) => {
-    $(el).innerHTML = `<div class="msg"><div class="barlab"><span>${esc(label)}</span>
+    // Element or id, the same as say() below. This read `$(el).innerHTML` while it
+    // scrolled `el` — so once say() was generalised and a string arrived here, the
+    // scroll threw into a silent catch. Resolve once, use one reference for both.
+    el = (typeof el === 'string') ? $(el) : el;
+    if (!el) return;
+    el.innerHTML = `<div class="msg"><div class="barlab"><span>${esc(label)}</span>
       <span>working…</span></div><div class="bar wait"><i></i></div></div>`;
-    try { $(el).scrollIntoView({block: 'nearest', behavior: 'smooth'}); } catch (e) {}
+    try { el.scrollIntoView({block: 'nearest', behavior: 'smooth'}); } catch (e) {}
   };
   const say = (el, ok, text) => {
-    $(el).innerHTML = `<div class="msg ${ok ? 'ok' : 'no'}">${esc(text)}</div>`;
+    // An ELEMENT or an id. The model list says things inside the card that was clicked, and
+    // those elements are rebuilt on every poll so they have no stable id to look up.
+    el = (typeof el === 'string') ? $(el) : el;
+    if (!el) return;
+    el.innerHTML = `<div class="msg ${ok ? 'ok' : 'no'}">${esc(text)}</div>`;
     // Being in the right place is not enough when the pane scrolls: a message the owner has
     // to hunt for is the same as no message. Nearest edge only, so the view does not jump.
-    try { $(el).scrollIntoView({block: 'nearest', behavior: 'smooth'}); } catch (e) {}
+    try { el.scrollIntoView({block: 'nearest', behavior: 'smooth'}); } catch (e) {}
   };
   async function post(path, body){
     // A DEAD DAEMON MUST NOT LOOK LIKE A DEAD BUTTON. When the process behind the page is gone
@@ -757,6 +766,11 @@
   // download. Showing both sets of controls at once made the owner read past the half that
   // did not apply, and made "which one am I actually on?" a question the page did not answer.
   let where = 'local', touched = false, lastModelSig = '', lastSttSig = '';
+  // WHAT AN ACTION SAID, kept per model so it survives the rebuild. The list re-renders on every
+  // poll — once a second during a download — so a message written straight into a card would
+  // flash and vanish. Keyed by model id, and dropped once that model's state changes, because
+  // the new state is then the better answer.
+  const cardNote = {};
   function setWhere(w){
     // ONLY ON AN ACTUAL CHANGE. Switching branch mid-scroll leaves the reader looking at
     // whitespace, so the sheet returns to the top — but this is called on EVERY poll, and
@@ -813,7 +827,11 @@
     // rewriting innerHTML each time flickered, collapsed any open "sizes" expander, and threw
     // away whatever the reader was looking at. Progress moves every tick; the LIST does not.
     const sig = JSON.stringify([(d.models || []).map(x => [x.id, x.state, x.in_use]), busy,
-                                Object.keys(failed).sort(), d.engine]);
+                                Object.keys(failed).sort(), d.engine,
+                                // A NEW NOTE HAS TO REBUILD. send() records one and calls
+                                // loadModels() immediately; without this the shape looks
+                                // unchanged, the fast path returns, and nothing is ever shown.
+                                Object.entries(cardNote).map(([k, v]) => k + v.text)]);
     if (sig === lastModelSig) {
       const p = d.progress || {};
       const bar = $('modelList').querySelector('.bar i');
@@ -859,8 +877,20 @@
       // WHY IT FAILED, on the row that failed. A download that dies used to leave the card
       // exactly as it was, so the only symptom was a button that seemed to do nothing.
       if (failed[x.id]) act += `<span class="mwhy">${esc(failed[x.id])}</span>`;
+      // IN THE CARD, NOT AT THE FOOT OF THE LIST. Every action used to write to a single #mPull
+      // div below the whole list, and say() scrolls its target into view — so clicking Download
+      // on any card threw the panel to the bottom to show a sentence about the card you had just
+      // been looking at.
+      // THE STATE IS THE BETTER ANSWER once it changes: "Downloading Qwen3 8B" beside a card
+      // that now says "in use" is stale, and stale text is worse than none. The state at the
+      // moment the note was made is remembered on first render, and any change drops it.
+      let note = cardNote[x.id];
+      if (note) {
+        if (note.state === undefined) note.state = x.state;
+        else if (note.state !== x.state) { delete cardNote[x.id]; note = null; }
+      }
       return `
-      <div class="mcard ${here ? 'on' : ''} ${blocked ? 'blocked' : ''}">
+      <div class="mcard ${here ? 'on' : ''} ${blocked ? 'blocked' : ''}" data-card="${esc(x.id)}">
         <div class="mtop">
           <span class="brand">${esc(x.brand)}</span>
           <span class="nm">${esc(x.name)}</span>
@@ -877,6 +907,7 @@
           ${x.custom ? `<span>${esc(x.repo)}</span>` : ''}
         </div>
         <div class="mact">${act}</div>
+        <div class="cmsg">${note ? `<div class="msg ${note.ok ? 'ok' : 'no'}">${esc(note.text)}</div>` : ''}</div>
         ${(x.variants || []).length > 1 ? `
         <details class="sizes">
           <summary>${x.variants.length} sizes</summary>
@@ -898,7 +929,10 @@
 
     const send = async (action, name) => {
       const r = await post('/api/models', {action, name});
-      say('mPull', r.ok, r.message);
+      // Recorded against the model, then rendered by the pass below — so it lands in the card
+      // and survives the next poll. Anything with no card to belong to still uses #mPull.
+      if (name) { cardNote[name] = {ok: r.ok, text: r.message, at: Date.now()}; }
+      else { say('mPull', r.ok, r.message); }
       loadModels();
       // AND THE MODEL CARD, because attaching a model changes what that card may offer:
       // Enable Thinking Mode exists only for a model that can honour it. The three HOSTED

@@ -1253,6 +1253,28 @@ def test_setup_mode() -> None:
     ok("the server fills blanks from the files",
        "fill_from_files" in (src / "web.py").read_text())
 
+    # ---- AN ACTION SPEAKS IN ITS OWN CARD --------------------------------------------------
+    #
+    # Every model action wrote to a single #mPull div BELOW the whole list, and say() scrolls its
+    # target into view — so clicking Download on any card threw the panel to the bottom to read
+    # a sentence about the card you had just been looking at. Reported 2026-09-08.
+    ok("a named action records against the model", "cardNote[name] = {ok: r.ok" in settings_page)
+    ok("and no longer shouts at the foot of the list",
+       "say('mPull', r.ok, r.message);\n      loadModels();" not in settings_page)
+    ok("the note renders inside the card", 'class="cmsg"' in settings_page)
+    ok("the card carries a stable hook for it", 'data-card="${esc(x.id)}"' in settings_page)
+    # The list rebuilds every poll, so a note written straight into the DOM would flash away —
+    # and the signature has to notice a new note or send()'s loadModels() takes the fast path.
+    ok("a new note forces a rebuild", "Object.entries(cardNote)" in settings_page)
+    ok("and a note dies when the state moves on", "note.state !== x.state" in settings_page)
+    # say() and waiting() both take an element or an id now. waiting() read `$(el).innerHTML`
+    # while scrolling `el`, so generalising say() alone left it scrolling a string into a silent
+    # catch.
+    for fn in ("say", "waiting"):
+        body = settings_page.split(f"const {fn} = (el")[1][:400]
+        ok(f"{fn}() resolves an element or an id",
+           "(typeof el === 'string') ? $(el) : el" in body)
+
     # ---- A FAILED DOWNLOAD MUST SAY SO -----------------------------------------------------
     #
     # The background task discarded `models.download`'s result, so a fetch that died left the
@@ -1408,9 +1430,11 @@ def test_setup_mode() -> None:
     # not, so choosing a Qwen3 left the row hidden until a manual reload.
     ok("the row is driven by what the model can honour",
        "hidden = !cur.thinking_possible" in settings_page)
-    send_at = settings_page.index("const send = async (action, name)")
-    ok("and switching a LOCAL model refreshes the card",
-       "refreshCurrent()" in settings_page[send_at:send_at + 700])
+    # THE BLOCK, not a byte window. This read the first 700 characters after the handler
+    # started, and adding three comment lines to it pushed the call out of range — a test that
+    # fails when a comment is written is testing the wrong thing.
+    _send = settings_page.split("const send = async (action, name)")[1].split("\n    };")[0]
+    ok("and switching a LOCAL model refreshes the card", "refreshCurrent()" in _send)
 
     ok("the wizard filters on the shared field", "m.offerable" in setup_page)
     ok("which the console's gate agrees with", "can_run(name)" in init_src)
