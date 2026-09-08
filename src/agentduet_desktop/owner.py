@@ -295,6 +295,46 @@ def record_calls() -> bool:
     return first not in ("no", "off", "false")
 
 
+def start_at_login() -> bool:
+    """Whether this machine should launch the app when the owner logs in. Default OFF.
+
+    OFF WHEN UNSET, and this is the one boolean here whose default is not the useful one. Every
+    argument says a phone answering service should be running: a dead daemon answers nothing and
+    says nothing about it, so the owner discovers it by missing a call. That argument justifies
+    ASKING, prominently, with the box already ticked — not deciding for them.
+
+    Adding yourself to a machine's login items unasked is what adware does, and it is spending
+    trust to obtain something a single pre-ticked checkbox gets anyway. It is also concretely
+    dangerous while several builds of an alpha exist on one machine: two registered login items
+    means two daemons at login, the loser of the race for 8899 exits, and the visible symptom is
+    NOTHING AT ALL — until the survivor turns out to be the old build and an afternoon goes into
+    a bug that was already fixed.
+
+    So an install that was never asked (an upgrade, or a bare CLI install) stays off. Only an
+    explicit yes enables it, which also means a garbled value cannot switch it on.
+
+    WHO ACTS ON THIS DEPENDS ON THE PLATFORM, because only an app bundle may register itself:
+    under the native macOS shell this records the owner's intent and `AgentDuetShell` reconciles
+    it with `SMAppService` at launch; everywhere else `loginitem.py` applies it directly.
+    """
+    first = _first_line(_strip_guidance(_sections().get("Start at login", ""))).strip().lower()
+    return first in ("yes", "on", "true")
+
+
+def start_at_login_answer() -> str:
+    """`"yes"`, `"no"`, or `""` when the owner has never been asked.
+
+    THREE STATES, NOT TWO, and `start_at_login()` deliberately collapses them because for
+    "should this machine do it" never-asked and declined mean the same thing. For asking, they
+    do not: a fresh install should be offered YES, and an owner who has already said no must not
+    have that answer flipped back by pressing return.
+    """
+    first = _first_line(_strip_guidance(_sections().get("Start at login", ""))).strip().lower()
+    if first in ("yes", "on", "true"):
+        return "yes"
+    return "no" if first else ""
+
+
 def is_own_number(value: str) -> bool:
     """Is this the OWNER'S number — the person who installed this, writing to their own agent?
 

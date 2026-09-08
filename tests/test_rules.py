@@ -1202,6 +1202,72 @@ def test_setup_mode() -> None:
     # and the wizard first filtered on the disk one. On a 16 GB Mac with 371 GB free that
     # offered gpt-oss-20b: a 10.8 GB download for a model needing 14.1 GB of memory. So the
     # server answers "may this be offered" once and both surfaces read that field.
+    # ---- START AT LOGIN: ASKED, NOT ASSUMED ------------------------------------------------
+    #
+    # The product only works while it is running, and a dead daemon announces nothing — so the
+    # owner finds out by missing a call. That argues for it being ON, and not at all for
+    # switching it on unasked: adding yourself to someone's login items silently is what adware
+    # does. It is also concretely dangerous while several builds of an alpha exist on one
+    # machine, since two registered login items means two daemons racing for 8899 and the loser
+    # exits without a word.
+    from agentduet_desktop import loginitem as _li
+    login_src = (src / "loginitem.py").read_text()
+    init_src_l = init_src
+
+    ok("nothing enables it without an explicit yes", not _own.start_at_login())
+    ok("the wizard asks", 'id="atLogin"' in setup_page)
+    ok("with the box already ticked", 'id="atLogin" checked' in setup_page)
+    ok("and the console asks too", "offer_start_at_login" in init_src_l)
+    ok("the settings page can change it later", 'id="atLoginOn"' in settings_page)
+    ok("which matters because Linux has no menu bar",
+       "Start when I log in" in settings_page)
+
+    # ONE MECHANISM PER MACHINE. macOS's own answer can only be called by the app bundle; the
+    # plist is for everything with no bundle. Registering both is worse than registering neither.
+    ok("the bundle registers itself when there is one", "def _bundle_shell" in login_src)
+    ok("and the flag is one contract, not two literals",
+       _li.UNREGISTER_FLAG == __import__("agentduet_desktop.uninstall",
+                                         fromlist=["x"]).UNREGISTER_FLAG)
+    ok("the shell answers the register flag",
+       "--register-login-item" in (pathlib.Path(__file__).parent.parent / "macos" / "Sources"
+                                   / "AgentDuetShell" / "main.swift").read_text())
+    ok("and clears the plist when it registers, so only one survives",
+       "LaunchAgents/com.b3networks.agentduet-desktop.plist"
+       in (pathlib.Path(__file__).parent.parent / "macos" / "Sources" / "AgentDuetShell"
+           / "main.swift").read_text())
+    ok("applying it still takes no path from any caller",
+       "def apply(want: bool)" in login_src)
+
+    # THREE STATES WHEN ASKING, two when acting: never-asked must be offered yes, and an owner
+    # who declined must not have that reversed by pressing return.
+    ok("the raw answer is available for asking", "def start_at_login_answer" in
+       (src / "owner.py").read_text())
+    ok("and the console defaults to it rather than to yes",
+       "owner.start_at_login_answer() or \"yes\"" in init_src_l)
+
+    # ---- THE THINKING SWITCH BELONGS TO THE MODEL ------------------------------------------
+    #
+    # It lived in "Record and Transcribe Calls" — a card about audio, beside the recording
+    # folder, governing something neither recording nor transcription does. Moved 2026-09-08.
+    think_at = settings_page.index('id="thinkRow"')
+    card_at = settings_page.rindex('<div class="card">', 0, think_at)
+    ok("the thinking switch sits in the Model card",
+       "<h2>Model</h2>" in settings_page[card_at:think_at])
+    ok("only the Model heading is in that card",
+       settings_page[card_at:think_at].count("<h2>") == 1)
+    ok("and the row is above the recording card, not inside it",
+       think_at < settings_page.index("<h2>Record and Transcribe"))
+    ok("it is called Enable Thinking Mode", "Enable Thinking Mode" in settings_page)
+    ok("the old wording is gone", "Let the model think first" not in settings_page)
+    # IT FOLLOWS THE SELECTED MODEL. The server answers per current model; the page has to ASK
+    # again after a switch. The three hosted paths refreshed the card and the local list did
+    # not, so choosing a Qwen3 left the row hidden until a manual reload.
+    ok("the row is driven by what the model can honour",
+       "hidden = !cur.thinking_possible" in settings_page)
+    send_at = settings_page.index("const send = async (action, name)")
+    ok("and switching a LOCAL model refreshes the card",
+       "refreshCurrent()" in settings_page[send_at:send_at + 700])
+
     ok("the wizard filters on the shared field", "m.offerable" in setup_page)
     ok("which the console's gate agrees with", "can_run(name)" in init_src)
     from agentduet_desktop import models as _models

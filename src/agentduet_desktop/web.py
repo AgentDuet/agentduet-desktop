@@ -252,6 +252,28 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response({"ok": False, "message": out})
         return web.json_response({"ok": True, "message": _saved(field, value)})
 
+    async def api_setup_login_item(request):
+        """Record whether this machine should start the app at login, and make it so.
+
+        RECORDED AS WELL AS APPLIED, because the two answer different questions. The system
+        registration is the truth about what happens at login; the setting is what the OWNER
+        asked for, which is what `status` should report and what an owner re-running setup
+        should see already ticked.
+
+        Applied through `loginitem.apply`, which picks the mechanism: the app bundle registers
+        itself with SMAppService, and everything else writes the plist, systemd unit or Startup
+        shortcut. Never both — see that module for why two registrations is worse than none.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import loginitem
+        body = await request.json()
+        want = bool(body.get("want"))
+        tools.set_setting("start_at_login", "yes" if want else "no")
+        said = await asyncio.to_thread(loginitem.apply, want)
+        logger.info("start at login -> %s: %s", want, said)
+        return web.json_response({"ok": True, "want": want, "message": said})
+
     async def api_setup_connector(request):
         """Verify the B3 connector, then save it. Never reachable from the assistant."""
         if not authed(request):
@@ -428,6 +450,10 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         # than no switch, and the reason is not visible from the row itself.
         cur["thinking"] = _own.thinking()
         cur["thinking_possible"] = _llm.supports_thinking()
+        # WHAT THE OWNER ASKED FOR, which is not the same question as what the system will
+        # actually do at login — see api_setup_login_item. This is the one the page needs, so a
+        # re-run of setup shows the box as they left it rather than ticked again.
+        cur["start_at_login"] = _own.start_at_login()
         cur["recordings_dir"] = str(carry.recordings() / carry.ANSWERED)
         cur["carried_dir"] = str(carry.recordings())
         # False until the backend has a sign-in endpoint. The page uses it to decide whether to
@@ -1413,6 +1439,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/setup/stt", api_setup_stt),
         web.post("/api/setup/about", api_setup_about),
         web.post("/api/setup/connector", api_setup_connector),
+        web.post("/api/setup/login-item", api_setup_login_item),
         web.post("/api/quit", api_quit),
         web.get("/api/setup/current", api_setup_current),
         web.get("/api/setup/questions", api_setup_questions),

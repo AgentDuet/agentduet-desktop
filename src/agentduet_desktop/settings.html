@@ -169,6 +169,21 @@
           <div><h2>Model</h2></div>
         </div>
         <div class="state" id="modelState">…</div>
+        <!-- IT BELONGS TO THE MODEL, and it used to sit in "Record and Transcribe Calls" — a
+             card about audio, next to the recording folder, governing something neither
+             recording nor transcription does. The setting only means anything for the model in
+             use, so it lives with it.
+
+             HIDDEN, NOT DISABLED, when that model cannot reason. Gemini has no dial and Claude
+             reasons adaptively already, so a switch there would promise a change it cannot
+             make — and a switch that does nothing is worse than no switch, because the reason
+             is not visible from the row. It follows the SELECTED model: switch from Qwen3 to
+             Gemini and the row goes away on the next poll. -->
+        <div class="row" id="thinkRow" hidden>
+          <div class="lbl">Enable Thinking Mode
+            <span class="sublbl" id="thinkWhy"></span></div>
+          <label class="sw"><input type="checkbox" id="thinkOn"><span class="track"></span></label>
+        </div>
         <div class="acts"><button class="btn ghost" id="openModels">Choose a model…</button></div>
         <div id="mModel"></div>
       </div>
@@ -227,15 +242,6 @@
         <div class="row">
           <div class="lbl">Save to this machine</div>
           <label class="sw"><input type="checkbox" id="recCalls"><span class="track"></span></label>
-        </div>
-        <!-- HIDDEN, NOT DISABLED, when the model cannot reason. Gemini has no dial and Claude
-             reasons adaptively already, so a switch there would promise a change it cannot
-             make — and a switch that does nothing is worse than no switch, because the reason
-             is not visible from the row. -->
-        <div class="row" id="thinkRow" hidden>
-          <div class="lbl">Let the model think first
-            <span class="sublbl" id="thinkWhy"></span></div>
-          <label class="sw"><input type="checkbox" id="thinkOn"><span class="track"></span></label>
         </div>
         <div class="row">
           <div class="lbl">Folder</div>
@@ -304,6 +310,15 @@
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">tune</span></div>
           <div><h2>Advanced</h2></div>
+        </div>
+        <!-- IN ADVANCED BECAUSE IT IS ALWAYS VISIBLE. The macOS menu bar owns this on a Mac,
+             but Linux and Windows have no menu bar at all, and the owner who unticked it during
+             setup needs somewhere to change their mind. "Install" was the tempting home — same
+             subject, right audience — but that card hides itself on a source run. -->
+        <div class="row">
+          <div class="lbl">Start when I log in
+            <span class="sublbl" id="atLoginWhy"></span></div>
+          <label class="sw"><input type="checkbox" id="atLoginOn"><span class="track"></span></label>
         </div>
         <div class="row">
           <div class="lbl">Walk through setup again</div>
@@ -426,6 +441,7 @@
     // The row exists only for a model that can honour it — see thinking_possible. Re-read on
     // every refresh rather than at load, because attaching a different model changes the
     // answer: switch from Gemini to a downloaded Qwen3 and the switch has to appear.
+    $('atLoginOn').checked = !!cur.start_at_login;
     $('thinkRow').hidden = !cur.thinking_possible;
     $('thinkOn').checked = !!cur.thinking;
     $('thinkWhy').textContent = cur.thinking
@@ -692,6 +708,17 @@
   // on deserves them before the first slow answer, not after: 26s against 1.46s on a greeting,
   // and on a question that invites re-checking it spent 6,877 reasoning tokens and 172 seconds
   // to reach an answer it gets right in 1.0 second with this off.
+  $('atLoginOn').onchange = async () => {
+    const want = $('atLoginOn').checked;
+    $('atLoginWhy').textContent = '';
+    const d = await post('/api/setup/login-item', {want});
+    if (!d.ok) { $('atLoginOn').checked = !want; return; }
+    // THE ANSWER FROM THE SYSTEM, not a restatement of the click. macOS can park a new
+    // registration pending approval, and "on" and "waiting for you in System Settings" are
+    // different outcomes — reporting the click back would hide the one that needs an action.
+    $('atLoginWhy').textContent = /approval/i.test(d.message || '') ? d.message : '';
+  };
+
   $('thinkOn').onchange = async () => {
     const on = $('thinkOn').checked;
     if (on && !confirm('Thinking makes answers much slower — measured at 26s against 1.5s on a '
@@ -861,6 +888,11 @@
       const r = await post('/api/models', {action, name});
       say('mPull', r.ok, r.message);
       loadModels();
+      // AND THE MODEL CARD, because attaching a model changes what that card may offer:
+      // Enable Thinking Mode exists only for a model that can honour it. The three HOSTED
+      // switch paths all refreshed it and this one — the local list — did not, so choosing a
+      // Qwen3 left the row hidden until the page was reloaded by hand.
+      refreshCurrent();
       if (r.ok) setTimeout(loadModels, 1500);
     };
     $('modelList').querySelectorAll('[data-load]').forEach(el =>

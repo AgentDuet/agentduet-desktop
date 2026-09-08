@@ -41,7 +41,11 @@ from . import hosts, install, loginitem, paths
 #: The Swift shell answers this and exits without becoming an application. Only the bundle can
 #: unregister its own login item — SMAppService.mainApp means "the caller's app", so asking from
 #: this CLI binary would be asking about something with no bundle at all.
-UNREGISTER_FLAG = "--unregister-login-item"
+#:
+#: Defined in loginitem, which owns both directions now — it was declared here as well, and two
+#: string literals for one command-line contract is how the register and unregister halves drift
+#: apart.
+UNREGISTER_FLAG = loginitem.UNREGISTER_FLAG
 
 
 def _bytes(p: pathlib.Path) -> int:
