@@ -184,6 +184,10 @@ def _local_available() -> bool:
 #: The bundled Swift helper. `docs/experiments` has the throwaway it grew from.
 APPLE_HELPER = "agentduet-stt"
 
+#: What `## Transcription` holds to mean "use Apple's engine". `_apple_choice` accepts
+#: several spellings; this is the one the UI writes, so the card and the setting agree.
+APPLE = "apple"
+
 
 def _apple_bin() -> pathlib.Path | None:
     """The helper, or None. Beside the daemon in Contents/MacOS, or on PATH in a dev checkout."""
@@ -703,7 +707,24 @@ def catalogue() -> list[dict]:
     adjectives do not.
     """
     current = local_model()
+    running = engine()
     out = []
+
+    # APPLE IS AN ENGINE THE OWNER CAN CHOOSE, so it belongs in the list they choose from. It was
+    # absent, and the consequence was worse than a missing option: the Whisper tier named by
+    # `local_model()` was marked "in use" whenever it was the fallback, so this card told the
+    # owner large-v3-turbo was transcribing their calls while `status` said "Apple on-device" and
+    # every log line said `apple`. Two surfaces disagreeing about the same fact.
+    #
+    # Nothing to download and nothing to delete — it is part of macOS — so the row is `downloaded`
+    # and the page suppresses Delete for it. Choosing it clears `## Transcription` to `apple`;
+    # choosing a Whisper tier names that model, which IS choosing Whisper.
+    ready, why = apple_ready()
+    if ready or running == "apple":
+        out.append({"model": APPLE, "name": "Apple on-device",
+                    "mb": 0, "got_mb": 0, "downloaded": True,
+                    "in_use": running == "apple", "builtin": True, "why": why})
+
     for model in (TIERS if current in TIERS else [current] + TIERS):
         # `is_cached`, NOT "a directory exists". The directory appears the instant a download
         # STARTS, so the row claimed a 1.5 GB model was downloaded when 66 MB of it had
@@ -716,5 +737,8 @@ def catalogue() -> list[dict]:
                     # What has landed so far, so a partial fetch can show how far along it is
                     # instead of looking like nothing or like everything.
                     "got_mb": on_disk,
-                    "downloaded": done, "in_use": model == current})
+                    # IN USE MEANS RUNNING. `model == current` alone marked the Whisper
+                    # fallback as in use while Apple was the engine — see the note above.
+                    "downloaded": done,
+                    "in_use": running == "local" and model == current})
     return out

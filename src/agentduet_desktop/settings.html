@@ -71,6 +71,11 @@
   /* Scoped to the CONTROL, not to a container. It was `.mrow .act`, so the same buttons in a
      card fell through to the browser default — a rule that looks like it styles a component
      and actually styles a place. */
+  /* ONE HEIGHT FOR EVERY SMALL CONTROL. A row's height came from whatever control it held, so
+     the tier list stepped between 43px (a button) and 38px (the "in use" pill), and the rows in
+     the card above ranged from 20px (a bare switch) to 42px (a pair of buttons). Fixing the
+     control height rather than each row keeps them equal however the row is composed. */
+  .act, .inuse{min-height:1.375rem;display:inline-flex;align-items:center;box-sizing:border-box;}
   .act{font-size:10px;padding:.25rem .55rem;border-radius:.35rem;border:1px solid var(--line);
     background:transparent;color:var(--muted);cursor:pointer;font-family:inherit;}
   .act:hover{border-color:var(--coral,#f0523d);color:#fca5a5;}
@@ -271,7 +276,13 @@
         </div>
         <div id="mRec"></div>
         <hr style="border:0;border-top:1px solid var(--line);margin:.25rem 0">
-        <div class="state" id="sttState">…</div>
+          <!-- THE ENGINE IS A CHOICE, so it is a control rather than a sentence. It read
+               "Transcription engine: Whisper" — hardcoded, and wrong on every Mac using
+               Apple's — and the only way to change it was a "Use this" button in the list
+               below, which also downloads and deletes. Selecting and managing what is on
+               disk are two jobs; this does the first. -->
+          <div class="grp"><label class="fl">Transcription engine</label>
+            <select id="sttEngine"></select></div>
         <div class="grp"><label class="fl">Language of your calls</label>
           <select id="language">
             <option value="">guess it (not recommended)</option>
@@ -282,7 +293,7 @@
             <option value="th">Thai</option>
           </select></div>
         <div class="grp">
-          <label class="fl">How hard it tries</label>
+            <label class="fl">Whisper models on this machine</label>
           <div id="sttTiers"></div>
         </div>
         <div class="acts">
@@ -569,9 +580,15 @@
 
   // ---- speech recognition ------------------------------------------------------------------
   let sttPoll = null;
+  //: The tiers as the server last described them, so the engine dropdown's change
+  //: handler can tell whether the chosen model still needs fetching. DECLARED BEFORE
+  //: sttRender, which assigns it: a `let` further down the file is in its temporal
+  //: dead zone when that runs, and throws. Second time today.
+  let LAST_TIERS = [];
+
   function sttRender(d){
+      LAST_TIERS = d.tiers || [];
     if (!d || d.error === 'unauthorised') return;
-    const st = $('sttState');
     // WHICH ENGINE, AND WHERE IT RUNS — the two facts that decide whether call audio leaves
     // this machine. It was a sentence explaining the situation, which reads as prose and buries
     // both. Neither engine is an LLM: faster-whisper locally, qwen3-asr-flash hosted, which is
@@ -581,8 +598,22 @@
     // the question "ready" was standing in for.
     // Just the engine. WHICH model is the row marked "in use" below — naming it here too put
     // the same fact in two places, and they were free to disagree.
-    st.innerHTML = d.installed ? 'Transcription engine: <b>Whisper</b>'
-                               : 'Transcription engine: not in this build.';
+    // THE ENGINE, AS A CHOICE. One option per tier, Apple included, with the running one
+    // selected — so the control states the answer that used to be a hardcoded sentence.
+    const eng = $('sttEngine');
+    const want = ((d.tiers || []).find(t => t.in_use) || {}).model || '';
+    const sig = (d.tiers || []).map(t => t.model + (t.downloaded ? '+' : '')).join(',')
+      + '|' + want + '|' + d.installed;
+    if (eng && sig !== eng.dataset.sig) {
+      eng.dataset.sig = sig;
+      eng.innerHTML = (d.tiers || []).map(t =>
+        `<option value="${esc(t.model)}"${t.model === want ? ' selected' : ''}>`
+        + esc(t.name) + (t.builtin ? ' — built in'
+                                   : t.downloaded ? ' — on this machine'
+                                   : ` — ${(t.mb / 1024).toFixed(1)} GB to download`)
+        + '</option>').join('');
+      eng.disabled = !d.installed && !(d.tiers || []).some(t => t.builtin);
+    }
 
     const busy = !!d.running;
     const sttSig = JSON.stringify([(d.tiers || []).map(t => [t.model, t.downloaded, t.in_use]),
@@ -601,7 +632,9 @@
     }
     lastSttSig = sttSig;
 
-    $('sttTiers').innerHTML = (d.tiers || []).map(t => {
+      // WHISPER ONLY. Apple's engine is part of macOS — nothing to download, nothing to
+      // delete — so it lives in the dropdown above and would be an inert row here.
+      $('sttTiers').innerHTML = (d.tiers || []).filter(t => !t.builtin).map(t => {
       const fetching = busy && d.downloading === t.model;
       const pct = Math.min(99, Math.round(t.got_mb * 100 / (t.mb || 1)));
       // A ROW MID-DOWNLOAD SAYS SO. It used to flip to "downloaded" the moment the directory
@@ -616,13 +649,12 @@
            </div>`
         : t.in_use && t.downloaded ? '<span class="inuse">in use</span>'
         : t.downloaded
-          ? `<button class="act use" data-tier="${esc(t.model)}">Use this</button>
-             <button class="act" data-del="${esc(t.model)}">Delete</button>`
-          : `<button class="act get" data-tier="${esc(t.model)}" ${busy ? 'disabled' : ''}>Download${t.in_use ? '' : ' and use'}</button>`;
+            ? `<button class="act" data-del="${esc(t.model)}">Delete</button>`
+          : `<button class="act get" data-tier="${esc(t.model)}" ${busy ? 'disabled' : ''}>Download</button>`;
       return `
       <div class="mrow ${t.in_use ? 'on' : ''}">
         <span class="nm">${t.in_use ? '● ' : ''}${esc(t.name)}</span>
-        <span class="sz">${(t.mb / 1024).toFixed(1)} GB</span>
+        <span class="sz">${t.builtin ? 'built in' : (t.mb / 1024).toFixed(1) + ' GB'}</span>
         ${act}
       </div>`;
     }).join('');
@@ -667,6 +699,19 @@
     sttCheck();                       // the tier decides WHICH model, so the state line changes
   };
   $('language').onchange = () => saveStt('language', $('language').value);
+  // CHOOSING AN ENGINE. Choosing an absent Whisper model also FETCHES it — otherwise the
+  // choice would take effect on the first call of the day and make it wait for a 3 GB
+  // download. Apple is built into macOS, so it needs nothing.
+  $('sttEngine').onchange = async () => {
+    const want = $('sttEngine').value;
+    await saveStt('transcription', want);
+    const row = LAST_TIERS.find(t => t.model === want);
+    if (row && !row.downloaded && !row.builtin) {
+      $('spStt').textContent = 'downloading…';
+      await post('/api/setup/stt', {});
+    }
+    sttCheck();
+  };
   sttCheck();
 
   // ---- install ---------------------------------------------------------------------------
