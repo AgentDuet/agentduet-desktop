@@ -820,25 +820,35 @@
       return;
     }
 
-    const busy = (d.progress || {}).model;
-    const failed = d.failed || {};
+    // MANY AT ONCE. `busy` was the single model downloading and every decision hung off it:
+    // a second Download button was disabled because the first was running, and one
+    // abandoned .part disabled all of them.
+    const jobs = d.jobs || {}, failed = d.failed || {}, partial = d.partial || {};
+    const queued = d.queued || [], wanted = d.wanted || '';
+    const anyJob = Object.keys(jobs).length > 0 || queued.length > 0;
 
     // REBUILD ONLY WHEN THE SHAPE CHANGES. This polls once a second during a download, and
     // rewriting innerHTML each time flickered, collapsed any open "sizes" expander, and threw
     // away whatever the reader was looking at. Progress moves every tick; the LIST does not.
-    const sig = JSON.stringify([(d.models || []).map(x => [x.id, x.state, x.in_use]), busy,
+    const sig = JSON.stringify([(d.models || []).map(x => [x.id, x.state, x.in_use]),
+                                Object.keys(jobs).sort(), queued, wanted,
                                 Object.keys(failed).sort(), d.engine,
                                 // A NEW NOTE HAS TO REBUILD. send() records one and calls
                                 // loadModels() immediately; without this the shape looks
                                 // unchanged, the fast path returns, and nothing is ever shown.
                                 Object.entries(cardNote).map(([k, v]) => k + v.text)]);
     if (sig === lastModelSig) {
-      const p = d.progress || {};
-      const bar = $('modelList').querySelector('.bar i');
-      const lab = $('modelList').querySelector('.barlab span:last-child');
-      if (bar) bar.style.width = p.percent + '%';
-      if (lab) lab.textContent = `${p.done_mb} / ${p.total_mb} MB · ${p.percent}%`;
-      if (busy) setTimeout(loadModels, 1000);
+      // EVERY bar, not the first one. `querySelector('.bar i')` patched whichever card came
+      // first in the list and left the others frozen at whatever they showed when drawn.
+      $('modelList').querySelectorAll('[data-bar]').forEach(box => {
+        const p = jobs[box.dataset.bar];
+        if (!p) return;
+        const bar = box.querySelector('.bar i');
+        const lab = box.querySelector('.barlab span:last-child');
+        if (bar) bar.style.width = p.percent + '%';
+        if (lab) lab.textContent = `${p.done_mb} / ${p.total_mb} MB · ${p.percent}%`;
+      });
+      if (anyJob) setTimeout(loadModels, 1000);
       return;
     }
     lastModelSig = sig;
@@ -850,29 +860,49 @@
       // ONE BUTTON PER STATE, and the button says what happens rather than naming a mechanism.
       // "Load Model" is a thing the software does; "Use this" is a thing the owner wants.
       let act;
-      if (busy === x.id) {
-        const p = d.progress;
+      const p = jobs[x.id];
+      const waitingAt = queued.indexOf(x.id);
+      const useBtn = wanted === x.id
+        ? '<span class="live">will be used</span>'
+        : `<button class="act use" data-usemodel="${esc(x.id)}">Use this</button>`;
+      if (p) {
         // `elsewhere` means the fetch belongs to another process — the CLI, or the detached
-        // child `init` spawns — and is only visible because its .part file is on disk. Stop
-        // sets a flag THIS daemon reads, so offering it here would be a button that reports
-        // success and changes nothing. Say where it is running instead.
-        act = `<div style="flex:1">
+        // child `init` spawns — and is only visible because its .part file is GROWING on disk.
+        // Stop sets a flag THIS daemon reads, so offering it here would be a button that
+        // reports success and changes nothing. Say where it is running instead.
+        act = `<div style="flex:1" data-bar="${esc(x.id)}">
                  <div class="barlab"><span>Downloading${p.elsewhere ? ' (started outside the app)' : '…'}</span>
                    <span>${p.done_mb} / ${p.total_mb} MB · ${p.percent}%</span></div>
                  <div class="bar"><i style="width:${p.percent}%"></i></div>
                </div>
-               ${p.elsewhere ? '' : '<button class="act" data-cancel="1">Stop</button>'}`;
+               ${useBtn}
+               ${p.elsewhere ? '' : `<button class="act" data-cancel="${esc(x.id)}">Stop</button>`}`;
+      } else if (waitingAt >= 0) {
+        // A QUEUE NOBODY CAN SEE is the same failure as a silent download, which is the thing
+        // this whole area exists to stop. Say the position, and offer a way out of the line.
+        act = `<span class="live">${waitingAt === 0 ? 'next in line' : 'waiting — ' + (waitingAt + 1) + ' in line'}</span>
+               ${useBtn}
+               <button class="act" data-cancel="${esc(x.id)}">Stop</button>`;
       } else if (here) {
         act = `<span class="live">in use</span>
                <button class="act" data-unload="${esc(x.id)}">Free the memory</button>
                <button class="act" data-del="${esc(x.id)}">Delete</button>`;
       } else if (disk) {
-        act = `<button class="act use" data-load="${esc(x.id)}">Use this</button>
+        act = `<button class="act use" data-usemodel="${esc(x.id)}">Use this</button>
                <button class="act" data-del="${esc(x.id)}">Delete</button>`;
       } else if (blocked) {
         act = `<button class="act" disabled>${esc(x.room_why || x.why)}</button>`;
       } else {
-        act = `<button class="act get" data-get="${esc(x.id)}" ${busy ? 'disabled' : ''}>Download ${x.dl_gb.toFixed(1)} GB and use</button>`;
+        // TWO BUTTONS, because they are two decisions: Download gets the bytes and changes
+        // nothing else, Use this switches when they land. Neither is disabled by another
+        // model's download. And RESUME rather than "Download 4.4 GB" when most of it is already
+        // on disk — the fetch sends a Range request either way, but the label was offering to
+        // fetch what it was about to skip.
+        const got = partial[x.id] || 0;
+        const label = got > 0 ? `Resume from ${(got / 1024).toFixed(1)} GB`
+                              : `Download ${x.dl_gb.toFixed(1)} GB`;
+        act = `<button class="act get" data-get="${esc(x.id)}">${label}</button>
+               ${useBtn}`;
       }
       // WHY IT FAILED, on the row that failed. A download that dies used to leave the card
       // exactly as it was, so the only symptom was a button that seemed to do nothing.
@@ -917,11 +947,12 @@
               <span class="d">${v.dl_gb.toFixed(1)} GB</span>
               <span class="fitpill ${v.fit}">${v.fit === 'no' ? 'too big' : v.fit}</span>
               ${v.id === x.id ? '<span class="d">shown above</span>'
+                : jobs[v.id] ? `<span class="d">${jobs[v.id].percent}%</span>`
                 : v.state !== 'absent'
-                  ? `<button class="act use" data-load="${esc(v.id)}">Use this</button>`
+                  ? `<button class="act use" data-usemodel="${esc(v.id)}">Use this</button>`
                   : v.fit === 'no'
                     ? `<button class="act" disabled title="${esc(v.why)}">too big</button>`
-                    : `<button class="act get" data-get="${esc(v.id)}" ${busy ? 'disabled' : ''}>Download</button>`}
+                    : `<button class="act get" data-get="${esc(v.id)}">Download</button>`}
             </div>`).join('')}
         </details>` : ''}
       </div>`;
@@ -941,14 +972,14 @@
       refreshCurrent();
       if (r.ok) setTimeout(loadModels, 1500);
     };
-    $('modelList').querySelectorAll('[data-load]').forEach(el =>
-      el.onclick = () => send('load', el.dataset.load));
+    $('modelList').querySelectorAll('[data-usemodel]').forEach(el =>
+      el.onclick = () => send('use', el.dataset.usemodel));
     $('modelList').querySelectorAll('[data-unload]').forEach(el =>
       el.onclick = () => send('unload', el.dataset.unload));
     $('modelList').querySelectorAll('[data-get]').forEach(el =>
       el.onclick = () => send('download', el.dataset.get));
     $('modelList').querySelectorAll('[data-cancel]').forEach(el =>
-      el.onclick = () => send('cancel', ''));
+      el.onclick = () => send('cancel', el.dataset.cancel));
     $('modelList').querySelectorAll('[data-del]').forEach(el => {
       el.onclick = () => {
         const n = el.dataset.del;
@@ -958,7 +989,7 @@
     });
 
     // While bytes are moving, keep the bar moving. Nothing else on this page polls.
-    if (busy) setTimeout(loadModels, 1000);
+    if (anyJob) setTimeout(loadModels, 1000);
   }
 
   // ---- hosted providers, in the same three states as a local model ----------------------

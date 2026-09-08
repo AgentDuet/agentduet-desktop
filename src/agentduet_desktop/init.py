@@ -175,7 +175,7 @@ def attach(interactive: bool = True) -> bool:
 
 def _models_coming() -> bool:
     from . import models
-    return models.downloading() is not None
+    return bool(models.downloading())
 
 
 def _self_command() -> list[str]:

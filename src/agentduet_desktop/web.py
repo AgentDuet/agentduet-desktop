@@ -799,8 +799,54 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         name = (body.get("name") or "").strip()
         act = (body.get("action") or "").strip()
 
+        async def _fetch(target: str, then_use: bool) -> dict:
+            """Start a download, and REPORT WHAT HAPPENS TO IT.
+
+            The result of the background task used to be discarded, which is how a9's failures
+            presented as "the progress bar never appeared": every fetch died on a missing CA
+            bundle, `models.download` returned the reason, and nothing read it.
+            """
+            models.forget_failure(target)
+            if then_use:
+                models.want(target)
+
+            async def _go():
+                try:
+                    out = await asyncio.to_thread(models.download, target)
+                except Exception:
+                    logger.exception("download of %s raised", target)
+                    models.note_failure(target, "the download stopped unexpectedly")
+                    return
+                logger.info("download of %s: %s", target, out)
+                if not models.is_downloaded(target):
+                    if not models.failure(target):
+                        models.note_failure(target, out)
+                    return
+                # CLAIMED AT COMPLETION, not captured at the start: a "Use this" pressed while
+                # the bytes were arriving still counts, and one replaced since does not.
+                if models.claim_wanted(target):
+                    await asyncio.to_thread(models.load, target)
+                    if models.loaded() == target:
+                        await asyncio.to_thread(tools.attach_model, "local", target, "local")
+
+            # ASKED BEFORE STARTING, not after. Checking `queued()` once the task exists reads
+            # the state before the task has run — `create_task` only schedules it — so a model
+            # about to wait reported "Downloading". The slots as they are NOW decide what
+            # happens to this request, so they are what the sentence can honestly claim.
+            running, _waiting = models.slots()
+            at_capacity = running >= models.MAX_CONCURRENT_DOWNLOADS
+
+            asyncio.get_running_loop().create_task(_go())
+            label = models.CATALOGUE.get(target, {}).get("name", target)
+            # A QUEUE NOBODY CAN SEE is the same failure as a silent download, which is the
+            # thing this whole area exists to stop.
+            where = (f"Queued {label} behind {running} download"
+                     f"{'s' if running != 1 else ''}") if at_capacity else f"Downloading {label}"
+            return {"ok": True, "message":
+                    where + "." + (" It will be used when it finishes." if then_use else "")}
+
         if act == "cancel":
-            return web.json_response({"ok": True, "message": models.cancel()})
+            return web.json_response({"ok": True, "message": models.cancel(name)})
         if not name:
             return web.json_response({"ok": False, "message": "Which model?"})
 
@@ -809,47 +855,27 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                                       "message": await asyncio.to_thread(models.delete, name)})
         if act == "unload":
             return web.json_response({"ok": True, "message": models.unload()})
-        if act == "load":
-            # Loading is also SELECTING. Two buttons for "use this model" is one button too
-            # many, and the second one is the one nobody presses.
-            _, msg = await asyncio.to_thread(models.load, name)
-            if models.loaded() == name:
-                msg += " " + await asyncio.to_thread(tools.attach_model, "local", name, "local")
-            return web.json_response({"ok": models.loaded() == name, "message": msg})
-
         if act == "download":
-            if models.progress()["model"]:
-                return web.json_response({"ok": False, "message":
-                                          f"Already downloading {models.progress()['model']}."})
+            # CONCURRENT, CAPPED, AND IT DOES NOT SWITCH THE MODEL IN USE. Fetching a file and
+            # choosing which model answers are two decisions; welding them meant an owner who
+            # wanted to compare three models had to adopt each one as it landed. `use` is the
+            # other verb.
+            return web.json_response(await _fetch(name, then_use=False))
 
-            # DOWNLOADING IS NEVER THE GOAL. Nobody wants a file; they want the model in use.
-            # So it loads and attaches when the bytes land, in one action.
-            models.forget_failure(name)
-
-            async def _go():
-                # READ THE RESULT. This used to discard it, which is why a failed download looked
-                # like nothing happening at all — the progress bar never appeared and no reason
-                # was recorded anywhere the owner could see. `download()` returns a sentence
-                # starting "Could not download" on failure; keep it against the model.
-                try:
-                    out = await asyncio.to_thread(models.download, name)
-                except Exception as exc:                       # noqa: BLE001 — must not vanish
-                    logger.exception("download of %s raised", name)
-                    models.note_failure(name, f"{type(exc).__name__}: {exc}")
-                    return
-                logger.info("download of %s: %s", name, out)
-                if not models.is_downloaded(name):
-                    models.note_failure(name, out)
-                    return
-                if body.get("then_use", True):
-                    await asyncio.to_thread(models.load, name)
-                    if models.loaded() == name:
-                        await asyncio.to_thread(tools.attach_model, "local", name, "local")
-
-            asyncio.get_running_loop().create_task(_go())
-            return web.json_response({"ok": True, "message":
-                f"Downloading {models.CATALOGUE.get(name, {}).get('name', name)}. It keeps "
-                "going if you leave this page."})
+        if act in ("use", "load"):
+            # Downloaded → load and attach now, because loading IS selecting. Still arriving, or
+            # not started → record the intent and switch when it lands. Either way the press has
+            # a visible effect, which "Use this" on a 4.6 GB model did not have before.
+            #
+            # `load` is the older name for the same thing and stays as an alias: one
+            # implementation rather than two that drift.
+            if models.is_downloaded(name):
+                _, msg = await asyncio.to_thread(models.load, name)
+                if models.loaded() == name:
+                    msg += " " + await asyncio.to_thread(tools.attach_model, "local", name,
+                                                         "local")
+                return web.json_response({"ok": models.loaded() == name, "message": msg})
+            return web.json_response(await _fetch(name, then_use=True))
 
         if act == "use_hosted":
             # A key we ALREADY HOLD needs no retyping — the same "Use this" a downloaded model
@@ -926,10 +952,17 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             "models": models.listing(),
             "hosted": _llm.hosted_listing(),
             "loaded": models.loaded(),
-            # progress_seen, not progress: a download started by the CLI or by init's detached
-            # child is not in THIS process's memory, and the page showing "not downloaded" while
-            # the file grows is how an owner concludes the app cannot see its own models.
-            "progress": models.progress_seen(),
+            # jobs_seen, not jobs: a download started by the CLI or by init's detached child is
+            # not in THIS process's memory, and the page showing "not downloaded" while the file
+            # grows is how an owner concludes the app cannot see its own models.
+            "jobs": models.jobs_seen(),
+            # Waiting for a slot, in turn order, and what "Use this" is holding for.
+            "queued": models.queued(),
+            "wanted": models.wanted(),
+            "max_downloads": models.MAX_CONCURRENT_DOWNLOADS,
+            # MB already on disk per unfinished model, so a button can say Resume rather than
+            # offering to download 4.4 GB when 3.2 GB of it is already there.
+            "partial": {n: got for n, got, _t in models.downloading()},
             # WHY A DOWNLOAD FAILED, per model. The page shows it on the row; without it the
             # only symptom is a button that appears to do nothing.
             "failed": {m["id"]: models.failure(m["id"]) for m in models.listing()
