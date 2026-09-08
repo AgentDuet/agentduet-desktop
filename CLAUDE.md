@@ -324,6 +324,15 @@ Break one of these and the secretary is a different product.
   what is on `origin`, so a fix committed locally and not pushed is not in it. Caught after
   triggering a build to prove `app.css` was packaged, from a commit that did not have the fix —
   it would have gone green and proved the opposite of what was intended.
+- **`timeout` IS NOT ON macOS.** It is GNU coreutils. A Mac with Homebrew coreutils has it, so
+  it works locally and in every local script here, and a clean `macos-26` runner says
+  `timeout: command not found`. The a11 build failed on exactly this: the smoke test's new TLS
+  gate wrapped the download in `timeout 45`, the command did not exist, the download never ran,
+  and the gate then reported "no bytes arrived over TLS — the binary reached nothing". **A false
+  failure that reads exactly like the defect the gate exists to catch**, and it passed on Linux,
+  where coreutils is standard. Background the command and poll for the condition instead — which
+  is better anyway, since it can stop the moment the condition holds.
+
 - **`pkill -f` matches your own command line**, including the shell running it. It has killed
   test blocks and daemons mid-run. Kill by PID or port.
 - **SIGTERM is caught somewhere in the async stack** and does not always exit. `stop` verifies

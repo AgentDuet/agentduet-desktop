@@ -206,17 +206,34 @@ jobs:
           # everything else, no credentials, and it dies instantly when the roots are missing.
           # The smallest model in the catalogue is 0.24 GB and the check does not need all of
           # it — bytes on disk are the proof, so it is stopped after a few seconds.
-          set +e
-          timeout 45 "$BIN" models download gemma-3-270m > tls.log 2>&1
-          set -e
+          # NO `timeout` HERE. It is GNU coreutils and a clean macOS runner does not have it —
+          # this step's first version used it, the shell said "timeout: command not found", the
+          # download never ran, and the gate then reported "the binary reached nothing". A false
+          # failure that looked exactly like the defect it exists to catch. It passed on Linux,
+          # and locally, because both had coreutils.
+          #
+          # Backgrounding it is better than a fixed wait anyway: the check is "did any real
+          # bytes arrive over TLS", so it can stop the moment they have instead of pulling all
+          # 240 MB.
+          "$BIN" models download gemma-3-270m > tls.log 2>&1 &
+          DL=$!
+          ARRIVED=""
+          for _ in $(seq 1 60); do
+            if [ -n "$(find "$AGENTDUET_HOME/models" -type f -size +1M 2>/dev/null | head -1)" ]; then
+              ARRIVED=yes; break
+            fi
+            kill -0 "$DL" 2>/dev/null || break      # it exited: either finished or failed
+            sleep 1
+          done
+          kill "$DL" 2>/dev/null || true
+          wait "$DL" 2>/dev/null || true
           cat tls.log
           if grep -qiE "ssl|certificate verif|CERTIFICATE_VERIFY" tls.log; then
             echo "::error::the frozen binary cannot verify TLS — certifi is not packaged, or entry.py did not find cacert.pem"
             exit 1
           fi
-          if [ -z "$(find "$AGENTDUET_HOME/models" -type f -size +1M 2>/dev/null | head -1)" ]; then
+          if [ -z "$ARRIVED" ] && [ -z "$(find "$AGENTDUET_HOME/models" -type f -size +1M 2>/dev/null | head -1)" ]; then
             echo "::error::no bytes arrived over TLS — the binary reached nothing"
-            cat tls.log
             exit 1
           fi
           echo "TLS works: the binary fetched real bytes from a public host"
