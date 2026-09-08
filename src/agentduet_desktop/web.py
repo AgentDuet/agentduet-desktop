@@ -715,15 +715,28 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                 names = [n for n in r.get("recordings", []) if (folder / n).is_file()]
                 # A .wav with no sibling .txt is still in the transcription queue — that is the
                 # queue, so the UI can say "pending" without a second source of truth.
-                text = ""
+                # BOTH LEGS, LABELLED. This broke out of the loop on the first transcript it
+                # found, and since `names` is sorted that was the CALLEE — this line's own side.
+                # Half a conversation, and the half the owner already knows. The files are
+                # deliberately unmixed (see carry._Recorder: the two sides are not aligned, so
+                # summing them compresses one), which is exactly why each needs saying whose it
+                # is. `-caller` is always the other party and `-callee` always this line,
+                # whichever way the call was set up.
+                parts = []
                 for n in names:
                     t = (folder / n).with_suffix(".txt")
-                    if t.is_file():
-                        try:
-                            text = t.read_text()[:4000]
-                            break
-                        except OSError:
-                            pass
+                    if not t.is_file():
+                        continue
+                    try:
+                        body = t.read_text().strip()
+                    except OSError:
+                        continue
+                    if not body:
+                        continue
+                    side = ("them" if n.endswith("-caller.txt")
+                            else "you" if n.endswith("-callee.txt") else "")
+                    parts.append(f"{side}: {body}" if side else body)
+                text = "\n".join(parts)[:4000]
                 audio = sum((folder / n).stat().st_size for n in names) if names else 0
                 items.append({
                     "at": r.get("at", ""), "call_id": r.get("call_id", ""),
@@ -732,6 +745,12 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                     # Empty WAVs are what an unbridged call leaves behind; saying so beats
                     # showing a call that looks recorded and plays nothing.
                     "silent": bool(names) and audio <= len(names) * transcribe.EMPTY_WAV_BYTES,
+                    # NOTHING WAS CAPTURED, which is not the same as "not transcribed yet".
+                    # `silent` requires files, so a call with none fell through to the page's
+                    # "Transcript pending." — promising a transcript that can never arrive. That
+                    # is the state a carried call is in whenever the platform hands us no audio,
+                    # so it would have said "pending" for ever.
+                    "norecording": not names,
                 })
             people.append({"who": who, "calls": items, "messages": [],
                            "last": items[0]["at"] if items else ""})

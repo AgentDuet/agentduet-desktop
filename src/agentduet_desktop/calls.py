@@ -27,7 +27,7 @@ LOG = paths.RUN / "calls.jsonl"
 
 
 def record(call_id: str, caller: str, mode: str, *, recordings: list[str] | None = None,
-           note: str = "") -> None:
+           note: str = "", outgoing: bool = False) -> None:
     """Append one call. Never raises: losing the audio matters, losing the index does not."""
     try:
         paths.RUN.mkdir(parents=True, exist_ok=True)
@@ -39,6 +39,9 @@ def record(call_id: str, caller: str, mode: str, *, recordings: list[str] | None
                 # unknown than a row silently attributed to the wrong person.
                 "caller": caller or "?",
                 "mode": mode,                      # "carried" | "answered"
+                # WHICH WAY THE CALL WENT, as a field. It briefly lived inside `caller` as a
+                # "to "/"from " prefix, which split one person into several — see carry.handle.
+                "outgoing": outgoing,
                 "recordings": recordings or [],
                 "note": note,
             }) + "\n")
@@ -63,9 +66,30 @@ def recent(limit: int = 200) -> list[dict]:
     return out[::-1][:limit]
 
 
+#: Identities written before the direction moved to its own field. Stripped on read so an
+#: existing log merges instead of showing one person two or three times.
+_LEGACY_PREFIXES = ("to ", "from ")
+
+
+def person_of(row: dict) -> str:
+    """The person a call belongs to: the number alone, whichever way the call went."""
+    who = (row.get("caller") or "?").strip()
+    for p in _LEGACY_PREFIXES:
+        if who.startswith(p):
+            who = who[len(p):].strip()
+            break
+    return who or "?"
+
+
 def by_person(limit: int = 200) -> dict[str, list[dict]]:
-    """Calls grouped by who was on them, newest first within each."""
+    """Calls grouped by who was on them, newest first within each.
+
+    GROUPED BY NUMBER, NOT BY THE STRING IN THE ROW. A direction word briefly lived inside
+    `caller`, so the same number appeared as "+65…", "to +65…" and "from +65…" — three people
+    with three histories, one of whom had rung the other two. `person_of` strips that, which
+    also merges any rows already written that way rather than leaving them stranded.
+    """
     grouped: dict[str, list[dict]] = {}
     for row in recent(limit):
-        grouped.setdefault(row.get("caller") or "?", []).append(row)
+        grouped.setdefault(person_of(row), []).append(row)
     return grouped
