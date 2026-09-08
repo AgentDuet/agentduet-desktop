@@ -2751,6 +2751,14 @@ def test_the_hub_does_not_invent_a_sign_in_state() -> None:
        and "D.phone ? esc(D.phone) : setLink('number')" in web_page)
     ok("and the empty state goes somewhere", 'href="/settings?t=${T}"' in web_page)
 
+    # AND IT RE-READS. `load()` drew the name, the number, the model and the channel state, and
+    # ran ONCE at page load — so an already-open hub kept whatever it said when the tab opened.
+    # The number was the visible symptom, reported as "number is dash now" on 2026-09-08 with
+    # the value sitting correctly in settings.md the whole time. The channel was the dangerous
+    # one: a dropped connection went on reading "Recording calls" until somebody reloaded.
+    ok("the hub re-reads the panel, not just the threads",
+       "refresh(), refreshChat(), load()" in web_page)
+
     # THE NUMBER HAD NO FIELD ANYWHERE. The endpoint accepted `phone` all along and two
     # behaviours depended on it — owner routing for WhatsApp, and whether a callback may be
     # offered — while the only ways to set it were the assistant and a text editor.
