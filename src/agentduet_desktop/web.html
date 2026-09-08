@@ -165,7 +165,6 @@
 <div class="window">
   <div class="titlebar">
     <div class="lights">
-      <i></i><i></i><i></i>
       <div class="brand"><img class="ad" src="/logo.png" alt=""><span>AgentDuet</span></div>
     </div>
     <div class="linebadge" id="lineBadge">
@@ -226,6 +225,11 @@
     // injects `window.agentduetNative` at document start. Either means macOS is
     // drawing the real traffic lights, so ours must not be drawn under them.
     if (window.pywebview || window.agentduetNative) mark();
+    // AND WHICH HOST. Only the Swift shell draws a transparent titlebar with the
+    // page underneath macOS's window controls, so only it must leave room for
+    // them. pywebview gets an ordinary titlebar ABOVE the content, where that
+    // room is just an empty gap to the left of the brand.
+    if (window.agentduetNative) document.documentElement.classList.add('shell');
     window.addEventListener('pywebviewready', mark);
   })();
 

@@ -2137,13 +2137,38 @@ def test_native_titlebar() -> None:
     nested = [f for f in ("web.html", "settings.html", "setup.html")
               if "brand" in "".join((src / f).read_text().split("class=\"lights\"")[1:2])[:400]]
     ok("the brand is nested inside .lights in the pages", len(nested) == 3, str(nested))
-    ok("native mode hides the DOTS, not the whole group",
-       "html.native .lights > i{display:none;}" in css)
-    ok("and never hides the group outright",
+    # THE DOTS ARE GONE ENTIRELY, since 2026-09-08. Three coloured circles that cannot be
+    # clicked were the design's way of making a browser tab feel like a window; in a native host
+    # macOS draws real ones and ours had to be hidden anyway. The markup went with them, so
+    # there is no longer a rule to hide.
+    ok("no simulated traffic lights are drawn", ".lights i{" not in css)
+    for f in ("web.html", "settings.html", "setup.html"):
+        ok(f"{f} draws no dots in its titlebar",
+           "<i></i><i></i><i></i>" not in
+           "".join((src / f).read_text().split('class="lights"')[1:2])[:400])
+    # THE PROPERTY THAT STILL MATTERS: the brand must remain visible. The old rule hid `.lights`
+    # wholesale and took the AgentDuet mark with it, leaving Settings as the only child of a
+    # space-between row and pinning it to the left edge.
+    ok("and the group is never hidden outright, since the brand lives in it",
        "html.native .lights{display:none;}" not in css)
-    # The row reserves space for the real controls; a brand at padding 0 would sit under them.
-    ok("the titlebar reserves room for macOS's own controls",
-       "html.native .titlebar{padding-left:" in css)
+
+    # ROOM FOR THE REAL LIGHTS, IN THE SHELL ONLY. `.native` is set by BOTH hosts, but only the
+    # Swift shell draws a transparent titlebar with the page underneath macOS's controls.
+    # pywebview gets an ordinary titlebar above the content, where the reservation was simply an
+    # empty gap to the left of the brand — which is what Stanley saw in the native window.
+    ok("the shell reserves room for macOS's own controls",
+       "html.native.shell .titlebar{padding-left:" in css)
+    ok("and pywebview does not", "html.native .titlebar{padding-left:" not in css)
+    for f in ("web.html", "settings.html", "setup.html"):
+        ok(f"{f} tells the two hosts apart",
+           "window.agentduetNative) document.documentElement.classList.add('shell')"
+           in (src / f).read_text())
+
+    # AN EXACT HEIGHT ON A SELECT, because the engines disagree about the intrinsic height of a
+    # native control — `min-height` matched the rows in Chrome and did not in the pywebview
+    # window, where the dropdown stood taller than every row beside it.
+    ok("a select's height is stated, not inherited from the platform",
+       "select{height:var(--ctl);}" in css)
 
 
 def test_uninstall_tiers() -> None:
