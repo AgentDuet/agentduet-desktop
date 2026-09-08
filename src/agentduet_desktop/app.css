@@ -157,6 +157,11 @@ input[readonly]{font-family:var(--mono);}
   font-family:inherit;text-decoration:none;}
 .link:hover{text-decoration:underline;}
 
+/* The way out of an empty profile field. Sized to the text it replaces so the row does not
+   move when a name is finally set, and blue-underlined like every other link here rather than
+   a button: it goes somewhere, it does not do something. */
+.prof .setlink{color:var(--blue400);text-decoration:underline;font-size:inherit;}
+
 /* An action's reply, inside the model card it belongs to. It used to go to one div below the
    whole list, and say() scrolls its target into view — so a click on any card threw the panel
    to the bottom. Empty until something is said, so it costs no space. */

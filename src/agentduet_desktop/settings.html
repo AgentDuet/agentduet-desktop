@@ -159,6 +159,14 @@
           <div><h2>You</h2></div>
         </div>
         <div class="grp"><label class="fl">Name</label><input type="text" id="name"></div>
+        <!-- NO SURFACE COULD SET THIS until 2026-09-08, and it gates real behaviour: a
+             WhatsApp message from this number reaches the owner's assistant instead of
+             being filed as a stranger to answer, and an empty one means the agent will not
+             offer a callback, because it must not promise what the code cannot do. The
+             endpoint has accepted `phone` all along; only the field was missing, so the
+             setting was reachable from the assistant and a text editor and nowhere else. -->
+        <div class="grp"><label class="fl">Your number</label>
+          <input type="text" id="phone" placeholder="+6591234567"></div>
         <div class="acts"><button class="btn" id="saveYou">Save</button></div>
 
         <div id="mYou"></div>
@@ -440,11 +448,19 @@
   // all — reading it there threw and took the whole page down with it.
   $('rerun').onclick = () => { location.href = '/setup?t=' + T + '&from=settings'; };
 
+  //: What the server last said the You card's fields were, so Save can send only
+  //: what changed. DECLARED BEFORE refreshCurrent, which reads it: a `const` further
+  //: down the file is in its temporal dead zone when that runs, and throws.
+  const LOADED = {};
+
   async function refreshCurrent(){
     const [cr, sr] = await Promise.all([
       fetch(`/api/setup/current?t=${T}`), fetch(`/api/state?t=${T}`)]);
     const cur = cr.ok ? await cr.json() : {};
     $('name').value = cur.name || '';
+    $('phone').value = cur.phone || '';
+    LOADED.name = $('name').value;
+    LOADED.phone = $('phone').value;
     $('language').value = cur.language || '';
     $('modelState').textContent = cur.model || 'unknown';
     drawAccount(cur);
@@ -470,12 +486,21 @@
   $('saveYou').onclick = async () => {
     $('saveYou').disabled = true;
     const out = [];
-    for (const [field, el] of [['name', 'name']]) {
-      const d = await post('/api/setup/setting', {field, value: $(el).value});
+    // ONLY WHAT CHANGED. One button writes both fields, so sending them unconditionally
+    // means typing a number CLEARS the name when that box happens to be empty — which it
+    // is on any page whose populate has not run yet. LOADED is what the server said the
+    // values were when the card was filled in, so an untouched field is never written back.
+    for (const field of ['name', 'phone']) {
+      const now = $(field).value;
+      if (now === (LOADED[field] || '')) continue;
+      const d = await post('/api/setup/setting', {field, value: now});
       out.push(d.message);
+      if (d.ok !== false) LOADED[field] = now;
     }
     $('saveYou').disabled = false;
-    say('mYou', true, out.join('\n'));
+    // SAYING NOTHING reads as a dead button, which is the class of bug this page has spent
+    // the day fixing.
+    say('mYou', true, out.length ? out.join('\n') : 'Nothing changed.');
   };
 
   // ---- the AgentDuet account, in whichever of three states it is --------------------------

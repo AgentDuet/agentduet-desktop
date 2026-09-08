@@ -411,6 +411,22 @@ def who_you_are(interactive: bool = True) -> None:
     elif not have:
         print("  -> left blank. Transcripts will hear names less well; set it later in settings.md.")
 
+    # AND THE NUMBER, which until 2026-09-08 no surface asked for at all — not this one, not the
+    # settings page — while the endpoint accepted it and two behaviours depended on it. Asked
+    # here for the same parity reason as everything else in this file: a setting reachable from
+    # one surface is a setting half the owners cannot change.
+    phone_now = owner.phone()
+    print("\n  Your own number, for the agent to reach YOU on. Never given out.")
+    if phone_now:
+        print(f"  number: {phone_now}")
+    phone = _prompt(f"\n  Your number in E.164, e.g. +6591234567"
+                    f"{' [' + phone_now + ']' if phone_now else ''}\n  > ").strip()
+    if phone:
+        print("  " + tools.set_setting("phone", phone).splitlines()[0])
+    elif not phone_now:
+        print("  -> left blank. A WhatsApp message from your own number will be treated as a "
+              "stranger's, and no callback will be offered.")
+
 
 
 

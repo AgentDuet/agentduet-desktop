@@ -1253,6 +1253,22 @@ def test_setup_mode() -> None:
     ok("the server fills blanks from the files",
        "fill_from_files" in (src / "web.py").read_text())
 
+    # ---- A CALL THE OWNER'S OWN LINE PLACES IS STILL A CALL --------------------------------
+    #
+    # carry mode subscribed to inbound calls only, so a call the owner PLACED — a desk phone, or
+    # the SIM in their hand — arrived as an outgoing announcement and the app saw nothing at all:
+    # no handler, no error, an empty recordings directory. Found 2026-09-08 on a real Singtel
+    # SIM, where the platform logged `callBegin` with `type2: outgoing` and the daemon logged
+    # not one line.
+    carry_src = (src / "carry.py").read_text()
+    agent_src = (src / "secretary_agent.py").read_text()
+    ok("the connector is asked to announce outgoing calls",
+       "builder.outbound_call(True)" in agent_src)
+    ok("and carry handles them", "sm.on_outgoing_call(_handler)" in carry_src)
+    ok("with the same handler as inbound, since the shapes match",
+       "sm.on_incoming_call(_handler)" in carry_src)
+    ok("the log says which directions are armed", "outbound_call=%s" in agent_src)
+
     # ---- TWO DOWNLOADS AT A TIME, THE REST IN A VISIBLE QUEUE ------------------------------
     #
     # It was one global slot, so asking for a second model answered "Already downloading
@@ -2726,8 +2742,32 @@ def test_the_hub_does_not_invent_a_sign_in_state() -> None:
     # and cost a round trip asking for a connector that was already configured.
     ok("the profile chip does not claim a sign-in state",
        "|| 'Not signed in'" not in web_page)
+    # BOTH EMPTY STATES READ ALIKE — the property this has always guarded. It used to be the
+    # dash both fields shipped with; since 2026-09-08 both offer the way to fix it instead,
+    # because a dash is a dead end on two settings that change real behaviour and, in the
+    # number's case, had no field on ANY surface to go and change.
     ok("an unknown name reads like the unknown number beside it",
-       "D.name || '—'" in web_page)
+       "D.name ? esc(D.name) : setLink('name')" in web_page
+       and "D.phone ? esc(D.phone) : setLink('number')" in web_page)
+    ok("and the empty state goes somewhere", 'href="/settings?t=${T}"' in web_page)
+
+    # THE NUMBER HAD NO FIELD ANYWHERE. The endpoint accepted `phone` all along and two
+    # behaviours depended on it — owner routing for WhatsApp, and whether a callback may be
+    # offered — while the only ways to set it were the assistant and a text editor.
+    settings_page = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+                     / "settings.html").read_text()
+    init_src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+                / "init.py").read_text()
+    ok("the settings page has a number field", 'id="phone"' in settings_page)
+    ok("and saves it", "for (const field of ['name', 'phone'])" in settings_page)
+    # ONE BUTTON, TWO FIELDS: sending both unconditionally means typing a number CLEARS the name
+    # when that box is empty, which it is on any page whose populate has not run. Seen doing
+    # exactly that — "Your name cleared." beside "Your phone saved".
+    ok("and only writes what changed", "if (now === (LOADED[field] || '')) continue;"
+       in settings_page)
+    ok("and says so when nothing did", "'Nothing changed.'" in settings_page)
+    ok("and shows what is stored", "$('phone').value = cur.phone" in settings_page)
+    ok("the console asks for it too", 'set_setting("phone"' in init_src)
 
 
 def test_the_binary_can_reach_the_platform() -> None:

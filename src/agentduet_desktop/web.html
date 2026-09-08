@@ -550,10 +550,17 @@
     // API key, and it sent Stanley to ask for a connector that was already configured. The
     // element is the profile chip — avatar, name, number — so an unknown name reads the same
     // way as the unknown number directly below it, which is the dash this element ships with.
-    $('who').textContent = D.name || '—';
-    $('av').textContent = (D.name || '?').split(/\s+/).map(w => w[0] || '')
-      .join('').slice(0, 2).toUpperCase() || '–';
-    $('phone').textContent = D.phone || '—';
+      // A DASH IS A DEAD END. Both of these are unset on a fresh install and both change
+      // real behaviour, so the empty state offers the way to fix it rather than leaving a
+      // mark the owner has to interpret: the name primes the speech engine (measurably
+      // better than a bigger model at hearing it said aloud), and the number is what routes
+      // a WhatsApp message from the owner to their own assistant instead of filing it as a
+      // stranger. Neither had a field on ANY surface until the number got one.
+      const setLink = what => `<a class="setlink" href="/settings?t=${T}">Set your ${what}</a>`;
+      $('who').innerHTML = D.name ? esc(D.name) : setLink('name');
+      $('av').textContent = (D.name || '').split(/\s+/).map(w => w[0] || '')
+        .join('').slice(0, 2).toUpperCase() || '–';
+      $('phone').innerHTML = D.phone ? esc(D.phone) : setLink('number');
     // THE LINE, not the owner's own mobile — see the panel endpoint. `$('phone')` above is
     // legitimately theirs; this badge is the number callers reach, learned from a real call.
     if (D.line) { $('lineNum').textContent = D.line; $('lineBadge').classList.add('on'); }

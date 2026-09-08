@@ -688,6 +688,10 @@ async def run_channel() -> None:
                    .outbound_message(True))
         if calls_on:
             builder = builder.inbound_call(InboundCallMode.ALL)
+            # AND THE CALLS THIS LINE PLACES. Without this the connector never announces them,
+            # so `on_outgoing_call` cannot fire however carefully it is registered — the app
+            # simply sees nothing when the owner rings someone from their own phone.
+            builder = builder.outbound_call(True)
         # NOT FATAL (2026-08-11). This raised, and the raise killed the whole channel: connect,
         # register, die, retry — forever, with the daemon reporting only "channel unavailable".
         #
@@ -705,7 +709,8 @@ async def run_channel() -> None:
         try:
             await sm.setup_trigger_conditions(builder.build())
             logger.info("trigger conditions set: inbound_message=True, outbound_message=True, "
-                        "inbound_call=%s", "ALL" if calls_on else "off")
+                        "inbound_call=%s, outbound_call=%s",
+                        "ALL" if calls_on else "off", calls_on)
         except Exception as exc:
             logger.warning(
                 "could not set trigger conditions (%s: %s) — carrying on with whatever the "
