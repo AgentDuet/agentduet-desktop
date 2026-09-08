@@ -3,7 +3,7 @@
  * ONE file, served at /app.css and linked by every page, so a change lands everywhere at once.
  * It used to be pasted into each page and they drifted within a day.
  *
- * The values come from agentduet_macos_app_ux_mockup.html — its Tailwind config and the classes
+ * The values come from the August UX design — its Tailwind config and the classes
  * it uses — written out as plain CSS. Tailwind arrives from a CDN there; this app has to open on
  * a machine with no network, so nothing here may be fetched.
  *
@@ -39,7 +39,7 @@ body{background:var(--page);color:var(--ink);font-family:var(--sans);height:100v
   padding:1.5rem;-webkit-font-smoothing:antialiased;}
 
 /* SELECTABLE BY DEFAULT, and the chrome opts out. `body` carried `user-select:none` from the
-   mockup, where it buys the feel of a native app — but this app's CONTENT is text people need
+   design, where it buys the feel of a native app — but this app's CONTENT is text people need
    out of it: a call transcript, an address someone read out, a number, the assistant's answer.
    None of it could be selected, and there is no other way to copy it.
    Native apps behave this way too: a mail message selects, the toolbar does not. So the rule
@@ -87,8 +87,15 @@ html.native .brand{margin-left:0;padding-left:0;border-left:0;}
 html.native .titlebar{padding-left:4.9rem;}
 .brand{margin-left:.75rem;padding-left:.5rem;border-left:1px solid rgba(255,255,255,.1);
   display:flex;align-items:center;gap:.5rem;}
-.brand .ad{width:1.25rem;height:1.25rem;border-radius:.375rem;background:var(--accent);color:#fff;
-  display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;}
+/* THE REAL MARK, on a white plate — and the plate is not decoration. agentduet-logo.png has an
+   OPAQUE WHITE ground rather than a transparent one, so dropped straight onto this dark titlebar
+   it would show as a white rectangle with the logo inside. Keying the white out is not available
+   either: the robot's eyes and the inside of the 'a' are white too, so it would punch holes
+   through the mark. A white rounded tile takes the same shape the blue lettered square had, and
+   the logo's own ground merges into it invisibly.
+   Swap this for `background:none` the day a transparent asset exists. */
+.brand .ad{width:1.25rem;height:1.25rem;border-radius:.375rem;background:#fff;
+  display:block;object-fit:contain;padding:1px;box-sizing:border-box;}
 .brand span{font-size:.75rem;font-weight:600;color:#cbd5e1;}
 .linebadge{display:none;align-items:center;gap:.5rem;padding:.25rem .75rem;border-radius:999px;
   background:var(--slate900);border:1px solid rgba(255,255,255,.1);font-size:.75rem;}
@@ -150,7 +157,7 @@ input[readonly]{font-family:var(--mono);}
   font-family:inherit;text-decoration:none;}
 .link:hover{text-decoration:underline;}
 
-/* the mockup's peer-checked switch, as plain css */
+/* the design's peer-checked switch, as plain css */
 .sw{position:relative;display:inline-flex;align-items:center;cursor:pointer;flex-shrink:0;}
 .sw input{position:absolute;opacity:0;width:0;height:0;}
 .sw .track{width:2.25rem;height:1.25rem;background:var(--slate700);border-radius:999px;

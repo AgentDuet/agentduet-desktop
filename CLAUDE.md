@@ -29,19 +29,27 @@ secretary's machinery, and do not ask a recorder feature to justify itself again
 that have no subject. If a feature has an agent speaking or acting, the fence is mandatory and
 non-negotiable.
 
-**The entry point is the recorder**, per `agentduet_macos_app_ux_mockup.html`: sign in, choose a
+**The entry point is the recorder**, per the August UX design: sign in, choose a
 folder, and four services — record calls, transcribe them, record messages, connect a model for
 summaries. Setup asks nothing about a model or an agent. The secretary is configured later, by
 someone who wants it, and is not on the path of a new install.
 
-**THE MOCKUP IS A SPEC OF INTENT, NOT A SET OF CLAIMS TO AUDIT.** When it shows something we
-have not built — single sign-on, SMS archiving, "Apple Neural Engine" — the answer is a STUB and
-a checklist item, not an edit to the design. **We are stub-first: the gap is the work, and the
-mockup is what says the work exists.** Quietly reworded to match today's implementation, the
-design stops being a target and becomes a description, and the thing we meant to build is lost
-without anyone deciding to drop it. A line comes out only when it is genuinely IMPOSSIBLE, and
-after a conversation with the team — never because one engineer found it inconvenient.
+**THE DESIGN IS A SPEC OF INTENT, NOT A SET OF CLAIMS TO AUDIT.** Where it describes something
+we have not built — single sign-on, SMS archiving, "Apple Neural Engine" — the answer is a STUB
+and a checklist item, not an edit to the design. **We are stub-first: the gap is the work, and
+the design is what says the work exists.** Quietly reworded to match today's implementation, it
+stops being a target and becomes a description, and the thing we meant to build is lost without
+anyone deciding to drop it. A line comes out only when it is genuinely IMPOSSIBLE, and after a
+conversation with the team — never because one engineer found it inconvenient.
 (Written 2026-08-17 after I proposed rewording the Neural Engine claim to match faster-whisper.)
+
+**THE MOCKUP FILE IS GONE (removed 2026-09-08), SO THE CHECKLIST IS NOW THE RECORD.** It was
+`agentduet_macos_app_ux_mockup.html`, and it was never tracked in this repo — every statement
+about it here was written from a copy that has since been deleted. That moves the authority
+rather than cancelling it: the recorder section of the checklist below IS the agreed product
+now, and it is no longer checkable against anything. So it can only be shortened by the
+conversation the paragraph above describes, and an item removed from it cannot be recovered by
+reopening the design. Treat it as the more precious document, not the less.
 
 **What this does NOT mean.** The secretary is not deleted and the invariants are not relaxed.
 `tests/test_rules.py` still enforces them, and the day an agent speaks on a call they all apply
@@ -115,11 +123,11 @@ they drifted within a day, so a change now lands everywhere at once. Page-specif
 in the page; what lives in `app.css` is what more than one page needs — the window chrome, the
 tokens, and the controls.
 
-The values come from `agentduet_macos_app_ux_mockup.html` (its Tailwind config and the classes
-it uses), written out as plain CSS. **Nothing in it may be fetched at runtime** — Tailwind
-arrives from a CDN in the mockup and this app has to open on a machine with no network. The one
-exception is the two Google Fonts links in each page's `<head>`, which is a known gap and on the
-checklist.
+The values came from the August UX design (its Tailwind config and the classes it used),
+written out as plain CSS — `app.css` is now the only surviving copy of them, since that file is
+gone. **Nothing in it may be fetched at runtime** — Tailwind arrived from a CDN in the design and
+this app has to open on a machine with no network. The one exception is the two Google Fonts
+links in each page's `<head>`, which is a known gap and on the checklist.
 
 **The three traffic lights are ours, drawn in HTML.** In a browser they are the illusion the
 design intends. In the native window macOS draws its OWN in the real titlebar, and two sets of
@@ -291,6 +299,21 @@ Break one of these and the secretary is a different product.
   (`-keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1`): macOS accepts it, and 3DES is
   still in OpenSSL 3's default provider so it reads back locally. Verify the `.p12` opens and
   contains the leaf, the intermediate and one private key BEFORE uploading it as a secret.
+- **A LOCAL build takes CODE from `src/` but DATA from site-packages, so the build venv goes
+  stale silently** (found 2026-09-08). The spec sets `pathex` to `src/`, so PyInstaller imports
+  the current modules — but `collect_data_files("agentduet_desktop")` resolves the INSTALLED
+  distribution, and `.venv-build` held `0.1.0a7`. Every local bundle I had made was current
+  Python code running against **a7-era `web.html`, `app.css`, prompts and templates**. Nothing
+  warns: the build is green, `--version` reads correctly off the source, and only the pages
+  betray it.
+  **So `pip install --force-reinstall .` into the build venv before any local build you intend
+  to believe**, and treat a page or prompt that "did not change" in a frozen build as this
+  first. CI is unaffected — it installs fresh from the checkout every run — which is precisely
+  why it never surfaced.
+  Corollary for a new data file: it must be listed in **both** `pyproject.toml`'s
+  `package-data` and the spec's `collect_data_files` includes. The spec alone does nothing,
+  because the file it is globbing is the installed copy.
+
 - **`gh workflow run` builds the REMOTE, not your working tree.** A dispatch build fires against
   what is on `origin`, so a fix committed locally and not pushed is not in it. Caught after
   triggering a build to prove `app.css` was packaged, from a commit that did not have the fix —
@@ -340,7 +363,7 @@ Break one of these and the secretary is a different product.
   reachable** (checked 2026-08-17). CTranslate2, the runtime underneath, has CPU and CUDA
   backends only — no Metal, no Core ML, no ANE — so on a Mac it is CPU-only today and every
   measured number is a CPU number.
-  **The mockup says "Apple Neural Engine" and that stays.** It is a target we have not hit yet,
+  **The design says "Apple Neural Engine" and that stays.** It is a target we have not hit yet,
   and it goes on the checklist rather than being edited out of the design. Removing it needs a
   reason it is IMPOSSIBLE plus a conversation with the team — not one engineer deciding the
   current implementation is the final one.
@@ -388,13 +411,13 @@ the Cleared note at the end.
 which says which side of the line each gap sits on. This list carries only the parts that are
 ours to build.
 
-**The recorder — every gap between the mockup and what runs**
+**The recorder — every gap between the agreed design and what runs**
 
-From `agentduet_macos_app_ux_mockup.html`. Each of these is a STUB shipping now and a thing to
-build, not a design to trim. Nothing here is optional-by-default: the mockup is what we agreed
-the product is.
+Each of these is a STUB shipping now and a thing to build, not a design to trim. Nothing here is
+optional-by-default: this list is what we agreed the product is, and since the mockup it was
+derived from no longer exists, it is the only place that says so.
 
-- [ ] **Single sign-on** — Apple, Google and Microsoft, which is how the mockup gets the owner's
+- [ ] **Single sign-on** — Apple, Google and Microsoft, which is how the design gets the owner's
       identity, phone number and connector without anyone typing a uuid. `connector.OAUTH_URL`
       and `oauth_available()` already gate the page on a backend that is BUILT ON BOTH SIDES
       and deployed only to the VPN'd dev server — see the OAuth entry under Release blockers,
@@ -404,10 +427,10 @@ the product is.
       side effect of pressing a button that looked mandatory, so the screen read as blocked.
 - [ ] **Record Call has nothing behind it** — `carry.py` bridges and the recorders start, but the
       platform does not hand the app conference audio, so the directory the panel lists is empty.
-      This is the mockup's FIRST service. Being added on the AgentDuet side.
+      This is the design's FIRST service. Being added on the AgentDuet side.
 - [ ] **Record Message (SMS) does not exist at all.** We have WhatsApp through the SDK, not SMS
       archiving. This is a channel we do not ingest, not a screen we have not drawn.
-- [ ] **Connect AI is a SUMMARISER in the mockup** — transcripts go to a cloud model for action
+- [ ] **Connect AI is a SUMMARISER in the design** — transcripts go to a cloud model for action
       items and summaries, after the call. That is not what `llm.py` does today, which is drive a
       live agent. The providers and key handling carry over; the feature does not exist.
       Its provider list also differs (OpenAI is offered, Qwen is not).
@@ -456,14 +479,25 @@ the product is.
       under 0.6. The detector is close to coin-flipping on this audio, which is the argument for
       naming the language rather than guessing it.
 
+- [ ] **A designed app icon, and a transparent logo.** `agentduet-logo.png` landed 2026-09-08
+      as the brand mark in all three pages, the favicon, and a generated `.icns` — replacing the
+      letters "AD" in a blue square and, for the icon, replacing NOTHING: the bundle declared no
+      icon at all, so Finder, the Dock and the DMG showed the blank generic application icon.
+      Two limits in the asset itself, both wanting a designer rather than an engineer:
+      its ground is **opaque white, not transparent**, so the pages put it on a white tile —
+      keying the white out is not available, because the robot's eyes and the inside of the 'a'
+      are white too and would be punched through; and the icon is therefore a **hard white
+      square** where macOS convention is a rounded squircle, since an `.icns` defines its own
+      shape and nothing masks it. A 1024x1024 icon with its own shape and a transparent mark
+      fixes both, and then `app.css`'s `.brand .ad` becomes `background:none`.
 - [ ] **Bundle Inter, JetBrains Mono and Material Symbols.** The pages now load all three from
-      Google Fonts, as the mockup does. On a machine with no network the text falls back to a
+      Google Fonts, as the design did. On a machine with no network the text falls back to a
       system font — fine — but **Material Symbols fails LOUDLY**: the ligature name renders as
       literal text, so a sidebar reads "grid_view call graphic_eq". Offline is most of what this
       product claims, so the font files belong in the binary. Not done yet because it is a
       packaging change and the design fidelity was the ask.
 
-- [ ] **Per-service on/off toggles.** The mockup's overview switches each of the four services
+- [ ] **Per-service on/off toggles.** The design's overview switches each of the four services
       independently. We have one `## Calls` mode and a `## Record calls` boolean.
 
 **Being a Mac app** (decided 2026-09-02 — see `docs/design.md`, "Being a Mac app, not a

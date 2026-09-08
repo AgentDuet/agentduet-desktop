@@ -81,6 +81,43 @@ fi
 
 chmod +x "$APP/Contents/MacOS/AgentDuet Desktop" "$APP/Contents/MacOS/agentduet-desktop"
 
+# ---- the icon ------------------------------------------------------------------------------
+#
+# GENERATED, NOT COMMITTED. One source of truth is src/agentduet_desktop/logo.png, which the
+# pages also serve as their mark and favicon — a checked-in .icns is a second copy that silently
+# stops matching the first.
+#
+# Until now the bundle declared NO icon at all, so Finder, the Dock and the DMG window all showed
+# the blank generic application icon. That reads as a broken or untrusted download, which is an
+# expensive first impression for something a tester was asked to install.
+#
+# SQUARE, PADDED WHITE. macOS applies no mask to an .icns — whatever shape the art has is the
+# shape the icon has — and the mark is 306x222 on an opaque white ground. So it is padded to a
+# square on the same white rather than stretched, which would distort it, or padded transparent,
+# which would leave a white rectangle floating in a transparent square.
+LOGO="$(cd "$(dirname "$0")/.." && pwd)/src/agentduet_desktop/logo.png"
+if [ -f "$LOGO" ] && command -v iconutil >/dev/null 2>&1; then
+  ICONSET="$(mktemp -d)/AgentDuet.iconset"
+  mkdir -p "$ICONSET"
+  SQUARE="$(mktemp -d)/square.png"
+  # The long edge decides the canvas, so nothing is cropped.
+  LONG=$(sips -g pixelWidth -g pixelHeight "$LOGO" | awk '/pixel/ {print $2}' | sort -rn | head -1)
+  sips -p "$LONG" "$LONG" --padColor FFFFFF "$LOGO" --out "$SQUARE" >/dev/null 2>&1
+  for SZ in 16 32 64 128 256 512; do
+    sips -z "$SZ" "$SZ" "$SQUARE" --out "$ICONSET/icon_${SZ}x${SZ}.png" >/dev/null 2>&1
+    DBL=$((SZ * 2))
+    sips -z "$DBL" "$DBL" "$SQUARE" --out "$ICONSET/icon_${SZ}x${SZ}@2x.png" >/dev/null 2>&1
+  done
+  if iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AgentDuet.icns" 2>/dev/null; then
+    echo "  icon:  Contents/Resources/AgentDuet.icns"
+  else
+    echo "  icon:  iconutil refused the iconset — shipping without an icon"
+  fi
+  rm -rf "$(dirname "$ICONSET")" "$(dirname "$SQUARE")"
+else
+  echo "  icon:  no logo.png or no iconutil — shipping without an icon"
+fi
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -91,6 +128,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key><string>com.b3networks.agentduet-desktop</string>
   <key>CFBundleExecutable</key><string>AgentDuet Desktop</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <!-- Named WITHOUT the extension, which is what CFBundleIconFile expects; macOS appends
+       .icns. A missing file here is not an error at build time and shows as the generic
+       icon at runtime, so the generator above says out loud when it could not produce one. -->
+  <key>CFBundleIconFile</key><string>AgentDuet</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundleVersion</key><string>${VERSION}</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
