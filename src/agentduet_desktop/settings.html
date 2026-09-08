@@ -442,7 +442,14 @@
     // The row exists only for a model that can honour it — see thinking_possible. Re-read on
     // every refresh rather than at load, because attaching a different model changes the
     // answer: switch from Gemini to a downloaded Qwen3 and the switch has to appear.
+    // THE SYSTEM'S ANSWER, not the recorded one, wherever it can be asked — see
+    // loginitem.registered(). This row read the setting while the macOS menu bar read the real
+    // SMAppService registration, so a restored instance that predated the setting showed "off"
+    // beside a menu bar showing "on". "pending" is a third state and has to be visible: it is
+    // registered, and waiting for the owner in System Settings.
     $('atLoginOn').checked = !!cur.start_at_login;
+    $('atLoginWhy').textContent = cur.start_at_login_state === 'pending'
+      ? 'waiting for your approval in System Settings' : '';
     $('thinkRow').hidden = !cur.thinking_possible;
     $('thinkOn').checked = !!cur.thinking;
     $('thinkWhy').textContent = cur.thinking

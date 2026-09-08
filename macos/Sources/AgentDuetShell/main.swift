@@ -18,6 +18,23 @@ import ServiceManagement
 // Registering here rather than reconciling a setting at launch is deliberate: the owner ticks
 // the box and it is registered NOW, there is one source of truth instead of a settings file that
 // can disagree with the system, and the menu bar toggle keeps working unchanged.
+// ASKING, not changing. The settings page had its own idea of whether this machine starts at
+// login — a `## Start at login` line in settings.md — while the menu bar reported the real
+// SMAppService registration, and nothing reconciled the two. An instance restored from before
+// the setting existed therefore showed "off" beside a menu bar saying "on". Only the bundle can
+// ask the question, so the bundle answers it and the setting becomes the fallback for platforms
+// that have no bundle at all.
+if CommandLine.arguments.contains("--login-item-status") {
+    switch SMAppService.mainApp.status {
+    case .enabled:          print("enabled")
+    case .requiresApproval: print("requires-approval")
+    case .notFound:         print("not-registered")
+    case .notRegistered:    print("not-registered")
+    @unknown default:       print("unknown")
+    }
+    exit(0)
+}
+
 if CommandLine.arguments.contains("--register-login-item") {
     // ALREADY ENABLED IS NOT A FAILURE, the mirror of the case below: register() on a live
     // registration throws, and setup may legitimately be re-run by an owner who already had it
