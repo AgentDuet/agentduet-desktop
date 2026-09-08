@@ -308,7 +308,10 @@ SETTING_FIELDS = {"name": "Name", "pronoun": "Pronoun", "voice": "Voice",
                   # Whether a reasoning model monologues first. Only meaningful on some models
                   # (llm.supports_thinking), and off unless the value is an explicit yes —
                   # measured at ~100x slower on a question it answers correctly without.
-                  "thinking": "Thinking"}
+                  "thinking": "Thinking",
+                  # Whether the machine launches this app at login. Off unless an explicit yes —
+                  # see owner.start_at_login() for why the useful default is not the safe one.
+                  "start_at_login": "Start at login"}
 def _section_bullets(doc: pathlib.Path, heading: str) -> list[str]:
     """The `- ` bullets under one `## ` heading."""
     if not doc.is_file():

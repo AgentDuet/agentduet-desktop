@@ -189,3 +189,54 @@ def login_item_status() -> str:
         out.append(f"  BUT it points somewhere else, not {exe}. Run install_login_item to fix.")
     out.append("  whether it is running right now is a separate question — see service_status")
     return "\n".join(out)
+
+
+# ---- which mechanism owns this machine ------------------------------------------------------
+#
+# TWO MECHANISMS EXIST AND ONLY ONE MAY BE REGISTERED. macOS's own answer for an app is
+# `SMAppService.mainApp`, which means "the caller's own app" and therefore can ONLY be called by
+# the bundle — never from this CLI binary, which has no bundle of its own. Everything above is
+# the other answer: a plist, a systemd unit, a .cmd in Startup.
+#
+# Registering both means TWO daemons at login. The second loses the race for port 8899 and
+# exits, so the visible symptom is nothing at all — until the survivor is the wrong build and an
+# afternoon goes into a bug that was already fixed. The Swift shell already deletes the plist
+# when its own toggle is switched on, for exactly this reason; this is the same rule approached
+# from the other side.
+
+#: The shell answers these and exits without becoming an application.
+REGISTER_FLAG = "--register-login-item"
+UNREGISTER_FLAG = "--unregister-login-item"
+
+
+def _bundle_shell() -> pathlib.Path | None:
+    """The Swift shell BESIDE this binary, when this binary is running inside the .app.
+
+    Self-locating rather than searching /Applications, because the question is not "is a copy of
+    the app installed somewhere" but "is the process asking this one inside a bundle that can
+    register itself". A daemon started from source, or an installed bare CLI, has no sibling
+    shell — and for those the plist above is the correct mechanism rather than a fallback.
+    """
+    if sys.platform != "darwin":
+        return None
+    shell = pathlib.Path(sys.executable).resolve().parent / "AgentDuet Desktop"
+    return shell if shell.is_file() else None
+
+
+def apply(want: bool) -> str:
+    """Register or unregister start-at-login, using whichever mechanism owns this machine.
+
+    STILL ONE BOOLEAN. The module docstring's argument holds: no path, no command, no arguments
+    reach the operating system from a caller, so the blast radius of anything that can reach
+    this is unchanged.
+    """
+    shell = _bundle_shell()
+    if shell:
+        flag = REGISTER_FLAG if want else UNREGISTER_FLAG
+        try:
+            done = subprocess.run([str(shell), flag], capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return f"Could not ask the app to change the login item: {exc}"
+        said = (done.stdout or done.stderr or "").strip()
+        return said or f"The app exited {done.returncode}."
+    return install_login_item() if want else remove_login_item()

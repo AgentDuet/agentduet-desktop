@@ -452,6 +452,38 @@ def offer_thinking(interactive: bool = True) -> None:
     print(f"  -> thinking is {'on' if owner.thinking() else 'off'}")
 
 
+def offer_start_at_login(interactive: bool = True) -> None:
+    """Offer to start the app at login. DEFAULTS TO YES, and is asked rather than assumed.
+
+    Parity with the wizard, which has asked since 2026-09-08 — a setting reachable from one
+    surface is a setting half the owners cannot change, and this file has drifted from that page
+    twice already.
+
+    The default is yes because a service that answers a phone has to be running, and a dead
+    daemon says nothing about being dead: the owner finds out by missing a call. The default is
+    ASKED because adding yourself to a machine's login items unannounced is what adware does,
+    and it spends trust to get what one question gets anyway.
+
+    `loginitem.apply` chooses the mechanism — the app bundle registers itself, everything else
+    writes a plist, a systemd unit or a Startup shortcut. Never both.
+    """
+    if not interactive:
+        return
+    from . import loginitem, owner, tools
+    print("\n  Start AgentDuet when you log in?")
+    print("  It has to be running to answer anything, and a stopped one does not announce")
+    print("  itself — you would find out by missing a call.")
+    # Never asked -> offer YES, matching the wizard's pre-ticked box. Asked before -> offer
+    # what they said, so return does not silently reverse a decision.
+    now = owner.start_at_login_answer() or "yes"
+    pick = _prompt(f"\n  yes/no [{now}]: ").strip().lower()
+    if not pick:
+        pick = now
+    want = pick in ("y", "yes", "on", "true")
+    tools.set_setting("start_at_login", "yes" if want else "no")
+    print("  " + loginitem.apply(want).splitlines()[0])
+
+
 def choose_language(interactive: bool = True) -> None:
     """Pin the transcription language.
 
@@ -630,6 +662,9 @@ def main(interactive: bool = True) -> int:
     where_recordings_go(interactive)
     offer_speech_model(interactive)
     installed = offer_install(interactive)
+    # AFTER install, deliberately: on macOS the mechanism is the app bundle registering itself,
+    # so asking before the app exists where it will finally live is asking about the wrong copy.
+    offer_start_at_login(interactive)
 
     # THE INTERVIEW IS THE DEFAULT NOW (2026-08-11). It used to be opt-in — "your AI assistant
     # can do this over the mcp, better than these prompts" with a (y/N) that defaulted to NO —

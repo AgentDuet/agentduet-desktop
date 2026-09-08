@@ -52,6 +52,10 @@
     padding-bottom:1rem;}
   .ptop .tile{background:rgba(37,99,235,.2);border:1px solid rgba(59,130,246,.3);}
   .field{display:flex;flex-direction:column;gap:.5rem;}
+  /* `.sw` is app.css's — the same switch every settings row uses, so a boolean looks like a
+     boolean in both places. Only the ROW is local, because `.card .row` is scoped to a card
+     and this page has none. */
+  .togrow{display:flex;align-items:center;justify-content:space-between;gap:1rem;width:100%;}
   .frow{display:flex;gap:.5rem;}
   /* The model row. Matches the folder field rather than inventing a look: it is the same kind
      of question, asked once, on the same panel. */
@@ -204,6 +208,17 @@
           summaries. Recording and transcription work without one.</p>
       </div>
 
+
+      <!-- TICKED, AND ASKED. A phone answering service that is not running answers nothing and
+           says nothing about it, so the owner finds out by missing a call — which is the whole
+           argument for it being on, and none of the argument for switching it on unasked.
+           Adding yourself to someone's login items without asking is what adware does, and it
+           spends trust to get what one ticked box gets anyway. So: visible, pre-ticked, theirs
+           to untick. -->
+      <div class="togrow">
+        <div class="lbl">Start AgentDuet when I log in</div>
+        <label class="sw"><input type="checkbox" id="atLogin" checked><span class="track"></span></label>
+      </div>
 
       <button class="go" id="doDone"><span>Complete Setup &amp; Open Hub</span>
         <span class="material-symbols-rounded">arrow_forward</span></button>
@@ -396,6 +411,9 @@
       say('mDone', m.ok, m.ok ? `${m.message} It continues in the background.` : m.message);
       if (!m.ok) { $('doDone').disabled = false; return; }
     }
+    // BEFORE HANDOVER, because handover stands this process down and promotes the installed
+    // copy — anything posted after it is a request to a daemon that is going away.
+    await post('/api/setup/login-item', {want: $('atLogin').checked});
     const d = await post('/api/handover', {});
     $('doDone').disabled = false;
     if (d.ok) { location.href = '/?t=' + T; return; }
