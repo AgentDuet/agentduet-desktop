@@ -15,14 +15,28 @@
      length nobody reads comfortably. Right in a browser and in a native window. */
   .sec{display:flex;flex-direction:column;gap:1.5rem;max-width:48rem;margin:0 auto;
     width:100%;}
-  .grp{display:flex;flex-direction:column;gap:.5rem;}
+  /* .4rem, the same gap the model rows use, so a heading sits as close to its field as one
+     row sits to the next. It was .5rem here PLUS label.fl's own .25rem margin — 12px, which
+     read as a gap rather than as a label belonging to the thing below it. */
+  .grp{display:flex;flex-direction:column;gap:.4rem;}
+  .grp label.fl{margin-bottom:0;}
+  /* A HEADING BELONGS TO WHAT IS BELOW IT, NOT ABOVE. With one gap everywhere, a label sat as
+     far from its own field as from the field before it — so "Language of your calls" read as
+     belonging to the engine dropdown above as much as to its own select. Extra space goes ABOVE
+     a group that follows something, which separates the groups without loosening the label from
+     its control: 6.4px inside a group, 14.4px between them. The first group in a card is
+     unaffected, since it has no sibling before it. */
+  .card > * + .grp{margin-top:.5rem;}
   .head{display:flex;align-items:center;gap:.75rem;}
   .head h2{font-size:.95rem;}
   .head p{font-size:11px;color:var(--muted);margin-top:.1rem;}
   .spin{font-family:var(--mono);font-size:11px;color:var(--faint);margin-left:.5rem;}
   .acts{display:flex;align-items:center;}
-  .card .row + .row{margin-top:.75rem;padding-top:.75rem;
-    border-top:1px solid rgba(255,255,255,.05);}
+  /* NO RULE BETWEEN ROWS, AND NO MARGIN EITHER. The hairline plus .75rem of padding above it
+     made every row after the first taller than the first, so a card of three settings read as
+     three sections. The margin that replaced it then ADDED to the card's flex gap, which is how
+     rows ended up 22px apart above a model list spaced at 6px. The card's gap is the one place
+     that spacing is decided now. */
   /* A CARD, not a row. A row had space for a name and a size, which is what the picker used
      to offer — and choosing on size alone is how a model that fits and cannot do the job wins
      over one that is tight and can. What it is FOR needs a line of its own. */
@@ -54,7 +68,11 @@
   @keyframes slide{0%{margin-left:0}50%{margin-left:66%}100%{margin-left:0}}
   .barlab{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;
     color:var(--faint);font-variant-numeric:tabular-nums;}
-  .mrow{display:flex;align-items:center;gap:.7rem;padding:.6rem .7rem;border-radius:.6rem;
+  /* PADDING SMALL ENOUGH FOR --ctl TO DECIDE. min-height only ever grows a box, so a row
+     whose padding already exceeded the token stayed at its own height — this list sat at 43px
+     beside 40px controls. */
+  .mrow{display:flex;align-items:center;gap:.7rem;padding:.35rem .7rem;border-radius:.6rem;
+    min-height:var(--ctl);box-sizing:border-box;
     border:1px solid var(--line);background:var(--slate900);margin-top:.4rem;cursor:pointer;}
   .mrow:hover{border-color:rgba(59,130,246,.35);}
   .mrow.on{border-color:rgba(59,130,246,.55);background:rgba(37,99,235,.12);}
@@ -275,7 +293,6 @@
           </div>
         </div>
         <div id="mRec"></div>
-        <hr style="border:0;border-top:1px solid var(--line);margin:.25rem 0">
           <!-- THE ENGINE IS A CHOICE, so it is a control rather than a sentence. It read
                "Transcription engine: Whisper" — hardcoded, and wrong on every Mac using
                Apple's — and the only way to change it was a "Use this" button in the list
