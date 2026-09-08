@@ -579,6 +579,37 @@ def test_answered_call_recording() -> None:
                any(r["in_use"] and r["model"] == gone for r in _t.catalogue()))
     _o.environ.pop("SECRETARY_STT_QUALITY", None)
 
+    # ONE RHYTHM, NO RULES. Four control heights were on screen at once — a text input at 37px,
+    # a select at 39 (the native control carries its own intrinsic height the shared padding rule
+    # does not override), a card row at 42 and a list row at 43 — and a hairline plus .75rem of
+    # padding above every row after the first made a card of three settings read as three
+    # sections. Reported twice by Stanley on 2026-09-08: "spacings seem off", then "remove the
+    # separators".
+    _css = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+            / "app.css").read_text()
+    _set = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+            / "settings.html").read_text()
+    ok("there is one height token", "--ctl:" in _css)
+    ok("and fields use it", "min-height:var(--ctl)" in _css)
+    ok("and so do list rows", "min-height:var(--ctl)" in _set)
+    ok("a select cannot be taller than an input", "box-sizing:border-box;min-height:var(--ctl)"
+       in _css)
+    # NO RULE AND NO MARGIN. The margin that replaced the hairline ADDED to the card's flex gap,
+    # so rows sat 22px apart above a model list spaced at 6px — one card, two rhythms.
+    ok("no rule between rows in a card", ".card .row + .row{" not in _set)
+    ok("and the card's gap is the one place spacing is decided",
+       "flex-direction:column;gap:.4rem;}" in _css)
+    ok("and no hand-rolled divider", "<hr" not in _set)
+    ok("a label sits at the same gap the rows use", ".grp{display:flex;flex-direction:column;gap:.4rem;}"
+       in _set)
+    ok("with the label's own margin not adding to it", ".grp label.fl{margin-bottom:0;}" in _set)
+    # A HEADING BELONGS TO WHAT IS BELOW IT. With one gap everywhere a label sat as far from its
+    # own field as from the field before it, so "Language of your calls" read as belonging to the
+    # dropdown above it as much as to its own select. The extra space goes ABOVE a group that
+    # follows something — 14.4px between groups, 6.4px inside one — which separates them without
+    # loosening a label from its control.
+    ok("a heading is spaced from what precedes it", ".card > * + .grp{margin-top:.5rem;}" in _set)
+
     # THE ENGINE IS A CHOICE, AND THE CARD MUST NAME THE ONE THAT RUNS. Both were wrong: the
     # sentence read "Transcription engine: Whisper" hardcoded — in the endpoint AND again in the
     # page — on a Mac transcribing every call with Apple's engine, and the only way to change
