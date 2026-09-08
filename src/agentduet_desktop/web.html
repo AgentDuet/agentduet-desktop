@@ -52,7 +52,14 @@
   .mbody{flex:1;overflow-y:auto;padding:0 1.5rem 1.5rem;}
   .thead{display:flex;justify-content:space-between;align-items:center;gap:1rem;
     padding:1.5rem 1.5rem 1.2rem;flex-shrink:0;}
-  .thread{display:flex;flex-direction:column;gap:.6rem;}
+  /* A READABLE MEASURE, CENTRED. In a browser the window is capped at 64rem so the main column
+     is ~766px and a conversation fills it. A native window has no such cap — the Swift shell and
+     pywebview both take the whole window — so at 1360px the column is ~1100px and short messages
+     leave a wide empty field to the right of every reply, which is what it looks like: wasted
+     space rather than a column. Capping and centring means the extra width becomes margin on
+     BOTH sides instead of a gap on one, and long lines stay readable.
+     Below the cap this changes nothing, which is why the browser view is unaffected. */
+  .thread{display:flex;flex-direction:column;gap:.6rem;max-width:48rem;margin:0 auto;width:100%;}
   .call{background:var(--card);border:1px solid var(--line);border-radius:.75rem;
     padding:.9rem 1rem;display:flex;flex-direction:column;gap:.5rem;}
   .call .top{display:flex;justify-content:space-between;align-items:center;gap:1rem;}
@@ -339,7 +346,8 @@
           <span class="when">${esc(when(it.call.at))}</span>
           <span class="meta">${esc(it.call.mode)}${it.call.files ? ' · ' + it.call.files + ' file' + (it.call.files === 1 ? '' : 's') : ''}${it.call.bytes ? ' · ' + kb(it.call.bytes) : ''}</span>
         </div>
-        ${it.call.silent ? '<div class="none">No audio.</div>'
+        ${it.call.norecording ? '<div class="none">No recording.</div>'
+          : it.call.silent ? '<div class="none">No audio.</div>'
           : (it.call.transcript ? `<div class="text">${esc(it.call.transcript)}</div>`
                                 : '<div class="none">Transcript pending.</div>')}
       </div>` : msgHtml(it.msg)).join('')

@@ -2820,6 +2820,50 @@ def test_a_turn_says_where_it_came_from() -> None:
     ok("redrawing only on a real change", "chatSig()" in page)
 
 
+def test_a_person_is_a_number_not_a_direction() -> None:
+    """The same number rang you and you rang it. That is one person, one history."""
+    print("\n  -- one person per number --")
+    from agentduet_desktop import calls as _c
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+
+    # A direction word briefly lived INSIDE the identity, because carry.handle built one string
+    # for its log lines ("from +65…", "to +65…") and passed it to the index as the caller. The
+    # people list then showed one number as two or three separate entries, each with its own
+    # conversation, one of whom had rung the other two. Reported by Stanley on 2026-09-08.
+    ok("carry indexes the bare number, not the log phrasing",
+       '_calls.record(call_id, other, "carried"' in (src / "carry.py").read_text())
+    ok("and the direction is its own field",
+       '"outgoing": outgoing,' in (src / "calls.py").read_text())
+
+    # ROWS ALREADY WRITTEN THE OLD WAY MUST MERGE, not sit stranded beside the fixed ones.
+    for raw, want in (("from +6591234567", "+6591234567"), ("to +6596918851", "+6596918851"),
+                      ("+6596918851", "+6596918851"), ("", "?"), ("?", "?")):
+        eq(f"{raw!r} belongs to {want}", _c.person_of({"caller": raw}), want)
+    rows = [{"caller": "+65900"}, {"caller": "to +65900"}, {"caller": "from +65900"}]
+    import unittest.mock as _m
+    with _m.patch.object(_c, "recent", return_value=rows):
+        eq("three spellings are one person", list(_c.by_person()), ["+65900"])
+        eq("and keep all three calls", len(_c.by_person()["+65900"]), 3)
+
+    # NOTHING CAPTURED IS NOT "NOT YET TRANSCRIBED". `silent` requires files, so a call with
+    # none fell through to "Transcript pending." — a promise that can never be kept, and the
+    # state every carried call is in while the platform hands us no audio.
+    web = (src / "web.py").read_text()
+    page = (src / "web.html").read_text()
+    ok("a call with no files says so", '"norecording": not names,' in web)
+    ok("and the page stops promising a transcript", "No recording." in page)
+
+    # BOTH SIDES OF THE CALL. This broke on the first transcript it found, and since the names
+    # are sorted that was the callee — this line's own side, which the owner already knows.
+    ok("both legs are read", "parts.append" in web)
+    ok("and each says whose it is", '"them" if n.endswith("-caller.txt")' in web)
+
+    # A NATIVE WINDOW HAS NO WIDTH CAP, so the conversation column ran to ~1100px and short
+    # replies left a wide empty field on the right.
+    ok("the conversation keeps a readable measure",
+       "max-width:48rem;margin:0 auto" in page)
+
+
 def test_the_hub_does_not_invent_a_sign_in_state() -> None:
     """An empty name is an empty name. The hub said "Not signed in" and meant neither."""
     print("\n  -- the hub reports what it knows --")
@@ -3096,6 +3140,7 @@ def main() -> None:
     test_sending_is_code_on_both_surfaces()
     test_a_reply_finds_the_person_it_was_shown()
     test_a_turn_says_where_it_came_from()
+    test_a_person_is_a_number_not_a_direction()
     test_the_hub_does_not_invent_a_sign_in_state()
     test_the_binary_can_reach_the_platform()
     test_a_declined_window_declines_the_browser()
@@ -3125,6 +3170,17 @@ def main() -> None:
     test_policy()
     test_memory()
     test_knowledge_writes()
+    # EVERY TEST MUST BE CALLED. They are invoked by hand above, so a new `test_*`
+    # function is dead until someone adds a line — and a dead test is worse than no
+    # test, because the count still goes up and the suite still says it passed. I
+    # added test_a_person_is_a_number_not_a_direction and the total did not move.
+    _defined = {n for n, o in list(globals().items())
+                if n.startswith('test_') and callable(o)}
+    _called = set(re.findall(r"^ +(test_\w+)\(\)$",
+                             pathlib.Path(__file__).read_text(), re.M))
+    ok('every test function is actually called by main',
+       not (_defined - _called), str(sorted(_defined - _called)))
+
     shutil.rmtree(TMP, ignore_errors=True)
     print(f"\n  {PASS} passed, {FAIL} failed")
     if FAILED:

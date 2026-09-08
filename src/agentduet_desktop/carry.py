@@ -258,7 +258,12 @@ async def handle(sm, noti) -> None:
         # a .wav to whoever was on it — which is the whole basis of a per-person view. The
         # caller is known here and was only being logged.
         from . import calls as _calls
-        _calls.record(call_id, who, "carried", recordings=sorted(
+        # THE NUMBER IS THE PERSON. `who` carries a direction word for the log ("from +65…",
+        # "to +65…") and putting that in the index FRAGMENTED the people list: the same number
+        # appeared as two or three entries — bare, "to", and "from" — each with its own
+        # conversation history, so a person you rang and who rang you back were strangers to
+        # each other. Direction is a property of the CALL and belongs in its own field.
+        _calls.record(call_id, other, "carried", outgoing=outgoing, recordings=sorted(
             str(p.name) for p in recordings().glob(f"*{call_id}*.wav")))
         # THE TRANSCRIPT IS NOT THIS FUNCTION'S JOB. Carrying a call ends when the audio is
         # closed on disk; a `.wav` with no sibling `.txt` is the queue, and the worker in
