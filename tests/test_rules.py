@@ -1253,6 +1253,33 @@ def test_setup_mode() -> None:
     ok("the server fills blanks from the files",
        "fill_from_files" in (src / "web.py").read_text())
 
+    # ---- A FAILED DOWNLOAD MUST SAY SO -----------------------------------------------------
+    #
+    # The background task discarded `models.download`'s result, so a fetch that died left the
+    # card exactly as it was: no bar, no error, a button that appeared to do nothing. That is
+    # how a9 presented — every download failed on a missing CA bundle and the reason was
+    # returned and dropped. Reported again on 2026-09-08 as "download is not working".
+    models_src_f = (src / "models.py").read_text()
+    web_src_f = (src / "web.py").read_text()
+    ok("the reason is kept per model", "def note_failure" in models_src_f)
+    ok("and outlives the attempt", "_failed: dict[str, str]" in models_src_f)
+    ok("a retry clears the stale reason", "def forget_failure" in models_src_f)
+    ok("the task reads its result instead of discarding it",
+       'logger.info("download of %s: %s"' in web_src_f)
+    ok("a raising fetch is recorded, not lost",
+       'logger.exception("download of %s raised"' in web_src_f)
+    ok("the page is served it", '"failed": {m["id"]' in web_src_f)
+    ok("and shows it on the row", "failed[x.id]" in settings_page)
+
+    # A STALE .part IS NOT A RUNNING DOWNLOAD. `downloading()` answers "is there a partial
+    # file", which is right for "how far along" and wrong for "is a fetch live". Reporting it as
+    # live set the page's single `busy` flag, which disabled EVERY download button, and the
+    # `elsewhere` mark hid Stop — so a 3.2 GB leftover blocked all downloads with no way out of
+    # the UI. Surfaced by rehearse.sh keeping models/ across a reset.
+    ok("in flight means growing", "STALE_PART_SECONDS" in models_src_f)
+    ok("and a stale part falls through to nothing in flight",
+       "st_mtime > STALE_PART_SECONDS" in models_src_f)
+
     # ---- THE BRAND MARK IS A REAL ASSET NOW ------------------------------------------------
     #
     # It was the letters "AD" in a blue square, the bundle declared NO icon at all (so Finder,
