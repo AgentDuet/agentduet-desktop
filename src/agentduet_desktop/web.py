@@ -366,11 +366,15 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response({
                 # NAME THE ENGINE. The page used to describe the situation in a sentence,
                 # which buried the two facts that matter: which engine, and where it runs.
-                # There is one engine now and it is local, so "this machine" is a constant —
-                # kept as a field anyway, because a page that states it cannot quietly stop
-                # being true if a second engine ever returns.
+                # NAME THE ENGINE THAT WILL RUN, which is not always Whisper. This said
+                # f"Whisper {model}" unconditionally, so the card read "Transcription engine:
+                # Whisper" on a Mac transcribing every call with Apple's on-device engine —
+                # while `status` said "Apple on-device" and every log line said `apple`. The
+                # comment above it even said a second engine returning must not make the page
+                # quietly untrue, and then the line below hardcoded the first one.
                 "engine": transcribe.engine(),
-                "engine_name": f"Whisper {model}",
+                "engine_name": ("Apple on-device" if transcribe.engine() == "apple"
+                                else f"Whisper {model}"),
                 # THE FOUR TIERS, with what each costs and whether it is here. The page offered
                 # them by adjective alone, so "balanced" and the engine line's "Whisper small"
                 # were the same model under two names and read as a contradiction.

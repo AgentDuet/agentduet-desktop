@@ -579,6 +579,34 @@ def test_answered_call_recording() -> None:
                any(r["in_use"] and r["model"] == gone for r in _t.catalogue()))
     _o.environ.pop("SECRETARY_STT_QUALITY", None)
 
+    # THE ENGINE IS A CHOICE, AND THE CARD MUST NAME THE ONE THAT RUNS. Both were wrong: the
+    # sentence read "Transcription engine: Whisper" hardcoded — in the endpoint AND again in the
+    # page — on a Mac transcribing every call with Apple's engine, and the only way to change
+    # engines was a "Use this" button in a list that also downloads and deletes. Apple was the
+    # one engine missing from that list, while the Whisper tier it fell back to claimed to be
+    # in use. Reported by Stanley on 2026-09-08.
+    ok("the catalogue offers Apple as a choice",
+       any(r.get("builtin") for r in _t.catalogue()) or _t.engine() != "apple")
+    _pkg = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    ok("and in use means RUNNING, not merely named",
+       'running == "local" and model == current' in (_pkg / "transcribe.py").read_text())
+    web_src_e = (_pkg / "web.py").read_text()
+    ok("the endpoint names the engine that runs",
+       '"Apple on-device" if transcribe.engine() == "apple"' in web_src_e)
+    stt_page = (_pkg / "settings.html").read_text()
+    # THE PAGE NO LONGER STATES IT IN PROSE AT ALL. The dropdown's selected option is the
+    # statement, taken from the tiers' `in_use` — one source rather than a sentence that has to
+    # be kept in step with the engine, which is exactly how it came to say Whisper for months.
+    ok("the hardcoded sentence is gone",
+       "Transcription engine: <b>Whisper</b>" not in stt_page)
+    ok("and the selection comes from what is running", "t.in_use ? ' selected'" in stt_page
+       or "t.model === want" in stt_page)
+    ok("the engine is chosen from a dropdown", 'id="sttEngine"' in stt_page)
+    ok("which is headed as such", "Transcription engine</label>" in stt_page)
+    ok("choosing an absent model fetches it too", "!row.downloaded && !row.builtin" in stt_page)
+    ok("and the built-in is not an inert row in the download list",
+       "filter(t => !t.builtin)" in stt_page)
+
     # DOWNLOADED MEANS COMPLETE, not "a directory exists". The hub cache creates the directory
     # the instant a fetch STARTS, so the row claimed a 1.5 GB model was ready when 66 MB of it
     # had landed — offering Delete on weights still coming down, and making a several-minute
@@ -586,9 +614,13 @@ def test_answered_call_recording() -> None:
     import unittest.mock as _m
     with _m.patch.object(_t, "model_dir", return_value=pathlib.Path("/tmp")), \
          _m.patch.object(_t, "is_cached", return_value=False):
-        rows = {r["model"]: r for r in _t.catalogue()}
+        # BUILT-INS ARE EXEMPT, and the distinction is the point: Apple's engine is part of
+        # macOS, so it is always "here" and `is_cached` has nothing to say about it. The rule
+        # this guards is about DOWNLOADABLE weights.
+        rows = {r["model"]: r for r in _t.catalogue() if not r.get("builtin")}
         ok("a half-downloaded model does not report itself downloaded",
            all(not r["downloaded"] for r in rows.values()))
+        ok("something downloadable was actually checked", bool(rows))
         ok("and every row carries what has landed so far",
            all("got_mb" in r for r in rows.values()))
     _o.environ.pop("SECRETARY_STT_QUALITY", None)
