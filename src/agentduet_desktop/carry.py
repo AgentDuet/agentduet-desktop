@@ -34,6 +34,8 @@ import pathlib
 import wave
 from datetime import datetime
 
+from agentduet import OutgoingCallNotification
+
 from . import callmode, paths
 
 logger = logging.getLogger("secretary")
@@ -131,16 +133,27 @@ async def _record_leg(party, call_id: str, leg: str) -> None:
 
 
 async def handle(sm, noti) -> None:
-    """Bridge one inbound call onward and record it. Never raises into the SDK's event bus."""
+    """Bridge one call onward and record it. Never raises into the SDK's event bus.
+
+    Takes either direction. An INBOUND call is someone ringing the connector's number; an
+    OUTGOING one is the owner's own line placing a call outside the SDK — a desk phone, or the
+    SIM in their hand. `session.process_call` accepts both and the call operations are identical.
+    """
     call_id = getattr(noti, "call_id", "?")
-    caller = getattr(getattr(noti, "participant", None), "value", "?")
+    # `participant` is the OTHER party in both directions: whoever rang in, or whoever was rung.
+    other = getattr(getattr(noti, "participant", None), "value", "?")
+    outgoing = isinstance(noti, OutgoingCallNotification)
+    # "from +65…" or "to +65…", so every line below reads correctly in either
+    # direction. The format strings must NOT also say "from" — that produced
+    # "call c1 from from +6591234567".
+    who = f"{'to' if outgoing else 'from'} {other}"
     try:
         import uuid
         session = await sm.open_session(uuid.uuid4().hex, noti.subscriber)
         call = await session.process_call(noti)
     except Exception as exc:
-        logger.error("call %s from %s: could not attach (%s: %s)",
-                     call_id, caller, type(exc).__name__, exc)
+        logger.error("call %s %s: could not attach (%s: %s)",
+                     call_id, who, type(exc).__name__, exc)
         return
 
     done = asyncio.Event()
@@ -153,8 +166,18 @@ async def handle(sm, noti) -> None:
     # bridged, so a recorder started afterwards misses everything said before the far end picks
     # up — including the caller's opening words, which on an inbound call is often the whole
     # reason they rang.
-    legs = [asyncio.create_task(_record_leg(call.caller, str(call.id), "caller")),
-            asyncio.create_task(_record_leg(call.callee, str(call.id), "callee"))]
+    # BOUND BY ROLE, NOT BY FIELD — the SDK's `process_call` says so outright: "the frame and
+    # the call operations are identical — only `caller`/`callee` swap" between the directions.
+    # So on a call the owner PLACED, `call.caller` is the owner's own line and `call.callee` is
+    # the far party, the exact reverse of an inbound call. Recording the fields straight through
+    # would put the far party's audio in the file named for the near one, and nothing downstream
+    # could tell: the transcript would simply attribute every sentence to the wrong person.
+    #
+    # `<id>-caller.wav` therefore always holds the OTHER party and `<id>-callee.wav` always
+    # holds this line, whichever way the call was set up.
+    far, near = (call.callee, call.caller) if outgoing else (call.caller, call.callee)
+    legs = [asyncio.create_task(_record_leg(far, str(call.id), "caller")),
+            asyncio.create_task(_record_leg(near, str(call.id), "callee"))]
     try:
         # DO NOT ANSWER FIRST. Connect straight away.
         #
@@ -175,7 +198,7 @@ async def handle(sm, noti) -> None:
         if code == "CALL_UNANSWERED":
             # NOBODY PICKED UP. An ordinary outcome, not an error — logged at info so a quiet
             # office does not read as a broken install. Nothing is live, so stop here.
-            logger.info("call %s from %s: the destination did not answer", call_id, caller)
+            logger.info("call %s %s: the destination did not answer", call_id, who)
             return
         if not result:
             # A FAILED COMMAND IS NOT PROOF THE CALL IS DEAD, and treating it that way threw
@@ -190,11 +213,11 @@ async def handle(sm, noti) -> None:
             # bridge truly failed, the streams stay silent and the empty-file warning still
             # reports it — the cost of being wrong here is a 44-byte file, against losing a
             # recording of a real conversation.
-            logger.warning("call %s from %s: connect() returned %s (%s) — the bridge may still "
-                           "be up, so recording continues until hangup", call_id, caller,
+            logger.warning("call %s %s: connect() returned %s (%s) — the bridge may still "
+                           "be up, so recording continues until hangup", call_id, who,
                            getattr(result, "error_message", "?"), code or "?")
         else:
-            logger.info("call %s from %s: carried through, recording both legs", call_id, caller)
+            logger.info("call %s %s: carried through, recording both legs", call_id, who)
         # SILENT, EXPLICITLY. `connect()` documents spy as its default, and the platform's own
         # call-monitoring example still calls this — so it is asked for rather than assumed. A
         # failure is logged and ignored: if the default already holds we are silent anyway, and
@@ -221,8 +244,8 @@ async def handle(sm, noti) -> None:
             logger.warning("call %s: no hangup after %ds — closing the recording", call_id,
                            MAX_CALL_SECONDS)
     except Exception as exc:
-        logger.error("call %s from %s: carrying it failed (%s: %s)",
-                     call_id, caller, type(exc).__name__, exc)
+        logger.error("call %s %s: carrying it failed (%s: %s)",
+                     call_id, who, type(exc).__name__, exc)
     finally:
         # The streams end when the call does, but a bridge that never connected leaves them
         # open with nothing coming — so cancel rather than await, and let each recorder close
@@ -235,7 +258,7 @@ async def handle(sm, noti) -> None:
         # a .wav to whoever was on it — which is the whole basis of a per-person view. The
         # caller is known here and was only being logged.
         from . import calls as _calls
-        _calls.record(call_id, caller, "carried", recordings=sorted(
+        _calls.record(call_id, who, "carried", recordings=sorted(
             str(p.name) for p in recordings().glob(f"*{call_id}*.wav")))
         # THE TRANSCRIPT IS NOT THIS FUNCTION'S JOB. Carrying a call ends when the audio is
         # closed on disk; a `.wav` with no sibling `.txt` is the queue, and the worker in
@@ -254,12 +277,27 @@ def register(sm) -> bool:
     # TAKE THE SLOT FIRST. One connector has one on_incoming_call, so a second
     # registration does not fail on its own — both attach and race for the call.
     callmode.claim("carry")
-    @sm.on_incoming_call
+
     async def _handler(noti) -> None:
         # Its own task, for the same reason the voice path does it: blocking the SDK's event
         # bus for the length of a call stops any other call being set up.
         asyncio.create_task(handle(sm, noti))
 
+    # BOTH DIRECTIONS, and the second one is not a nicety. A call the owner's own line PLACES
+    # — a desk phone, or the SIM in their hand — arrives as an outgoing announcement, not an
+    # incoming call, so subscribing to inbound alone means the app sees nothing at all and the
+    # recordings directory stays empty with no error anywhere. Found on 2026-09-08 testing a
+    # real Singtel SIM: the platform logged `callBegin` with `type2: outgoing` and
+    # `P-B3-CALL-DIRECTION: outgoing`, and the daemon logged not one line.
+    #
+    # ONE HANDLER SERVES BOTH because the notifications are the same shape —
+    # `IncomingCallNotification` and `OutgoingCallNotification` both carry call_id, subscriber,
+    # participant, created_at — and the SDK's own docstring says to "handle it exactly like an
+    # incoming call": open a session, attach, then connect.
+    sm.on_incoming_call(_handler)
+    sm.on_outgoing_call(_handler)
+
     logger.info("calls are CARRIED to the configured destination, and BOTH LEGS ARE RECORDED "
-                "to %s — the agent does not answer in this mode", RECORDINGS)
+                "to %s — inbound AND calls this line places; the agent does not answer in "
+                "this mode", RECORDINGS)
     return True
