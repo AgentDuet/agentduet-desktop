@@ -280,6 +280,7 @@
   // inside the hub. Setup carries no copy: two places to type a connector is two places for
   // it to be half-typed.
   let OAUTH = false;
+  let KEY_OFFERED = '';
   document.querySelectorAll('.sso').forEach(b => {
     b.onclick = () => {
       const who = b.dataset.p;
@@ -315,8 +316,15 @@
   };
 
   $('doManual').onclick = async () => {
-    const uuid = $('mUuid').value.trim(), key = $('mKey').value.trim();
-    if (!uuid || !key) { say('mSso', false, 'Both the connector uuid and the API key are needed.');
+    const uuid = $('mUuid').value.trim();
+    const typed = $('mKey').value.trim();
+    // AN UNTOUCHED MASK IS NOT A KEY. Posting it would send bullets as the credential
+    // and fail verification; posting blank makes the endpoint read `~/.agentduet`,
+    // which is the whole point of showing a mask. Anything actually typed wins.
+    const key = (KEY_OFFERED && typed === KEY_OFFERED) ? '' : typed;
+    // `key` may legitimately be blank now, so the gate is uuid plus typed-or-stored.
+    if (!uuid || (!key && !KEY_OFFERED)) {
+      say('mSso', false, 'Both the connector uuid and the API key are needed.');
       return; }
     $('doManual').disabled = true;
     say('mSso', true, 'Checking with the platform…');
@@ -327,7 +335,7 @@
     say('mSso', d.ok, d.message);
     // Only advance on success. Moving on from a failed credential is how an install ends up
     // looking configured and silent.
-    if (d.ok) { $('mKey').value = ''; setTimeout(() => show('setup'), 900); }
+    if (d.ok) { $('mKey').value = ''; KEY_OFFERED = ''; setTimeout(() => show('setup'), 900); }
   };
 
   const FROM = new URLSearchParams(location.search).get('from') || '';
@@ -344,7 +352,12 @@
     // one click. The uuid is filled in; the key is not sent here at all — the endpoint reads
     // `~/.agentduet` when the field is blank, so the secret never reaches the page.
     if (d.offer_uuid && !$('mUuid').value) $('mUuid').value = d.offer_uuid;
-    if (d.offer_key) $('mKey').placeholder = 'from ~/.agentduet';
+    // A MASK IN THE FIELD, not a placeholder beside an empty one. Pressing the button with the
+    // key blank has always worked — the endpoint reads `~/.agentduet` — but an empty required
+    // box does not say so, and the owner goes to a terminal to copy a secret the server is
+    // about to read anyway. KEY_OFFERED remembers the mask so an untouched field is sent as
+    // blank; typing over it wins, because a pasted key must always beat a stored one.
+    if (d.offer_key && !$('mKey').value) { KEY_OFFERED = d.offer_key; $('mKey').value = d.offer_key; }
     if (d.offer_uuid || d.offer_key) $('manualBox').hidden = false;
     // THE LINE, not the owner's own number. This badge says "Power Mobile Line" and rendered
     // `phone`, which owner.py documents as never disclosed to anyone. It is learned from an

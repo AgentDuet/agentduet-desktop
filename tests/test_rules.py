@@ -1202,6 +1202,29 @@ def test_setup_mode() -> None:
     # and the wizard first filtered on the disk one. On a 16 GB Mac with 371 GB free that
     # offered gpt-oss-20b: a 10.8 GB download for a model needing 14.1 GB of memory. So the
     # server answers "may this be offered" once and both surfaces read that field.
+    # ---- A STORED KEY MUST LOOK STORED -----------------------------------------------------
+    #
+    # `offered_pair` returned the literal "yes" and the page turned that into a placeholder
+    # reading "from ~/.agentduet" beside an EMPTY required box. Pressing the button with it blank
+    # already worked — the endpoint calls fill_from_files — and nothing said so, so the owner
+    # went to a terminal to copy a secret the server was about to read anyway. Reported as
+    # "the connector and key isn't prefilled" during the 2026-09-08 install rehearsal.
+    from agentduet_desktop import connector as _conn
+    setup_src = setup_page
+    ok("the key is offered as a mask", "def key_mask" in (src / "connector.py").read_text())
+    ok("and the mask is never the key itself",
+       '"•" * 8 + key[-KEY_MASK_CHARS:]' in (src / "connector.py").read_text())
+    ok("the page puts it IN the field, not beside it",
+       "$('mKey').value = d.offer_key" in setup_src)
+    ok("an untouched mask is sent as blank, so the file is read",
+       "typed === KEY_OFFERED) ? '' : typed" in setup_src)
+    ok("and a typed key still wins over the stored one",
+       ": typed;" in setup_src)
+    ok("the gate accepts a blank key when one is stored",
+       "(!key && !KEY_OFFERED)" in setup_src)
+    ok("the server fills blanks from the files",
+       "fill_from_files" in (src / "web.py").read_text())
+
     # ---- THE BRAND MARK IS A REAL ASSET NOW ------------------------------------------------
     #
     # It was the letters "AD" in a blue square, the bundle declared NO icon at all (so Finder,
@@ -1253,7 +1276,16 @@ def test_setup_mode() -> None:
     login_src = (src / "loginitem.py").read_text()
     init_src_l = init_src
 
-    ok("nothing enables it without an explicit yes", not _own.start_at_login())
+    # THE RULE, NOT THIS MACHINE'S ANSWER. This asserted `not start_at_login()` and passed only
+    # while the developer's own instance had never been asked — it went red the moment a real
+    # install ticked the box during the 2026-09-08 rehearsal. A test that reads the live instance
+    # is testing the machine it runs on.
+    owner_src = (src / "owner.py").read_text()
+    _sal = owner_src.split("def start_at_login(")[1].split("def start_at_login_answer")[0]
+    ok("nothing enables it without an explicit affirmative",
+       'return first in ("yes", "on", "true")' in _sal)
+    ok("and three states are distinguished for asking",
+       'return "no" if first else ""' in owner_src)
     ok("the wizard asks", 'id="atLogin"' in setup_page)
     ok("with the box already ticked", 'id="atLogin" checked' in setup_page)
     ok("and the console asks too", "offer_start_at_login" in init_src_l)
@@ -2611,7 +2643,13 @@ def test_one_pair_of_credential_files() -> None:
     # PREFILL WITHOUT THE SECRET: the uuid is an identifier, the key stays on disk.
     src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
            / "connector.py").read_text()
-    ok("offered_pair reports only that a key exists", '"yes" if _from_file(KEY_FILE)' in src)
+    # It reported the literal "yes" until 2026-09-08, which the page rendered as a placeholder
+    # beside an empty required box — so a stored key looked missing. It now reports a MASK. The
+    # property this guards is unchanged and is the one that matters: never the key itself.
+    ok("offered_pair reports a mask, never the key", "return _from_file(UUID_FILE), key_mask()" in src)
+    ok("and the mask is bullets plus a short tail", '"•" * 8 + key[-KEY_MASK_CHARS:]' in src)
+    ok("the whole key never appears in what is offered",
+       "return key" not in src.split("def key_mask")[1].split("def offered_pair")[0])
     web = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
            / "web.py").read_text()
     ok("and a blank field falls back to the file", "connector.fill_from_files(key, uuid)" in web)
