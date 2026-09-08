@@ -207,6 +207,7 @@ def login_item_status() -> str:
 #: The shell answers these and exits without becoming an application.
 REGISTER_FLAG = "--register-login-item"
 UNREGISTER_FLAG = "--unregister-login-item"
+STATUS_FLAG = "--login-item-status"
 
 
 def _bundle_shell() -> pathlib.Path | None:
@@ -240,3 +241,33 @@ def apply(want: bool) -> str:
         said = (done.stdout or done.stderr or "").strip()
         return said or f"The app exited {done.returncode}."
     return install_login_item() if want else remove_login_item()
+
+
+def registered() -> str | None:
+    """Whether this machine ACTUALLY starts the app at login: "on", "pending", "off", or None.
+
+    None means unknowable here, which is not the same as off — it is the honest answer for a
+    platform or an install where nothing can be asked, and the caller should fall back to what
+    the owner recorded.
+
+    WHY THIS EXISTS. `owner.start_at_login()` is what the owner ASKED FOR, in settings.md. The
+    macOS menu bar reports the real `SMAppService` registration. Those are two different
+    questions and nothing reconciled them, so a settings page saying "off" sat beside a menu bar
+    saying "on" — on a restored instance that predated the setting, which is exactly the case
+    that turned up on 2026-09-08. Where the system can be asked, the system wins: the recorded
+    answer is a preference, the registration is a fact.
+    """
+    shell = _bundle_shell()
+    if shell:
+        try:
+            done = subprocess.run([str(shell), STATUS_FLAG], capture_output=True, text=True,
+                                  timeout=15)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        said = (done.stdout or "").strip()
+        return {"enabled": "on", "requires-approval": "pending",
+                "not-registered": "off"}.get(said)
+    # No bundle: the plist, unit or Startup shortcut IS the mechanism, so its presence is the
+    # fact. `login_item_status` already reads it and also notices a stale path.
+    path = _unit_path()
+    return "on" if path.is_file() else "off"

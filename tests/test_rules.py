@@ -1337,6 +1337,24 @@ def test_setup_mode() -> None:
     ok("applying it still takes no path from any caller",
        "def apply(want: bool)" in login_src)
 
+    # THE SYSTEM IS THE TRUTH WHERE IT CAN BE ASKED. The settings row read `## Start at login`
+    # while the macOS menu bar read the real SMAppService registration, and nothing reconciled
+    # them — so a restored instance predating the setting showed "off" beside a menu bar showing
+    # "on". Spotted by Stanley during the 2026-09-08 rehearsal.
+    ok("the bundle can be asked for the real registration",
+       "def registered" in login_src and "STATUS_FLAG" in login_src)
+    ok("and the shell answers that without becoming an app",
+       "--login-item-status" in (pathlib.Path(__file__).parent.parent / "macos" / "Sources"
+                                 / "AgentDuetShell" / "main.swift").read_text())
+    ok("unknowable is not the same as off", "None means unknowable here" in login_src)
+    _web = (src / "web.py").read_text()
+    ok("the page prefers the fact over the preference",
+       '_actual in ("on", "pending")' in _web)
+    ok("and falls back to the recorded answer where nothing can be asked",
+       "else _own.start_at_login()" in _web)
+    ok("pending is shown, not collapsed into on or off",
+       "start_at_login_state === 'pending'" in settings_page)
+
     # THREE STATES WHEN ASKING, two when acting: never-asked must be offered yes, and an owner
     # who declined must not have that reversed by pressing return.
     ok("the raw answer is available for asking", "def start_at_login_answer" in

@@ -464,10 +464,17 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         # than no switch, and the reason is not visible from the row itself.
         cur["thinking"] = _own.thinking()
         cur["thinking_possible"] = _llm.supports_thinking()
-        # WHAT THE OWNER ASKED FOR, which is not the same question as what the system will
-        # actually do at login — see api_setup_login_item. This is the one the page needs, so a
-        # re-run of setup shows the box as they left it rather than ticked again.
-        cur["start_at_login"] = _own.start_at_login()
+        # THE FACT WHERE IT CAN BE ASKED, the preference where it cannot — and they are
+        # different questions. `owner.start_at_login()` is what the owner ASKED FOR; the macOS
+        # bundle can report the real SMAppService registration, which the menu bar already showed
+        # while this page showed the setting. A restored instance predating the setting therefore
+        # read "off" beside a menu bar reading "on".
+        from . import loginitem as _li
+        _actual = _li.registered()
+        cur["start_at_login"] = (_actual in ("on", "pending") if _actual is not None
+                                 else _own.start_at_login())
+        # "pending" is its own outcome: registered, waiting for the owner in System Settings.
+        cur["start_at_login_state"] = _actual or ""
         cur["recordings_dir"] = str(carry.recordings() / carry.ANSWERED)
         cur["carried_dir"] = str(carry.recordings())
         # False until the backend has a sign-in endpoint. The page uses it to decide whether to
