@@ -72,15 +72,32 @@ def _from_file(path: pathlib.Path) -> str:
         return ""
 
 
+#: How a stored key is shown: dots and its last four characters. The tail is not a new
+#: disclosure — `save_connector` already reports "Key ending VSC0" back to the same page — and it
+#: is what makes the field look ANSWERED rather than empty and required.
+KEY_MASK_CHARS = 4
+
+
+def key_mask() -> str:
+    """`"••••••••VSC0"` for a stored key, or `""`. Never the key."""
+    key = _from_file(KEY_FILE)
+    return ("•" * 8 + key[-KEY_MASK_CHARS:]) if key else ""
+
+
 def offered_pair() -> tuple[str, str]:
-    """The uuid and whether a key is available, for prefilling a form. NEVER the key itself.
+    """The uuid, and a MASK of the key, for prefilling a form. NEVER the key itself.
 
     The uuid is an identifier and showing it saves the retyping this exists to avoid. The key is
-    a credential: it stays on disk, the page is told only that one is there, and
-    `/api/setup/connector` reads the file when the field is left blank. So a fresh install is one
-    click, and the secret never enters the DOM or this process's replies.
+    a credential: it stays on disk, and `/api/setup/connector` reads the file when the field is
+    left blank — so the secret never enters the DOM or this process's replies.
+
+    IT USED TO SAY JUST "yes", and that was the wrong shape even though the mechanism behind it
+    was complete. The page turned it into a placeholder reading "from ~/.agentduet", so the field
+    looked EMPTY AND REQUIRED: pressing the button with it blank already worked, and nothing said
+    so, which left the owner opening a terminal to copy a secret the server was about to read
+    anyway. A mask makes the field look answered, which is what it is.
     """
-    return _from_file(UUID_FILE), ("yes" if _from_file(KEY_FILE) else "")
+    return _from_file(UUID_FILE), key_mask()
 
 
 def fill_from_files(key: str, uuid: str) -> tuple[str, str]:
