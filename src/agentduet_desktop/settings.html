@@ -807,12 +807,13 @@
     }
 
     const busy = (d.progress || {}).model;
+    const failed = d.failed || {};
 
     // REBUILD ONLY WHEN THE SHAPE CHANGES. This polls once a second during a download, and
     // rewriting innerHTML each time flickered, collapsed any open "sizes" expander, and threw
     // away whatever the reader was looking at. Progress moves every tick; the LIST does not.
     const sig = JSON.stringify([(d.models || []).map(x => [x.id, x.state, x.in_use]), busy,
-                                d.engine]);
+                                Object.keys(failed).sort(), d.engine]);
     if (sig === lastModelSig) {
       const p = d.progress || {};
       const bar = $('modelList').querySelector('.bar i');
@@ -855,6 +856,9 @@
       } else {
         act = `<button class="act get" data-get="${esc(x.id)}" ${busy ? 'disabled' : ''}>Download ${x.dl_gb.toFixed(1)} GB and use</button>`;
       }
+      // WHY IT FAILED, on the row that failed. A download that dies used to leave the card
+      // exactly as it was, so the only symptom was a button that seemed to do nothing.
+      if (failed[x.id]) act += `<span class="mwhy">${esc(failed[x.id])}</span>`;
       return `
       <div class="mcard ${here ? 'on' : ''} ${blocked ? 'blocked' : ''}">
         <div class="mtop">

@@ -36,6 +36,7 @@ import logging
 import os
 import pathlib
 import threading
+import time
 import urllib.parse
 import urllib.request
 
@@ -329,6 +330,36 @@ def variants(model: str) -> list[dict]:
 # runs on a worker thread. A per-request object would leave the page unable to answer "how far
 # along is it?" after a reload, which on a five-gigabyte file is the whole question.
 
+#: A `.part` untouched for longer than this is an interrupted download, not a running one. Long
+#: enough to cover a slow chunk on a bad connection; short enough that a genuinely dead fetch
+#: stops blocking the page within a minute.
+STALE_PART_SECONDS = 90
+
+#: Why the last attempt at each model failed, kept AFTER the attempt is over so the page can
+#: say what went wrong. Without it a failed download is indistinguishable from one that never
+#: started: the progress bar simply never appears. That is exactly how a9's broken TLS
+#: presented — every fetch died on a missing CA bundle, `download()` returned the reason, and
+#: nothing anywhere read it.
+_failed: dict[str, str] = {}
+
+
+def failure(model: str) -> str:
+    """Why the last attempt at `model` failed, or ''."""
+    with _lock:
+        return _failed.get(model, "")
+
+
+def note_failure(model: str, why: str) -> None:
+    with _lock:
+        _failed[model] = why
+
+
+def forget_failure(model: str) -> None:
+    """Clear it — called when a retry starts, so a stale reason cannot outlive its cause."""
+    with _lock:
+        _failed.pop(model, None)
+
+
 _lock = threading.Lock()
 _state: dict = {"model": "", "done_mb": 0, "total_mb": 0, "error": "", "finished": "",
                 "cancel": False}
@@ -351,6 +382,27 @@ def progress_seen() -> dict:
     if not seen:
         return live
     name, done_mb, total_mb = seen
+    # IN FLIGHT MEANS GROWING. `downloading()` answers "is there a partial file", which is the
+    # right question for "how far along is this model" and the WRONG one for "is a fetch running
+    # somewhere else". A `.part` abandoned days ago satisfies the first and not the second.
+    #
+    # Reporting it as in-flight had one visible consequence and it was severe: the page sets its
+    # single `busy` flag from this, which renders EVERY download button disabled, and because the
+    # entry is also marked `elsewhere` the Stop button is hidden — so a 3.2 GB leftover from an
+    # interrupted fetch silently blocked all downloads with nothing in the UI able to clear it.
+    # Found on 2026-09-08, made visible by `rehearse.sh` keeping models/ across a reset: parking
+    # the whole instance used to hide the stale file too.
+    #
+    # A stale `.part` is not lost — the Download button resumes from it, which is what
+    # `downloading()` reporting it as partial is for.
+    target = path_of(name)
+    if target:
+        part = target.with_suffix(target.suffix + ".part")
+        try:
+            if time.time() - part.stat().st_mtime > STALE_PART_SECONDS:
+                return live
+        except OSError:
+            return live
     return {"model": name, "done_mb": done_mb, "total_mb": total_mb, "error": "",
             "finished": "", "cancel": False,
             "percent": int(done_mb / total_mb * 100) if total_mb else 0,

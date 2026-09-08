@@ -824,9 +824,24 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
 
             # DOWNLOADING IS NEVER THE GOAL. Nobody wants a file; they want the model in use.
             # So it loads and attaches when the bytes land, in one action.
+            models.forget_failure(name)
+
             async def _go():
-                await asyncio.to_thread(models.download, name)
-                if models.is_downloaded(name) and body.get("then_use", True):
+                # READ THE RESULT. This used to discard it, which is why a failed download looked
+                # like nothing happening at all — the progress bar never appeared and no reason
+                # was recorded anywhere the owner could see. `download()` returns a sentence
+                # starting "Could not download" on failure; keep it against the model.
+                try:
+                    out = await asyncio.to_thread(models.download, name)
+                except Exception as exc:                       # noqa: BLE001 — must not vanish
+                    logger.exception("download of %s raised", name)
+                    models.note_failure(name, f"{type(exc).__name__}: {exc}")
+                    return
+                logger.info("download of %s: %s", name, out)
+                if not models.is_downloaded(name):
+                    models.note_failure(name, out)
+                    return
+                if body.get("then_use", True):
                     await asyncio.to_thread(models.load, name)
                     if models.loaded() == name:
                         await asyncio.to_thread(tools.attach_model, "local", name, "local")
@@ -915,6 +930,10 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             # child is not in THIS process's memory, and the page showing "not downloaded" while
             # the file grows is how an owner concludes the app cannot see its own models.
             "progress": models.progress_seen(),
+            # WHY A DOWNLOAD FAILED, per model. The page shows it on the row; without it the
+            # only symptom is a button that appears to do nothing.
+            "failed": {m["id"]: models.failure(m["id"]) for m in models.listing()
+                       if models.failure(m["id"])},
             "current": os.getenv("SECRETARY_MODEL", ""),
             # Which of the two branches the owner is on, so the page opens on the right one
             # rather than making them re-declare a choice they already made. EMPTY when the
