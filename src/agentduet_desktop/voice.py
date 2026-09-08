@@ -317,7 +317,6 @@ def _make_tools(caller: str, verified: bool, convo: str, owner_name: str, live: 
                 "matches": len(sources), "content": text[:4000]}
 
     @tool
-    @tool
     async def book(args: dict) -> dict:
         cap = _only_capability()
         if cap is None:

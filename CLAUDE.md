@@ -542,14 +542,18 @@ binary in a folder"). Ordered; each is worth doing alone.
 
 **Release blockers**
 
-- [ ] **`init` cannot take a connector** — and it is now the ONLY surface that cannot. The
-      settings page has taken the pair for months, and since 2026-09-07 so has the wizard's
-      sign-in screen, which is where an owner is already thinking about credentials. Both post
-      to `/api/setup/connector`, which proves the pair by opening a real session before saving.
-      Secrets still deliberately cannot go through the assistant (`save_connector` is outside
-      `OWNER_TOOLS` — a credential typed into chat goes to the model provider and lands in
-      `owner_chat.json`). So this is no longer "no way to configure the product"; it is the
-      Linux console path, which per the platform section is the one that must not drift.
+- [x] ~~**`init` cannot take a connector.**~~ **FALSE, and it was false when written.**
+      `init.connect()` prompts for the uuid and the key and verifies the pair with B3 before
+      saving, and `init.main` reaches it at `connected = sign_in(interactive) or
+      connect(interactive)`. All three surfaces take the pair: the settings page, the wizard's
+      sign-in screen (since 2026-09-07), and the console. Checked 2026-09-08.
+      Secrets still deliberately cannot go through the assistant — `save_connector` is outside
+      `OWNER_TOOLS`, because a credential typed into chat goes to the model provider and lands
+      in `owner_chat.json`. That part was and remains true.
+      **This is the SEVENTH item in this file to claim outstanding work that was already
+      done**, and it was found by spot-checking three open items at random — one of the three.
+      That is the number to act on, not this item: the register is read to decide what to build,
+      so a third of it being wrong is worse than any single entry on it.
 - [ ] **Connector provisioning.** Every install needs its OWN `AGENTDUET_CONNECTOR_UUID` — one
       client per connector, and a second races `call.answer()`. A new user installs cleanly and
       then stops dead waiting on a human.
@@ -827,18 +831,26 @@ recordings are **stored** only there. The media still transits B3's WSS to reach
 leaves your machine" is false; "stored only on your machine" is defensible and is the stronger
 claim anyway, because it is the one a regulated buyer is actually asking about.
 
-- [ ] **Recording is not built; the transcript is, for the wrong calls.** `voice._make_recorder`
-      writes turns into `memory` and `brain.record`, so a call reads like any conversation — but
-      it is a byproduct of OUR agent talking, from the realtime model's transcript events. We
-      never touch audio: no `.wav`, no frames, nothing. `examples/connect_spy_isolated.py` is the
-      working model — `connect(ring_time_seconds=…)` originates Leg 2, then both
-      `call.caller.audio_stream()` and `call.callee.audio_stream()` are consumed to WAV. ("Spy"
-      there is call-centre vocabulary for supervisor listen-in — `whisper()` speaks to the
-      subscriber only, `barge()` to both — not stealth, and not the topology.)
-      **It collides with the secretary:** `voice.register()` already claims `on_incoming_call`,
-      and one connector has one handler. So this is a MODE, not an addition — the owner picks
-      whether the agent answers or the call is carried through to them. Build it behind a
-      setting, default off; rip nothing out until it is proven.
+- [ ] **Carrying a call is built; what is missing is the platform handing us its audio.**
+      **REWRITTEN 2026-09-08. This item used to say "We never touch audio: no `.wav`, no frames,
+      nothing", and that has been false since 2026-08-14** — `voice._Recorder` wraps the
+      ModelSession and writes `<stamp>-<call>-caller.wav` and `-agent.wav` for every ANSWERED
+      call, tapping the SDK's own bridge so it needs no second consumer on the audio stream.
+      The file contradicted itself about it: the grounding-check item above says "every answered
+      call now writes the caller's audio, the agent's audio and a turn-by-turn transcript", 58
+      lines earlier. An engineer trusting this entry would have built a recorder that exists.
+      **What is actually left** is the CARRY path, not the answer path: `carry.py` originates
+      Leg 2 and starts its recorders, but the platform does not hand the app conference audio,
+      so the directory the panel lists stays empty — the same gap as "Record Call has nothing
+      behind it" in the recorder section, which is where it is tracked.
+      `examples/connect_spy_isolated.py` remains the working model — `connect(ring_time_seconds=…)`
+      originates Leg 2, then both `call.caller.audio_stream()` and `call.callee.audio_stream()`
+      are consumed to WAV. ("Spy" there is call-centre vocabulary for supervisor listen-in —
+      `whisper()` speaks to the subscriber only, `barge()` to both — not stealth, and not the
+      topology.)
+      **The mode collision is still real and still unresolved:** `voice.register()` claims
+      `on_incoming_call`, and one connector has one handler, so answering and carrying are
+      mutually exclusive per install. That is a MODE, not a preference.
 - [ ] **Consent gates this AND outbound campaigns, and neither has an answer.** Recording has
       jurisdiction-specific rules (PDPA here, two-party-consent regimes elsewhere); an outbound
       campaign needs to know who is on the list and whether they agreed. Same class of question
