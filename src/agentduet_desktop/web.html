@@ -624,7 +624,15 @@
 
   setInterval(async () => {
     const before = threadSig();
-    await Promise.all([refresh(), refreshChat()]);
+    // `load()` TOO, not just the threads. Everything it draws can change while the
+    // page sits open — the owner's name and number, the model in use, and the
+    // channel state — and it ran ONCE at page load, so the sidebar kept whatever it
+    // said when the tab opened. The number was the visible symptom (set in Settings,
+    // still a dash in an already-open hub) and the channel was the dangerous one: a
+    // dropped connection went on reading "Recording calls" until somebody reloaded.
+    // One small fetch and a few idempotent writes; it rebuilds no lists, so nothing
+    // the reader is looking at moves.
+    await Promise.all([refresh(), refreshChat(), load()]);
     if (threadSig() !== before) drawWho();
   }, 5000);
 
