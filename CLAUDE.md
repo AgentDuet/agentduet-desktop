@@ -150,8 +150,23 @@ build works.
 1. `gh workflow run build.yml --ref main` — no tag, nothing promised.
 2. **Verify the artifact.** Download it, and on a Mac: apply a quarantine attribute (only a
    browser sets one, so `gh run download` alone does not reproduce what a tester gets), then
-   `spctl -a -t open --context context:primary-signature -vv`, `xcrun stapler validate`, and
-   **start the daemon**. `status` is not verification — see below.
+   `spctl -a -t open --context context:primary-signature -vv` on the **`.app`**,
+   `xcrun stapler validate` on the **DMG**, and **start the daemon**. `status` is not
+   verification — see below.
+
+   **THE TICKET IS STAPLED TO THE DMG, NEVER TO THE `.app`** — `build.yml` runs
+   `xcrun stapler staple "$DMG"` and nothing else. So `stapler validate` on the app answers
+   `does not have a ticket stapled to it` on a perfectly good build, while `spctl` on the same
+   app says `accepted / source=Notarized Developer ID`. Those two readings look like a
+   contradiction and are not: Gatekeeper is satisfied by the notarisation itself, and the
+   stapled ticket only saves it an online check. Validate each on its own target or the check
+   invents a defect. (Cost a scare verifying a12 on 2026-09-08.)
+
+   **A fresh instance serves `setup.html` at `/`, so grepping the served page for a hub change
+   proves nothing.** There is no separate hub route — `index` picks the page per load — and a
+   throwaway `AGENTDUET_HOME` always fails `needs_setup()`. Check the packaged file inside the
+   bundle instead (`Contents/Resources/agentduet_desktop/web.html`), which also catches the
+   stale-build-venv trap below in one step: it should be byte-identical to the working tree.
 3. Tag `v0.1.0aN` and create the release. A DRAFT release may name a tag that does not exist
    yet; publishing creates it.
 4. `attach-release.yml` with that build's **run id** + tag. It attaches a build that has
