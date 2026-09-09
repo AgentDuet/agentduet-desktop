@@ -3290,6 +3290,55 @@ def test_a_bad_reply_says_so_instead_of_leaking() -> None:
            withheld not in _asst.assistant_tools())
 
 
+def test_the_prompt_says_what_it_means_to_say() -> None:
+    """Each placeholder gets the value its own sentence introduces."""
+    print("\n  -- the prompt's own slots --")
+    import re
+    from agentduet_desktop import assistant as _a
+
+    # A TRANSPOSITION SHIPPED. `ASSISTANT_PROMPT`'s first two slots are the identity block and
+    # the date; every build up to a13 passed them the other way round, so the prompt said
+    # "Today is You work for Stanley Leong, who…" and dropped the real date in as an orphan
+    # line with nothing to label it. The assistant was never told the date — while the same
+    # paragraph told it that line was the only thing making "yesterday" mean anything.
+    #
+    # Positional `%s` cannot catch this: every value is a string and every substitution
+    # succeeds. So the check is on the RENDERED text, against sentinels that cannot be mistaken
+    # for one another.
+    rendered = _a.ASSISTANT_PROMPT % "Stanley" % (
+        "<<IDENTITY>>", "Wednesday 09 September 2026", "2026-09-09",
+        "<<SUBJECTS>>", "<<TOOLS>>")
+    eq("every slot is filled", rendered.count("%s"), 0)
+
+    # THE ONE THAT WAS WRONG: a date follows "Today is", not a paragraph.
+    after = re.search(r"Today is ([^.]{0,60})\.", rendered)
+    ok("something follows 'Today is'", after is not None)
+    ok("and it is a date, not the biography",
+       bool(re.match(r"^\w+day \d{2} \w+ \d{4}$", (after.group(1) if after else "").strip())))
+
+    # AND THE FORMAT A TOOL WANTS, because `add_to_calendar` refuses a month name and the model
+    # would otherwise have to translate one before it could call anything.
+    ok("the typed-out form is given too", "2026-09-09" in rendered)
+
+    # THE REST, so the next edit cannot slide them either. Each sentinel must land under the
+    # heading that announces it.
+    body = rendered
+    ok("the identity block is at the top, not under a label",
+       body.index("<<IDENTITY>>") < body.index("Today is"))
+    ok("THEIR NOTES holds the subjects",
+       re.search(r"THEIR NOTES:\s*<<SUBJECTS>>", body) is not None)
+    ok("TOOLS holds the tool docs", re.search(r"TOOLS:\s*<<TOOLS>>", body) is not None)
+
+    # AND THE CALL SITE PASSES THEM IN THAT ORDER. The render above proves the template; this
+    # proves the one caller agrees with it, which is the half that broke.
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+           / "assistant.py").read_text()
+    call = src.split("self.system = ASSISTANT_PROMPT", 1)[1].split(")\n", 1)[0]
+    ok("identity comes before the date at the call site",
+       call.index("identity_block") < call.index("strftime"))
+    ok("and the typed-out date after it", call.index("strftime") < call.index("isoformat"))
+
+
 def test_the_update_check_is_quiet_and_cannot_lie() -> None:
     """Notice a release, say so once, and never delay or invent anything."""
     print("\n  -- update check --")
@@ -4075,6 +4124,7 @@ def main() -> None:
     test_a_person_is_a_number_not_a_direction()
     test_a_skill_is_owner_approved_and_capped()
     test_a_bad_reply_says_so_instead_of_leaking()
+    test_the_prompt_says_what_it_means_to_say()
     test_the_update_check_is_quiet_and_cannot_lie()
     test_a_link_tool_cannot_choose_a_destination()
     test_the_secretary_keeps_its_knowledge()
