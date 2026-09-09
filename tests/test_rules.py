@@ -3235,6 +3235,40 @@ def test_a_bad_reply_says_so_instead_of_leaking() -> None:
     ok("the guard runs on both return paths", body.count("if _is_transcript(") == 2)
     ok("and says nothing ran", "nothing ran and nothing was saved" in body)
 
+    # A WITHHELD TOOL STILL COUNTS. Keying the guard on the assistant's own registry broke it
+    # the moment `list_knowledge` was withheld: the very leak that prompted the guard stopped
+    # matching. A model learns these names from history, which outlives any change to what is
+    # on offer, so a withheld tool is MORE likely to turn up in a transcript, not less.
+    from agentduet_desktop import assistant as _asst
+    for withheld in sorted(_asst.WITHHELD_FROM_ASSISTANT):
+        ok(f"caught even though {withheld} is withheld",
+           _is_transcript(f"called {withheld}"))
+        ok(f"and {withheld} is genuinely not offered",
+           withheld not in _asst.assistant_tools())
+
+
+def test_the_secretary_keeps_its_knowledge() -> None:
+    """Withholding a tool from the ASSISTANT must not touch the asker-facing surface."""
+    print("\n  -- withheld from the assistant only --")
+    from agentduet_desktop import assistant as _a, tools as _t, permissions, secretary_tools
+
+    ok("the assistant offers no knowledge verb",
+       not [k for k in _a.assistant_tools() if "knowledge" in k])
+    # INVARIANT 1's SUBJECT IS UNTOUCHED. `search_knowledge` is the asker-facing one and was
+    # never in this registry, so this change cannot weaken disclosure.
+    ok("search_knowledge is still the secretary's default",
+       "search_knowledge" in permissions.DEFAULT_TOOLS)
+    ok("and was never an assistant tool", "search_knowledge" not in _a.assistant_tools())
+    # The owner keeps every verb where they drive it themselves.
+    ok("the stdio mcp keeps all four",
+       len([k for k in secretary_tools.OWNER_TOOLS if "knowledge" in k]) == 4)
+    # ASSISTANT_SHARED is the dispatch table for an approved proposal, so it must NOT be emptied
+    # — a card the owner already clicked would fail with "Unknown tool".
+    ok("an approved proposal can still be applied",
+       all(k in _t.ASSISTANT_SHARED for k in _a.WITHHELD_FROM_ASSISTANT))
+    ok("the folder and its documents are untouched",
+       "add_knowledge" in dir(_t) and "read_knowledge" in dir(_t))
+
 
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
@@ -3255,6 +3289,7 @@ def main() -> None:
     test_a_person_is_a_number_not_a_direction()
     test_a_skill_is_owner_approved_and_capped()
     test_a_bad_reply_says_so_instead_of_leaking()
+    test_the_secretary_keeps_its_knowledge()
     test_the_hub_does_not_invent_a_sign_in_state()
     test_the_binary_can_reach_the_platform()
     test_a_declined_window_declines_the_browser()

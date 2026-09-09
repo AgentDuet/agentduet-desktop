@@ -115,10 +115,33 @@ def _subjects() -> str:
                      if l.startswith("#")), f.stem)
         out.append(f"- {head}  ({f.relative_to(root.parent).as_posix()})")
     return "\n".join(out) or "- (no knowledge documents yet)"
+#: WITHHELD FROM THE ASSISTANT WHILE SKILLS ARE ON TRIAL. Stanley's call, 2026-09-09: the point
+#: of the current build is for colleagues to exercise skills, and the knowledge tools compete
+#: with them for a weak model's attention. Asked for the last four digits of a number, glm-4-9b
+#: called `list_knowledge` and handed back the knowledge index — the leak `_is_transcript` now
+#: catches. Reaching for a document is the wrong instinct on a carry-mode install anyway: nobody
+#: is answered, so `knowledge/` is never disclosed to a caller and only the owner ever reads it.
+#:
+#: WHAT THIS IS NOT. It is not a change to the SECRETARY. `search_knowledge` — the asker-facing
+#: one, the subject of invariant 1 — was never in this registry and is untouched, and so are
+#: `permissions.DEFAULT_TOOLS`, `voice.py` and `secretary_tools.OWNER_TOOLS` (the stdio mcp's
+#: 38-tool surface, which keeps all four knowledge verbs — checked). The functions, the folder
+#: and its two documents are all still there.
+#:
+#: Filtered HERE rather than by editing `ASSISTANT_SHARED`, because that dict is also the
+#: dispatch table `resolve()` uses to apply a proposal the owner has already approved — emptying
+#: it would strand any pending card as "Unknown tool". This one point gates the tool docs,
+#: `_loose_call`'s shorthand and `self.registry`, so a withheld tool cannot be called by any
+#: route. To give them back, empty this set.
+WITHHELD_FROM_ASSISTANT = frozenset({
+    "list_knowledge", "read_knowledge", "add_knowledge", "edit_knowledge"})
+
+
 def assistant_tools() -> dict:
     """The Personal Assistant's registry: the recorder's own tools, plus a named subset of the
     owner registry. `OWNER_TOOLS` itself is untouched — it is also the stdio mcp's surface."""
-    return {**tools.RECORDER_TOOLS, **tools.ASSISTANT_SHARED}
+    return {k: v for k, v in {**tools.RECORDER_TOOLS, **tools.ASSISTANT_SHARED}.items()
+            if k not in WITHHELD_FROM_ASSISTANT}
 def _tool_docs(registry: dict | None = None) -> str:
     lines = []
     for name, (fn, params) in (registry or assistant_tools()).items():
@@ -178,6 +201,11 @@ def _is_prompt_echo(text: str, system: str) -> bool:
     return len(t) > 25 and t in " ".join(system.split())
 
 
+def _EVERY_TOOL_NAME() -> frozenset:
+    """Every name the framework could have written into a history line, offered or not."""
+    return frozenset({*tools.RECORDER_TOOLS, *tools.ASSISTANT_SHARED})
+
+
 def _is_transcript(text: str) -> bool:
     """True when the "answer" is the framework's OWN bookkeeping handed back as prose.
 
@@ -197,6 +225,12 @@ def _is_transcript(text: str) -> bool:
 
     Deliberately keyed on an EXACT registered tool name after "called", rather than on the word
     alone, so a real sentence about having called someone is not thrown away.
+
+    AGAINST EVERY KNOWN NAME, not the ones currently on offer. Keying on `assistant_tools()`
+    broke this the moment a tool was withheld from that registry: the leak that prompted the
+    guard was literally `called list_knowledge`, and withholding `list_knowledge` made its own
+    transcript stop matching. The model learns these names from history, which outlives any
+    change to what is offered — so a withheld tool is MORE likely to appear in one, not less.
     """
     body = text.strip()
     if not body:
@@ -204,7 +238,7 @@ def _is_transcript(text: str) -> bool:
     if re.search(r"^\s*(TOOL_RESULT|ASSISTANT|OWNER)\s*:", body, re.M):
         return True
     for m in re.finditer(r"^\s*called\s+([a-z_]+)\s*$", body, re.M):
-        if m.group(1) in (assistant_tools() or {}):
+        if m.group(1) in _EVERY_TOOL_NAME():
             return True
     return False
 
