@@ -3420,6 +3420,16 @@ def test_a_question_survives_a_redraw() -> None:
     ok("the poll's own chat refresh still stands aside too",
        "if (BUSY) return;" in hub)
 
+    # A TRANSCRIPT ARRIVES LATE, and the poll has to notice. `threadSig` counted people,
+    # messages and calls — none of which move when a transcript is written seconds to minutes
+    # after the call — so the open thread went on saying "Transcript pending." until a reload.
+    # Third instance of this shape in this file, after chatSig and load().
+    ok("a call's signature includes its transcript",
+       "(c.transcript || '').length" in hub)
+    ok("and the two nothing-to-show states, which flip on their own",
+       "c.norecording ? 'n' : ''" in hub and "c.silent ? 's' : ''" in hub)
+    ok("and the file count, which moves when the merge lands", "${c.files}:" in hub)
+
 
 def test_one_call_one_file() -> None:
     """Two legs go in, one stereo file and one labelled transcript come out."""

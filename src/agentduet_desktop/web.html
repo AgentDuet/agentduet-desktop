@@ -683,9 +683,25 @@
   // WHAT IS ON SCREEN, cheaply. Compared before and after a poll so a tick that changed nothing
   // redraws nothing: rebuilding innerHTML every few seconds throws away a text selection, and
   // the model panel already taught us what a needless re-render does to someone mid-read.
+  // WHAT COUNTS AS A CHANGE WORTH REDRAWING FOR. Counting people, messages and calls missed
+  // the one thing that arrives LATE: a transcript. It lands seconds to minutes after the call,
+  // with the same person, the same timestamp and the same counts — so the signature did not
+  // move, `drawWho` was never called, and the open thread went on saying "Transcript pending."
+  // until the owner reloaded. That is the worst moment for it, because waiting for the
+  // transcript is exactly when they are looking at that thread. Reported by Stanley
+  // 2026-09-09, third instance of this shape in this file after chatSig and load().
+  //
+  // The transcript's LENGTH, not its text: this runs every five seconds and is compared as a
+  // string, so it stays cheap. `files` moves too when the merge replaces two legs with one
+  // stereo file, and the two "there is nothing to show" states can flip on their own.
+  function callSig(c){
+    return `${c.files}:${(c.transcript || '').length}:${c.norecording ? 'n' : ''}${
+      c.silent ? 's' : ''}`;
+  }
   function threadSig(){
     return (THREADS.people || [])
-      .map(p => `${p.who}:${p.last}:${(p.messages || []).length}:${(p.calls || []).length}`)
+      .map(p => `${p.who}:${p.last}:${(p.messages || []).length}:${
+        (p.calls || []).map(callSig).join(',')}`)
       .join('|');
   }
 
