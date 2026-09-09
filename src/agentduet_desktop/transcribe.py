@@ -1,6 +1,18 @@
 """Turn recorded call legs into text, on a queue, with or without a network.
 
-ONE ENGINE: faster-whisper, on this machine. No key, no network, and the audio does not leave.
+ONE ENGINE: whisper.cpp, on this machine, on the GPU where there is one. No key, no network,
+and the audio does not leave.
+
+IT WAS faster-whisper UNTIL 2026-09-09, and the swap was about the GPU. CTranslate2, the runtime
+underneath it, ships CPU and CUDA backends and has no Metal path — so on Apple Silicon it was
+always CPU-only, whatever the settings said, and every measurement this file records is a CPU
+measurement. Same model, same 19-second leg, measured both ways: faster-whisper 10.69s wall and
+36.40s CPU, whisper.cpp 0.90s and 0.07s. Twelve times the wall, five hundred times the CPU, and
+that 0.07s is Apple's own SpeechAnalyzer number — so this is not a lesser engine chosen for
+convenience, it is the same efficiency with every Whisper language.
+
+It also carries per-segment `t0`/`t1`, which is what makes the merged transcript's turn order
+EXACT rather than reconstructed. The 150 lines that used to guess it are gone.
 
 IT USED TO PREFER A HOSTED ONE — `qwen3-asr-flash` on DashScope — whenever a credential existed,
 and it was measurably better on the same audio: it returned "Sir, ma'am … Trusty's Security
@@ -123,16 +135,18 @@ def local_model() -> str:
     from . import owner
     chosen = (os.getenv("SECRETARY_STT_QUALITY") or owner.transcription_quality()
               or DEFAULT_MODEL).lower()
-    # ANY MODEL FASTER-WHISPER KNOWS, not just the ones we offer. TIERS is a curated list, not
-    # a whitelist: someone who deliberately sets `tiny`, `large-v2` or a `.en` variant should get
+    # ANY MODEL THE ENGINE KNOWS, not just the ones we offer. TIERS is a curated list, not a
+    # whitelist: someone who deliberately sets `tiny`, `large-v2` or a `.en` variant should get
     # it. Narrowing this to TIERS silently moved such an instance to the default on upgrade,
     # which is the failure the legacy-name mapping below exists to prevent.
     #
-    # A legacy adjective is translated; anything faster-whisper does not know falls back rather
-    # than raising, because a settings typo must not stop a call being transcribed.
+    # A legacy adjective is translated; anything the engine does not know falls back rather than
+    # raising, because a settings typo must not stop a call being transcribed. The list comes
+    # from the engine rather than a copy kept here — a hand-written map drifts the moment the
+    # library adds a model, and it already had once.
     if chosen in QUALITY:
         return QUALITY[chosen]
-    return chosen if _repo(chosen) else DEFAULT_MODEL
+    return chosen if chosen in _known_models() else DEFAULT_MODEL
 
 #: A WAV header with no frames. Written when a call produced no audio at all — which is what an
 #: unbridged call looks like — and there is nothing to transcribe in one.
@@ -154,11 +168,75 @@ class TranscriptionUnavailable(RuntimeError):
 
 
 
+#: Longest segment the engine may return, in characters. Segments are the unit the merge
+#: interleaves, so they have to be shorter than a turn — but not so short that one sentence
+#: arrives as five bubbles. About a spoken clause.
+SEGMENT_CHARS = 60
+
+#: The last segments each file produced, with times in SECONDS. Written by `_local` and read by
+#: the merge, which needs WHEN each turn was said and not only what was said. A dict rather than
+#: a return value because `transcribe()` is called from several places that want the text and
+#: nothing else, and widening its contract to carry timings would touch all of them.
+_last_segments: dict[str, list[tuple[float, float, str]]] = {}
+
+
+def segments_for(path: "pathlib.Path") -> list[tuple[float, float, str]]:
+    """(start, end, text) per utterance for a file just transcribed, or [] if unknown."""
+    return _last_segments.get(str(path), [])
+
+
 def _local_available() -> bool:
-    # find_spec, not a try/import: importing faster_whisper pulls in a CPU inference runtime and
-    # costs a second or more, and this is called from `status` and from every queue poll.
+    # find_spec, not a try/import: importing the engine pulls in an inference runtime and costs
+    # a second or more, and this is called from `status` and from every queue poll.
     import importlib.util
-    return importlib.util.find_spec("faster_whisper") is not None
+    return importlib.util.find_spec("pywhispercpp") is not None
+
+
+def stt_dir() -> pathlib.Path:
+    """Where the ggml speech models live — INSIDE THE INSTANCE, on purpose.
+
+    `pywhispercpp` defaults to a platformdirs location (on macOS, Application Support), and a
+    1.7 GB download landing somewhere the app never mentions is not something to inherit: the
+    settings page offers Delete for these, `uninstall` has to find them, and an owner clearing
+    space has to be able to see them. Same argument that moved the LLM weights out of Ollama's
+    cache and into `models/`.
+    """
+    from . import paths                    # local, like every other sibling import here
+    return paths.HOME / "models" / "stt"
+
+
+@functools.lru_cache(maxsize=1)
+def _known_models() -> frozenset:
+    """Every model name the engine can fetch. Cached: it is a constant in the library."""
+    try:
+        from pywhispercpp.constants import AVAILABLE_MODELS
+        return frozenset(AVAILABLE_MODELS)
+    except Exception:
+        return frozenset(TIERS)
+
+
+def _ggml(model: str) -> pathlib.Path:
+    """The file `pywhispercpp` downloads for `model`."""
+    return stt_dir() / f"ggml-{model}.bin"
+
+
+def backend() -> str:
+    """Which ggml backend will actually run, for `status`. Metal on a Mac, CPU elsewhere.
+
+    ASKED OF THE SHIPPED LIBRARIES, not inferred from the platform: the wheel decides this, and
+    a wheel built without Metal on a Mac would otherwise be reported as accelerated. The Metal
+    backend is its own dylib, so its presence beside the package is the answer.
+    """
+    if not _local_available():
+        return ""
+    try:
+        import pywhispercpp
+        here = pathlib.Path(pywhispercpp.__file__).parent.parent
+        if list(here.glob("libggml-metal*.dylib")):
+            return "GPU (Metal)"
+    except Exception:                      # never let a status line raise
+        pass
+    return "CPU"
 
 
 # ---- Apple's on-device engine (macOS 26+, Apple Silicon) -----------------------------------
@@ -372,18 +450,28 @@ def describe() -> str:
 
 #: Roughly what each tier costs to fetch, for telling the owner BEFORE it happens rather than
 #: after. Measured from the cache on disk, not from the docs.
-MODEL_MB = {"tiny": 75, "base": 142, "small": 464, "medium": 1500,
-            "large-v3-turbo": 1600, "large-v3": 2900}
+#: GGML SIZES, which are not the CTranslate2 ones this table used to hold. Only shown before a
+#: download — `size_on_disk` measures the file once it is there — but a number an owner decides
+#: on should not be wrong: large-v3-turbo measured 1553 MB against the 1600 written here for
+#: the old format, and base measured 141 against 142. Close, and checked rather than assumed.
+MODEL_MB = {"tiny": 75, "base": 141, "small": 466, "medium": 1530,
+            "large-v3-turbo": 1553, "large-v3": 3095}
 
 
 def is_cached(model: str = "") -> bool:
-    """Is the local model already on disk? Never downloads to find out."""
-    try:
-        from faster_whisper.utils import download_model
-        download_model(model or local_model(), local_files_only=True)
-        return True
-    except Exception:
-        return False
+    """Is the local model already on disk? Never downloads to find out.
+
+    A FILE TEST NOW, not a library call. This asked faster-whisper for the model with
+    `local_files_only=True` and caught the exception — which reads as cheap and was not: on a
+    miss the HF layer still resolves the repo, so `status`, every settings poll and every queue
+    poll paid a network round trip to answer a question about the local disk. ggml is one file
+    per model, so its presence IS the answer.
+    """
+    f = _ggml(model or local_model())
+    # A PARTIAL DOWNLOAD IS NOT A MODEL. The file appears the moment the fetch starts, and a
+    # truncated one loads and then fails mid-transcription — the same trap `models.is_cached`
+    # documents for the LLM weights, where a 66 MB slice of a 1.5 GB file reported as ready.
+    return f.is_file() and f.stat().st_size > 1_000_000
 
 
 def fetch(model: str = "") -> str:
@@ -395,8 +483,10 @@ def fetch(model: str = "") -> str:
     what pays. Better to say the number and let the owner choose the moment.
     """
     name = model or local_model()
-    from faster_whisper.utils import download_model
-    download_model(name)
+    from pywhispercpp import utils as _u
+
+    stt_dir().mkdir(parents=True, exist_ok=True)
+    _u.download_model(name, str(stt_dir()))
     return name
 
 
@@ -443,31 +533,11 @@ def ane_support() -> tuple[bool, str]:
     return True, ""
 
 
-def _device() -> tuple[str, str]:
-    """(device, compute type). Uses a GPU that is ALREADY here; never asks for one.
-
-    WE DO NOT BUNDLE CUDA, and that is deliberate rather than lazy. cuDNN and cuBLAS are 2-3 GB
-    of wheels against a 58 MB binary; PyInstaller and ctypes-loaded native libraries are already
-    a scar in this repo; and macOS — the primary target — has no CUDA at all, so it would help
-    neither the build we ship nor the person we ship it to. Transcription is queued and
-    post-call besides: `medium` does a five-minute call in about 100 seconds on a CPU while
-    nothing waits for it.
-    
-    But refusing a GPU someone already has is just as wrong, and detecting one costs a single
-    call. On a machine with CUDA properly installed this is roughly an order of magnitude
-    faster; everywhere else it is exactly what it was.
-    """
-    if forced := os.getenv("SECRETARY_STT_DEVICE"):
-        return forced, os.getenv("SECRETARY_STT_COMPUTE", "default")
-    try:
-        import ctranslate2
-        if ctranslate2.get_cuda_device_count() > 0:
-            return "cuda", os.getenv("SECRETARY_STT_COMPUTE", "float16")
-    except Exception:
-        pass                        # no ctranslate2, no driver, no GPU — all mean CPU
-    return "cpu", os.getenv("SECRETARY_STT_COMPUTE", "int8")
-
-
+# `_device()` LIVED HERE and is gone with faster-whisper. It asked CTranslate2 whether a CUDA
+# device was present and picked a compute type, which was the only choice available: CTranslate2
+# ships CPU and CUDA backends and has no Metal path, so on a Mac the answer was always the CPU.
+# ggml picks its own backend from what the wheel was built with, so there is nothing to choose —
+# `backend()` reports what it picked rather than deciding for it.
 def _load(name: str):
     """Load the model, falling back to CPU if the GPU path will not start.
 
@@ -476,18 +546,58 @@ def _load(name: str):
     transcription failure on a real recording — three retries later the file is written off for
     a reason that has nothing to do with it.
     """
-    from faster_whisper import WhisperModel
-    device, compute = _device()
-    try:
-        m = WhisperModel(name, device=device, compute_type=compute)
-        logger.info("speech model %s loaded on %s (%s)", name, device, compute)
-        return m
-    except Exception as exc:
-        if device == "cpu":
-            raise
-        logger.warning("%s would not load on %s (%s: %s) — falling back to the CPU",
-                       name, device, type(exc).__name__, exc)
-        return WhisperModel(name, device="cpu", compute_type="int8")
+    from pywhispercpp.model import Model
+
+    # MODELS_DIR IS OURS, not platformdirs'. See `stt_dir`.
+    stt_dir().mkdir(parents=True, exist_ok=True)
+    # Logs to a file rather than the terminal: whisper.cpp prints a page of backend detail on
+    # every load, and it goes where the rest of the daemon's diagnostics go.
+    m = Model(name, models_dir=str(stt_dir()),
+              redirect_whispercpp_logs_to=str(paths_run_log()), print_progress=False)
+    logger.info("speech model %s loaded on %s", name, backend())
+    return m
+
+
+def paths_run_log() -> pathlib.Path:
+    """Where whisper.cpp's own chatter goes. Its own file — it is verbose, per load, and none
+    of it is about this app."""
+    from . import paths
+    paths.RUN.mkdir(parents=True, exist_ok=True)
+    return paths.RUN / "whisper-cpp.log"
+
+
+def _audio16k(path: pathlib.Path) -> "object":
+    """One recording as mono float32 at 16 kHz, which is the only shape the engine accepts.
+
+    IN MEMORY, not via a rewritten file. `Model.transcribe` takes a numpy array, so there is no
+    temporary wav to write, name, or clean up — and no `audioop`, which does this in the stdlib
+    and is deprecated in 3.13.
+
+    The engine refuses anything but 16 kHz outright, and we record at 24 kHz because that is
+    what the SDK streams. Resampling here rather than recording at 16 kHz is deliberate: the
+    recording is the artefact the owner keeps and a future engine may want the extra bandwidth,
+    while this array exists for the length of one call to the model.
+    """
+    import numpy as np
+
+    with wave.open(str(path), "rb") as r:
+        rate, chans, width, n = (r.getframerate(), r.getnchannels(),
+                                 r.getsampwidth(), r.getnframes())
+        raw = r.readframes(n)
+    if width != 2:
+        raise TranscriptionUnavailable(f"{path.name} is {width * 8}-bit; this engine needs 16")
+    a = np.frombuffer(raw, dtype=np.int16).astype(np.float32)
+    if chans == 2:
+        a = a.reshape(-1, 2).mean(axis=1)
+    elif chans != 1:
+        raise TranscriptionUnavailable(f"{path.name} has {chans} channels; needs mono or stereo")
+    if rate != 16_000 and len(a):
+        # Linear interpolation. Not a windowed resampler, and it does not need to be: speech
+        # recognition on telephony-band audio is unaffected by the imaging a 24k->16k linear
+        # pass leaves above 8 kHz, which is above the band the audio ever carried.
+        want = int(len(a) * 16_000 / rate)
+        a = np.interp(np.linspace(0, len(a) - 1, want), np.arange(len(a)), a)
+    return (a / 32768.0).astype(np.float32)
 
 
 
@@ -500,7 +610,6 @@ def _local(path: pathlib.Path) -> str:
     drains strictly one at a time.
     """
     global _local_model, _loaded_name
-    from faster_whisper import WhisperModel
     want = local_model()
     # Reload when the tier CHANGES. Without this, raising the quality does nothing until the
     # daemon restarts, and the owner sees no difference from a setting they just changed.
@@ -530,15 +639,32 @@ def _local(path: pathlib.Path) -> str:
     # is a word that can appear in a transcript nobody said.
     name = owner.name()
     prompt = f"A call for {name}." if name and name != owner.DEFAULT_NAME else None
-    segments, info = _local_model.transcribe(str(path), beam_size=BEAM_SIZE, language=lang,
-                                             vad_filter=VAD, initial_prompt=prompt)
-    text = "".join(s.text for s in segments).strip()
-    if lang is None:
-        # SAY WHAT IT GUESSED. A wrong guess produces a fluent transcript of the wrong language,
-        # which reads as a broken recording rather than a misconfiguration — this is the only
-        # place that difference is visible.
-        logger.info("%s: language guessed as %s (p=%.2f) — set `## Language` in settings.md if "
-                    "that is wrong", path.name, info.language, info.language_probability)
+    segs = _local_model.transcribe(
+        _audio16k(path),
+        language=lang or "auto",
+        initial_prompt=prompt or "",
+        # ONE THREAD LESS THAN THE MACHINE HAS. The queue is strictly sequential and nothing
+        # waits on the result, so taking every core would stall the daemon's own work — the
+        # channel poll, a page load — for the length of a transcription.
+        n_threads=max(1, (os.cpu_count() or 2) - 1),
+        translate=False,
+        # FINER THAN ONE SEGMENT PER FILE, which is what the defaults give: a 19-second leg came
+        # back as a single 0.00-18.78s segment, and a whole-file segment carries no turn
+        # information at all — the timings would be exact and useless. `max_len` is in
+        # characters and `split_on_word` keeps the cut off the middle of a word.
+        token_timestamps=True,
+        max_len=SEGMENT_CHARS,
+        split_on_word=True,
+    )
+    # TIMINGS ARE KEPT, and they are the reason for this engine. Every segment carries `t0` and
+    # `t1` in CENTISECONDS, so two legs of one call can be interleaved by arithmetic instead of
+    # by aligning their text — see `_merge_text`. faster-whisper returned them too and this
+    # module threw them away; that is what the whole approximate path existed to work around.
+    _last_segments[str(path)] = [(s.t0 / 100.0, s.t1 / 100.0, s.text.strip()) for s in segs]
+    text = " ".join(s.text.strip() for s in segs).strip()
+    if not lang:
+        logger.info("%s: no language pinned, so the engine guessed — set `## Language` in "
+                    "settings.md if the transcript comes back in the wrong one", path.name)
     return text
 
 
@@ -694,40 +820,24 @@ async def worker() -> None:
 # saying so and no way to remove any of it. A model that downloads itself silently must be
 # removable in the same place.
 
-def _repo(model: str) -> str:
-    """The Hugging Face repo behind a model name, asked of FASTER-WHISPER rather than kept here.
-
-    A hand-written copy of this map drifts the moment the library adds a model — and it already
-    had: `large-v3-turbo` was sitting in the cache on this machine under a repo the local map
-    did not know.
-    """
-    try:
-        from faster_whisper.utils import _MODELS
-        return _MODELS.get(model, "")
-    except Exception:
-        return ""
-
-
 def model_dir(model: str) -> pathlib.Path | None:
-    """The cache directory holding this model, or None when it is not downloaded."""
-    repo = _repo(model)
-    if not repo:
-        return None
-    root = pathlib.Path(os.getenv("HF_HOME") or (pathlib.Path.home() / ".cache/huggingface"))
-    d = root / "hub" / ("models--" + repo.replace("/", "--"))
-    return d if d.is_dir() else None
+    """The file holding this model, or None when it is not downloaded.
+
+    ONE FILE, NOT A CACHE DIRECTORY. This used to resolve a Hugging Face repo name through
+    `faster_whisper.utils._MODELS` and then reconstruct the hub's `models--org--name` layout by
+    hand — a `_repo` lookup, an `HF_HOME` guess, and a rule about not following symlinks because
+    the hub keeps a blob and links to it (counting both reported 927 MB for a 464 MB model).
+    ggml ships one `.bin` per model in a directory we own, so all of that is gone: the path IS
+    the answer and its size IS the size.
+    """
+    f = _ggml(model)
+    return f if f.is_file() else None
 
 
 def size_on_disk(model: str) -> int:
     """Megabytes this model actually occupies, or 0 when absent. Measured, not from the table."""
-    d = model_dir(model)
-    if not d:
-        return 0
-    # NOT SYMLINKS. The hub cache keeps one copy under blobs/ and links to it from
-    # snapshots/, so following both counts every byte twice — it reported 927 MB for a model
-    # `du` puts at 464.
-    return int(sum(f.stat().st_size for f in d.rglob("*")
-                   if f.is_file() and not f.is_symlink()) / 1024 / 1024)
+    f = model_dir(model)
+    return int(f.stat().st_size / 1024 / 1024) if f else 0
 
 
 def delete_model(model: str) -> str:
@@ -738,8 +848,12 @@ def delete_model(model: str) -> str:
     if not d:
         return f"{model} is not downloaded."
     freed = size_on_disk(model)
-    import shutil
-    shutil.rmtree(d, ignore_errors=True)
+    # UNLINK, not rmtree: `d` is the model file itself now, and rmtree on a file does nothing
+    # silently — which would have reported the space as freed with the model still on disk.
+    try:
+        d.unlink()
+    except OSError as exc:
+        return f"Could not delete {model}: {exc}"
     return f"Deleted Whisper {model}, freeing {freed} MB."
 
 
@@ -893,239 +1007,71 @@ def _merge_audio(stem: str, wavs: list[pathlib.Path]) -> bool:
     return True
 
 
-#: Shortest run of words that counts as attribution. A single word matches by coincidence —
-#: "yes", "the", a name — and one wrong word starts a turn in the wrong mouth.
-MIN_RUN = 2
-#: How much of the mixed transcript must be attributed before the order is worth claiming.
-#: Below this the reconstruction is mostly holes, and a mostly-holed order is a guess.
-MIN_ATTRIBUTED = 0.6
-
-
-def _runs(mixed: list[str],
-          legs_words: dict[str, list[str]]) -> list[tuple[int, int, int, str]]:
-    """Which stretches of the MIXED transcript came from which leg.
-
-    `difflib` between the mixed word list and one leg's own word list: that leg's words appear
-    in the mixed audio in the same order, so its matching blocks are where it was speaking.
-    Runs shorter than MIN_RUN are dropped as coincidence, and where two legs claim the same
-    stretch the longer match wins — the shorter one is the other party's words leaking into a
-    channel, which is exactly what mixing does.
-    """
-    import difflib
-
-    blocks: list[tuple[int, int, int, str]] = []
-    for leg, words in legs_words.items():
-        if not words:
-            continue
-        sm = difflib.SequenceMatcher(a=mixed, b=words, autojunk=False)
-        for m in sm.get_matching_blocks():
-            if m.size >= MIN_RUN:
-                # The leg offset is carried too, because the WORDS come from the leg and only
-                # the ORDER comes from the mix — see `_ordered`.
-                blocks.append((m.a, m.a + m.size, m.b + m.size, leg))
-    blocks.sort(key=lambda b: (b[0], -(b[1] - b[0])))
-    kept: list[tuple[int, int, int, str]] = []
-    for start, end, upto, leg in blocks:
-        if kept and start < kept[-1][1]:
-            # TRIM THE OVERLAP, DO NOT DISCARD THE RUN. Discarding cost a whole turn on the
-            # first real call: the caller's block absorbed one shared word ("The", which both
-            # parties said) at the exact index where the callee's four-word run began, so a
-            # ONE-WORD overlap deleted the callee from the transcript entirely and the ordering
-            # then reported that party as absent from the mix. Common words are shared by
-            # definition in a conversation, so an overlap is the normal case and not a conflict.
-            start = kept[-1][1]
-            if end - start < MIN_RUN:
-                continue
-        kept.append((start, end, upto, leg))
-    return kept
-
-
-#: How far past a match a boundary may be pushed to finish the sentence. Unbounded, a single
-#: match could swallow a party's entire remaining transcript and destroy the order it was
-#: meant to establish.
-SNAP_WORDS = 12
-
-
-def _sentence_end(words: list[str], upto: int) -> int:
-    """`upto`, extended to the end of the sentence it falls inside."""
-    if upto <= 0 or upto >= len(words):
-        return upto
-    if words[upto - 1].endswith((".", "?", "!")):
-        return upto
-    for i in range(upto, min(len(words), upto + SNAP_WORDS)):
-        if words[i].endswith((".", "?", "!")):
-            return i + 1
-    return upto
-
-
-def _ordered(mixed_text: str, leg_texts: dict[str, str]) -> tuple[list[tuple[str, str]], float]:
-    """Turns in speaking order, and the fraction of the mixed transcript that was attributed.
-
-    APPROXIMATE BY CONSTRUCTION, and the caller must say so. Speech recognition on mixed audio
-    does not produce the same words as on an isolated leg — overlapping talk degrades it and
-    can fuse two speakers into one utterance — so this is text alignment, not timing. What it
-    buys is the one thing the isolated legs cannot give: who spoke first.
-    """
-    mixed = mixed_text.split()
-    if not mixed:
-        return [], 0.0
-    words = {leg: t.split() for leg, t in leg_texts.items()}
-    kept = _runs(mixed, words)
-    if not kept:
-        return [], 0.0
-    # EVERY PARTY MUST APPEAR IN THE MIX, or "100% attributed" is a lie. On the first real
-    # call this returned 1.0 with one speaker missing entirely: the mix held only the caller,
-    # so every word of it was placed — and the callee's turn appeared solely because unmatched
-    # leg words are appended at the end. The share measures how much of the MIX was placed, so
-    # a one-sided mix scores perfectly while ordering nothing. Both must be seen.
-    spoke = {leg for _, _, _, leg in kept}
-    if any(leg not in spoke for leg in words):
-        logger.info("ordering: %s did not appear in the mix at all — no order to infer",
-                    ", ".join(sorted(set(words) - spoke)))
-        return [], 0.0
-    turns: list[tuple[str, str]] = []
-    covered = 0
-    # THE WORDS COME FROM THE LEG, NOT FROM THE MIX. Emitting the matched span of the mixed
-    # transcript would publish the WORSE transcription of every turn — mixed audio is exactly
-    # where recognition degrades, and the isolated legs are the accurate copy. So each run
-    # consumes that leg's own words up to the end of the match, which also keeps the words the
-    # mix dropped: they were said, they are in the leg, and losing them to gain an order would
-    # be a bad trade.
-    taken = {leg: 0 for leg in words}
-    for start, end, upto, leg in kept:
-        covered += end - start
-        # SNAP THE SEAM TO A SENTENCE. Word-level alignment cuts wherever the match happened to
-        # end, and on the first real call that orphaned a lone "The" at the close of one turn
-        # and started the next with "cat jump over the fox." The order was right and the
-        # sentences were wrecked, which reads worse than not ordering at all. A speech turn is
-        # sentence-shaped, so the boundary is extended to the end of the sentence it lands in.
-        upto = _sentence_end(words[leg], upto)
-        if upto <= taken[leg]:
-            continue                          # already emitted by an earlier run's snap
-        said = " ".join(words[leg][taken[leg]:upto]).strip()
-        taken[leg] = upto
-        if not said:
-            continue
-        # MERGE A CONSECUTIVE RUN BY THE SAME PARTY. Alignment breaks one turn into several
-        # blocks wherever the mixed transcript dropped a word, and three bubbles from the same
-        # speaker in a row is a worse reading of the call than one.
-        if turns and turns[-1][0] == leg:
-            turns[-1] = (leg, turns[-1][1] + " " + said)
-        else:
-            turns.append((leg, said))
-    # ANYTHING LEFT AT THE END still belongs to its speaker. A leg whose last sentence never
-    # made it into the mix would otherwise vanish from the call record entirely.
-    for leg, n in taken.items():
-        tail = " ".join(words[leg][n:]).strip()
-        if not tail:
-            continue
-        if turns and turns[-1][0] == leg:
-            turns[-1] = (leg, turns[-1][1] + " " + tail)
-        else:
-            turns.append((leg, tail))
-    return turns, covered / len(mixed)
-
-
-def _mono_for_ordering(stem: str) -> pathlib.Path | None:
-    """A throwaway MONO downmix of the merged call, for reconstructing turn order only.
-
-    THE STEREO FILE CANNOT BE USED FOR THIS, and the first real call proved it: Apple's engine
-    reads only channel one, so the mix it transcribed contained the caller and not one word of
-    the callee. Checked directly — the right channel transcribes perfectly on its own, and a
-    mono sum of the two returns both parties interleaved, which is the ordering signal.
-    outside both the legs folder and the owner's, because `pending()` globs the legs for work
-    and this is not work, and because nobody asked to keep a downmix.
-    Averaged rather than summed so two loud parties cannot clip. Accuracy barely matters here:
-    the words that reach the transcript come from the legs, and this file is only ever asked
-    what order they came in.
-    """
-    import struct
-    import tempfile
-
-    from . import carry
-
-    src = carry.merged_wav(stem)
-    try:
-        with wave.open(str(src), "rb") as f:
-            if f.getnchannels() != 2:
-                return None
-            rate, n, width = f.getframerate(), f.getnframes(), f.getsampwidth()
-            raw = f.readframes(n)
-        got = struct.unpack("<%dh" % (len(raw) // 2), raw)
-        out = pathlib.Path(tempfile.mkdtemp(prefix="ad-mix-")) / f"{stem}.wav"
-        with wave.open(str(out), "wb") as w:
-            w.setnchannels(1)
-            w.setsampwidth(width)
-            w.setframerate(rate)
-            w.writeframes(b"".join(struct.pack("<h", (a + b) // 2)
-                                   for a, b in zip(got[0::2], got[1::2])))
-        return out
-    except (OSError, wave.Error, struct.error) as exc:
-        logger.info("merge %s: could not build a mono mix for ordering (%s)", stem, exc)
-        return None
-
-
 def _merge_text(stem: str, wavs: list[pathlib.Path]) -> None:
-    """One transcript per call, each turn labelled with who said it.
+    """One transcript per call, in speaking order, each turn labelled with who said it.
 
-    IN SPEAKING ORDER WHEN THAT CAN BE RECONSTRUCTED, grouped by party when it cannot. The
-    order comes from transcribing the MIXED audio as well: the legs know who spoke, the mix
-    knows in what order, and aligning the two joins them.
+    EXACT NOW, from timings rather than from text alignment. Every segment carries `t0`/`t1`,
+    and each leg's `.start` sidecar says when its first frame arrived — so both legs sit on one
+    clock and interleaving is a sort. What this replaces was 150 lines: a mono downmix of the
+    stereo merge, a third transcription of it, difflib alignment of that against each leg, a
+    confidence floor, an overlap trimmer and a sentence snapper. All of it existed to guess an
+    order that the engine was reporting all along.
 
-    NOTHING IS WRITTEN INTO THE FILE ABOUT HOW IT WAS MADE. Two drafts carried a `#` header
-    explaining that the order was reconstructed, or that it could not be — and that is a note
-    about our machinery in the middle of the owner's transcript. Stanley's rule, restated
-    2026-09-09: no hints, no debug lines, unless asked for. The distinction still exists and is
-    still recorded — `logger.info` says what share was placed and when it fell back to
-    grouping, which is where a note to ourselves belongs.
+    NOTHING IS WRITTEN INTO THE FILE ABOUT HOW IT WAS MADE — no header, no percentage. It is
+    the owner's transcript, and a note about our machinery does not belong in the middle of
+    their conversation.
 
-    The exact route stays open and is not this: per-utterance timings, which faster-whisper
-    already returns and this package discards, and which Apple's helper does not print yet.
+    Falls back to grouping by party when timings are missing, which happens for a leg
+    transcribed by an earlier build.
     """
     from . import carry
     labels = {"caller": "them", "callee": "you"}
-    leg_texts: dict[str, str] = {}
+    legs: dict[str, pathlib.Path] = {}
     for leg in labels:
         hit = next((w for w in wavs if w.stem.endswith("-" + leg)), None)
-        if hit is None:
-            continue
-        txt = hit.with_suffix(".txt")
-        if txt.exists():
-            try:
-                leg_texts[leg] = txt.read_text().strip()
-            except OSError:
-                pass
-    leg_texts = {k: v for k, v in leg_texts.items() if v}
-    if not leg_texts:
+        if hit is not None and hit.with_suffix(".txt").exists():
+            legs[leg] = hit
+
+    def _text(w: pathlib.Path) -> str:
+        try:
+            return w.with_suffix(".txt").read_text().strip()
+        except OSError:
+            return ""
+
+    legs = {k: v for k, v in legs.items() if _text(v)}
+    if not legs:
         return
 
-    parts: list[str] = []
-    # ONLY WORTH TRYING WITH TWO PARTIES. One leg's words are already in order, so mixing adds
-    # a transcription and can only lose accuracy.
-    if len(leg_texts) > 1:
-        mixed = ""
-        mono = _mono_for_ordering(stem)
-        if mono is not None:
-            try:
-                mixed = transcribe(mono)
-            except Exception as exc:
-                logger.info("merge %s: could not transcribe the mix for ordering (%s)",
-                            stem, exc)
-            finally:
-                try:
-                    mono.unlink()
-                    mono.parent.rmdir()
-                except OSError:
-                    pass
-        if mixed:
-            turns, share = _ordered(mixed, leg_texts)
-            if turns and share >= MIN_ATTRIBUTED:
-                parts = [f"{labels[leg]}: {said}" for leg, said in turns]
+    # ONE CLOCK FOR BOTH LEGS. Each leg's timings start at ITS OWN first frame, and the far leg
+    # is originated toward the PBX so it can begin seconds after the near one — the same offset
+    # the stereo merge pads with. Without it the later leg's turns all sit too early.
+    starts = {leg: _leg_start(w) for leg, w in legs.items()}
+    base = min((v for v in starts.values() if v is not None), default=None)
+    turns: list[tuple[float, str, str]] = []
+    ordered = base is not None
+    for leg, w in legs.items():
+        segs = segments_for(w)
+        if not segs or starts.get(leg) is None:
+            ordered = False
+            break
+        offset = starts[leg] - base
+        for t0, _t1, said in segs:
+            if said:
+                turns.append((t0 + offset, leg, said))
+    if ordered and turns:
+        turns.sort(key=lambda x: x[0])
+        parts: list[str] = []
+        for _at, leg, said in turns:
+            # MERGE A RUN BY THE SAME PARTY. Segments are shorter than turns on purpose, so a
+            # sentence arrives in pieces; three bubbles from one speaker in a row reads worse
+            # than one.
+            if parts and parts[-1].startswith(labels[leg] + ":"):
+                parts[-1] += " " + said
             else:
-                logger.info("merge %s: ordering placed only %.0f%% — grouping instead",
-                            stem, share * 100)
-    if not parts:
-        parts = [f"{labels[leg]}: {leg_texts[leg]}" for leg in labels if leg in leg_texts]
+                parts.append(f"{labels[leg]}: {said}")
+    else:
+        logger.info("merge %s: no timings for one or both legs — grouping by party", stem)
+        parts = [f"{labels[leg]}: {_text(legs[leg])}" for leg in labels if leg in legs]
     try:
         carry.merged_txt(stem).write_text("\n".join(parts) + "\n")
     except OSError as exc:

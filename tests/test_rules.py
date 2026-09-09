@@ -547,7 +547,9 @@ def test_answered_call_recording() -> None:
     # So assert the name resolution only where it CAN hold, and keep the legacy-adjective
     # assertions unconditional — those go through QUALITY, need no engine, and are the ones
     # guarding the documented failure (an upgrade silently moving an instance to another tier).
-    engine_known = bool(_t._repo("small"))
+    # `_repo` is gone with faster-whisper: ggml is one file per model in a directory we own,
+    # so "does the engine know this name" is a membership test rather than a repo lookup.
+    engine_known = "small" in _t._known_models()
     if not engine_known:
         print("     (faster-whisper absent — name-resolution checks skipped, legacy map still checked)")
     for model in _t.TIERS:
@@ -665,17 +667,19 @@ def test_answered_call_recording() -> None:
         eq("a tier changed after import takes effect immediately", _t.local_model(), "large-v3")
     _o.environ.pop("SECRETARY_STT_QUALITY", None)
 
-    # A GPU IS USED IF PRESENT, NEVER REQUIRED. CUDA is not bundled — 2-3 GB of wheels against a
-    # 58 MB binary, and macOS has none at all — so this must degrade to CPU silently on the
-    # machines we actually ship to, and must never raise while merely deciding.
-    dev, comp = _t._device()
-    ok("a device is chosen without raising", dev in ("cpu", "cuda") and bool(comp), f"{dev}/{comp}")
-    _o.environ["SECRETARY_STT_DEVICE"] = "cuda"
-    eq("an explicit device wins", _t._device()[0], "cuda")
-    _o.environ.pop("SECRETARY_STT_DEVICE", None)
-    _o.environ["SECRETARY_STT_COMPUTE"] = "float32"
-    eq("and the compute type can be set with it", _t._device()[1], "float32")
-    _o.environ.pop("SECRETARY_STT_COMPUTE", None)
+    # THE BACKEND IS REPORTED, NOT CHOSEN. `_device()` used to ask CTranslate2 whether CUDA was
+    # present and pick a compute type — the only choice available, since CTranslate2 has no
+    # Metal path and always answered "cpu" on a Mac. ggml picks its own from what the wheel was
+    # built with, so there is nothing to decide and the job is to say what it picked.
+    ok("the backend is named without raising", _t.backend() in ("", "CPU", "GPU (Metal)"),
+       _t.backend())
+    # ASKED OF THE SHIPPED LIBRARIES, not of the platform: a wheel built without Metal on a Mac
+    # would otherwise be reported as accelerated.
+    body = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+            / "transcribe.py").read_text()
+    ok("and read from the dylibs beside the package",
+       'glob("libggml-metal*.dylib")' in body)
+    ok("no CTranslate2 device chooser survives", "def _device()" not in body)
 
     # Checking the cache must never trigger a download — that is the whole point of asking.
     ok("an absent model reports uncached rather than fetching it",
@@ -3520,87 +3524,68 @@ def test_one_call_one_file() -> None:
         eq("a pre-move recording is still found", (folder, names), (R, [old]))
 
 
-def test_approximate_speaking_order() -> None:
-    """Order from the mixed transcript, words from the legs, and never a lost word."""
-    print("\n  -- approximate turn order --")
-    from agentduet_desktop.transcribe import MIN_ATTRIBUTED, _ordered
+def test_exact_speaking_order() -> None:
+    """Turn order comes from timings now, not from aligning text against a mixed transcript."""
+    print("\n  -- exact turn order --")
+    import unittest.mock as mock
+    import wave as _wave
+    from agentduet_desktop import carry, transcribe
 
-    them = "hi is that the delivery for tuesday i wanted to check the time"
-    you = "yes tuesday morning between nine and eleven does that work for you"
-    every = sorted((them + " " + you).split())
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+           / "transcribe.py").read_text()
 
-    perfect = ("hi is that the delivery for tuesday yes tuesday morning between nine and "
-               "eleven i wanted to check the time does that work for you")
-    turns, share = _ordered(perfect, {"caller": them, "callee": you})
-    eq("a clean mix is fully attributed", round(share, 2), 1.0)
-    eq("and gives four turns in order", [leg for leg, _ in turns],
-       ["caller", "callee", "caller", "callee"])
+    # THE WHOLE APPROXIMATE PATH IS GONE, not left standing beside the exact one. It was 150
+    # lines — a mono downmix, a third transcription, difflib alignment, a confidence floor, an
+    # overlap trimmer, a sentence snapper — and every line of it existed to guess an order the
+    # engine reports directly.
+    for dead in ("_mono_for_ordering", "_ordered(", "def _runs(", "MIN_ATTRIBUTED",
+                 "_sentence_end"):
+        ok(f"{dead} is gone", dead not in src)
 
-    # THE WORDS MUST COME FROM THE LEGS, NOT THE MIX. Mixed audio is exactly where recognition
-    # degrades, so emitting the matched span of the mixed transcript would publish the worse
-    # copy of every turn — and drop whatever the mix missed.
-    dropped = ("hi is that the delivery tuesday yes tuesday morning between nine eleven "
-               "i wanted to check the time does that work for you")
-    turns, share = _ordered(dropped, {"caller": them, "callee": you})
-    ok("a degraded mix still orders", share >= MIN_ATTRIBUTED)
-    ok("and the words the MIX dropped survive",
-       "for tuesday" in " ".join(t for _, t in turns)
-       and "and eleven" in " ".join(t for _, t in turns))
-    for label, mixed in (("clean", perfect), ("degraded", dropped),
-                         ("mix ends early", perfect.rsplit(" ", 5)[0])):
-        turns, _ = _ordered(mixed, {"caller": them, "callee": you})
-        got = sorted(" ".join(t for _, t in turns).split())
-        eq(f"no word is lost ({label})", got, every)
+    # SEGMENTS MUST BE FINER THAN A TURN or exact timings are exact and useless: the defaults
+    # returned one segment spanning a whole 19-second leg.
+    ok("finer segments are asked for",
+       "token_timestamps=True" in src and "max_len=SEGMENT_CHARS" in src
+       and "split_on_word=True" in src)
 
-    # A MIX TOO POOR TO ALIGN MUST NOT BE ORDERED AT ALL. A mostly-holed reconstruction is a
-    # guess, and a guessed order on a call record is worse than no order.
-    turns, share = _ordered("hi uh yeah so tuesday then okay right",
-                            {"caller": them, "callee": you})
-    ok("a hopeless mix falls below the threshold", share < MIN_ATTRIBUTED, share)
+    home = pathlib.Path(tempfile.mkdtemp(prefix="order-test-"))
+    R, L = home / "recordings", home / "legs"
+    with mock.patch.object(carry, "recordings", lambda: R), \
+         mock.patch.object(carry, "legs", lambda: L):
+        L.mkdir(parents=True)
+        R.mkdir(parents=True)
+        stem = "20260909T130000-cZ"
+        for leg in ("caller", "callee"):
+            w = L / f"{stem}-{leg}.wav"
+            with _wave.open(str(w), "wb") as f:
+                f.setnchannels(1)
+                f.setsampwidth(2)
+                f.setframerate(24000)
+                f.writeframes(b"\0" * 48000)
+            w.with_suffix(".txt").write_text("x\n")
+        # THE LEGS SIT ON ONE CLOCK, and the offset is what puts them there. The far leg is
+        # originated toward the PBX and can begin seconds after the near one; without the
+        # offset its turns all land too early.
+        (L / f"{stem}-caller.start").write_text("1000.000\n")
+        (L / f"{stem}-callee.start").write_text("1002.000\n")
+        transcribe._last_segments[str(L / f"{stem}-caller.wav")] = [
+            (0.0, 1.0, "is that the delivery"), (3.0, 4.0, "and the time")]
+        transcribe._last_segments[str(L / f"{stem}-callee.wav")] = [
+            (0.0, 1.0, "yes tuesday")]          # +2s once the offset is applied
+        transcribe._merge_text(stem, sorted(L.glob("*.wav")))
+        body = carry.merged_txt(stem).read_text()
+        eq("turns interleave by time, with the offset applied",
+           body.strip().splitlines(),
+           ["them: is that the delivery", "you: yes tuesday", "them: and the time"])
+        ok("and no commentary is written", "#" not in body)
 
-    # ---- the three defects the first REAL call exposed, 2026-09-08 audio -----------------
-    #
-    # (1) A ONE-SIDED MIX MUST NOT SCORE 100%. Apple reads only channel one of a stereo file,
-    # so the mix held the caller and not one word of the callee — and every word of that mix
-    # was placed, giving perfect confidence for an ordering that ordered nothing.
-    turns, share = _ordered("hi is that the delivery for tuesday",
-                            {"caller": them, "callee": you})
-    eq("a mix missing a party scores zero", share, 0.0)
-    eq("and yields no turns", turns, [])
-
-    # (2) A ONE-WORD OVERLAP MUST TRIM, NOT DISCARD. Both parties say "the", so the caller's
-    # block absorbed the shared word exactly where the callee's run began and the whole run
-    # was dropped — deleting that party from the transcript.
-    a, b = "the cat sat on the mat", "the dog barked loudly"
-    turns, _ = _ordered("the cat sat on the mat the dog barked loudly", {"caller": a, "callee": b})
-    eq("both parties survive a shared word", sorted({leg for leg, _ in turns}),
-       ["callee", "caller"])
-
-    # (3) SEAMS SNAP TO SENTENCES. Word-level cuts orphaned a lone "The" at the end of one turn
-    # and started the next mid-sentence: the order was right and the sentences were wrecked,
-    # which reads worse than not ordering at all.
-    pt = "Hi, is that the delivery for Tuesday? I wanted to check the time."
-    py_ = "Yes, Tuesday morning. Does that work for you?"
-    turns, share = _ordered("Hi, is that the delivery for Tuesday? Yes, Tuesday morning. "
-                            "I wanted to check the time. Does that work for you?",
-                            {"caller": pt, "callee": py_})
-    eq("a punctuated call interleaves", [leg for leg, _ in turns],
-       ["caller", "callee", "caller", "callee"])
-    ok("and every turn is whole sentences",
-       all(t.strip().endswith((".", "?", "!")) for _, t in turns), [t for _, t in turns])
-
-    # And a one-party call is already in order, so mixing could only lose accuracy.
-    body = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
-            / "transcribe.py").read_text()
-    ok("ordering is only attempted with two parties", "if len(leg_texts) > 1:" in body)
-    ok("ordering reads a MONO downmix, since a stereo file loses a channel",
-       "_mono_for_ordering" in body and "getnchannels() != 2" in body)
-    # NO HINTS IN THE ARTEFACT. The share and the fallback are logged, not written into the
-    # owner's transcript.
-    ok("no header is written into the transcript",
-       "# speaking order" not in body and "# not in speaking order" not in body)
-    ok("but the fallback is still recorded in the log",
-       "ordering placed only" in body)
+        # NO TIMINGS MEANS NO CLAIM. A leg transcribed by an earlier build has none, and
+        # inventing an order for it would be the guess this replaced.
+        transcribe._last_segments.clear()
+        transcribe._merge_text(stem, sorted(L.glob("*.wav")))
+        eq("without timings it groups by party",
+           carry.merged_txt(stem).read_text().strip().splitlines(),
+           ["them: x", "you: x"])
 
 
 def test_a_fresh_install_pins_english() -> None:
@@ -3661,7 +3646,7 @@ def main() -> None:
     test_the_folder_chooser_opens_and_says_when_it_cannot()
     test_a_question_survives_a_redraw()
     test_one_call_one_file()
-    test_approximate_speaking_order()
+    test_exact_speaking_order()
     test_the_hub_does_not_invent_a_sign_in_state()
     test_the_binary_can_reach_the_platform()
     test_a_declined_window_declines_the_browser()
