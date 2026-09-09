@@ -3597,6 +3597,51 @@ def test_one_call_one_file() -> None:
                         for b in t.finalbody for x in _ast.walk(b)
                         if isinstance(x, (_ast.Return, _ast.Break, _ast.Continue))]
                 ok("and nothing returns out of the recorder's finally", not _bad, len(_bad))
+
+        # AND THE BEHAVIOUR, not only the shape. The static checks above would pass a rename
+        # that happened at the wrong moment; this drives a real recorder and asks the queue
+        # WHILE it is still writing, which is the exact moment that produced a 10.5-second
+        # merge of a 24-second call. First async test in this file: the recorder is a coroutine
+        # and there is no way to observe the mid-call state without running one.
+        import asyncio as _aio
+
+        class _Party:
+            def __init__(self, chunks):
+                self.chunks = chunks
+
+            async def audio_stream(self):
+                for _ in range(self.chunks):
+                    yield b"\x11\x22" * 2400          # 0.1s at 24 kHz
+                    await _aio.sleep(0.005)
+
+        race = pathlib.Path(tempfile.mkdtemp(prefix="race-test-"))
+        with mock.patch.object(carry, "legs", lambda: race / "legs"), \
+             mock.patch.object(carry, "recordings", lambda: race / "recordings"):
+            (race / "legs").mkdir(parents=True)
+            (race / "recordings").mkdir(parents=True)
+
+            async def _drive():
+                task = _aio.create_task(
+                    carry._record_leg(_Party(40), "20260909T160000", "cRace", "caller"))
+                await _aio.sleep(0.12)                 # mid-recording, on purpose
+                mid = (sorted(p.suffix for p in (race / "legs").iterdir()),
+                       [p.name for p in transcribe.pending()],
+                       transcribe.merge_ready())
+                await task
+                return mid
+
+            suffixes, queued, mergeable = _aio.run(_drive())
+            ok("a leg in flight is on disk only as .part", ".part" in suffixes, suffixes)
+            eq("and the transcription queue cannot see it", queued, [])
+            eq("nor can the merge", mergeable, [])
+            done = sorted((race / "legs").glob("*.wav"))
+            eq("once closed it is published under its final name", len(done), 1)
+            eq("and then the queue sees it", [p.name for p in transcribe.pending()],
+               [done[0].name])
+            with _wave.open(str(done[0])) as _f:
+                # ALL of it, not the part captured before the queue was asked.
+                eq("with every frame kept",
+                   round(_f.getnframes() / _f.getframerate(), 1), 4.0)
         # THE INDEX MUST GLOB WHERE THE AUDIO IS. It asked the owner's folder after the legs
         # moved out of it, so every row would have named no files and the hub would report
         # "No recording." on a call whose audio was on disk.
