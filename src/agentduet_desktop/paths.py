@@ -70,6 +70,15 @@ SETTINGS = HOME / "settings.md"
 # page is a generic fallback (see canvas.page_for).
 CANVAS = HOME / "canvas"
 PEOPLE = HOME / "people"
+# HOW the owner wants the assistant to WORK — technique, not fact. Outside knowledge/ for two
+# reasons, and the second is the load-bearing one: knowledge/ is flat and PUBLIC, so it is what
+# the asker-facing agent answers callers from, and an owner's working method has no business
+# being disclosable — worse, put there it would change what strangers get told. And a fact is
+# quoted while a method is FOLLOWED, so they are read at different moments by different code.
+# One file, parsed by heading, the same shape as settings.md: these compete with the inbox for
+# the model's attention, so the owner has to be able to see the whole injected block at once and
+# reorder it. A directory hides the total, and nobody notices when there is too much.
+SKILLS = HOME / "skills.md"
 KNOWLEDGE = HOME / "knowledge"
 PERMISSIONS = HOME / "permissions.json"
 CAPABILITIES = HOME / "capabilities.json"

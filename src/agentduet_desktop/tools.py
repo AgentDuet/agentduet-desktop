@@ -859,7 +859,221 @@ def note_about(who: str, note: str) -> str:
     if not (who or "").strip():
         return "Say who this is about — a note with no one attached is a claim, not an observation."
     return people.add_note(who.strip(), "Who", note)
+# ---- skills: how the owner wants the assistant to WORK ------------------------------------
+#
+# A skill is a TECHNIQUE, not a fact and not a tool. Stanley's example is the one that makes the
+# case: "write each digit into an array, then answer by index" fixes last-4-digits AND first-3,
+# middle, reversed, count and sum — including the cases nobody enumerated. A `last_digits()` tool
+# is right every time and covers exactly the question it was written for; a technique generalises
+# and is only PROBABLE. That trade is the feature, so skills are nudges and must never be
+# described as guarantees.
+#
+# WHY THEY ARE CAPPED. Measured 2026-09-09 on qwen3-8b: one injected inbox block already
+# displaces the owner's actual question, so injected prose is a scarce resource and not a free
+# one. Past the cap, skill 6 silently stops skill 1 from working and nothing reports it — so the
+# limit is enforced at the write, where it can be explained, rather than by trimming at
+# injection time, where it would be invisible.
+MAX_SKILLS = 8
+#: Characters of skill prose the model is handed. One long skill costs the same attention as
+#: eight short ones, so the count alone is not a cap.
+MAX_SKILL_CHARS = 1200
+#: A skill kept but not injected. Deleting to test which one broke the others loses the owner's
+#: wording, so the shape they actually need is a switch.
+OFF_SUFFIX = " (off)"
+
+
+def _skills_raw() -> str:
+    try:
+        return paths.SKILLS.read_text()
+    except OSError:
+        return ""
+
+
+def _skill_sections(text: str = "") -> list[tuple[str, str]]:
+    """[(heading, body)] in file order, including the ones switched off."""
+    out = []
+    for m in re.finditer(r"^##\s+(.+?)\s*$(.*?)(?=^##\s|\Z)",
+                         text or _skills_raw(), re.S | re.M):
+        out.append((m.group(1).strip(), m.group(2).strip()))
+    return out
+
+
+def _spoken(body: str) -> str:
+    """A skill's text without the stored provenance comment — for anything a human or a model
+    reads back. The comment belongs in the file and nowhere else, and it was leaking into the
+    already-exists and text-not-found messages, which are the two an owner sees most."""
+    return re.sub(r"<!--.*?-->", "", body, flags=re.S).strip()
+
+
+def _bare(head: str) -> str:
+    """A skill's name without the off-marker, so a switched-off skill is not listed as
+    "digits (off)  [off]"."""
+    return head[:-len(OFF_SUFFIX)] if head.lower().endswith(OFF_SUFFIX.strip()) else head
+
+
+def _find_skill(name: str) -> tuple[str, str] | None:
+    """Match a skill by name, ignoring case and the off-marker. Exact-ish, never fuzzy —
+    see `edit_skill` on why similarity is not the model's call."""
+    want = (name or "").strip().lower().removesuffix(OFF_SUFFIX.strip()).strip()
+    for head, body in _skill_sections():
+        if head.lower().removesuffix(OFF_SUFFIX.strip()).strip() == want:
+            return head, body
+    return None
+
+
+def skills_prompt() -> str:
+    """The block handed to the model: enabled skills only, house comments stripped, capped.
+
+    Returns "" when there are none, so the caller adds no heading for an empty list — an empty
+    labelled section is one more thing competing with the question for attention.
+    """
+    parts = []
+    for head, body in _skill_sections():
+        if head.lower().endswith(OFF_SUFFIX.strip()):
+            continue
+        # Provenance is stored as an HTML comment, the way settings.md carries its guidance, so
+        # it survives in the file and never reaches the model as prose to reason about.
+        clean = _spoken(body)
+        if clean:
+            parts.append(f"- {head}: {clean}")
+    if not parts:
+        return ""
+    return "\n".join(parts)[:MAX_SKILL_CHARS]
+
+
+def list_skills() -> str:
+    """The owner's working instructions, by name, and whether each is switched on."""
+    rows = _skill_sections()
+    if not rows:
+        return "No skills yet. The owner can add one by telling the assistant how to work."
+    out = []
+    for head, body in rows:
+        off = head.lower().endswith(OFF_SUFFIX.strip())
+        out.append(f"- {_bare(head)}{'  [off]' if off else ''}: {_spoken(body)[:120]}")
+    return "\n".join(out) + f"\n({len(rows)} of {MAX_SKILLS} used)"
+
+
+def read_skills(name: str = "") -> str:
+    """One skill in full, or all of them when no name is given.
+
+    TAKES A NAME, the way `read_knowledge` takes a file — two verbs, list and read, rather than
+    a third `describe`. It is also what makes `edit_skill` usable: that enforces an exactly-once
+    match on the existing text, so there has to be a way to read one skill's exact wording
+    without the others as noise. Before this the model could only learn it by failing an edit
+    and reading the error, which is a poor way to find out.
+    """
+    if not (name or "").strip():
+        return _skills_raw().strip() or "No skills yet."
+    hit = _find_skill(name)
+    if hit is None:
+        return f"No skill called {name!r}. list_skills shows what there is."
+    head, body = hit
+    return f"## {_bare(head)}\n{_spoken(body)}"
+
+
+def add_skill(name: str, how: str) -> str:
+    """Record how the owner wants the assistant to work. Owner-approved only."""
+    name, how = (name or "").strip(), (how or "").strip()
+    if not name or not how:
+        return "Give the skill a short name and the instruction to follow."
+    if OFF_SUFFIX.strip() in name.lower():
+        return f"'{OFF_SUFFIX.strip()}' marks a skill as switched off, so it cannot be in a name."
+    hit = _find_skill(name)
+    if hit is not None:
+        # NEVER SILENTLY REPLACE. `reply_to`'s old blind fallback closed a 40% discount thread on
+        # the strength of "the signed copy is on its way", and the settings page cleared the
+        # owner's name while saving their number. Both were code deciding that two things were
+        # the same thing. Adding is the safe direction; replacing is edit_skill, with the exact
+        # old text, on its own approval.
+        return (f"NOT saved. A skill called {_bare(hit[0])!r} already exists:"
+                f"\n\n{_spoken(hit[1])}\n\n"
+                f"To change it use edit_skill with the exact text to replace. To keep both, "
+                f"give this one a different name.")
+    rows = _skill_sections()
+    if len(rows) >= MAX_SKILLS:
+        return (f"NOT saved. {len(rows)} of {MAX_SKILLS} skills are in use, and past that they "
+                f"crowd each other out rather than adding up. Switch one off or forget one "
+                f"first — list_skills shows them.")
+    body = _spoken(how)
+    if len(skills_prompt()) + len(name) + len(body) + 4 > MAX_SKILL_CHARS:
+        return (f"NOT saved. That would push the skills past {MAX_SKILL_CHARS} characters, which "
+                f"is the point where they start displacing the owner's own question.")
+    text = _skills_raw() or "# Skills\n\nHow the assistant should work. Owner-written.\n"
+    stamp = datetime.now().isoformat(timespec="seconds")
+    text = text.rstrip() + f"\n\n## {name}\n<!-- added {stamp} -->\n{body}\n"
+    paths.SKILLS.parent.mkdir(parents=True, exist_ok=True)
+    paths.SKILLS.write_text(text)
+    return f"Saved the skill {name!r}. It is now followed on every turn."
+
+
+def edit_skill(name: str, old: str, new: str = "") -> str:
+    """Change one skill's text. `old` must appear exactly once in it; empty `new` deletes it."""
+    hit = _find_skill(name)
+    if hit is None:
+        return f"No skill called {name!r}. list_skills shows what there is."
+    head, body = hit
+    old = (old or "").strip()
+    if not old:
+        return "Give the exact existing text to replace."
+    # THE EXACTLY-ONCE CONTRACT, borrowed from edit_knowledge, because it makes a wrong
+    # replacement impossible rather than unlikely.
+    if body.count(old) == 0:
+        return f"NOT changed. That text is not in {_bare(head)!r}. It reads:\n\n{_spoken(body)}"
+    if body.count(old) > 1:
+        return f"NOT changed. That text appears {body.count(old)} times in {head!r}. Quote more."
+    updated = body.replace(old, (new or "").strip()).strip()
+    text = _skills_raw()
+    paths.SKILLS.write_text(text.replace(body, updated, 1) if updated
+                            else re.sub(rf"^##\s+{re.escape(head)}\s*$.*?(?=^##\s|\Z)",
+                                        "", text, flags=re.S | re.M))
+    return f"Updated {head!r}." if updated else f"That emptied {head!r}, so it is gone."
+
+
+def forget_skill(name: str) -> str:
+    """Remove a skill entirely, or switch it off with `off`. Owner-approved only.
+
+    DELETING NEEDS THE OWNER TOO, which is the counter-intuitive half. The instinct is that
+    removal is harmless because it takes influence away — but "forget the skill that says never
+    quote a price" is the easiest instruction to smuggle into a stranger's message, because it
+    reads as tidying up rather than as an instruction.
+    """
+    hit = _find_skill(name)
+    if hit is None:
+        return f"No skill called {name!r}. list_skills shows what there is."
+    head, _ = hit
+    text = _skills_raw()
+    gone = re.sub(rf"^##\s+{re.escape(head)}\s*$.*?(?=^##\s|\Z)", "", text, flags=re.S | re.M)
+    paths.SKILLS.write_text(gone.rstrip() + "\n")
+    return f"Forgot {head!r}."
+
+
+def switch_skill(name: str, on: bool = False) -> str:
+    """Keep a skill but stop following it, or start again."""
+    hit = _find_skill(name)
+    if hit is None:
+        return f"No skill called {name!r}. list_skills shows what there is."
+    head, _ = hit
+    bare = head.removesuffix(OFF_SUFFIX) if head.endswith(OFF_SUFFIX) else head
+    want = bare if on else bare + OFF_SUFFIX
+    if want == head:
+        return f"{head!r} is already {'on' if on else 'off'}."
+    paths.SKILLS.write_text(_skills_raw().replace(f"## {head}", f"## {want}", 1))
+    return f"{bare!r} is now {'followed again' if on else 'switched off but kept'}."
+
+
 ASSISTANT_SHARED = {
+    "list_skills": (list_skills, {}),
+    "read_skills": (read_skills, {"name": "which skill, or omit for all of them"}),
+    "add_skill": (add_skill, {
+        "name": "a short name for it, e.g. 'digits as an array'",
+        "how": "the instruction to follow, in the owner's own words"}),
+    "edit_skill": (edit_skill, {
+        "name": "which skill to change",
+        "old": "the exact existing text to replace — must appear exactly once",
+        "new": "its replacement; leave empty to delete that text"}),
+    "forget_skill": (forget_skill, {"name": "which skill to remove entirely"}),
+    "switch_skill": (switch_skill, {
+        "name": "which skill", "on": "true to follow it again, false to keep but ignore it"}),
     "list_people": (list_people, {}),
     "who_is": (who_is, {"asker": "their email or number"}),
     "list_knowledge": (list_knowledge, {}),
