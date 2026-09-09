@@ -2277,8 +2277,13 @@ def test_apple_stt_engine() -> None:
 
     ENGLISH = ("en-AU", "en-GB", "en-SG", "en-US")
 
+    # THE QUARANTINE IS LIFTED FOR THESE CHECKS, on purpose. Apple is held back at the moment
+    # (see APPLE_QUARANTINED) but the code is not deleted, so the routing it will return to has
+    # to stay under test — otherwise the flag becomes one-way and clearing it ships whatever has
+    # rotted meanwhile. The quarantine itself is checked below, separately.
     def routed(setting="", lang=None, locales=ENGLISH, whisper=True, mac=True):
-        with mock.patch.object(t, "apple_locales", return_value=locales), \
+        with mock.patch.object(t, "APPLE_QUARANTINED", False), \
+             mock.patch.object(t, "apple_locales", return_value=locales), \
              mock.patch.object(t, "_apple_bin", return_value=pathlib.Path("/x/agentduet-stt")), \
              mock.patch.object(t, "ane_support", return_value=(True, "")), \
              mock.patch.object(t, "_local_available", return_value=whisper), \
@@ -3283,6 +3288,40 @@ def test_the_secretary_keeps_its_knowledge() -> None:
        "add_knowledge" in dir(_t) and "read_knowledge" in dir(_t))
 
 
+def test_apple_is_quarantined_but_not_deleted() -> None:
+    """One engine for now, and the page must not offer the one that cannot run."""
+    print("\n  -- Apple held back --")
+    import unittest.mock as mock
+    from agentduet_desktop import transcribe as t
+
+    ok("the flag is set", t.APPLE_QUARANTINED)
+    with mock.patch.object(t, "apple_ready", return_value=(True, "")), \
+         mock.patch.object(t, "_local_available", return_value=True):
+        # EVEN WHEN THE SETTING ASKS FOR IT. A quarantine an owner can step around by typing
+        # "apple" is not a quarantine, and the point is that exactly one engine runs.
+        for setting in ("", "apple", "on-device"):
+            with mock.patch("agentduet_desktop.owner.transcription_quality",
+                            return_value=setting):
+                eq(f"setting {setting!r} still routes to Whisper", t.engine(), "local")
+        # AND IT IS NOT OFFERED. A row that can be chosen and then does nothing is the failure
+        # shape this file keeps finding.
+        ok("the dropdown does not list Apple",
+           not any(r["model"] == t.APPLE for r in t.catalogue()))
+
+    # NOTHING IS DELETED — clearing one flag brings it back.
+    ok("the Apple path is still here", callable(t._apple) and callable(t.apple_ready))
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+           / "transcribe.py").read_text()
+    ok("and its cost is written down where the flag is",
+       "88.5s CPU" in src and "not compiled with CUDA support" in src)
+    # A Mac owner seeing Whisper with no reason would go looking in settings.md, where the
+    # answer is not.
+    with mock.patch.object(t.sys, "platform", "darwin"), \
+         mock.patch.object(t, "apple_ready", return_value=(True, "")), \
+         mock.patch.object(t, "engine", return_value="local"):
+        ok("status says why", "held back" in t.describe())
+
+
 def test_the_folder_chooser_opens_and_says_when_it_cannot() -> None:
     """Browse did nothing, silently, on every macOS install since it was written."""
     print("\n  -- the folder chooser --")
@@ -3542,6 +3581,7 @@ def main() -> None:
     test_a_skill_is_owner_approved_and_capped()
     test_a_bad_reply_says_so_instead_of_leaking()
     test_the_secretary_keeps_its_knowledge()
+    test_apple_is_quarantined_but_not_deleted()
     test_the_folder_chooser_opens_and_says_when_it_cannot()
     test_a_question_survives_a_redraw()
     test_one_call_one_file()
