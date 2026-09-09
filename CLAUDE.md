@@ -464,14 +464,45 @@ derived from no longer exists, it is the only place that says so.
       items and summaries, after the call. That is not what `llm.py` does today, which is drive a
       live agent. The providers and key handling carry over; the feature does not exist.
       Its provider list also differs (OpenAI is offered, Qwen is not).
-- [ ] **Accelerating WHISPER on the ANE — now only for the languages Apple cannot serve.**
-      Re-scoped 2026-09-03, because Apple's own engine shipped and took English with it. What is
-      left is `whisper.cpp` with a Core ML encoder for Malay, Vietnamese, Tamil, Thai and the
-      rest of the list Apple has no locale for — and the ceiling there is 1.3-1.5x, since Core
-      ML accelerates the encoder only and turbo already cut the decoder to 4 layers. Weigh that
-      against a C++ dependency, a per-model `.mlmodelc` to generate and ship, and a slow
-      first-run compile on the owner's machine, for a job that runs post-call on a queue where
-      nothing waits for it. Much weaker than it looked when English was still in scope.
+- [ ] **Accelerating Whisper — MEASURED 2026-09-09, and the answer is METAL, not Core ML.**
+      This item argued a 1.3-1.5x ceiling because Core ML accelerates the ENCODER only. That
+      reasoning is sound and it was aimed at the wrong route: `ggml` has a full **Metal**
+      backend, so the whole model runs on the GPU rather than just the encoder.
+
+      Measured on the real 2026-09-08 leg (18.0s of audio, the SAME `large-v3-turbo` we run,
+      resampled to 16 kHz):
+
+      | | wall | CPU | realtime |
+      |---|---|---|---|
+      | faster-whisper (current, CPU) | 10.69s | **36.40s** | 1.7x |
+      | whisper.cpp + Metal | **0.90s** | **0.07s** | 19.9x |
+
+      **12x the wall time and 520x the CPU**, and 0.07s of CPU is Apple's own 0.06s — so this
+      is not a smaller win than Apple's engine, it is the same win with every Whisper language.
+      `CTranslate2`, which faster-whisper runs on, has CPU and CUDA backends only and no Metal
+      path: `get_cuda_device_count()` is 0 here and asking for CUDA compute types raises "not
+      compiled with CUDA support". That is the whole reason today's numbers are CPU numbers.
+
+      **`pywhispercpp` (MIT) is the shape to take**, and the packaging objection above mostly
+      dissolves: PyPI carries prebuilt cp312 wheels for macOS arm64, Linux x86_64/aarch64,
+      musllinux AND Windows, so there is no C++ build in CI and no per-model `.mlmodelc` to
+      generate — `libggml-metal.dylib` ships in the wheel and links `Metal.framework`, and the
+      runtime log says `use gpu = 1`. Dependencies are `numpy, requests, tqdm, platformdirs`
+      against faster-whisper's ctranslate2 + tokenizers + onnxruntime. It REPLACES the engine
+      rather than adding one, so it stays a single engine on every platform — Metal on macOS,
+      CUDA/Vulkan on Linux, CPU everywhere.
+
+      **And it carries per-segment timings** (`t0`/`t1` on every segment), which is the exact
+      turn order the merged transcript wants — the whole approximate path in `transcribe.py`
+      (mono downmix, difflib alignment, confidence floor, sentence snapping) exists only
+      because an engine did not report them.
+
+      Two things to check before committing to it: it refuses audio that is not **16 kHz**
+      (we record at 24 kHz, so a resample goes in front of it — `audioop.ratecv` does it and is
+      deprecated in 3.13, so pick a replacement), and on this one sample it transcribed a
+      phrase belonging to the other party, which is either bleed in the recording or a
+      hallucination and needs a second look on real audio. `mlx-whisper` is also MIT and
+      Metal-native but pulls **torch** and is Apple-only, so it would reinstate two engines.
 - [x] ~~**A chooseable storage folder.**~~ **DONE 2026-08-27.** `carry.RECORDINGS` was a module
       constant, which is exactly why the page could only display it — every importer froze it at
       import. It is `carry.recordings()` now, answered by `owner.recordings_dir()` at use time,
