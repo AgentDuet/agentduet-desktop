@@ -96,6 +96,50 @@ def merged_txt(stem: str) -> pathlib.Path:
     return recordings() / f"{stem}.txt"
 
 
+def transcript_of(names: list[str], folder: pathlib.Path) -> str:
+    """The labelled transcript for one call, or "" while it is still being made.
+
+    ONE COPY OF THIS, because there are now two readers: the hub renders it, and `suggest.py`
+    reads it to decide whether the call mentioned an appointment. Two copies would drift, and
+    the drift would be invisible — the page would show one text and the model would judge
+    another, so a suggestion would cite words the owner cannot see.
+
+    `-caller` is always the other party and `-callee` always this line, whichever way the call
+    was set up, so the labels are read off the filename rather than guessed.
+
+    THE LABEL TEST WAS ON THE WRONG EXTENSION AND HAD NEVER FIRED. `names` holds `.wav`
+    filenames — `call_audio` globs for audio — and this asked whether one ended in
+    `-caller.txt`, which no `.wav` ever does. So `side` was always empty and the two legs were
+    concatenated with nothing to say whose words were whose, sorted, which puts the owner's own
+    side first. Invisible in normal use because the MERGED case is one file whose `.txt` already
+    carries the labels inside it (`transcribe._merge_text` writes them), and that is what the
+    page shows once the merge lands. It only showed through in the window before the merge
+    finishes, or if it fails — which is precisely when the owner is staring at the thread
+    waiting. Found 2026-09-09 by extracting this function and testing it by running it; the
+    grep-based assertion it replaced could not see it.
+    """
+    # THE OTHER PARTY FIRST. There is no timing to order legs by — that is what the merged
+    # transcript is for — so this is sorted, and plain sorting puts `-callee` (the owner's own
+    # side) above `-caller`. Their words are the ones carrying the information, and an inbound
+    # call opens with them, so a leg-order transcript reads the way the call went.
+    parts = []
+    for n in sorted(names, key=lambda x: (not pathlib.Path(x).stem.endswith("-caller"), x)):
+        t = (folder / n).with_suffix(".txt")
+        if not t.is_file():
+            continue
+        try:
+            body = t.read_text().strip()
+        except OSError:
+            continue
+        if not body:
+            continue
+        stem = pathlib.Path(n).stem
+        side = ("them" if stem.endswith("-caller")
+                else "you" if stem.endswith("-callee") else "")
+        parts.append(f"{side}: {body}" if side else body)
+    return "\n".join(parts)
+
+
 def call_audio(names: list[str], call_id: str = "") -> tuple[pathlib.Path, list[str]]:
     """(folder, filenames) to show for one indexed call — the merge if it is done, else legs.
 

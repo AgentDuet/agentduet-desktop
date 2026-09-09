@@ -2898,8 +2898,25 @@ def test_a_person_is_a_number_not_a_direction() -> None:
 
     # BOTH SIDES OF THE CALL. This broke on the first transcript it found, and since the names
     # are sorted that was the callee — this line's own side, which the owner already knows.
-    ok("both legs are read", "parts.append" in web)
-    ok("and each says whose it is", '"them" if n.endswith("-caller.txt")' in web)
+    #
+    # CHECKED BY RUNNING IT, not by grepping for the loop. It used to be inline in `web.py` and
+    # the assertion was `"parts.append" in web`, which pinned the wrong thing: it broke the
+    # moment the logic moved into `carry.transcript_of` — where a second reader (`suggest.py`)
+    # needs it — while the behaviour it names was completely intact.
+    import tempfile
+    from agentduet_desktop import carry as _carry
+    with tempfile.TemporaryDirectory() as d:
+        folder = pathlib.Path(d)
+        (folder / "s-1-caller.txt").write_text("Is Tuesday still fine?")
+        (folder / "s-1-callee.txt").write_text("Yes, Tuesday morning.")
+        text = _carry.transcript_of(["s-1-caller.wav", "s-1-callee.wav"], folder)
+    ok("both legs are read", "Tuesday still fine" in text and "Tuesday morning" in text)
+    ok("and each says whose it is",
+       "them: Is Tuesday still fine?" in text and "you: Yes, Tuesday morning." in text)
+    # AND ONE COPY OF IT. Two readers now, and a second inline loop would drift — the page
+    # would show one text while the model judged another.
+    ok("the page routes through the one helper", "carry.transcript_of(" in web)
+    ok("and keeps no loop of its own", "parts.append" not in web)
 
     # A NATIVE WINDOW HAS NO WIDTH CAP, so the conversation column ran to ~1100px and short
     # replies left a wide empty field on the right.
