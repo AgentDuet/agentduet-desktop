@@ -178,6 +178,37 @@ def _is_prompt_echo(text: str, system: str) -> bool:
     return len(t) > 25 and t in " ".join(system.split())
 
 
+def _is_transcript(text: str) -> bool:
+    """True when the "answer" is the framework's OWN bookkeeping handed back as prose.
+
+    History reaches the model as plain lines — `OWNER: …`, `ASSISTANT: called read_messages`,
+    `TOOL_RESULT: …` — so a weak model can learn that format from its own context and then
+    WRITE it instead of answering in it. Asked for the last four digits of a number, glm-4-9b
+    replied with
+
+        called list_knowledge
+        {"file": "owner.md"}
+        KNOWLEDGE INDEX — one subject belongs in ONE document...
+
+    which is a transcript of a turn that never happened, including a tool result it invented.
+    Neither existing guard catches it: it is not copied from the prompt (`_is_prompt_echo`) and
+    it does not repeat itself (`_degenerate`). So the owner was handed machinery and left to
+    work out that nothing had run — the silent-failure shape, one layer up.
+
+    Deliberately keyed on an EXACT registered tool name after "called", rather than on the word
+    alone, so a real sentence about having called someone is not thrown away.
+    """
+    body = text.strip()
+    if not body:
+        return False
+    if re.search(r"^\s*(TOOL_RESULT|ASSISTANT|OWNER)\s*:", body, re.M):
+        return True
+    for m in re.finditer(r"^\s*called\s+([a-z_]+)\s*$", body, re.M):
+        if m.group(1) in (assistant_tools() or {}):
+            return True
+    return False
+
+
 def _degenerate(text: str, window: int = 40, floor: int = 800, ratio: float = 0.25) -> bool:
     """True when a reply is mostly the same few characters over and over."""
     if len(text) < floor:
@@ -830,6 +861,12 @@ class OwnerChat:
                     logger.warning("discarded a reply copied from the prompt: %r", out[:80])
                     out = ("That came back as a line from my own instructions rather than "
                            "an answer. Ask again.")
+                if _is_transcript(out):
+                    logger.warning("discarded a transcript-shaped reply: %r", out[:120])
+                    out = ("That came back as my own notes about calling a tool rather than an "
+                          "answer, so nothing ran and nothing was saved. Ask again. If it keeps "
+                          "happening, New conversation clears the history that taught it that "
+                          "shape.")
                 if _degenerate(out):
                     # NEVER STORE IT. The visible log keeps it forever and `remember` replays it into
                     # every later turn, so a context that visibly repeats primes the next loop — one bad
@@ -931,6 +968,12 @@ class OwnerChat:
             logger.warning("discarded a reply copied from the prompt: %r", final[:80])
             final = ("That came back as a line from my own instructions rather than "
                    "an answer. Ask again.")
+        if _is_transcript(final):
+            logger.warning("discarded a transcript-shaped reply: %r", final[:120])
+            final = ("That came back as my own notes about calling a tool rather than an "
+                  "answer, so nothing ran and nothing was saved. Ask again. If it keeps "
+                  "happening, New conversation clears the history that taught it that "
+                  "shape.")
         if _degenerate(final):
             # NEVER STORE IT. The visible log keeps it forever and `remember` replays it into
             # every later turn, so a context that visibly repeats primes the next loop — one bad

@@ -3207,6 +3207,35 @@ def test_a_skill_is_owner_approved_and_capped() -> None:
         t.paths.SKILLS = _real
 
 
+def test_a_bad_reply_says_so_instead_of_leaking() -> None:
+    """Three ways a weak model fails, and none of them may reach the owner as an answer."""
+    print("\n  -- a bad reply is loud --")
+    from agentduet_desktop.assistant import _is_transcript, _is_prompt_echo, _degenerate
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+
+    # THE REAL LEAK, from glm-4-9b on 2026-09-09: asked for the last four digits of a number it
+    # replied with a transcript of a turn that never happened, including an invented tool result.
+    leak = ('called list_knowledge\n{"file": "owner.md"}\n'
+            'KNOWLEDGE INDEX — one subject belongs in ONE document.')
+    ok("a transcript-shaped reply is caught", _is_transcript(leak))
+    ok("neither existing guard caught it",
+       not _is_prompt_echo(leak, "") and not _degenerate(leak))
+    for marker in ("TOOL_RESULT: 3 messages", "OWNER: hi\nASSISTANT: hi", "called read_messages"):
+        ok(f"caught: {marker.splitlines()[0][:24]!r}", _is_transcript(marker))
+
+    # AND NOT A REAL SENTENCE. Keyed on an exact registered tool name after "called", so the
+    # ordinary meaning of the word survives.
+    for fine in ("I called Stanley about the invoice.", "She called back at 3pm.",
+                 "No calls recorded in the last 7 days.", "called not_a_real_tool", ""):
+        ok(f"kept: {fine[:26]!r}", not _is_transcript(fine))
+
+    # APPLIED ON BOTH RETURN PATHS — turn() answers from two places, and a guard on one of them
+    # is a guard the owner meets half the time.
+    body = (src / "assistant.py").read_text()
+    ok("the guard runs on both return paths", body.count("if _is_transcript(") == 2)
+    ok("and says nothing ran", "nothing ran and nothing was saved" in body)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -3225,6 +3254,7 @@ def main() -> None:
     test_a_turn_says_where_it_came_from()
     test_a_person_is_a_number_not_a_direction()
     test_a_skill_is_owner_approved_and_capped()
+    test_a_bad_reply_says_so_instead_of_leaking()
     test_the_hub_does_not_invent_a_sign_in_state()
     test_the_binary_can_reach_the_platform()
     test_a_declined_window_declines_the_browser()
