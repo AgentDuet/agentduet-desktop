@@ -146,7 +146,12 @@ def cmd_status(args) -> int:
     from . import owner as owner_settings
     if owner_settings.calls() == owner_settings.CALLS_CARRY:
         from . import carry, transcribe
-        print(f"  calls    : CARRIED onward, both legs recorded to {carry.recordings()}")
+        # ONE FILE PER CALL, since 2026-09-09. This said "both legs recorded to
+        # <recordings>", which is now wrong twice over: the legs are working files under
+        # run/legs, and the owner's folder holds one merged stereo recording per call. A
+        # status line naming the wrong shape sends someone looking for files that are not
+        # there and reports a defect that does not exist.
+        print(f"  calls    : CARRIED onward, one recording per call in {carry.recordings()}")
         print(f"  transcript: {transcribe.describe()}")
         if waiting := len(transcribe.pending()):
             print(f"  queued   : {waiting} recording(s) waiting to be transcribed")

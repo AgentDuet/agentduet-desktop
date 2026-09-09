@@ -3290,6 +3290,98 @@ def test_a_bad_reply_says_so_instead_of_leaking() -> None:
            withheld not in _asst.assistant_tools())
 
 
+def test_a_link_tool_cannot_choose_a_destination() -> None:
+    """The calendar and email tools pass FIELDS. Our code owns the URL."""
+    print("\n  -- calendar and email links --")
+    from agentduet_desktop import assistant as _a, links, tools as _t, voice
+
+    # THE PROPERTY, and it is the same one `wasm_host.resolve_url` holds: there is no argument
+    # in which a URL means anything. A title carrying a whole URL, an `&` and a second
+    # parameter name comes back percent-encoded inside ONE value — it cannot add a parameter,
+    # and it cannot move the host.
+    hostile = "x&action=DELETE&text=evil https://attacker.example/steal?q=1"
+    url = links.calendar_url(hostile, "2026-09-10 15:00")
+    ok("the host is ours", url.startswith(links.CALENDAR_URL + "?"))
+    eq("and there is exactly one action", url.count("action="), 1)
+    eq("and exactly one title", url.count("text="), 1)
+    ok("the attacker's url is a value, not a destination",
+       "attacker.example" in url and "://attacker.example" not in url)
+
+    # A SUBJECT THAT LOOKS LIKE A HEADER cannot become one. A newline in a mailto subject is
+    # the injection shape, so control characters are stripped before anything is encoded.
+    draft = links.mailto_url("pauline@example.com", "Hi\nBcc: someone@else.example", "body")
+    ok("no newline survives into the link", "\n" not in draft and "%0A" not in draft)
+    ok("the address is readable, not %40'd", draft.startswith("mailto:pauline@example.com?"))
+
+    # AND THE COUNTERPART, so nobody fixes the line above by stripping breaks everywhere: a
+    # paragraph break is the point of a body and of a description, and it belongs in the link.
+    ok("a body keeps its paragraphs",
+       "%0A%0A" in links.mailto_url("p@example.example", "s", "one\n\ntwo"))
+    ok("a description keeps its paragraphs",
+       "%0A" in links.calendar_url("x", "2026-09-10 15:00", notes="one\ntwo"))
+
+    # A DATE IS NOT GUESSED. A model that invents "tomorrow" writes a wrong event, and the
+    # owner sees a filled-in form and presses Save — so the parser refuses anything but a date.
+    for bad, why in (("tomorrow", "a word"), ("next Tuesday 3pm", "a phrase"), ("", "nothing")):
+        try:
+            links.calendar_url("x", bad)
+            ok(f"{why} is refused", False)
+        except ValueError as exc:
+            ok(f"{why} is refused, saying what to type", "2026-09-10 15:00" in str(exc))
+
+    # EVERY REFUSAL IS LOUD AND CARRIES THE NUMBER. A body too long for a URL used to be the
+    # kind of thing a mail client truncates silently.
+    try:
+        links.mailto_url("a@b.example", body="x" * 4000)
+        ok("an oversize draft is refused", False)
+    except ValueError as exc:
+        ok("an oversize draft says how big it was", "characters" in str(exc)
+           and str(links.MAILTO_LIMIT) in str(exc))
+    for args, why in ((("a@b.example",), "a good address"),):
+        ok(f"{why} is accepted", links.mailto_url(*args).startswith("mailto:"))
+    for bad in ("nope", "a@b", "a b@c.example", "a@b.example, c@d.example"):
+        try:
+            links.mailto_url(bad)
+            ok(f"{bad!r} is refused", False)
+        except ValueError:
+            ok(f"{bad!r} is refused", True)
+    try:
+        links.calendar_url("x", "2026-09-10 15:00", "2026-09-10 14:00")
+        ok("an end before the start is refused", False)
+    except ValueError as exc:
+        ok("an end before the start is refused with both times", "14:00" in str(exc))
+
+    # THERE IS NO GENERAL OPENER. `open_url(url)` anywhere reachable would hand back exactly
+    # what the encoding above takes away, so the one that exists is private to this module.
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    body = (src / "links.py").read_text()
+    ok("no public opener takes a url", "def open_url" not in body)
+    ok("the private one is the only caller of the desktop",
+       body.count("def _open(") == 1)
+
+    # OWNER-SIDE ONLY. The asker-facing declaration list is hardcoded on purpose (see the
+    # withdrawn checklist item), and neither of these belongs in it: a caller must not be able
+    # to put a window on the owner's screen.
+    declared = {d.get("name") for d in voice._tool_declarations()}
+    for name in ("add_to_calendar", "draft_email"):
+        ok(f"{name} is offered to the owner", name in _t.ASSISTANT_SHARED)
+        ok(f"{name} is not offered to a caller", name not in declared)
+        # A stranger's words in the context turn it into a card. It commits nothing either way
+        # — the owner presses Save or Send — but a draft that appears unasked-for reads as one
+        # the owner half-remembers writing.
+        ok(f"{name} needs the owner once a stranger has spoken", name in _a.NEEDS_OWNER)
+
+    # THE CARD MUST SAY WHAT IT DOES. `propHtml` falls back to "Add to your shared notes", so a
+    # gated tool missing from PROP_KINDS renders as a change to knowledge — which is how a
+    # calendar link would have described itself. Mechanical, because the default is plausible.
+    page = (src / "web.html").read_text()
+    kinds = page.split("const PROP_KINDS = {", 1)[1].split("};", 1)[0]
+    for name in sorted(_a.NEEDS_OWNER):
+        if name in ("add_knowledge", "edit_knowledge"):
+            continue                       # these ARE the shared notes, so the default fits
+        ok(f"the card knows what {name} is", f"{name}:" in kinds)
+
+
 def test_the_secretary_keeps_its_knowledge() -> None:
     """Withholding a tool from the ASSISTANT must not touch the asker-facing surface."""
     print("\n  -- withheld from the assistant only --")
@@ -3874,6 +3966,7 @@ def main() -> None:
     test_a_person_is_a_number_not_a_direction()
     test_a_skill_is_owner_approved_and_capped()
     test_a_bad_reply_says_so_instead_of_leaking()
+    test_a_link_tool_cannot_choose_a_destination()
     test_the_secretary_keeps_its_knowledge()
     test_apple_is_quarantined_but_not_deleted()
     test_a_fresh_install_pins_english()

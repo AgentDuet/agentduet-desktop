@@ -207,6 +207,39 @@ express a URL.
 It also puts the decision in one place. The owner sees the code AND what it may reach in the same
 act of approval, rather than in a separate config that drifts away from the tool it governs.
 
+### Google Calendar and Gmail: a LINK, and the same property one layer out (2026-09-09)
+
+The assistant can put a prefilled Google Calendar event or an email draft on the owner's screen.
+Both are links. Neither creates or sends anything: the owner presses Save in Google Calendar, or
+Send in their mail client.
+
+**Why not the APIs.** Both need an OAuth token with a scope Google treats as sensitive
+(`calendar.events`, `gmail.send`), which means a verified app and a consent screen — and our
+sign-in is FEDERATED. The app authenticates to wss-edge and wss-edge talks to Google, so what an
+install holds is an AgentDuet token, never a Google one. There is nothing here to call Google
+with. A link needs nothing: the owner is already signed in in their browser.
+
+**The security property is the one above, moved one layer out.** `wasm_host.resolve_url` holds
+that a tool cannot express a destination because there is no field in which a URL means anything.
+`links.py` holds the same thing for the owner's own screen: the tool passes TYPED FIELDS — title,
+start, end, notes, recipient, subject, body — and our code builds the URL from literals. So a
+title carrying `&action=DELETE` and an attacker's address arrives as one percent-encoded value.
+There is deliberately no public `open_url(url)` anywhere in the tree; the opener is private to
+that module, for the same reason `reveal.py` refuses to open a path it is handed.
+
+Both tools are owner-side (absent from `_tool_declarations()`) and in `NEEDS_OWNER`, so once a
+stranger's words are in the assistant's context they can only be PROPOSED. They commit nothing
+either way — but a draft that appears unasked-for in front of the owner reads as one they
+half-remember writing, and that is enough to be worth a click.
+
+**What would reverse it.** Attachments, or a transcript that has to travel. A link cannot carry
+either: a mailto URL is refused past ~1,800 characters, and a three-minute call is about 3,400
+encoded. The day someone needs the transcript emailed, the answer is not a longer URL — it is a
+real Gmail API call, which means a Google token, which means either a verified app of our own or
+wss-edge brokering the scope. That is a platform decision, not a desktop one.
+
+.
+
 ### Tools are a granted resource, per caller
 
 A colleague's proposal, 2026-08-04, accepted: *"Folder A can have tools XYZ. Folder B can only have tool
