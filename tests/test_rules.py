@@ -3579,7 +3579,24 @@ def test_one_call_one_file() -> None:
         ok("an empty leg is discarded, not just logged",
            "discarding %s" in src_carry and 'junk.unlink(missing_ok=True)' in src_carry)
         ok("and its start sidecar goes with it",
-           'path.with_suffix(".start")' in src_carry)
+           'final.with_suffix(".start")' in src_carry)
+
+        # A LEG STILL BEING RECORDED MUST BE INVISIBLE TO THE QUEUE. `pending()` treats any
+        # non-empty *.wav as work, so a leg created under its final name was transcribed
+        # MID-CALL and the merge — which waits only for every leg to have a transcript — then
+        # built the finished recording out of partial audio and marked it done. Stanley's 15:22
+        # call came out at 10.5s of a 24s conversation with both legs intact beside it.
+        ok("a leg is written as .part", 'final.name + ".part"' in src_carry)
+        ok("and published by an atomic rename", "path.replace(final)" in src_carry)
+        # NOT VIA `return` IN A `finally`: that swallows the exception in flight, and the one in
+        # flight here is the CancelledError every recorder is stopped with at the end of a call.
+        import ast as _ast
+        for _n in _ast.walk(_ast.parse(src_carry)):
+            if isinstance(_n, _ast.AsyncFunctionDef) and _n.name == "_record_leg":
+                _bad = [x for t in _ast.walk(_n) if isinstance(t, _ast.Try) and t.finalbody
+                        for b in t.finalbody for x in _ast.walk(b)
+                        if isinstance(x, (_ast.Return, _ast.Break, _ast.Continue))]
+                ok("and nothing returns out of the recorder's finally", not _bad, len(_bad))
         # THE INDEX MUST GLOB WHERE THE AUDIO IS. It asked the owner's folder after the legs
         # moved out of it, so every row would have named no files and the hub would report
         # "No recording." on a call whose audio was on disk.
