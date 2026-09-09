@@ -285,7 +285,7 @@
     return bits.join(' · ') || 'no activity';
   }
 
-  function drawWho(){
+  function drawWho(opening){
     const list = THREADS.people || [];
     if (PICKED !== ASSISTANT && !list.some(p => p.who === PICKED)) PICKED = ASSISTANT;
     $('whoList').innerHTML = `
@@ -303,13 +303,26 @@
         PICKED = el.dataset.who;
         if (PICKED !== ASSISTANT) LAST_PERSON = PICKED;
         note('');
-        drawWho();
+        drawWho(true);
       };
     });
-    if (PICKED === ASSISTANT) drawAssistant(); else drawThread();
+    if (PICKED === ASSISTANT) drawAssistant(opening); else drawThread();
   }
 
-  function drawAssistant(){
+  // JUST THE MODEL-DEPENDENT CONTROLS. Called from the poll, where a rebuild is not wanted:
+  // no innerHTML, no focus, nothing that can move under someone's cursor or selection.
+  function modelControls(){
+    if (PICKED !== ASSISTANT || BUSY) return;      // BUSY owns the button during a turn
+    const ok = !!MODEL.configured;
+    $('ask').disabled = !ok;
+    $('send').disabled = !ok;
+    $('ask').placeholder = ok ? 'Ask about your calls…' : 'Attach a model in Settings';
+  }
+
+  // `opening` MEANS A PERSON ASKED FOR THIS VIEW — a click, or the first paint. Focus follows
+  // an action and never a timer: `drawWho` is also called from the 5s poll when a transcript
+  // lands, and without this flag that stole the cursor out of whatever the owner was doing.
+  function drawAssistant(opening){
     $('tTitle').textContent = 'Personal Assistant';
     $('tSub').textContent = '';
     $('composer').hidden = false;
@@ -321,7 +334,7 @@
     $('ask').placeholder = ok ? 'Ask about your calls…' : 'Attach a model in Settings';
     $('thread').innerHTML = '<div class="chat" id="chat"></div>';
     drawChat();
-    if (ok) $('ask').focus();
+    if (ok && opening) $('ask').focus();
   }
 
   function drawThread(){
@@ -692,11 +705,17 @@
     // and not to a reply. Replying to a person needs no model at all, the same way carrying a
     // call needs none, and disabling the box on an install with no key would have left a
     // carried message with nobody able to answer it.
-    // NOT MID-TURN. `drawAssistant` rebuilds the whole log, which throws away a text
-    // selection and resets the waiting counter every five seconds through a long answer —
-    // the same objection `chatSig` and `threadSig` exist to answer. Whatever changed here
-    // (the model chip, the placeholder) is drawn on the next poll instead.
-    if (PICKED === ASSISTANT && !BUSY) drawAssistant();
+    // NO REBUILD FROM THE POLL, EVER. This called `drawAssistant`, which replaces the log's
+    // innerHTML and then focuses the composer — so every five seconds a selection was thrown
+    // away and the cursor jumped into the input. Guarding it on `!BUSY` was not enough and
+    // reads as if it were: BUSY is only true DURING a turn, so the whole idle case — someone
+    // reading a transcript, trying to copy a number out of it — was still rebuilt on a timer.
+    //
+    // `load()` never needed a rebuild. What it owns here is the three controls that depend on
+    // whether a model is attached, and those are idempotent element writes: setting them again
+    // costs nothing and moves nothing. The log itself is redrawn by `refreshChat` and
+    // `drawWho`, which both compare a signature first and so only fire on a real change.
+    modelControls();
   }
 
   async function refresh(){
@@ -775,7 +794,7 @@
   ]).then(([th, hist]) => {
     THREADS = th;
     TURNS = (hist.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a, draft: !!t.draft, sent: !!t.sent, via: t.via || '', pending: !!t.pending, draft_for_name: t.draft_for_name || ''});
-    drawWho();
+    drawWho(true);
   });
   load();
 </script>

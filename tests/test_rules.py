@@ -3415,8 +3415,19 @@ def test_a_question_survives_a_redraw() -> None:
 
     # The other half: a rebuild mid-turn throws away a selection and resets the wait counter,
     # which is the objection chatSig/threadSig already exist to answer.
-    ok("load() does not rebuild the log mid-turn",
-       "if (PICKED === ASSISTANT && !BUSY) drawAssistant();" in hub)
+    # NO REBUILD FROM THE POLL AT ALL. Guarding it on `!BUSY` was not enough and read as if it
+    # were: BUSY is only true DURING a turn, so the whole idle case — someone reading a
+    # transcript, copying a number out of it — was still rebuilt every five seconds, which
+    # threw away the selection AND focused the composer. `load()` never needed a rebuild; the
+    # three model-dependent controls are idempotent element writes.
+    ok("the poll updates controls instead of rebuilding", "modelControls();" in hub)
+    ok("and no !BUSY-guarded rebuild survives",
+       "!BUSY) drawAssistant()" not in hub)
+    # FOCUS FOLLOWS AN ACTION, NEVER A TIMER. drawWho also runs from the poll when a transcript
+    # lands, and it calls drawAssistant, which focused the box unconditionally.
+    ok("focus is deliberate", "if (ok && opening) $('ask').focus();" in hub)
+    ok("a click passes it", "drawWho(true);" in hub)
+    ok("and the poll does not", "if (threadSig() !== before) drawWho();" in hub)
     ok("the poll's own chat refresh still stands aside too",
        "if (BUSY) return;" in hub)
 
