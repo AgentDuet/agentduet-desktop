@@ -96,7 +96,7 @@ def merged_txt(stem: str) -> pathlib.Path:
     return recordings() / f"{stem}.txt"
 
 
-def call_audio(names: list[str]) -> tuple[pathlib.Path, list[str]]:
+def call_audio(names: list[str], call_id: str = "") -> tuple[pathlib.Path, list[str]]:
     """(folder, filenames) to show for one indexed call — the merge if it is done, else legs.
 
     The index is written when the call ENDS and the merge happens later, on the transcription
@@ -104,6 +104,16 @@ def call_audio(names: list[str]) -> tuple[pathlib.Path, list[str]]:
     cannot assume either one: asking only for the merged name would report a just-finished call
     as "No recording.", which is a false claim about audio that is sitting on disk.
     """
+    # A ROW THAT NAMES NOTHING IS NOT PROOF THERE IS NOTHING. The index globbed the wrong
+    # folder for a few minutes on 2026-09-09 and wrote `recordings: []` for a call whose audio,
+    # transcripts and merge were all on disk — and an empty list reads as "No recording.", which
+    # is the confident-wrong answer this file keeps hunting. The call id is in the row, so ask
+    # the disk before believing the absence. Costs one glob on rows that have no files, which is
+    # exactly the case where being right matters.
+    if not names and call_id:
+        names = sorted(p.name for p in legs().glob(f"*{call_id}*.wav"))
+        if not names:
+            names = sorted(p.name for p in recordings().glob(f"*{call_id}*.wav"))
     stems = {stem_of(n) for n in names}
     merged = [f"{st}.wav" for st in sorted(stems) if merged_wav(st).is_file()]
     if merged:
@@ -208,8 +218,22 @@ async def _record_leg(party, stamp: str, call_id: str, leg: str) -> None:
             logger.info("call %s: wrote %s (%.1f s of the %s leg)",
                         call_id, path.name, frames / (SAMPLE_RATE * SAMPLE_WIDTH), leg)
         else:
-            logger.warning("call %s: the %s leg produced NO audio — %s is empty",
+            # AND THEN REMOVE IT. Logging that the file is empty was the whole answer for a
+            # month, and a warning in yesterday's log does not help someone opening the folder
+            # today. The LOG is the record that a leg produced nothing, `calls.jsonl` is the
+            # record that the call happened, and the hub already says "No recording." from an
+            # empty file list — so the header on disk is the one copy of this fact that can
+            # mislead, and it is the copy nobody asked for.
+            #
+            # The `.start` sidecar goes with it. It only exists to align this leg against the
+            # other, and there is nothing left to align.
+            logger.warning("call %s: the %s leg produced NO audio — discarding %s",
                            call_id, leg, path.name)
+            for junk in (path, path.with_suffix(".start")):
+                try:
+                    junk.unlink(missing_ok=True)
+                except OSError as exc:
+                    logger.warning("call %s: could not remove %s (%s)", call_id, junk.name, exc)
 
 
 async def handle(sm, noti) -> None:
@@ -347,8 +371,13 @@ async def handle(sm, noti) -> None:
         # appeared as two or three entries — bare, "to", and "from" — each with its own
         # conversation history, so a person you rang and who rang you back were strangers to
         # each other. Direction is a property of the CALL and belongs in its own field.
+        # GLOB THE LEGS, which is where the audio now IS. This still asked the owner's folder
+        # after the legs moved out of it this morning, so every row written since would have
+        # named no files at all — and the hub reads that as "No recording." on a call whose
+        # audio is sitting on disk. Caught before the first live call, by adding the
+        # empty-leg cleanup and asking what the index would then have to work with.
         _calls.record(call_id, other, "carried", outgoing=outgoing, recordings=sorted(
-            str(p.name) for p in recordings().glob(f"*{call_id}*.wav")))
+            str(p.name) for p in legs().glob(f"*{call_id}*.wav")))
         # THE TRANSCRIPT IS NOT THIS FUNCTION'S JOB. Carrying a call ends when the audio is
         # closed on disk; a `.wav` with no sibling `.txt` is the queue, and the worker in
         # `transcribe` picks it up within a poll. That keeps the call path free of a network

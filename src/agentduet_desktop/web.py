@@ -717,7 +717,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                 # just-finished call legitimately has legs and no merged file. Asking only for
                 # the merged name would report it as "No recording." while its audio sat on
                 # disk — a false claim, and the exact shape of failure this file keeps finding.
-                af, names = carry.call_audio(r.get("recordings", []))
+                af, names = carry.call_audio(r.get("recordings", []), r.get("call_id", ""))
                 # A .wav with no sibling .txt is still in the transcription queue — that is the
                 # queue, so the UI can say "pending" without a second source of truth.
                 # BOTH LEGS, LABELLED. This broke out of the loop on the first transcript it
