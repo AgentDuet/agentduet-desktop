@@ -59,7 +59,8 @@ After you see the result, either call another tool or answer in plain text.
 To answer directly, just write the answer — no JSON.
 
 Today is %%s. You have no clock of your own, so that line is the only thing that makes
-"recent", "this week" or "yesterday" mean anything — work out the dates from it.
+"recent", "this week" or "yesterday" mean anything — work out the dates from it. Where a tool
+wants a date typed out, that is the same day written %%s.
 
 ANSWER FROM THE RECORD, NOT FROM MEMORY. Never guess at a name, a time or a quote — look it
 up first. Use list_calls and then read_call for anything about a CALL. Use read_messages for
@@ -590,9 +591,29 @@ class OwnerChat:
         # THE DATE IS BUILT PER TURN, not at construction: this object outlives midnight on a
         # daemon that runs for weeks, and a stale "today" is worse than none — it answers
         # "yesterday" confidently and wrongly.
+        # THE ARGUMENTS WERE TRANSPOSED, AND SHIPPED THAT WAY. The first two placeholders are
+        # the identity block and the date, in that order, and this passed the date first — so
+        # every build up to a13 rendered
+        #
+        #     You are Stanley's personal assistant, running on their own computer.
+        #     Wednesday 09 September 2026                     <- orphan, unlabelled
+        #     ...
+        #     Today is You work for Stanley Leong, who ...    <- a paragraph where a date goes
+        #
+        # The assistant has therefore NEVER been told the date. The paragraph that says "that
+        # line is the only thing that makes recent, this week or yesterday mean anything" was
+        # pointing at the owner's biography, which is also why date reasoning has looked so
+        # unreliable — there was nothing to reason from. Found 2026-09-09 while working out why
+        # a calendar request produced no call.
+        #
+        # BOTH SHAPES OF THE DAY, and the second is not decoration. The long form is what makes
+        # "yesterday" mean something; `add_to_calendar` wants `2026-09-10 15:00` and refuses
+        # anything else, so a model handed only "Wednesday 09 September 2026" must translate the
+        # month name before it can even begin. Cheaper to give it the format than to hope.
         self.system = ASSISTANT_PROMPT % owner.name() % (
-            date.today().strftime("%A %d %B %Y"),
-            owner.identity_block(), _subjects(), _tool_docs(self.registry))
+            owner.identity_block(),
+            date.today().strftime("%A %d %B %Y"), date.today().isoformat(),
+            _subjects(), _tool_docs(self.registry))
         self.history: list[str] = []
         self.shown: list[dict] = self._load()      # what the page renders, oldest first
         # Reconstruct the model's own history from the visible turns, so a restart does not
