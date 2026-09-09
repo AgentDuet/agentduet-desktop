@@ -133,10 +133,13 @@ no
      leaves it off, because a typo must not silently make every answer a hundred times slower. -->
 
 ## Language
-<!-- The language your calls are in, as a code: en, vi, zh, ms, th. Leave empty to guess.
-     Only the on-machine speech engine uses this, and guessing is unreliable on phone audio —
-     an English call has been detected as Vietnamese and transcribed as nonsense. If your
-     transcripts come back in the wrong language, set this. -->
+<!-- The language your calls are in, as a code: en, vi, zh, ms, th.
+     SEEDED AS en, deliberately. Empty means guess, and guessing is the thing that goes wrong:
+     across 29 real calls the detector misread one outright and scored under 0.6 on about eight
+     more, and a wrong guess does not fail — it returns a fluent transcript of the wrong
+     language. If your calls are not in English, change this; a wrong setting is visible in the
+     first transcript, where a wrong guess looks like a broken recording. -->
+en
 
 ## Never say
 <!-- Topics never to state on your behalf, however readable the source. One per line. -->
