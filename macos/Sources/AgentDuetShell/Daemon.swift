@@ -45,6 +45,9 @@ final class Daemon {
     /// owner an empty reason for the one failure it exists to explain.
     private var logFile: URL { instanceHome.appendingPathComponent("run/daemon.log") }
 
+    /// `run/update.json`, written by the daemon's own check every few hours.
+    private var updateFile: URL { instanceHome.appendingPathComponent("run/update.json") }
+
     /// The daemon binary, beside this one in `Contents/MacOS`.
     ///
     /// Falls back to a sibling of the built Swift binary so `swift run` works from a checkout,
@@ -138,6 +141,23 @@ final class Daemon {
     private func recordedURL() -> URL? {
         guard let text = try? String(contentsOf: siteURLFile, encoding: .utf8) else { return nil }
         return URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// A newer release, if the daemon has found one — its own words, and where to read about it.
+    ///
+    /// READ FROM THE DAEMON'S FILE rather than asked of GitHub here. The daemon is already
+    /// checking on a schedule that respects a 60-per-hour budget, so a second poller in the
+    /// shell would double the requests to say the same thing — and it would disagree with the
+    /// hub whenever the two happened to look at different moments. Cheap enough for every menu
+    /// open: a few hundred bytes off the local disk, no network, nothing to time out.
+    var updateNotice: (note: String, url: URL)? {
+        guard let data = try? Data(contentsOf: updateFile),
+              let row = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              row["newer"] as? Bool == true,
+              let note = row["note"] as? String, !note.isEmpty,
+              let link = row["url"] as? String, let url = URL(string: link)
+        else { return nil }
+        return (note, url)
     }
 
     /// Is something actually serving there? BLOCKS — callers must be off the main thread.

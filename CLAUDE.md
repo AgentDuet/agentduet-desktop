@@ -587,7 +587,23 @@ derived from no longer exists, it is the only place that says so.
       token and never a Google one — the route is `gmail.send` through a verified app of our
       own, or wss-edge brokering the scope. A platform decision; ask before designing around it.
 
-Being a Mac app** (decided 2026-09-02 — see `docs/design.md`, "Being a Mac app, not a
+**Updating — stage one of three is in**
+
+- [x] ~~**Detect that a newer release is out.**~~ **DONE 2026-09-09.** A worker reads
+      `/releases` four times a day (NOT `/releases/latest`, which excludes prereleases and so
+      404s for this repo), caches to `run/update.json`, and the hub, the menu bar and `status`
+      read that file. Nothing blocks startup, nothing polls on a request path, and a reused tag
+      is caught by comparing the build stamp — a13 was overwritten, so version alone would have
+      called a stale copy current.
+- [ ] **Download and verify the DMG** (stage two), and a self-updater (stage three) only if
+      stage two proves insufficient. **The trigger for stage two is testers not updating** — if
+      a13 is still in use a month after a14, telling them was not enough.
+      **Stage two is where "never act during a call" stops being free.** There is no in-call
+      flag today; nothing needs one while nothing acts. A download competing with live call
+      audio, or a restart prompt over a conversation, is the failure to design out — so whoever
+      builds it adds the flag first.
+
+**Being a Mac app** (decided 2026-09-02 — see `docs/design.md`, "Being a Mac app, not a
 binary in a folder"). Ordered; each is worth doing alone.
 
 - [x] ~~**`--onedir` on macOS**, onefile elsewhere.~~ **DONE 2026-09-02.** Launch to a bound

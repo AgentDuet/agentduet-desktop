@@ -158,6 +158,13 @@ def cmd_status(args) -> int:
     else:
         print("  calls    : answered by the agent")
 
+    # ONLY WHEN THERE IS SOMETHING TO SAY. Read from the cache the daemon's worker writes —
+    # `status` must not make a network call, and a line reading "up to date" on a machine that
+    # has never reached GitHub would be the confident wrong answer this check exists to avoid.
+    from . import update as _upd
+    if notice := _upd.summary():
+        print(f"  update   : {notice} {_upd.state().get('url', '')}")
+
     from . import voice
     ok, why = voice.available()
     print(f"  voice    : {'available' if ok else 'NOT available — ' + why}")
