@@ -3307,6 +3307,116 @@ def test_a_bad_reply_says_so_instead_of_leaking() -> None:
            withheld not in _asst.assistant_tools())
 
 
+def test_a_suggestion_is_judged_once_and_never_guessed() -> None:
+    """The pass may offer a calendar entry. It may not act, re-ask, or show a guess."""
+    print("\n  -- suggesting a calendar entry --")
+    import unittest.mock as mock
+    from datetime import date, timedelta
+    from agentduet_desktop import suggest as sg
+
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    body = (src / "suggest.py").read_text()
+
+    class _Says:
+        def __init__(self, text): self.text = text
+        def complete(self, prompt, think=False): return self.text
+
+    soon = (date.today() + timedelta(days=2)).isoformat()
+
+    # CODE DECIDES, not the model. Each of these is a shape a model produces when it is
+    # guessing, and every one has to die here — before anything reaches the owner's screen.
+    for said, why in (
+            ('{"title": "Delivery", "start": "next Tuesday"}', "a phrase where a date goes"),
+            ('{"title": "Delivery", "start": "10am"}', "a time with no date"),
+            ('{"title": "", "start": "%s 10:00"}' % soon, "no title"),
+            ('{"title": "Delivery"}', "no start"),
+            ('{"title": "X", "start": "1970-01-01 10:00"}', "a date from the epoch"),
+            ('{"title": "X", "start": "2099-01-01 10:00"}', "a date far in the future"),
+            ('{"title": "X", "start": "%s 10:00", "end": "%s 09:00"}' % (soon, soon),
+             "an end before the start"),
+            ("{}", "the model's own 'nothing here'"),
+            ("I could not find an appointment.", "prose with no object at all"),
+            ("", "an empty answer")):
+        eq(f"dropped: {why}", sg._judge("them: hi\nyou: hi", _Says(said)), {})
+
+    # AND A GOOD ONE SURVIVES, including one wrapped in the prose a weak model adds however
+    # plainly it is told not to — throwing that away would drop real answers.
+    for said, why in ((f'{{"title": "Delivery", "start": "{soon} 10:00"}}', "bare JSON"),
+                      (f'Sure! ```json\n{{"title": "Delivery", "start": "{soon} 10:00"}}\n``` ok?',
+                       "JSON inside prose and a fence")):
+        got = sg._judge("them: Tuesday at ten?\nyou: yes", _Says(said))
+        eq(f"kept ({why}): the title", got.get("title"), "Delivery")
+        ok(f"kept ({why}): a readable time", bool(got.get("when")))
+
+    # NEVER ASKED TWICE, and the NEGATIVE verdict is the whole reason. Without storing "nothing
+    # here" a quiet inbox re-asks the model about the same message every time the queue turns
+    # over, for the life of the daemon.
+    ok("the empty verdict is stored too", 'rows[key] = {**verdict,' in body)
+    with mock.patch.object(sg, "_load", return_value={sg.digest("a b c d"): {"kind": ""}}):
+        eq("an item with a verdict is not a candidate", sg._recent([("a b c d", "")]), [])
+    with mock.patch.object(sg, "_load", return_value={}):
+        ok("one without a verdict is", sg._recent([("a b c d", "")]) == [("a b c d", "")])
+        # SHORT TEXT IS NOT JUDGED. "Hello?" cannot contain an appointment, and asking costs a
+        # model call each time.
+        eq("a too-short item is skipped", sg._recent([("hi", "")]), [])
+        old = "2020-01-01T00:00:00"
+        eq("an old item is skipped", sg._recent([("a b c d", old)]), [])
+
+    # KEYED ON THE TEXT, so a suggestion cannot outlive the words it came from. When a
+    # transcript replaces "pending", the digest changes and the old verdict stops matching.
+    ok("the key is a digest of the text", sg.digest("a b") != sg.digest("a c"))
+    eq("and is stable", sg.digest(" a  b "), sg.digest("a b"))
+
+    # NOTHING THE PAGE CALLS TOUCHES A MODEL. `for_texts` runs on a polled endpoint.
+    with mock.patch("agentduet_desktop.llm.client",
+                    side_effect=AssertionError("for_texts must not reach a model")):
+        sg.for_texts(["anything"])
+        ok("for_texts reads the store only", True)
+
+    # NO MODEL, NO FEATURE — absent, not broken.
+    with mock.patch("agentduet_desktop.llm.configured", return_value=False):
+        eq("nothing is judged without a model", sg.analyse_once(), 0)
+
+    # A DISMISSED OR ADDED VERDICT IS KEPT, so it is not offered again, and not drawn.
+    for state in (sg.DISMISSED, sg.ADDED):
+        with mock.patch.object(sg, "_load", return_value={
+                "k": {"kind": "calendar", "title": "X", "state": state}}):
+            eq(f"a {state} suggestion is not offered", sg.for_texts(["x"]), {})
+
+    # AND `add` ONLY RETIRES IT IF A WINDOW ACTUALLY OPENED. `add_to_calendar` returns its own
+    # refusal rather than raising, so marking unconditionally would retire a suggestion the
+    # owner never saw, with no way back to it.
+    rows = {"k": {"kind": "calendar", "title": "X", "start": "2026-09-10 10:00", "end": ""}}
+    with mock.patch.object(sg, "_load", return_value=rows), \
+         mock.patch.object(sg, "_save"), \
+         mock.patch("agentduet_desktop.links.add_to_calendar",
+                    return_value="Cannot open a link here: no desktop session."):
+        out = sg.resolve("k", "add")
+        ok("a refusal is passed through", "Cannot open" in out)
+        ok("and the suggestion is NOT retired", not rows["k"].get("state"))
+
+    # NOT ON THE STARTUP PATH, and not on the event loop.
+    ok("the pass is a background task",
+       "asyncio.create_task(_sg.worker())" in (src / "secretary_agent.py").read_text())
+    ok("it sleeps before the first pass",
+       body.index("await asyncio.sleep(POLL_SECONDS)") < body.index("analyse_once)"))
+    ok("and runs the model on a thread", "asyncio.to_thread(analyse_once)" in body)
+    ok("a pass is bounded", sg.BATCH > 0 and sg.DAYS > 0)
+
+    # THE OFFER SAYS WHAT IT IS AND NOTHING ELSE. No "it looks like", no explanation of how it
+    # was decided — the message it sits under is the provenance.
+    page = (src / "web.html").read_text()
+    offer = page.split("function suggestHtml(sg){", 1)[1].split("\n  }", 1)[0]
+    for hedge in ("looks like", "might", "I think", "detected", "possibly", "maybe"):
+        ok(f"the offer does not say {hedge!r}", hedge.lower() not in offer.lower())
+    ok("it is absent when there is nothing", "if (!sg) return '';" in offer)
+
+    # ONE TEXT, ONE READER. The page renders `carry.transcript_of` and the pass judges it; two
+    # copies would drift and a suggestion would cite words that are not on the screen.
+    ok("the pass reads the same transcript the page shows",
+       "carry.transcript_of(" in body and "carry.transcript_of(" in (src / "web.py").read_text())
+
+
 def test_the_prompt_says_what_it_means_to_say() -> None:
     """Each placeholder gets the value its own sentence introduces."""
     print("\n  -- the prompt's own slots --")
@@ -4141,6 +4251,7 @@ def main() -> None:
     test_a_person_is_a_number_not_a_direction()
     test_a_skill_is_owner_approved_and_capped()
     test_a_bad_reply_says_so_instead_of_leaking()
+    test_a_suggestion_is_judged_once_and_never_guessed()
     test_the_prompt_says_what_it_means_to_say()
     test_the_update_check_is_quiet_and_cannot_lie()
     test_a_link_tool_cannot_choose_a_destination()

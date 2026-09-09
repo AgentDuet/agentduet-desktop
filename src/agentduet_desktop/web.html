@@ -73,6 +73,25 @@
     background:var(--slate900);border:1px solid rgba(255,255,255,.05);border-radius:.5rem;
     padding:.7rem;max-height:16rem;overflow:auto;}
   .call .none{font-size:.78rem;color:var(--faint);font-style:italic;}
+
+  /* THE OFFER. One row, one height, the same gap as everything else in a .call — it sits
+     inside one on a transcript and directly under a balloon on a message, so it carries its
+     own top margin for the second case and inherits the flex gap in the first.
+     Quiet on purpose: it is an offer, not an alert, so it is a bordered strip rather than a
+     coloured banner. The icon says what it is faster than a word would. */
+  .sugg{display:flex;align-items:center;gap:.5rem;margin-top:.4rem;
+    background:var(--slate900);border:1px solid var(--line);border-radius:.5rem;
+    padding:.4rem .5rem .4rem .6rem;font-size:.78rem;}
+  .call .sugg{margin-top:0;}
+  .sugg .material-symbols-rounded{font-size:16px;color:var(--blue400);}
+  .sugg .what{color:var(--ink2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap;}
+  .sugg button{font:inherit;border-radius:.375rem;padding:.2rem .55rem;cursor:pointer;
+    border:1px solid var(--line);background:transparent;color:var(--muted);}
+  .sugg button.add{background:var(--accent);border-color:var(--accent);color:#fff;
+    font-weight:600;}
+  .sugg button:hover{filter:brightness(1.12);}
+  .sugg button:disabled{opacity:.6;cursor:default;}
   .blank{color:var(--faint);font-size:.85rem;}
 
   /* ---- the assistant --------------------------------------------------------------------
@@ -393,17 +412,24 @@
           : it.call.silent ? '<div class="none">No audio.</div>'
           : (it.call.transcript ? `<div class="text">${esc(it.call.transcript)}</div>`
                                 : '<div class="none">Transcript pending.</div>')}
-      </div></div>` : `<div class="rw">${msgHtml(it.msg)}</div>`);
+        ${suggestHtml(it.call.suggest)}
+      </div></div>` : `<div class="rw">${msgHtml(it.msg)}${suggestHtml(it.msg.suggest)}</div>`);
     if (!html.length) html.push('<div class="rw"><div class="none">Nothing yet.</div></div>');
     // The signature carries every field the row renders — the same rule `callSig` follows, and
     // for the same reason: a transcript filling in must REBUILD that row rather than be
     // appended below the "Transcript pending." it replaces.
+    // `suggest` IS IN BOTH SIGNATURES, and it has to be: it arrives from a background pass
+    // seconds to minutes after the row, with the same person, the same timestamp and the same
+    // counts — the exact shape that has gone stale three times in this file already. Keyed on
+    // its `key`, which is a digest of the judged text, so it also changes when the text does.
     reconcile(host, items.map(it => it.call
       ? ['c', it.call.at, it.call.mode, it.call.files, it.call.bytes,
          it.call.norecording ? 1 : 0, it.call.silent ? 1 : 0,
-         (it.call.transcript || '').length].join('\u0000')
+         (it.call.transcript || '').length,
+         (it.call.suggest || {}).key || ''].join('\u0000')
       : ['m', it.msg.at, it.msg.them, it.msg.us, it.msg.by, it.msg.network,
-         it.msg.held ? 1 : 0].join('\u0000')), html);
+         it.msg.held ? 1 : 0,
+         (it.msg.suggest || {}).key || ''].join('\u0000')), html);
     // FOLLOW THE CONVERSATION ONLY IF THEY WERE ALREADY AT THE BOTTOM. Someone scrolled up
     // reading what a caller said last week should not be yanked away by an unrelated message
     // arriving — the same mistake the model list made once a second during a download.
@@ -458,6 +484,23 @@
 
   // One inbound message and whatever went back. `by` says who spoke for us, which the reader
   // cannot infer: empty means nobody did — the normal case now that messages are carried.
+  // WHAT WAS ARRANGED, offered under the words that arranged it. Absent unless the pass found
+  // something — a button under every message is worse than no buttons, because then none of
+  // them get read.
+  //
+  // It states the event and its time and nothing else: no "it looks like", no explanation of
+  // how it was decided. The owner is reading the message directly above it, which is the whole
+  // provenance they need, and it is why this sits here rather than in a panel of its own.
+  function suggestHtml(sg){
+    if (!sg) return '';
+    return `<div class="sugg" data-key="${esc(sg.key)}">
+      <span class="material-symbols-rounded">event</span>
+      <span class="what">${esc(sg.title)} · ${esc(sg.when)}</span>
+      <button class="add" data-act="add">Add to calendar</button>
+      <button class="no" data-act="dismiss">Dismiss</button>
+    </div>`;
+  }
+
   function msgHtml(m){
     const theirs = m.them ? `<div class="turn it"><div class="bub">${esc(m.them)}</div>
         <div class="who">${esc(m.network)} · ${esc(when(m.at))}</div></div>` : '';
@@ -620,6 +663,30 @@
       <button class="useit send" data-turn="${i}">Send to ${name}</button>
       <button class="useit" data-turn="${i}">Edit first</button></span>`;
   }
+
+  // ADD, OR DISMISS. The click is the approval — see `api_suggestion` for why there is no
+  // confirm step in front of it.
+  document.addEventListener('click', async e => {
+    const b = e.target.closest('.sugg button');
+    if (!b) return;
+    const row = b.closest('.sugg');
+    const act = b.dataset.act;
+    // DISABLE BOTH, not just the one pressed. `add` opens a browser window, which takes a
+    // moment to appear — and a second press in that moment opens a second tab.
+    row.querySelectorAll('button').forEach(x => { x.disabled = true; });
+    if (act === 'add') b.textContent = 'Opening…';
+    try {
+      const d = await post('/api/suggestion', {key: row.dataset.key, action: act});
+      // GONE EITHER WAY, and the poll agrees: the verdict now carries a state, so `for_texts`
+      // stops returning it and the row's signature changes on the next pass. Removing it here
+      // is just not waiting five seconds to see it go.
+      row.remove();
+      if (act === 'add' && d.message && !d.message.startsWith('Opened')) note(d.message);
+    } catch (err) {
+      row.querySelectorAll('button').forEach(x => { x.disabled = false; });
+      if (act === 'add') b.textContent = 'Add to calendar';
+    }
+  });
 
   document.addEventListener('click', async e => {
     const b = e.target.closest('.useit');
@@ -845,12 +912,13 @@
   // stereo file, and the two "there is nothing to show" states can flip on their own.
   function callSig(c){
     return `${c.files}:${(c.transcript || '').length}:${c.norecording ? 'n' : ''}${
-      c.silent ? 's' : ''}`;
+      c.silent ? 's' : ''}:${(c.suggest || {}).key || ''}`;
   }
   function threadSig(){
     return (THREADS.people || [])
       .map(p => `${p.who}:${p.last}:${(p.messages || []).length}:${
-        (p.calls || []).map(callSig).join(',')}`)
+        (p.calls || []).map(callSig).join(',')}:${
+        (p.messages || []).map(m => (m.suggest || {}).key || '').join(',')}`)
       .join('|');
   }
 
