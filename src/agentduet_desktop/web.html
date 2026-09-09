@@ -85,6 +85,12 @@
     border-radius:.3rem;background:var(--slate900);border:1px solid var(--line);}
 
   .chat{display:flex;flex-direction:column;gap:1.1rem;max-width:44rem;}
+  /* THE RECONCILE HOSTS AND ROW WRAPPERS ARE TRANSPARENT TO LAYOUT. `.chat` and `.thread` are
+     flex columns with a gap, so a plain wrapper div would collect every bubble into one flex
+     child and collapse the spacing between them. `display:contents` gives the DOM a node to
+     address — which is what lets a single row be replaced without touching its neighbours —
+     while the bubbles stay direct flex children for layout. */
+  #chatTurns,#chatTail,#threadItems,.rw{display:contents;}
   .turn{display:flex;flex-direction:column;gap:.3rem;}
   /* A proposed knowledge write, waiting on the owner. Deliberately NOT a chat bubble: a
      bubble is something that was said, and this is something that has NOT happened yet. It
@@ -357,8 +363,7 @@
     if (msgs.length) bits.push(`${msgs.length} message${msgs.length === 1 ? '' : 's'}`);
     $('tSub').textContent = bits.join(' · ');
 
-    const mb = $('mbody');
-    const nearBottom = !mb || mb.scrollHeight - mb.scrollTop - mb.clientHeight < 80;
+    const nearBottom = atBottom();
 
     // INTERLEAVED BY TIME, because they are one relationship and not two logs. Someone who
     // rang and then wrote is one person having one conversation across two channels.
@@ -366,7 +371,14 @@
       .concat(msgs.map(m => ({at: m.at, msg: m})))
       .sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
 
-    $('thread').innerHTML = items.map(it => it.call ? `
+    // ONE HOST, RECONCILED. A carried message or a finished transcript arrives at the END, so
+    // the common case is an append and the reader's selection survives it.
+    let host = $('thread').querySelector('#threadItems');
+    if (!host) {
+      $('thread').innerHTML = '<div id="threadItems"></div>';
+      host = $('thread').querySelector('#threadItems');
+    }
+    const html = items.map(it => it.call ? `<div class="rw">
       <div class="call">
         <div class="top">
           <span class="when">${esc(when(it.call.at))}</span>
@@ -376,8 +388,17 @@
           : it.call.silent ? '<div class="none">No audio.</div>'
           : (it.call.transcript ? `<div class="text">${esc(it.call.transcript)}</div>`
                                 : '<div class="none">Transcript pending.</div>')}
-      </div>` : msgHtml(it.msg)).join('')
-      || '<div class="none">Nothing yet.</div>';
+      </div></div>` : `<div class="rw">${msgHtml(it.msg)}</div>`);
+    if (!html.length) html.push('<div class="rw"><div class="none">Nothing yet.</div></div>');
+    // The signature carries every field the row renders — the same rule `callSig` follows, and
+    // for the same reason: a transcript filling in must REBUILD that row rather than be
+    // appended below the "Transcript pending." it replaces.
+    reconcile(host, items.map(it => it.call
+      ? ['c', it.call.at, it.call.mode, it.call.files, it.call.bytes,
+         it.call.norecording ? 1 : 0, it.call.silent ? 1 : 0,
+         (it.call.transcript || '').length].join('\u0000')
+      : ['m', it.msg.at, it.msg.them, it.msg.us, it.msg.by, it.msg.network,
+         it.msg.held ? 1 : 0].join('\u0000')), html);
     // FOLLOW THE CONVERSATION ONLY IF THEY WERE ALREADY AT THE BOTTOM. Someone scrolled up
     // reading what a caller said last week should not be yanked away by an unrelated message
     // arriving — the same mistake the model list made once a second during a download.
@@ -470,24 +491,86 @@
     return r ? (r.display || r.who) : '';
   }
 
+  // ---- appending instead of rebuilding ------------------------------------------------------
+  //
+  // A LIST THAT ONLY GREW SHOULD ONLY GROW ON SCREEN. Replacing a container's innerHTML throws
+  // away the reader's selection and any scroll position inside it, and a poll that does it
+  // every time a message arrives makes the panel unusable for the one thing a transcript is
+  // for — reading it and copying something out. New turns arrive at the END, so the common
+  // case is purely additive and can be appended.
+  //
+  // Reconciled on a SIGNATURE PER ITEM, not by count: a turn already on screen can change (an
+  // answer filling a pending slot, a draft becoming sent), and appending then would leave the
+  // old version above the new one. Anything but a pure append falls back to a rebuild, which
+  // is correct if occasionally abrupt.
+  // Each entry of `html` must be ONE element — wrap it in `.rw` — so a row maps to a child and
+  // can be replaced on its own.
+  function reconcile(host, sigs, html) {
+    const drawn = host.__sigs || [];
+    if (!drawn.length || host.children.length !== drawn.length) {
+      host.innerHTML = html.join('');
+      host.__sigs = sigs;
+      return false;
+    }
+    // PATCH THE ROWS THAT CHANGED, rather than rebuilding because one did. Appending alone was
+    // not enough: `useAsReply` renders the LAST turn differently, so every new message changes
+    // the row above it, and a whole-list rebuild threw away the reader's selection every time.
+    // Now only that one row is replaced and a selection anywhere else survives.
+    for (let i = 0; i < Math.min(drawn.length, sigs.length); i++) {
+      if (drawn[i] !== sigs[i]) host.children[i].outerHTML = html[i];
+    }
+    for (let i = drawn.length; i < sigs.length; i++) {
+      host.insertAdjacentHTML('beforeend', html[i]);
+    }
+    while (host.children.length > sigs.length) host.lastElementChild.remove();
+    host.__sigs = sigs;
+    return true;
+  }
+
+  // WAS THE READER AT THE BOTTOM? Only then does new content scroll into view. Someone scrolled
+  // up reading what a caller said last week must not be yanked away by an unrelated message
+  // arriving — the same rule `drawThread` already had and `drawChat` did not.
+  function atBottom() {
+    const mb = $('mbody');
+    return !mb || mb.scrollHeight - mb.scrollTop - mb.clientHeight < 80;
+  }
+
   function drawChat(pending){
     const log = $('chat');
     if (!log) return;
     // Default to the in-flight question rather than requiring every caller to know it. Passing
     // "" explicitly still clears it, so a caller can be deliberate.
     if (pending === undefined) pending = PENDING_Q;
-    log.innerHTML = TURNS.map((t, i) => t.brk ? `<div class="brk"><span>new conversation</span></div>` : `
+    // TWO HOSTS, so the tail can be replaced without touching the turns. The pending bubble and
+    // the proposal cards are rewritten on nearly every draw — they are transient by nature —
+    // and while they shared one container with the turns, rewriting them rebuilt everything.
+    let turnHost = log.querySelector('#chatTurns'), tail = log.querySelector('#chatTail');
+    if (!turnHost) {
+      log.innerHTML = '<div id="chatTurns"></div><div id="chatTail"></div>';
+      turnHost = log.querySelector('#chatTurns');
+      tail = log.querySelector('#chatTail');
+    }
+    const wasDown = atBottom();
+    const html = TURNS.map((t, i) => t.brk
+      ? `<div class="rw"><div class="brk"><span>new conversation</span></div></div>` : `<div class="rw">
       <div class="turn me"><div class="bub">${esc(t.q)}${viaLine(t)}</div></div>
       ${t.pending && !t.a ? `<div class="turn it"><div class="dots"><i></i><i></i><i></i></div></div>` : `
       <div class="turn ${t.bad ? 'bad' : 'it'}"><div class="bub${t.draft ? ' draft' : ''}${t.sent ? ' went' : ''}">${
         t.draft ? `<span class="dlbl${t.sent ? ' gone' : ''}">${t.sent ? 'Sent' : 'Draft reply'}${
           draftWho(t) ? ' to ' + esc(draftWho(t)) : ''}${t.sent ? '' : ' — not sent'}</span>` : ''
-      }${esc(t.a)}${viaLine(t)}${useAsReply(t, i)}</div></div>`}`).join('')
-      + (pending ? `<div class="turn me"><div class="bub">${esc(pending)}</div></div>
+      }${esc(t.a)}${viaLine(t)}${useAsReply(t, i)}</div></div>`}</div>`);
+    // The signature carries everything the row RENDERS, so a turn that changes rebuilds rather
+    // than being appended beside its older self. Same discipline as `callSig`.
+    reconcile(turnHost, TURNS.map((t, i) => t.brk ? 'brk'
+      : [t.q, t.a, t.pending ? 1 : 0, t.bad ? 1 : 0, t.draft ? 1 : 0, t.sent ? 1 : 0,
+         t.via || '', i === TURNS.length - 1 ? 'last' : ''].join('\u0000')), html);
+    tail.innerHTML = (pending ? `<div class="turn me"><div class="bub">${esc(pending)}</div></div>
          <div class="turn it"><div class="row"><div class="dots"><i></i><i></i><i></i></div>
          <span class="waited" id="waited"></span></div></div>` : '')
       + PROPOSALS.map(p => propHtml(p)).join('');
-    $('mbody').scrollTop = $('mbody').scrollHeight;
+    // ONLY IF THEY WERE ALREADY AT THE BOTTOM. This scrolled unconditionally, so every poll
+    // that redrew the chat dragged a reader back down.
+    if (wasDown) $('mbody').scrollTop = $('mbody').scrollHeight;
   }
 
   // The assistant may write freely to a PERSON's notes, because those stay attributed. The
