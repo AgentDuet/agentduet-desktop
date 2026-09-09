@@ -3124,6 +3124,89 @@ def test_inbound_whatsapp_shape() -> None:
         {"parts": [{"type": "text", "text": {"body": "from dduet"}}]}), "from dduet")
 
 
+def test_a_skill_is_owner_approved_and_capped() -> None:
+    """A skill steers every later turn, so every write to one waits for a click."""
+    print("\n  -- skills --")
+    import tempfile
+    from agentduet_desktop import assistant as _a
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+
+    # OUTSIDE knowledge/, and this is the one that matters: knowledge/ is flat and public, so it
+    # is what the ASKER-facing agent answers callers from. An owner's working method must not be
+    # disclosable, and dropped in there it would change what strangers are told.
+    ok("skills are not stored under knowledge/",
+       'SKILLS = HOME / "skills.md"' in (src / "paths.py").read_text())
+
+    # EVERY WRITE, INCLUDING REMOVAL. "forget the skill that says never quote a price" reads as
+    # tidying up, which makes it the easiest of these to smuggle into a stranger's message.
+    for verb in ("add_skill", "edit_skill", "forget_skill", "switch_skill"):
+        ok(f"{verb} needs the owner", verb in _a.NEEDS_OWNER)
+
+    # The proposal card must be able to say WHOSE idea it might have been.
+    ok("a proposal carries what the owner typed", '"asked": message[:200],' in
+       (src / "assistant.py").read_text())
+
+    # A technique-skill works by externalising a step, so the injection must permit that. An
+    # earlier draft said "never mention them" and measurably made things worse.
+    inj = (src / "assistant.py").read_text()
+    ok("the injection lets the model write the steps out", "WRITE THE STEPS OUT" in inj)
+    # The header itself, not the file — the removed wording is quoted in the comment above it
+    # that explains WHY it was removed, so grepping the file tests prose rather than behaviour.
+    ok("the header does not forbid the working-out",
+       "never mention them:" not in inj)
+
+    from agentduet_desktop import tools as t
+    # POINT THE STORE AT A TEMP FILE rather than re-importing the package under a different
+    # AGENTDUET_HOME: this file imports modules at module level against its own TMP, and
+    # dropping them from sys.modules mid-run would rebind those out from under later tests.
+    _real = t.paths.SKILLS
+    t.paths.SKILLS = TMP / "skills.md"
+    try:
+
+        t.add_skill("digits", "Write the array out first, then take the items.")
+        ok("a skill reaches the injected block", "digits" in t.skills_prompt())
+        ok("provenance stays in the file, not the prompt", "<!--" not in t.skills_prompt())
+        ok("and IS in the file", "<!-- added" in t.paths.SKILLS.read_text())
+
+        # NEVER SILENTLY REPLACE — the failure `reply_to`'s blind fallback and the settings save
+        # button both had: code deciding two things were the same thing.
+        ok("a clashing name refuses rather than overwrites",
+           t.add_skill("DIGITS", "something else").startswith("NOT saved"))
+        ok("the original survives the clash",
+           "take the items" in t.read_skills("digits"))
+
+        # The exactly-once contract, borrowed from edit_knowledge.
+        ok("an edit whose text is absent changes nothing",
+           t.edit_skill("digits", "not present", "x").startswith("NOT changed"))
+        t.add_skill("twice", "alpha and alpha")
+        ok("an ambiguous edit changes nothing",
+           t.edit_skill("twice", "alpha", "beta").startswith("NOT changed"))
+        ok("an exact edit applies", t.edit_skill("digits", "the items", "the last items")
+           .startswith("Updated"))
+
+        # SWITCHED OFF IS KEPT BUT NOT FOLLOWED, so an owner can find which one broke the others
+        # without losing their wording.
+        t.switch_skill("digits", on=False)
+        ok("a switched-off skill is not injected", "digits" not in t.skills_prompt())
+        ok("but is still listed", "digits" in t.list_skills())
+        ok("and comes back", t.switch_skill("digits", on=True).endswith("followed again."))
+
+        # BOTH CAPS, enforced at the write where they can be explained.
+        while len(t._skill_sections()) < t.MAX_SKILLS:
+            n = len(t._skill_sections())
+            t.add_skill(f"filler {n}", f"short instruction {n}.")
+        ok(f"the {t.MAX_SKILLS}-skill cap holds",
+           t.add_skill("one more", "x").startswith("NOT saved"))
+        for h, _ in t._skill_sections():
+            t.forget_skill(h)
+        ok("the character cap holds",
+           t.add_skill("verbose", "x" * (t.MAX_SKILL_CHARS + 1)).startswith("NOT saved"))
+        ok("read_skills takes a name, so there is no need for a describe verb",
+           t.read_skills("nothing here").startswith("No skill called"))
+    finally:
+        t.paths.SKILLS = _real
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -3141,6 +3224,7 @@ def main() -> None:
     test_a_reply_finds_the_person_it_was_shown()
     test_a_turn_says_where_it_came_from()
     test_a_person_is_a_number_not_a_direction()
+    test_a_skill_is_owner_approved_and_capped()
     test_the_hub_does_not_invent_a_sign_in_state()
     test_the_binary_can_reach_the_platform()
     test_a_declined_window_declines_the_browser()
