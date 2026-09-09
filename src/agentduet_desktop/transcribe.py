@@ -431,9 +431,16 @@ def describe() -> str:
         # SAY THE QUARANTINE OUT LOUD. On a Mac that can run Apple's engine, Whisper appearing
         # here with no reason reads as a broken setting — and the owner would go looking in
         # settings.md, where the answer is not.
+        # NAME THE BACKEND. `describe` exists to say what will ACTUALLY run, and after the
+        # engine swap the GPU-or-CPU half is the material fact: the same model is twelve times
+        # faster on Metal, and an owner comparing two machines has no other way to tell which
+        # one they got. It is an outcome, not a hint — it reports what happened, not what we
+        # have yet to build.
+        where = backend()
+        on = f" on the {where}" if where == "GPU (Metal)" else ""
         if APPLE_QUARANTINED and sys.platform == "darwin" and apple_ready()[0]:
-            return (f"Whisper {local_model()} on this machine — Apple's on-device engine is "
-                    f"held back for now, so every language uses Whisper")
+            return (f"Whisper {local_model()} on this machine{on} — Apple's on-device engine "
+                    f"is held back for now, so every language uses Whisper")
         # SAY WHY WHISPER. Two different reasons, and both leave a Mac owner staring at Whisper
         # with nowhere to look: either Apple's engine cannot run here, or it can and their
         # settings.md still holds the model name seeded before Apple existed — which every
