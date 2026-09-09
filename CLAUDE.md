@@ -726,7 +726,8 @@ binary in a folder"). Ordered; each is worth doing alone.
       `SELF_VOUCHING_NETWORKS` gained `"DDUET"` on the strength of the SSO requirement. That is a
       claim about AUTHENTICATION, not identity verification; `kyc_status` is the stronger signal
       and should override it the day it is readable.
-- [ ] **Directory/discovery — REOPENED 2026-08-27; "moot" was wrong.** It was closed on the
+- [ ] **Directory/discovery — REOPENED 2026-08-27, then DEFERRED 2026-09-09 with the people
+      list above (same decision, same reason: no effort now, no use case yet).** It was closed on the
       belief that the DDUET surface was gone. It is not: `PostBaChatMessageRequest.profile_url`
       in `wss-edge`'s `nexus/mono/bachat/ba_chat_http.proto` is a **public BA slug**
       (`dduet.com/<slug>`), and a message may be minted against it INSTEAD of an account uid. So
@@ -741,13 +742,30 @@ binary in a folder"). Ordered; each is worth doing alone.
       `session_uid` means every session the caller is a member of).
       **`wss-edge` wires exactly ONE baChat path — `internal/baChat/v1/agentPostMessage`.** The
       2026-08-10 adaptation design puts `agentListSessions`/`agentQueryMessages` under "Out of
-      scope, deliberately", so this is a plumbing gap, not a missing capability: the ask upstream
-      is to expose what exists, not to build a directory.
+      scope, deliberately", so this is a plumbing gap, not a missing capability.
+      **DEFERRED BY DECISION, 2026-09-09 (Stanley, from the meetings): the SDK is NOT going to
+      list people.** Not because it cannot — the RPCs above exist and the gap is plumbing — but
+      because the effort is not going there now and NO USE CASE HAS TURNED UP YET. So there is
+      no ask outstanding upstream; do not raise one, and do not design against its arrival.
+      **What reopens it is a use case, not a capability** — the RPCs are not the blocker and
+      never were. Kept in full rather than deleted, per the stub-first rule at the top of this
+      file: the facts above cost a proto read to derive and this is a priority call, not an
+      impossibility.
       **One limit is deliberate and worth not designing around:** `BaChatUserInfo.emails` is
       populated ONLY on a single-user lookup — "so a connector can turn one relayed userUid into
       an emailable participant, not so a whole customer list can be harvested in one call".
-      Until this lands, the app can only know people who message it while it is running, which is
-      why `people/` looks empty on a fresh install.
+      **SO THE PEOPLE LIST IS OBSERVED-ONLY BY DESIGN NOW, not by limitation.** `list_people`
+      derives from `tools.rows()` — the local `run/queries.jsonl` — unioned with whatever
+      profiles the owner wrote, and `who_is` only ever reads `people/<identity>.md` off disk.
+      Neither has ever called the platform, so the decision above needed no code change
+      (checked 2026-09-09). There is no backfill path anywhere in the package.
+      **The consequence to design around instead: UPTIME IS DATA.** Anything that arrives while
+      the app is off is invisible permanently, `people/` is empty on a fresh install and always
+      will be — there is no "import your history" step and now never will be — and a daemon that
+      dies mid-day leaves a hole that NOTHING RECORDS. That last one is the same silent-failure
+      shape as the rest of this file's 2026-09 findings: the gap produces nothing rather than
+      something. Recording up/down spans so a thread can say "not recording between 14:02 and
+      16:40" is the honest version, and is not built.
 - [ ] **DDUET is BUSINESS-account chat, not the person-to-person app.** The distinction cost a
       wrong answer on 2026-08-27, so: `AddressNetwork` is exactly `{WA, TELCO, DDUET}`, and DDUET
       IS BaChat. `BaChatUserInfo` is documented as "the field set of
