@@ -3424,6 +3424,18 @@ def test_a_question_survives_a_redraw() -> None:
     # messages and calls — none of which move when a transcript is written seconds to minutes
     # after the call — so the open thread went on saying "Transcript pending." until a reload.
     # Third instance of this shape in this file, after chatSig and load().
+    # HOME AND END WORK ON BOTH SURFACES. They already did in a browser and did not in the
+    # native window, which is the one the owner drives: WKWebView follows the macOS convention
+    # where those keys scroll the document. Verified in the page — from mid-first-line, End
+    # goes to the end of THAT LINE (15) and not the end of the box (32).
+    ok("Home and End are handled rather than left to the engine",
+       "e.key === 'Home' || e.key === 'End'" in hub)
+    ok("and move within the LINE, which matters once a message wraps",
+       "v.lastIndexOf('\\n', from - 1) + 1" in hub)
+    ok("Cmd/Ctrl/Alt still pass through to the platform",
+       "!e.metaKey && !e.ctrlKey && !e.altKey" in hub)
+    ok("and Shift extends the selection", "if (e.shiftKey) el.setSelectionRange" in hub)
+
     ok("a call's signature includes its transcript",
        "(c.transcript || '').length" in hub)
     ok("and the two nothing-to-show states, which flip on their own",
