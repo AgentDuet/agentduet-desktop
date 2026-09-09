@@ -852,34 +852,242 @@ def _merge_audio(stem: str, wavs: list[pathlib.Path]) -> bool:
     return True
 
 
+#: Shortest run of words that counts as attribution. A single word matches by coincidence —
+#: "yes", "the", a name — and one wrong word starts a turn in the wrong mouth.
+MIN_RUN = 2
+#: How much of the mixed transcript must be attributed before the order is worth claiming.
+#: Below this the reconstruction is mostly holes, and a mostly-holed order is a guess.
+MIN_ATTRIBUTED = 0.6
+
+
+def _runs(mixed: list[str],
+          legs_words: dict[str, list[str]]) -> list[tuple[int, int, int, str]]:
+    """Which stretches of the MIXED transcript came from which leg.
+
+    `difflib` between the mixed word list and one leg's own word list: that leg's words appear
+    in the mixed audio in the same order, so its matching blocks are where it was speaking.
+    Runs shorter than MIN_RUN are dropped as coincidence, and where two legs claim the same
+    stretch the longer match wins — the shorter one is the other party's words leaking into a
+    channel, which is exactly what mixing does.
+    """
+    import difflib
+
+    blocks: list[tuple[int, int, int, str]] = []
+    for leg, words in legs_words.items():
+        if not words:
+            continue
+        sm = difflib.SequenceMatcher(a=mixed, b=words, autojunk=False)
+        for m in sm.get_matching_blocks():
+            if m.size >= MIN_RUN:
+                # The leg offset is carried too, because the WORDS come from the leg and only
+                # the ORDER comes from the mix — see `_ordered`.
+                blocks.append((m.a, m.a + m.size, m.b + m.size, leg))
+    blocks.sort(key=lambda b: (b[0], -(b[1] - b[0])))
+    kept: list[tuple[int, int, int, str]] = []
+    for start, end, upto, leg in blocks:
+        if kept and start < kept[-1][1]:
+            # TRIM THE OVERLAP, DO NOT DISCARD THE RUN. Discarding cost a whole turn on the
+            # first real call: the caller's block absorbed one shared word ("The", which both
+            # parties said) at the exact index where the callee's four-word run began, so a
+            # ONE-WORD overlap deleted the callee from the transcript entirely and the ordering
+            # then reported that party as absent from the mix. Common words are shared by
+            # definition in a conversation, so an overlap is the normal case and not a conflict.
+            start = kept[-1][1]
+            if end - start < MIN_RUN:
+                continue
+        kept.append((start, end, upto, leg))
+    return kept
+
+
+#: How far past a match a boundary may be pushed to finish the sentence. Unbounded, a single
+#: match could swallow a party's entire remaining transcript and destroy the order it was
+#: meant to establish.
+SNAP_WORDS = 12
+
+
+def _sentence_end(words: list[str], upto: int) -> int:
+    """`upto`, extended to the end of the sentence it falls inside."""
+    if upto <= 0 or upto >= len(words):
+        return upto
+    if words[upto - 1].endswith((".", "?", "!")):
+        return upto
+    for i in range(upto, min(len(words), upto + SNAP_WORDS)):
+        if words[i].endswith((".", "?", "!")):
+            return i + 1
+    return upto
+
+
+def _ordered(mixed_text: str, leg_texts: dict[str, str]) -> tuple[list[tuple[str, str]], float]:
+    """Turns in speaking order, and the fraction of the mixed transcript that was attributed.
+
+    APPROXIMATE BY CONSTRUCTION, and the caller must say so. Speech recognition on mixed audio
+    does not produce the same words as on an isolated leg — overlapping talk degrades it and
+    can fuse two speakers into one utterance — so this is text alignment, not timing. What it
+    buys is the one thing the isolated legs cannot give: who spoke first.
+    """
+    mixed = mixed_text.split()
+    if not mixed:
+        return [], 0.0
+    words = {leg: t.split() for leg, t in leg_texts.items()}
+    kept = _runs(mixed, words)
+    if not kept:
+        return [], 0.0
+    # EVERY PARTY MUST APPEAR IN THE MIX, or "100% attributed" is a lie. On the first real
+    # call this returned 1.0 with one speaker missing entirely: the mix held only the caller,
+    # so every word of it was placed — and the callee's turn appeared solely because unmatched
+    # leg words are appended at the end. The share measures how much of the MIX was placed, so
+    # a one-sided mix scores perfectly while ordering nothing. Both must be seen.
+    spoke = {leg for _, _, _, leg in kept}
+    if any(leg not in spoke for leg in words):
+        logger.info("ordering: %s did not appear in the mix at all — no order to infer",
+                    ", ".join(sorted(set(words) - spoke)))
+        return [], 0.0
+    turns: list[tuple[str, str]] = []
+    covered = 0
+    # THE WORDS COME FROM THE LEG, NOT FROM THE MIX. Emitting the matched span of the mixed
+    # transcript would publish the WORSE transcription of every turn — mixed audio is exactly
+    # where recognition degrades, and the isolated legs are the accurate copy. So each run
+    # consumes that leg's own words up to the end of the match, which also keeps the words the
+    # mix dropped: they were said, they are in the leg, and losing them to gain an order would
+    # be a bad trade.
+    taken = {leg: 0 for leg in words}
+    for start, end, upto, leg in kept:
+        covered += end - start
+        # SNAP THE SEAM TO A SENTENCE. Word-level alignment cuts wherever the match happened to
+        # end, and on the first real call that orphaned a lone "The" at the close of one turn
+        # and started the next with "cat jump over the fox." The order was right and the
+        # sentences were wrecked, which reads worse than not ordering at all. A speech turn is
+        # sentence-shaped, so the boundary is extended to the end of the sentence it lands in.
+        upto = _sentence_end(words[leg], upto)
+        if upto <= taken[leg]:
+            continue                          # already emitted by an earlier run's snap
+        said = " ".join(words[leg][taken[leg]:upto]).strip()
+        taken[leg] = upto
+        if not said:
+            continue
+        # MERGE A CONSECUTIVE RUN BY THE SAME PARTY. Alignment breaks one turn into several
+        # blocks wherever the mixed transcript dropped a word, and three bubbles from the same
+        # speaker in a row is a worse reading of the call than one.
+        if turns and turns[-1][0] == leg:
+            turns[-1] = (leg, turns[-1][1] + " " + said)
+        else:
+            turns.append((leg, said))
+    # ANYTHING LEFT AT THE END still belongs to its speaker. A leg whose last sentence never
+    # made it into the mix would otherwise vanish from the call record entirely.
+    for leg, n in taken.items():
+        tail = " ".join(words[leg][n:]).strip()
+        if not tail:
+            continue
+        if turns and turns[-1][0] == leg:
+            turns[-1] = (leg, turns[-1][1] + " " + tail)
+        else:
+            turns.append((leg, tail))
+    return turns, covered / len(mixed)
+
+
+def _mono_for_ordering(stem: str) -> pathlib.Path | None:
+    """A throwaway MONO downmix of the merged call, for reconstructing turn order only.
+
+    THE STEREO FILE CANNOT BE USED FOR THIS, and the first real call proved it: Apple's engine
+    reads only channel one, so the mix it transcribed contained the caller and not one word of
+    the callee. Checked directly — the right channel transcribes perfectly on its own, and a
+    mono sum of the two returns both parties interleaved, which is the ordering signal.
+    outside both the legs folder and the owner's, because `pending()` globs the legs for work
+    and this is not work, and because nobody asked to keep a downmix.
+    Averaged rather than summed so two loud parties cannot clip. Accuracy barely matters here:
+    the words that reach the transcript come from the legs, and this file is only ever asked
+    what order they came in.
+    """
+    import struct
+    import tempfile
+
+    from . import carry
+
+    src = carry.merged_wav(stem)
+    try:
+        with wave.open(str(src), "rb") as f:
+            if f.getnchannels() != 2:
+                return None
+            rate, n, width = f.getframerate(), f.getnframes(), f.getsampwidth()
+            raw = f.readframes(n)
+        got = struct.unpack("<%dh" % (len(raw) // 2), raw)
+        out = pathlib.Path(tempfile.mkdtemp(prefix="ad-mix-")) / f"{stem}.wav"
+        with wave.open(str(out), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(width)
+            w.setframerate(rate)
+            w.writeframes(b"".join(struct.pack("<h", (a + b) // 2)
+                                   for a, b in zip(got[0::2], got[1::2])))
+        return out
+    except (OSError, wave.Error, struct.error) as exc:
+        logger.info("merge %s: could not build a mono mix for ordering (%s)", stem, exc)
+        return None
+
+
 def _merge_text(stem: str, wavs: list[pathlib.Path]) -> None:
     """One transcript per call, each turn labelled with who said it.
 
-    NOT INTERLEAVED YET, and it says so rather than implying an order it does not know. Turn
-    order needs per-utterance timings: faster-whisper already returns them and this package
-    throws them away, and Apple's helper prints bare text. Until both are carried, the honest
-    output is each party's words under their own label — a guessed order on a call record is
-    the one error worse than no order.
+    IN SPEAKING ORDER WHEN THAT CAN BE RECONSTRUCTED, grouped by party when it cannot, and the
+    file says which it is either way. The order comes from transcribing the MIXED audio as
+    well: the legs know who spoke, the mix knows in what order, and aligning the two joins
+    them. That is text alignment rather than timing, so it is APPROXIMATE and labelled as such
+    — a header that does not distinguish a reconstructed order from a measured one is how a
+    reader comes to trust the wrong thing.
+
+    The exact route stays open and is not this: per-utterance timings, which faster-whisper
+    already returns and this package discards, and which Apple's helper does not print yet.
     """
     from . import carry
-    parts = []
-    for leg, label in (("caller", "them"), ("callee", "you")):
+    labels = {"caller": "them", "callee": "you"}
+    leg_texts: dict[str, str] = {}
+    for leg in labels:
         hit = next((w for w in wavs if w.stem.endswith("-" + leg)), None)
         if hit is None:
             continue
         txt = hit.with_suffix(".txt")
-        body = ""
         if txt.exists():
             try:
-                body = txt.read_text().strip()
+                leg_texts[leg] = txt.read_text().strip()
             except OSError:
-                body = ""
-        if body:
-            parts.append(f"{label}: {body}")
-    if not parts:
+                pass
+    leg_texts = {k: v for k, v in leg_texts.items() if v}
+    if not leg_texts:
         return
-    header = ("# not in speaking order — each party's words are grouped, because the speech "
-              "engine did not report when each turn was said\n\n") if len(parts) > 1 else ""
+
+    header, parts = "", []
+    # ONLY WORTH TRYING WITH TWO PARTIES. One leg's words are already in order, so mixing adds
+    # a transcription and can only lose accuracy.
+    if len(leg_texts) > 1:
+        mixed = ""
+        mono = _mono_for_ordering(stem)
+        if mono is not None:
+            try:
+                mixed = transcribe(mono)
+            except Exception as exc:
+                logger.info("merge %s: could not transcribe the mix for ordering (%s)",
+                            stem, exc)
+            finally:
+                try:
+                    mono.unlink()
+                    mono.parent.rmdir()
+                except OSError:
+                    pass
+        if mixed:
+            turns, share = _ordered(mixed, leg_texts)
+            if turns and share >= MIN_ATTRIBUTED:
+                header = (f"# speaking order is APPROXIMATE — reconstructed by matching a "
+                          f"transcript of the mixed audio against each party's own, which "
+                          f"placed {share * 100:.0f}% of it. The words under each name are "
+                          f"that party's; the order between them is inferred.\n\n")
+                parts = [f"{labels[leg]}: {said}" for leg, said in turns]
+            else:
+                logger.info("merge %s: ordering placed only %.0f%% — grouping instead",
+                            stem, share * 100)
+    if not parts:
+        parts = [f"{labels[leg]}: {leg_texts[leg]}" for leg in labels if leg in leg_texts]
+        if len(parts) > 1:
+            header = ("# not in speaking order — each party's words are grouped, because the "
+                      "order could not be reconstructed\n\n")
     try:
         carry.merged_txt(stem).write_text(header + "\n".join(parts) + "\n")
     except OSError as exc:
