@@ -3428,6 +3428,30 @@ def test_a_question_survives_a_redraw() -> None:
     ok("focus is deliberate", "if (ok && opening) $('ask').focus();" in hub)
     ok("a click passes it", "drawWho(true);" in hub)
     ok("and the poll does not", "if (threadSig() !== before) drawWho();" in hub)
+
+    # A LIST THAT ONLY GREW SHOULD ONLY GROW ON SCREEN. Replacing a container's innerHTML
+    # throws away the reader's selection, so a new message arriving while someone is copying a
+    # number out of a transcript used to cost them the selection. Rows are reconciled: only the
+    # ones whose signature changed are replaced, and new ones are appended.
+    ok("rows are reconciled rather than rebuilt", "function reconcile(host, sigs, html)" in hub)
+    ok("only changed rows are replaced",
+       "if (drawn[i] !== sigs[i]) host.children[i].outerHTML = html[i];" in hub)
+    ok("new rows are appended", "host.insertAdjacentHTML('beforeend', html[i]);" in hub)
+    # APPENDING ALONE WAS NOT ENOUGH: `useAsReply` renders the LAST turn differently, so every
+    # new message changes the row above it. Per-row patching is what makes that survivable.
+    ok("the last-turn difference is in the signature",
+       "i === TURNS.length - 1 ? 'last' : ''" in hub)
+    # ONE ELEMENT PER ROW or a row does not map to a child — and the wrappers must not become
+    # flex children, or every bubble collects into one and the gap between them collapses.
+    ok("each row is one wrapped element", 'class="rw"' in hub)
+    ok("and the wrappers are transparent to layout",
+       "#chatTurns,#chatTail,#threadItems,.rw{display:contents;}" in hub)
+    # AND SCROLL ONLY FOLLOWS FROM THE BOTTOM. drawChat scrolled unconditionally, so every
+    # redraw dragged a reader back down; drawThread already had this rule.
+    ok("both renderers ask whether the reader was at the bottom",
+       hub.count("atBottom()") >= 2)
+    ok("and drawChat no longer scrolls unconditionally",
+       "if (wasDown) $('mbody').scrollTop" in hub)
     ok("the poll's own chat refresh still stands aside too",
        "if (BUSY) return;" in hub)
 
