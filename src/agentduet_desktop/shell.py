@@ -146,7 +146,18 @@ def run_with_window(start_daemon, want_window: bool = True,
         # not built yet, so the honest behaviour is the predictable one.
         try:
             print(f"  owner view: {url}")
-            webview.create_window(TITLE, url, width=1360, height=900, min_size=(900, 600))
+            # `text_select=True` BECAUSE PYWEBVIEW DEFAULTS IT TO FALSE, and that default
+            # disables selection at the WEBVIEW level — above the CSS, so `app.css` inverting
+            # `user-select` for content bought nothing here. The browser selected fine and the
+            # native window did not, which is why it read as a styling bug and was not one.
+            #
+            # This app's content is text people need OUT of it: a call transcript, a number
+            # read out on the phone, an address, the assistant's answer. None of it could be
+            # copied, and there is no other route to it. app.css already draws the line in the
+            # right place — chrome that is furniture stays unselectable, so dragging across the
+            # sidebar still does not highlight the navigation. Reported by Stanley 2026-09-09.
+            webview.create_window(TITLE, url, width=1360, height=900, min_size=(900, 600),
+                                  text_select=True)
             webview.start()
             return 0
         except Exception as exc:

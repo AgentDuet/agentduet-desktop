@@ -3704,6 +3704,39 @@ def test_a_poll_notices_everything_it_renders() -> None:
        "(last.a || '').length" in hub)
 
 
+def test_the_content_can_be_copied_out() -> None:
+    """A transcript nobody can select is a transcript nobody can use."""
+    print("\n  -- content is selectable, chrome is not --")
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+
+    # PYWEBVIEW DEFAULTS `text_select` TO FALSE, and that default disables selection at the
+    # WEBVIEW level — above the CSS, so inverting `user-select` in app.css bought nothing in
+    # the native window. The browser selected fine and the window did not, which is why it read
+    # as a styling bug and was not one. This app's content is text people need OUT of it: a
+    # call transcript, a number read out on the phone, an address, the assistant's answer.
+    shell = (src / "shell.py").read_text()
+    ok("the native window allows text selection", "text_select=True" in shell)
+
+    # AND THE CSS DRAWS THE LINE IN THE RIGHT PLACE. `body` carried `user-select:none` from the
+    # design, where it buys the feel of a native app; the rule is inverted rather than deleted,
+    # so furniture stays unselectable and dragging across the sidebar does not highlight the
+    # navigation.
+    css = (src / "app.css").read_text()
+    ok("content is selectable by default", "user-select:none" not in
+       css.split("body{", 1)[1].split("}", 1)[0])
+    optout = css.split("{user-select:none;-webkit-user-select:none;}")[0]
+    optout = optout[optout.rindex("*/") + 2:]
+    for furniture in (".titlebar", ".btn", "button", "nav", "label"):
+        ok(f"{furniture} still resists selection", furniture in optout)
+    for content in (".bub", ".text", ".turn", ".chat"):
+        ok(f"{content} does NOT resist", content not in optout.split(","))
+
+    # The icon font keeps its own `none` for a sharper reason: selecting a Material Symbols
+    # ligature copies the literal word "graphic_eq".
+    ok("the icon font stays unselectable",
+       "-webkit-font-smoothing:antialiased;user-select:none;}" in css)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -3729,6 +3762,7 @@ def main() -> None:
     test_the_folder_chooser_opens_and_says_when_it_cannot()
     test_a_question_survives_a_redraw()
     test_a_poll_notices_everything_it_renders()
+    test_the_content_can_be_copied_out()
     test_one_call_one_file()
     test_exact_speaking_order()
     test_the_hub_does_not_invent_a_sign_in_state()
