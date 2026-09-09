@@ -697,7 +697,7 @@ def list_calls(days: str = "7") -> str:
                 continue
         except ValueError:
             pass
-        folder, names = carry.call_audio(r.get("recordings", []))
+        folder, names = carry.call_audio(r.get("recordings", []), r.get("call_id", ""))
         done = any((folder / n).with_suffix(".txt").is_file() for n in names)
         out.append(f"- {at}  {r.get('caller') or '?'}  "
                    f"({'transcript ready' if done else 'no transcript yet'})")
@@ -732,7 +732,7 @@ def read_call(who: str = "", when: str = "") -> str:
         # The merged transcript when the call has been merged, else the legs — same rule as the
         # hub. A leg name looked up in the owner's folder stopped resolving the moment the legs
         # moved out of it.
-        folder, names = carry.call_audio(r.get("recordings", []))
+        folder, names = carry.call_audio(r.get("recordings", []), r.get("call_id", ""))
         for n in names:
             t = (folder / n).with_suffix(".txt")
             if t.is_file():

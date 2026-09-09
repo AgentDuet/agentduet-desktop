@@ -3473,6 +3473,30 @@ def test_one_call_one_file() -> None:
            len(list(L.glob("*.wav"))) == 2)
         eq("and it is not merged twice", transcribe.merge_ready(), [])
 
+        # AN EMPTY LEG IS NOT PUBLISHED AND NOT KEPT. A 44-byte header reads as "recording
+        # worked" in a directory listing, which is the failure most likely to go unnoticed —
+        # and logging it was the whole answer for a month, which does not help anyone opening
+        # the folder the next day.
+        src_carry = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+                     / "carry.py").read_text()
+        ok("an empty leg is discarded, not just logged",
+           "discarding %s" in src_carry and 'junk.unlink(missing_ok=True)' in src_carry)
+        ok("and its start sidecar goes with it",
+           'path.with_suffix(".start")' in src_carry)
+        # THE INDEX MUST GLOB WHERE THE AUDIO IS. It asked the owner's folder after the legs
+        # moved out of it, so every row would have named no files and the hub would report
+        # "No recording." on a call whose audio was on disk.
+        # Checked on the RECORD CALL specifically, not by grepping the file: `call_audio` also
+        # globs the owner's folder, legitimately, as the fallback for legs written before they
+        # moved. A blanket "this string is absent" would forbid that too.
+        write = src_carry.split("_calls.record(", 1)[1].split(")))", 1)[0]
+        ok("the index globs the legs folder", "legs().glob" in write)
+        ok("and not the owner's folder", "recordings().glob" not in write)
+        # A ROW NAMING NOTHING IS NOT PROOF THERE IS NOTHING — the index wrote `recordings: []`
+        # for a real call on 2026-09-09 and the hub read it as "No recording."
+        ok("an empty row falls back to the call id",
+           "if not names and call_id:" in src_carry)
+
         # LEGS RECORDED BEFORE THEY MOVED must still resolve, or a real transcript on disk
         # reads as "No recording."
         old = "20260101T090000-legacy-caller.wav"
