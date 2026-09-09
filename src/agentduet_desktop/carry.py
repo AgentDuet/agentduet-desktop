@@ -172,7 +172,23 @@ async def _record_leg(party, stamp: str, call_id: str, leg: str) -> None:
     A failure here must not kill the call. The people talking do not know we exist, and losing
     a recording is a smaller harm than dropping their conversation, so this logs and returns.
     """
-    path = _wav_path(stamp, call_id, leg)
+    final = _wav_path(stamp, call_id, leg)
+    # WRITTEN AS `.part` AND RENAMED ON CLOSE, so nothing downstream can ever see a leg that is
+    # still being recorded. `transcribe.pending()` treats any non-empty `*.wav` as work, so
+    # while the file was created under its final name the transcriber would pick it up MID-CALL,
+    # write a `.txt` for the few seconds captured so far, and the merge — which waits only for
+    # every leg to have a transcript — would then produce the finished recording from partial
+    # audio and mark it done. Stanley's 15:22 call came out as 10.5 seconds of a 24-second
+    # conversation, with both legs intact on disk beside it.
+    #
+    # The race was always there and today made it near-certain: whisper.cpp is twelve times
+    # faster than the engine it replaced, and the worker now starts before the connector rather
+    # than after, so the queue is drained while the call is still going.
+    #
+    # A rename on the same directory is atomic, so a reader sees the file either not at all or
+    # complete. `.part` is also the convention `models.py` already uses for a download in
+    # flight, including its stale-part handling.
+    path = final.with_name(final.name + ".part")
     writer = None
     frames = 0
     try:
@@ -194,7 +210,7 @@ async def _record_leg(party, stamp: str, call_id: str, leg: str) -> None:
             # one JSON is a race for no benefit.
             if not frames:
                 try:
-                    path.with_suffix(".start").write_text(f"{time.time():.3f}\n")
+                    final.with_suffix(".start").write_text(f"{time.time():.3f}\n")
                 except OSError as exc:
                     logger.warning("call %s: could not note the %s leg's start (%s)",
                                    call_id, leg, exc)
@@ -215,8 +231,20 @@ async def _record_leg(party, stamp: str, call_id: str, leg: str) -> None:
         # exists and contains nothing, which reads as "recording worked" in a directory listing
         # and is the failure most likely to go unnoticed.
         if frames:
+            # PUBLISH IT: until this rename the file is invisible to the queue, and after it the
+            # file is complete, because the writer above is already closed.
+            #
+            # NOT VIA `return` IN A `finally`, which is how I first wrote it — a return there
+            # swallows the exception in flight, and the exception in flight here is the
+            # CancelledError this task is stopped with at the end of every call. The
+            # cancellation has to keep propagating.
+            try:
+                path.replace(final)
+            except OSError as exc:
+                logger.error("call %s: recorded the %s leg but could not publish it (%s) — the "
+                             "audio is at %s", call_id, leg, exc, path)
             logger.info("call %s: wrote %s (%.1f s of the %s leg)",
-                        call_id, path.name, frames / (SAMPLE_RATE * SAMPLE_WIDTH), leg)
+                        call_id, final.name, frames / (SAMPLE_RATE * SAMPLE_WIDTH), leg)
         else:
             # AND THEN REMOVE IT. Logging that the file is empty was the whole answer for a
             # month, and a warning in yesterday's log does not help someone opening the folder
@@ -229,7 +257,7 @@ async def _record_leg(party, stamp: str, call_id: str, leg: str) -> None:
             # other, and there is nothing left to align.
             logger.warning("call %s: the %s leg produced NO audio — discarding %s",
                            call_id, leg, path.name)
-            for junk in (path, path.with_suffix(".start")):
+            for junk in (path, final.with_suffix(".start")):
                 try:
                     junk.unlink(missing_ok=True)
                 except OSError as exc:
