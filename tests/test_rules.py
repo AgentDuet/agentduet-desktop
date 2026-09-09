@@ -3442,6 +3442,86 @@ def test_one_call_one_file() -> None:
         eq("a pre-move recording is still found", (folder, names), (R, [old]))
 
 
+def test_approximate_speaking_order() -> None:
+    """Order from the mixed transcript, words from the legs, and never a lost word."""
+    print("\n  -- approximate turn order --")
+    from agentduet_desktop.transcribe import MIN_ATTRIBUTED, _ordered
+
+    them = "hi is that the delivery for tuesday i wanted to check the time"
+    you = "yes tuesday morning between nine and eleven does that work for you"
+    every = sorted((them + " " + you).split())
+
+    perfect = ("hi is that the delivery for tuesday yes tuesday morning between nine and "
+               "eleven i wanted to check the time does that work for you")
+    turns, share = _ordered(perfect, {"caller": them, "callee": you})
+    eq("a clean mix is fully attributed", round(share, 2), 1.0)
+    eq("and gives four turns in order", [leg for leg, _ in turns],
+       ["caller", "callee", "caller", "callee"])
+
+    # THE WORDS MUST COME FROM THE LEGS, NOT THE MIX. Mixed audio is exactly where recognition
+    # degrades, so emitting the matched span of the mixed transcript would publish the worse
+    # copy of every turn — and drop whatever the mix missed.
+    dropped = ("hi is that the delivery tuesday yes tuesday morning between nine eleven "
+               "i wanted to check the time does that work for you")
+    turns, share = _ordered(dropped, {"caller": them, "callee": you})
+    ok("a degraded mix still orders", share >= MIN_ATTRIBUTED)
+    ok("and the words the MIX dropped survive",
+       "for tuesday" in " ".join(t for _, t in turns)
+       and "and eleven" in " ".join(t for _, t in turns))
+    for label, mixed in (("clean", perfect), ("degraded", dropped),
+                         ("mix ends early", perfect.rsplit(" ", 5)[0])):
+        turns, _ = _ordered(mixed, {"caller": them, "callee": you})
+        got = sorted(" ".join(t for _, t in turns).split())
+        eq(f"no word is lost ({label})", got, every)
+
+    # A MIX TOO POOR TO ALIGN MUST NOT BE ORDERED AT ALL. A mostly-holed reconstruction is a
+    # guess, and a guessed order on a call record is worse than no order.
+    turns, share = _ordered("hi uh yeah so tuesday then okay right",
+                            {"caller": them, "callee": you})
+    ok("a hopeless mix falls below the threshold", share < MIN_ATTRIBUTED, share)
+
+    # ---- the three defects the first REAL call exposed, 2026-09-08 audio -----------------
+    #
+    # (1) A ONE-SIDED MIX MUST NOT SCORE 100%. Apple reads only channel one of a stereo file,
+    # so the mix held the caller and not one word of the callee — and every word of that mix
+    # was placed, giving perfect confidence for an ordering that ordered nothing.
+    turns, share = _ordered("hi is that the delivery for tuesday",
+                            {"caller": them, "callee": you})
+    eq("a mix missing a party scores zero", share, 0.0)
+    eq("and yields no turns", turns, [])
+
+    # (2) A ONE-WORD OVERLAP MUST TRIM, NOT DISCARD. Both parties say "the", so the caller's
+    # block absorbed the shared word exactly where the callee's run began and the whole run
+    # was dropped — deleting that party from the transcript.
+    a, b = "the cat sat on the mat", "the dog barked loudly"
+    turns, _ = _ordered("the cat sat on the mat the dog barked loudly", {"caller": a, "callee": b})
+    eq("both parties survive a shared word", sorted({leg for leg, _ in turns}),
+       ["callee", "caller"])
+
+    # (3) SEAMS SNAP TO SENTENCES. Word-level cuts orphaned a lone "The" at the end of one turn
+    # and started the next mid-sentence: the order was right and the sentences were wrecked,
+    # which reads worse than not ordering at all.
+    pt = "Hi, is that the delivery for Tuesday? I wanted to check the time."
+    py_ = "Yes, Tuesday morning. Does that work for you?"
+    turns, share = _ordered("Hi, is that the delivery for Tuesday? Yes, Tuesday morning. "
+                            "I wanted to check the time. Does that work for you?",
+                            {"caller": pt, "callee": py_})
+    eq("a punctuated call interleaves", [leg for leg, _ in turns],
+       ["caller", "callee", "caller", "callee"])
+    ok("and every turn is whole sentences",
+       all(t.strip().endswith((".", "?", "!")) for _, t in turns), [t for _, t in turns])
+
+    # And a one-party call is already in order, so mixing could only lose accuracy.
+    body = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+            / "transcribe.py").read_text()
+    ok("ordering is only attempted with two parties", "if len(leg_texts) > 1:" in body)
+    ok("the file says the order is approximate", "APPROXIMATE" in body)
+    ok("ordering reads a MONO downmix, since a stereo file loses a channel",
+       "_mono_for_ordering" in body and "getnchannels() != 2" in body)
+    ok("and says so when it could not be reconstructed",
+       "not in speaking order" in body)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -3465,6 +3545,7 @@ def main() -> None:
     test_the_folder_chooser_opens_and_says_when_it_cannot()
     test_a_question_survives_a_redraw()
     test_one_call_one_file()
+    test_approximate_speaking_order()
     test_the_hub_does_not_invent_a_sign_in_state()
     test_the_binary_can_reach_the_platform()
     test_a_declined_window_declines_the_browser()
