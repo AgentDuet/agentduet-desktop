@@ -677,8 +677,13 @@ def test_answered_call_recording() -> None:
     # would otherwise be reported as accelerated.
     body = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
             / "transcribe.py").read_text()
-    ok("and read from the dylibs beside the package",
-       'glob("libggml-metal*.dylib")' in body)
+    # BOTH LAYOUTS. In site-packages the libraries sit at the root beside the package; a
+    # PyInstaller build collects them into `pywhispercpp/.dylibs/` inside it. Checking only one
+    # would make every frozen build report "CPU" while running on Metal.
+    ok("read from the libraries, not from the platform",
+       'glob("libggml-metal*")' in body)
+    ok("and from both layouts, venv and frozen",
+       '(pkg / ".dylibs", pkg.parent, pkg)' in body)
     ok("no CTranslate2 device chooser survives", "def _device()" not in body)
 
     # Checking the cache must never trigger a download — that is the whole point of asking.

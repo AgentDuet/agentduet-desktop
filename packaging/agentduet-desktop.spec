@@ -140,39 +140,53 @@ hiddenimports = [
     "webview",
     # THE LOCAL SPEECH ENGINE. Imported lazily inside transcribe._load(), and its presence is
     # probed with find_spec rather than an import — so PyInstaller's analysis sees NEITHER, and
-    # without this the binary builds clean and reports "faster-whisper is not installed" for
-    # ever. Exactly the lazy-import gotcha at the top of CLAUDE.md.
-    *collect_submodules("faster_whisper"),
-    "ctranslate2", "onnxruntime", "av", "tokenizers",
+    # without this the binary builds clean and reports the engine missing for ever. Exactly the
+    # lazy-import gotcha at the top of CLAUDE.md.
+    #
+    # WAS faster_whisper + ctranslate2 + onnxruntime + av + tokenizers until 2026-09-09. Those
+    # packages are no longer installed, and `collect_submodules` on an absent package does not
+    # fail loudly — so leaving them here would have shipped a binary with NO speech engine at
+    # all off a green build. That is the a6 failure exactly: signed, notarized, and broken.
+    *collect_submodules("pywhispercpp"),
+    # The C extension, which is a SIBLING of the package rather than inside it, so the import
+    # graph does not always reach it.
+    "_pywhispercpp",
     # THE LOCAL LLM. Imported inside models.load() and probed with find_spec in
     # models.available() — so PyInstaller sees neither, exactly like faster_whisper above.
     *collect_submodules("llama_cpp"),
     "diskcache", "jinja2",      # llama_cpp's own runtime dependencies, imported lazily by it
 ]
 
-# ctranslate2 keeps its inference engine in a SIBLING `ctranslate2.libs/` directory, the
-# manylinux auditwheel layout, and the extension finds it by an RPATH of `$ORIGIN/../
-# ctranslate2.libs`. collect_dynamic_libs() looks INSIDE the package and therefore returns
-# nothing at all — which would build a binary that imports faster_whisper happily and then dies
-# loading the first model, on someone else's machine. onnxruntime and av have contrib hooks and
-# need nothing here.
-_ct2_libs = []
+# THE SPEECH ENGINE'S NATIVE LIBRARIES. whisper.cpp is `libwhisper` plus five `libggml`
+# backends, and ONE OF THEM IS METAL — which is the entire reason this engine replaced
+# faster-whisper, so shipping without it would leave a binary that transcribes correctly and
+# twelve times too slowly, with `status` reporting the GPU it is not using. Silent degradation,
+# which is worse than a failure.
+#
+# collect_dynamic_libs DOES find these, unlike the ctranslate2 case this replaces: the wheel is
+# delocated, so the real libraries sit in `pywhispercpp/.dylibs/` INSIDE the package and the
+# copies at the site-packages root are version aliases of the same six files. Checked rather
+# than assumed — the previous engine kept them in a sibling directory where the same call
+# returned nothing at all.
+_stt_libs = []
 try:
-    import ctranslate2 as _ct2
-    _ct2_root = Path(_ct2.__file__).parent
-    for _d in (_ct2_root.parent / "ctranslate2.libs", _ct2_root / ".libs"):
-        if _d.is_dir():
-            _ct2_libs += [(str(_f), _d.name) for _f in _d.iterdir() if _f.is_file()]
-    if not _ct2_libs:
-        print("NOTE: no sibling ctranslate2 libs found — fine on wheels that embed them")
+    from PyInstaller.utils.hooks import collect_dynamic_libs as _cdl
+    _stt_libs = _cdl("pywhispercpp")
+    _names = {Path(_s).name for _s, _ in _stt_libs}
+    if not any("metal" in _n for _n in _names) and sys.platform == "darwin":
+        # LOUD, because the build would otherwise succeed. A Mac binary without the Metal
+        # backend is the "why is this so slow" bug nobody can see in a listing.
+        print("WARNING: no libggml-metal in the collected speech libraries — a macOS build "
+              "without it falls back to the CPU and `backend()` will say so")
+    print(f"NOTE: collected {len(_stt_libs)} speech engine libraries: {sorted(_names)}")
 except Exception as _exc:
-    print(f"WARNING: ctranslate2 not collected ({_exc}) — local transcription will fail")
+    print(f"WARNING: speech libraries not collected ({_exc}) — transcription will fail")
 
 a = Analysis(
     [str(Path(SPECPATH).parent / "entry.py")],
     pathex=[str(Path(SPECPATH).parent / "src")],
     datas=datas,
-    binaries=_wasm_binaries + _ct2_libs + _llama_binaries,
+    binaries=_wasm_binaries + _stt_libs + _llama_binaries,
     hiddenimports=hiddenimports,
     excludes=["tkinter", "test", "unittest"],   # nothing here draws a GUI
     noarchive=False,
