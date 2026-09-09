@@ -1068,12 +1068,16 @@ def _mono_for_ordering(stem: str) -> pathlib.Path | None:
 def _merge_text(stem: str, wavs: list[pathlib.Path]) -> None:
     """One transcript per call, each turn labelled with who said it.
 
-    IN SPEAKING ORDER WHEN THAT CAN BE RECONSTRUCTED, grouped by party when it cannot, and the
-    file says which it is either way. The order comes from transcribing the MIXED audio as
-    well: the legs know who spoke, the mix knows in what order, and aligning the two joins
-    them. That is text alignment rather than timing, so it is APPROXIMATE and labelled as such
-    — a header that does not distinguish a reconstructed order from a measured one is how a
-    reader comes to trust the wrong thing.
+    IN SPEAKING ORDER WHEN THAT CAN BE RECONSTRUCTED, grouped by party when it cannot. The
+    order comes from transcribing the MIXED audio as well: the legs know who spoke, the mix
+    knows in what order, and aligning the two joins them.
+
+    NOTHING IS WRITTEN INTO THE FILE ABOUT HOW IT WAS MADE. Two drafts carried a `#` header
+    explaining that the order was reconstructed, or that it could not be — and that is a note
+    about our machinery in the middle of the owner's transcript. Stanley's rule, restated
+    2026-09-09: no hints, no debug lines, unless asked for. The distinction still exists and is
+    still recorded — `logger.info` says what share was placed and when it fell back to
+    grouping, which is where a note to ourselves belongs.
 
     The exact route stays open and is not this: per-utterance timings, which faster-whisper
     already returns and this package discards, and which Apple's helper does not print yet.
@@ -1095,7 +1099,7 @@ def _merge_text(stem: str, wavs: list[pathlib.Path]) -> None:
     if not leg_texts:
         return
 
-    header, parts = "", []
+    parts: list[str] = []
     # ONLY WORTH TRYING WITH TWO PARTIES. One leg's words are already in order, so mixing adds
     # a transcription and can only lose accuracy.
     if len(leg_texts) > 1:
@@ -1116,21 +1120,14 @@ def _merge_text(stem: str, wavs: list[pathlib.Path]) -> None:
         if mixed:
             turns, share = _ordered(mixed, leg_texts)
             if turns and share >= MIN_ATTRIBUTED:
-                header = (f"# speaking order is APPROXIMATE — reconstructed by matching a "
-                          f"transcript of the mixed audio against each party's own, which "
-                          f"placed {share * 100:.0f}% of it. The words under each name are "
-                          f"that party's; the order between them is inferred.\n\n")
                 parts = [f"{labels[leg]}: {said}" for leg, said in turns]
             else:
                 logger.info("merge %s: ordering placed only %.0f%% — grouping instead",
                             stem, share * 100)
     if not parts:
         parts = [f"{labels[leg]}: {leg_texts[leg]}" for leg in labels if leg in leg_texts]
-        if len(parts) > 1:
-            header = ("# not in speaking order — each party's words are grouped, because the "
-                      "order could not be reconstructed\n\n")
     try:
-        carry.merged_txt(stem).write_text(header + "\n".join(parts) + "\n")
+        carry.merged_txt(stem).write_text("\n".join(parts) + "\n")
     except OSError as exc:
         logger.warning("merge %s: could not write the transcript (%s)", stem, exc)
 

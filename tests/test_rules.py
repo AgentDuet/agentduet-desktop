@@ -3474,8 +3474,13 @@ def test_one_call_one_file() -> None:
         body = carry.merged_txt(stem).read_text()
         ok("each turn is labelled", "them: is that the delivery" in body
            and "you: yes tuesday" in body)
-        # A GUESSED ORDER IS WORSE THAN NO ORDER on a call record, so it says which it is.
-        ok("and it says it is not in speaking order", "not in speaking order" in body)
+        # NOTHING ABOUT HOW IT WAS MADE. Two drafts carried a `#` header explaining that the
+        # order was reconstructed, or could not be — a note about our machinery in the middle
+        # of the owner's transcript. It reads as the owner's document, so it holds their
+        # conversation and nothing else; the fallback is recorded in the log instead.
+        ok("and the file carries no commentary about itself",
+           not body.lstrip().startswith("#") and "speaking order" not in body
+           and "%" not in body)
 
         eq("the owner keeps exactly two files",
            sorted(x.name for x in R.iterdir()), [f"{stem}.txt", f"{stem}.wav"])
@@ -3588,11 +3593,47 @@ def test_approximate_speaking_order() -> None:
     body = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
             / "transcribe.py").read_text()
     ok("ordering is only attempted with two parties", "if len(leg_texts) > 1:" in body)
-    ok("the file says the order is approximate", "APPROXIMATE" in body)
     ok("ordering reads a MONO downmix, since a stereo file loses a channel",
        "_mono_for_ordering" in body and "getnchannels() != 2" in body)
-    ok("and says so when it could not be reconstructed",
-       "not in speaking order" in body)
+    # NO HINTS IN THE ARTEFACT. The share and the fallback are logged, not written into the
+    # owner's transcript.
+    ok("no header is written into the transcript",
+       "# speaking order" not in body and "# not in speaking order" not in body)
+    ok("but the fallback is still recorded in the log",
+       "ordering placed only" in body)
+
+
+def test_a_fresh_install_pins_english() -> None:
+    """Guessing the language is the failure that reads as a broken recording."""
+    print("\n  -- language on a fresh install --")
+    import unittest.mock as mock
+
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    # Parsed with the APP'S OWN stripper, not a hand-rolled one: my first version dropped
+    # lines beginning "<!--" and kept the middle of the comment block, which is exactly the
+    # kind of near-miss that makes a test agree with a bug.
+    from agentduet_desktop import owner
+    seed = (src / "templates" / "settings.md").read_text()
+    body = seed.split("## Language", 1)[1].split("\n## ", 1)[0]
+    eq("the template seeds a language, not a blank",
+       owner._strip_guidance(body).strip(), "en")
+
+    # AN EMPTY SETTING STILL MEANS GUESS. This changed what a NEW instance starts with, not
+    # what the code does with a blank — an owner who clears it gets detection back.
+    with mock.patch.object(owner, "_sections", return_value={"Language": ""}):
+        eq("a cleared setting still means guess", owner.language(), "")
+
+    # WHY, kept where the value is, because the old default had the opposite reasoning written
+    # down and someone will reasonably want to know which argument won.
+    doc = owner.language.__doc__ or ""
+    ok("the reversal is recorded with its reason", "REVERSED 2026-09-09" in doc)
+    ok("and names the asymmetry it turns on", "third of the time" in doc)
+
+    # THE GAP THAT MADE THE SEED DECIDE: init asks, the wizard does not, and on macOS the
+    # wizard is the documented path. If the wizard ever gains the question this can relax.
+    ok("init asks the language", "def choose_language" in (src / "init.py").read_text())
+    ok("the wizard still does not — so the seed is what a Mac owner gets",
+       "language" not in (src / "setup.html").read_text().lower())
 
 
 def main() -> None:
@@ -3616,6 +3657,7 @@ def main() -> None:
     test_a_bad_reply_says_so_instead_of_leaking()
     test_the_secretary_keeps_its_knowledge()
     test_apple_is_quarantined_but_not_deleted()
+    test_a_fresh_install_pins_english()
     test_the_folder_chooser_opens_and_says_when_it_cannot()
     test_a_question_survives_a_redraw()
     test_one_call_one_file()

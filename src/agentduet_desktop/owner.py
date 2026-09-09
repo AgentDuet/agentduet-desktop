@@ -223,9 +223,21 @@ def language() -> str:
     the same file pinned to English came back correctly. A wrong guess does not fail loudly, it
     produces a fluent transcript of the wrong language — which is worse than no transcript.
 
-    Empty is still the default, because the alternative is picking a language for the owner and
-    being wrong in the other direction. When empty, the detected language is logged so a bad
-    guess is visible rather than silent.
+    REVERSED 2026-09-09, Stanley's call: the TEMPLATE now seeds `en`, so a fresh install pins
+    English rather than guessing. Empty still means guess and is still respected — this is a
+    change to what a new instance starts with, not to what the code does with a blank.
+
+    The old reasoning was that picking a language risks "being wrong in the other direction".
+    It weighs two unequal risks as if they were equal. Guessing is wrong for EVERYONE about a
+    third of the time — one outright misdetection and about eight scores under 0.6 across 29
+    real calls — while a seeded `en` is wrong only for an owner whose calls are not in English,
+    and wrong VISIBLY, on their first transcript, with a labelled dropdown in Settings to fix
+    it. And the asymmetry got worse when Apple's engine was quarantined the same day: Apple has
+    no detector at all and takes the locale, so the guesser is now in the path for every call
+    on every platform.
+
+    The gap that made this matter: `init` ASKS the language, and the browser wizard never has —
+    so on macOS, where the wizard is the documented path, nobody was asked and the seed decided.
     """
     return _first_line(_strip_guidance(_sections().get("Language", ""))).strip().lower()
 
