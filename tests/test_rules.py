@@ -686,6 +686,22 @@ def test_answered_call_recording() -> None:
        '(pkg / ".dylibs", pkg.parent, pkg)' in body)
     ok("no CTranslate2 device chooser survives", "def _device()" not in body)
 
+    # THE SPEC MUST COLLECT THE ENGINE'S LIBRARIES ON EVERY PLATFORM. The a13 build collected
+    # six on macOS and ZERO on Linux and went green both times: a delocated macOS wheel keeps
+    # them in `pywhispercpp/.dylibs/` INSIDE the package, where collect_dynamic_libs finds
+    # them, while a manylinux wheel puts them in a SIBLING `pywhispercpp.libs/` and the same
+    # call returns nothing. A binary with no speech libraries does not fail to build — it
+    # fails on someone else's machine, which is the a6 shape.
+    spec = (pathlib.Path(__file__).parent.parent / "packaging"
+            / "agentduet-desktop.spec").read_text()
+    ok("the spec collects from inside the package", 'collect_dynamic_libs as _cdl' in spec)
+    ok("and from the auditwheel sibling", '"pywhispercpp.libs"' in spec)
+    ok("and warns when it collects nothing at all",
+       "NO speech engine libraries collected" in spec)
+    ok("and warns when Metal is missing on a Mac", 'not any("metal"' in spec)
+    ok("no stale faster-whisper collection survives",
+       "collect_submodules(\"faster_whisper\")" not in spec)
+
     # Checking the cache must never trigger a download — that is the whole point of asking.
     ok("an absent model reports uncached rather than fetching it",
        _t.is_cached("no-such-model-at-all") is False)

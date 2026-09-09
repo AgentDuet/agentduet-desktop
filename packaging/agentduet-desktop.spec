@@ -172,7 +172,23 @@ _stt_libs = []
 try:
     from PyInstaller.utils.hooks import collect_dynamic_libs as _cdl
     _stt_libs = _cdl("pywhispercpp")
+    # AND THE AUDITWHEEL SIBLING, which is the LINUX layout and collected NOTHING without this.
+    # A delocated macOS wheel keeps its libraries in `pywhispercpp/.dylibs/` INSIDE the package,
+    # where collect_dynamic_libs finds them; a manylinux wheel puts them in a SIBLING
+    # `pywhispercpp.libs/` and the same call returns an empty list. The a13 build proved it:
+    # macOS collected six, Linux collected zero, and the build went green either way — which is
+    # the same shape as the ctranslate2 note this replaced, on the platform I did not check.
+    import pywhispercpp as _pw
+    _pw_root = Path(_pw.__file__).parent
+    for _d in (_pw_root.parent / "pywhispercpp.libs", _pw_root / ".libs"):
+        if _d.is_dir():
+            _stt_libs += [(str(_f), _d.name) for _f in _d.iterdir() if _f.is_file()]
     _names = {Path(_s).name for _s, _ in _stt_libs}
+    # ZERO IS ALWAYS WRONG, on every platform. The Metal check below only speaks for macOS, so
+    # it said nothing about a Linux binary with no speech engine in it at all.
+    if not _stt_libs:
+        print("WARNING: NO speech engine libraries collected — this binary will not transcribe. "
+              f"Looked inside pywhispercpp and beside it at {_pw_root.parent}")
     if not any("metal" in _n for _n in _names) and sys.platform == "darwin":
         # LOUD, because the build would otherwise succeed. A Mac binary without the Metal
         # backend is the "why is this so slow" bug nobody can see in a listing.
