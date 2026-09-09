@@ -3631,6 +3631,67 @@ def test_a_fresh_install_pins_english() -> None:
        "language" not in (src / "setup.html").read_text().lower())
 
 
+def test_a_poll_notices_everything_it_renders() -> None:
+    """Three times in one day a background change was invisible. This makes it mechanical.
+
+    THE SHAPE, which is what is worth catching rather than any one instance: a poll decides
+    whether to redraw by comparing a SIGNATURE, and the signature is built from a subset of the
+    fields the renderer actually reads. Every field in the gap is one a background worker can
+    change with nothing on screen moving. All three of 2026-09-09's instances were this —
+    `chatSig` missing the answer's length, `load()` rebuilding without the pending question, and
+    `threadSig` missing the transcript. The common error is a signature built from what changes
+    when the OWNER acts, in a panel whose content also changes when a WORKER finishes.
+
+    So: every field the renderer reads must be in the signature, or exempted here WITH A REASON.
+    A new field is then a decision someone has to write down rather than an omission.
+    """
+    print("\n  -- a poll notices everything it renders --")
+    import re as _re
+
+    hub = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+           / "web.html").read_text()
+
+    def _body(start: str) -> str:
+        i = hub.index(start)
+        j = hub.index("{", i)
+        depth = 0
+        for k in range(j, len(hub)):
+            if hub[k] == "{":
+                depth += 1
+            elif hub[k] == "}":
+                depth -= 1
+                if depth == 0:
+                    return hub[i:k + 1]
+        raise AssertionError(f"unbalanced braces after {start!r}")
+
+    #: Fields the renderer reads that the signature need not carry, and why. NOT a place to
+    #: park an inconvenience: each of these is either fixed when the row is written, or moves
+    #: only in lockstep with a field that IS covered.
+    EXEMPT = {
+        "at": "the call's timestamp, written once with the row and never updated",
+        "mode": "carried/answered, decided before the row exists",
+        "bytes": "changes only when the merge lands, and `files` changes with it",
+    }
+
+    used = set(_re.findall(r"it\.call\.([a-zA-Z_]\w*)", _body("function drawThread(")))
+    covered = set(_re.findall(r"c\.([a-zA-Z_]\w*)", _body("function callSig(")))
+    ok("drawThread reads some call fields at all", used, sorted(used))
+    gap = sorted(used - covered - set(EXEMPT))
+    ok("every rendered call field is in the signature or exempted with a reason",
+       not gap,
+       f"uncovered: {gap} — add it to callSig, or to EXEMPT in this test with the reason "
+       f"it cannot change under a poll")
+
+    # AND THE EXEMPTIONS MUST STILL BE REAL. A field listed here but no longer read by the
+    # renderer is a stale excuse, and the next person reads the list as current.
+    stale = sorted(f for f in EXEMPT if f not in used)
+    ok("no exemption outlives the field it excuses", not stale, stale)
+
+    # The chat side has the same shape and the same guard, one bug earlier.
+    ok("the chat signature carries the answer's length, which is what it missed",
+       "(last.a || '').length" in hub)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -3655,6 +3716,7 @@ def main() -> None:
     test_a_fresh_install_pins_english()
     test_the_folder_chooser_opens_and_says_when_it_cannot()
     test_a_question_survives_a_redraw()
+    test_a_poll_notices_everything_it_renders()
     test_one_call_one_file()
     test_exact_speaking_order()
     test_the_hub_does_not_invent_a_sign_in_state()
