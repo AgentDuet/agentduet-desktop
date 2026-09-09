@@ -625,7 +625,30 @@
 
   $('send').onclick = send;
   $('ask').addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); return; }
+    // HOME AND END MOVE WITHIN THE LINE, on every surface. They already did in a browser and
+    // did NOT in the native window, which is the one the owner drives: pywebview renders in
+    // WKWebView, and on macOS Home/End are document-scroll keys by platform convention — line
+    // movement is Cmd+left/right. Nothing of ours was intercepting them; the two engines
+    // simply disagree, the same way they disagreed about a select's height.
+    //
+    // Implemented rather than documented, because a composer where Home does nothing is a
+    // composer someone edits with the arrow keys. Cmd+left/right keeps working underneath: the
+    // handler stands aside for any modifier except Shift, which extends the selection the way
+    // the same keys do everywhere else.
+    if ((e.key === 'Home' || e.key === 'End') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      const el = e.target, v = el.value;
+      const from = el.selectionStart, to = el.selectionEnd;
+      // The LINE, not the box — this is a textarea that grows to several lines, so jumping to
+      // the start of the whole value would be wrong the moment a message wraps.
+      const lineStart = v.lastIndexOf('\n', from - 1) + 1;
+      let lineEnd = v.indexOf('\n', to);
+      if (lineEnd < 0) lineEnd = v.length;
+      const at = e.key === 'Home' ? lineStart : lineEnd;
+      e.preventDefault();
+      if (e.shiftKey) el.setSelectionRange(Math.min(at, from), Math.max(at, to));
+      else el.setSelectionRange(at, at);
+    }
   });
   $('ask').addEventListener('input', () => {           // grow to the text, up to the cap
     const b = $('ask');
