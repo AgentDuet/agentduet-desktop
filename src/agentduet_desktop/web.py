@@ -733,21 +733,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                 # summing them compresses one), which is exactly why each needs saying whose it
                 # is. `-caller` is always the other party and `-callee` always this line,
                 # whichever way the call was set up.
-                parts = []
-                for n in names:
-                    t = (af / n).with_suffix(".txt")
-                    if not t.is_file():
-                        continue
-                    try:
-                        body = t.read_text().strip()
-                    except OSError:
-                        continue
-                    if not body:
-                        continue
-                    side = ("them" if n.endswith("-caller.txt")
-                            else "you" if n.endswith("-callee.txt") else "")
-                    parts.append(f"{side}: {body}" if side else body)
-                text = "\n".join(parts)[:4000]
+                text = carry.transcript_of(names, af)[:4000]
                 audio = sum((af / n).stat().st_size for n in names) if names else 0
                 items.append({
                     "at": r.get("at", ""), "call_id": r.get("call_id", ""),
