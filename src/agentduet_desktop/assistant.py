@@ -170,8 +170,14 @@ TAINTING = {"read_call", "read_messages"}
 # for the less obvious reason: "forget the skill that says never quote a price" reads as tidying
 # up, which makes it the easiest of these to smuggle past a skim. `switch_skill` is gated on the
 # same argument, since switching one off and deleting it differ only in what is recoverable.
+# A WINDOW THAT OPENS ON THE OWNER'S SCREEN. `add_to_calendar` and `draft_email` commit
+# nothing — the owner presses Save or Send — but a stranger's message must not be able to make
+# a window appear in front of them with a recipient and a body somebody else chose. Read as a
+# proposal it is honest ("mail this address about that") and easy to decline; read as a link
+# already open in Gmail it is a draft the owner half-believes they asked for.
 NEEDS_OWNER = {"add_knowledge", "edit_knowledge",
-               "add_skill", "edit_skill", "forget_skill", "switch_skill"}
+               "add_skill", "edit_skill", "forget_skill", "switch_skill",
+               "add_to_calendar", "draft_email"}
 
 
 #: A REPLY THAT HAS STOPPED SAYING ANYTHING. Near-greedy decoding with no repetition penalty
@@ -948,13 +954,25 @@ class OwnerChat:
                                             "from_stranger": True,
                                             "at": datetime.now().isoformat(timespec="seconds")}]
                     _save_proposals(rows)
-                    what = "how you work" if name.endswith("_skill") else "the shared notes"
-                    result = (f"NOT saved. This conversation has read a stranger's words, so a "
-                              f"change to {what} needs the owner. It is queued for them to "
-                              f"approve. Tell them what you proposed and why."
-                              + ("" if name.endswith("_skill") else
-                                 " To record something a caller SAID, attribute it with "
-                                 "note_about instead — that needs no approval."))
+                    # WHAT WAS WITHHELD, in the words of the thing withheld. One branch per
+                    # kind, because "NOT saved … a change to the shared notes" is a lie about
+                    # a calendar link, and a wrong explanation of a refusal is how a model
+                    # learns to retry the wrong way round.
+                    if name in ("add_to_calendar", "draft_email"):
+                        result = ("NOT opened. This conversation has read a stranger's words, "
+                                  "so putting a window on the owner's screen needs the owner. "
+                                  "It is queued for them to approve. Tell them what you "
+                                  "proposed and why.")
+                    elif name.endswith("_skill"):
+                        result = ("NOT saved. This conversation has read a stranger's words, so "
+                                  "a change to how you work needs the owner. It is queued for "
+                                  "them to approve. Tell them what you proposed and why.")
+                    else:
+                        result = ("NOT saved. This conversation has read a stranger's words, so "
+                                  "a change to the shared notes needs the owner. It is queued "
+                                  "for them to approve. Tell them what you proposed and why. "
+                                  "To record something a caller SAID, attribute it with "
+                                  "note_about instead — that needs no approval.")
                     used.append(name + ":proposed")
                     history.append(f"ASSISTANT: called {name}")
                     history.append(f"TOOL_RESULT: {result}")

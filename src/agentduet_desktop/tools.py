@@ -1064,7 +1064,34 @@ def switch_skill(name: str, on: bool = False) -> str:
     return f"{bare!r} is now {'followed again' if on else 'switched off but kept'}."
 
 
+#: A PREFILLED FORM ON THE OWNER'S SCREEN, not an entry and not a sent mail. Both wrap
+#: `links.py`, which builds the URL from these typed fields — there is no argument here in
+#: which a URL means anything, so neither of them can open an arbitrary page. Imported inside
+#: the wrappers because `links` reaches for the desktop, and `tools` is imported by the console.
+def add_to_calendar(title: str, start: str, end: str = "", notes: str = "",
+                    location: str = "") -> str:
+    """Open a prefilled Google Calendar event. The owner saves it; this does not."""
+    from . import links
+    return links.add_to_calendar(title, start, end, notes, location)
+
+
+def draft_email(to: str, subject: str = "", body: str = "") -> str:
+    """Open a prefilled email draft. The owner sends it; this does not."""
+    from . import links
+    return links.draft_email(to, subject, body)
+
+
 ASSISTANT_SHARED = {
+    "add_to_calendar": (add_to_calendar, {
+        "title": "what the event is called",
+        "start": "when it starts, as 2026-09-10 15:00 — ask the owner, do not guess a date",
+        "end": "when it ends, same format; omit for an hour",
+        "notes": "anything to put in the description",
+        "location": "where it is, if anywhere"}),
+    "draft_email": (draft_email, {
+        "to": "one email address",
+        "subject": "the subject line",
+        "body": "the message — plain text, and short: a link cannot carry a transcript"}),
     "list_skills": (list_skills, {}),
     "read_skills": (read_skills, {"name": "which skill, or omit for all of them"}),
     "add_skill": (add_skill, {

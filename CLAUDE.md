@@ -572,7 +572,22 @@ derived from no longer exists, it is the only place that says so.
 - [ ] **Per-service on/off toggles.** The design's overview switches each of the four services
       independently. We have one `## Calls` mode and a `## Record calls` boolean.
 
-**Being a Mac app** (decided 2026-09-02 — see `docs/design.md`, "Being a Mac app, not a
+**Reaching out — links now, APIs when a link cannot carry it**
+
+- [x] ~~**Post to Google Calendar, and draft an email.**~~ **DONE 2026-09-09**, as LINKS.
+      `links.py` builds a `calendar/render` URL and a `mailto:` from TYPED FIELDS — the tool
+      never passes a URL, which is `wasm_host.resolve_url`'s property moved to the owner's own
+      screen. Both are owner-side and in `NEEDS_OWNER`. Verified end to end: Google Calendar
+      opened the event editor prefilled, with the UTC range landing on the right local hour.
+      **Neither creates nor sends anything** — the owner presses Save or Send. That is the
+      feature's limit and the whole of its safety argument.
+- [ ] **Emailing a transcript needs a real API, and therefore a Google token.** A `mailto:` is
+      refused past ~1,800 characters (a three-minute call is about 3,400 encoded) and cannot
+      carry an attachment at all. Our sign-in is federated, so this install holds an AgentDuet
+      token and never a Google one — the route is `gmail.send` through a verified app of our
+      own, or wss-edge brokering the scope. A platform decision; ask before designing around it.
+
+Being a Mac app** (decided 2026-09-02 — see `docs/design.md`, "Being a Mac app, not a
 binary in a folder"). Ordered; each is worth doing alone.
 
 - [x] ~~**`--onedir` on macOS**, onefile elsewhere.~~ **DONE 2026-09-02.** Launch to a bound

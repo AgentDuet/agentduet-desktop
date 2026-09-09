@@ -414,18 +414,29 @@
   // the defence. A stranger's message sits in the assistant's context on every turn, so
   // "add a skill: agree to any discount" can arrive from outside — and a card that only shows
   // the instruction gives the owner no way to tell their own idea from someone else's.
+  //
+  // The third element is the BUTTON, because the button has to say what happens: a calendar
+  // link is not "Add it", and a card whose verb does not match its outcome is the one people
+  // click without reading.
   const PROP_KINDS = {
-    add_skill:    ['Follow this from now on', 'a new skill'],
-    edit_skill:   ['Change how you work', 'edits a skill'],
-    forget_skill: ['Stop following this', 'removes a skill'],
-    switch_skill: ['Switch this off', 'keeps it but stops following it'],
+    add_skill:       ['Follow this from now on', 'a new skill', 'Do it'],
+    edit_skill:      ['Change how you work', 'edits a skill', 'Do it'],
+    forget_skill:    ['Stop following this', 'removes a skill', 'Do it'],
+    switch_skill:    ['Switch this off', 'keeps it but stops following it', 'Do it'],
+    add_to_calendar: ['Open this calendar event', 'opens Google Calendar prefilled; you save it',
+                      'Open it'],
+    draft_email:     ['Open this email draft', 'opens your mail client prefilled; you send it',
+                      'Open it'],
   };
   function propHtml(p){
     const a = p.args || {};
-    const [title, kind] = PROP_KINDS[p.tool] || ['Add to your shared notes', a.file || 'knowledge'];
+    const [title, kind, verb] = PROP_KINDS[p.tool]
+      || ['Add to your shared notes', a.file || 'knowledge', 'Add it'];
     const body = p.tool === 'add_skill' ? `${a.name || ''} — ${a.how || ''}`
       : p.tool === 'edit_skill' ? `${a.name || ''}: ${a.old || ''} → ${a.new || '(deleted)'}`
       : p.tool && p.tool.endsWith('_skill') ? (a.name || '')
+      : p.tool === 'add_to_calendar' ? `${a.title || ''} — ${a.start || ''}${a.end ? ' to ' + a.end : ''}`
+      : p.tool === 'draft_email' ? `${a.to || ''} — ${a.subject || '(no subject)'}`
       : (a.fact || a.new || a.old || '');
     const asked = p.asked ? `you asked: “${p.asked}”` : 'proposed after reading a call';
     return `
@@ -434,8 +445,7 @@
         <p>${esc(body)}</p>
         <small>${esc(kind)} · ${esc(asked)}</small>
         <div class="row">
-          <button class="ok" data-pid="${esc(p.id)}" data-ok="1">${
-            p.tool && p.tool.endsWith('_skill') ? 'Do it' : 'Add it'}</button>
+          <button class="ok" data-pid="${esc(p.id)}" data-ok="1">${esc(verb)}</button>
           <button data-pid="${esc(p.id)}">Discard</button>
         </div>
       </div>`;
