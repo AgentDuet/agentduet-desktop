@@ -3327,6 +3327,34 @@ def test_the_folder_chooser_opens_and_says_when_it_cannot() -> None:
         _sp.run = real
 
 
+def test_a_question_survives_a_redraw() -> None:
+    """The owner's question must not vanish because something else redrew the page."""
+    print("\n  -- the pending question is state, not an argument --")
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    hub = (src / "web.html").read_text()
+
+    # THE BUG: the in-flight question was an ARGUMENT to drawChat, so it existed only on the one
+    # call that knew about it. `load()` runs on the 5s poll and ended with drawAssistant(),
+    # which rebuilds the log and calls drawChat() with nothing — the question and its waiting
+    # dots disappeared, leaving the PREVIOUS answer as the bottom balloon. It read as a reply to
+    # what had just been asked, then corrected itself on the next poll.
+    ok("the pending question is module state", "let PENDING_Q" in hub)
+    ok("drawChat defaults to it",
+       "if (pending === undefined) pending = PENDING_Q;" in hub)
+    # It must be set and cleared wherever BUSY is, or a stale bubble outlives its turn.
+    # The declaration `let TURNS = [], BUSY = false` is not a release, so it does not count.
+    releases = hub.count("BUSY = false") - hub.count("let TURNS = [], BUSY = false")
+    eq("cleared at every release of BUSY", hub.count("PENDING_Q = ''"), releases)
+    ok("and set where BUSY is taken", "BUSY = true;\n    PENDING_Q = text;" in hub)
+
+    # The other half: a rebuild mid-turn throws away a selection and resets the wait counter,
+    # which is the objection chatSig/threadSig already exist to answer.
+    ok("load() does not rebuild the log mid-turn",
+       "if (PICKED === ASSISTANT && !BUSY) drawAssistant();" in hub)
+    ok("the poll's own chat refresh still stands aside too",
+       "if (BUSY) return;" in hub)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -3348,6 +3376,7 @@ def main() -> None:
     test_a_bad_reply_says_so_instead_of_leaking()
     test_the_secretary_keeps_its_knowledge()
     test_the_folder_chooser_opens_and_says_when_it_cannot()
+    test_a_question_survives_a_redraw()
     test_the_hub_does_not_invent_a_sign_in_state()
     test_the_binary_can_reach_the_platform()
     test_a_declined_window_declines_the_browser()

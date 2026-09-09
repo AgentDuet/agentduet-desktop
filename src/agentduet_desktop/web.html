@@ -425,6 +425,19 @@
   // Its history lives on the daemon (run/owner_chat.json), so a reload or a restart does not
   // look like the conversation never happened.
   let TURNS = [], BUSY = false;
+  //: THE QUESTION THE MODEL IS ANSWERING RIGHT NOW. It used to be an ARGUMENT to drawChat, and
+  //: therefore present only on the one call that knew about it — so any OTHER redraw wiped the
+  //: owner's question off the screen mid-turn. `load()` runs on the 5s poll and ends with
+  //: `if (PICKED === ASSISTANT) drawAssistant()`, which rebuilds the log and calls `drawChat()`
+  //: with nothing: the question and its waiting dots vanished, leaving the PREVIOUS answer as
+  //: the bottom balloon, which reads as a reply to what was just asked. It then corrected
+  //: itself on the next poll, so the sequence was: ask, get last week's answer, get the real
+  //: one. Reported by Stanley 2026-09-09 after switching model — the visible case, because
+  //: loading a fresh 6 GB model makes the turn outlast the poll, where a warm model usually
+  //: beats it and hides this entirely.
+  //:
+  //: As state it survives every redraw path, including the ones nobody has written yet.
+  let PENDING_Q = "";
 
   // "via WhatsApp", not "WHATSAPP". A bare channel name shouted in caps is a tag on the
   // message; this says what it means about it, in the same register as a timestamp. Named
@@ -447,6 +460,9 @@
   function drawChat(pending){
     const log = $('chat');
     if (!log) return;
+    // Default to the in-flight question rather than requiring every caller to know it. Passing
+    // "" explicitly still clears it, so a caller can be deliberate.
+    if (pending === undefined) pending = PENDING_Q;
     log.innerHTML = TURNS.map((t, i) => t.brk ? `<div class="brk"><span>new conversation</span></div>` : `
       <div class="turn me"><div class="bub">${esc(t.q)}${viaLine(t)}</div></div>
       ${t.pending && !t.a ? `<div class="turn it"><div class="dots"><i></i><i></i><i></i></div></div>` : `
@@ -550,6 +566,7 @@
     const box = $('ask'), text = box.value.trim();
     if (!text || BUSY) return;
     BUSY = true;
+    PENDING_Q = text;
     box.value = ''; box.style.height = 'auto';
     $('send').disabled = true;
     note('');
@@ -572,7 +589,8 @@
         await refresh();
         drawThread();
         note(r.note || '', r.held);
-        clearInterval(tick); BUSY = false; $('send').disabled = false; box.focus();
+        clearInterval(tick); BUSY = false; PENDING_Q = ''; $('send').disabled = false;
+        box.focus();
         return;
       }
       // `viewing` is whoever is open in the middle column, so "her" and "this person" resolve
@@ -582,7 +600,8 @@
       PROPOSALS = d.proposals || [];
     } catch (e) {
       if (PICKED !== ASSISTANT) {
-        clearInterval(tick); BUSY = false; $('send').disabled = false;
+        clearInterval(tick); BUSY = false; PENDING_Q = '';
+        $('send').disabled = false;
         note('Not delivered — ' + e, true);
         return;
       }
@@ -590,6 +609,7 @@
     }
     clearInterval(tick);
     BUSY = false;
+    PENDING_Q = '';
     $('send').disabled = false;
     drawChat();
     box.focus();
@@ -649,7 +669,11 @@
     // and not to a reply. Replying to a person needs no model at all, the same way carrying a
     // call needs none, and disabling the box on an install with no key would have left a
     // carried message with nobody able to answer it.
-    if (PICKED === ASSISTANT) drawAssistant();
+    // NOT MID-TURN. `drawAssistant` rebuilds the whole log, which throws away a text
+    // selection and resets the waiting counter every five seconds through a long answer —
+    // the same objection `chatSig` and `threadSig` exist to answer. Whatever changed here
+    // (the model chip, the placeholder) is drawn on the next poll instead.
+    if (PICKED === ASSISTANT && !BUSY) drawAssistant();
   }
 
   async function refresh(){
