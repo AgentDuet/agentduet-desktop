@@ -76,17 +76,28 @@ def _human(n: int) -> str:
 
 
 def speech_caches() -> list[pathlib.Path]:
-    """faster-whisper's downloads inside the SHARED Hugging Face cache.
+    """The speech models this app downloaded — in BOTH places they have lived.
 
-    Globbed for our models by name, never the cache wholesale: ~/.cache/huggingface belongs to
+    Since 2026-09-09 they are ggml `.bin` files in `$AGENTDUET_HOME/models/stt`, which the app
+    owns outright, so removing the instance removes them. Before that they were faster-whisper
+    downloads inside the SHARED Hugging Face cache, and those are still on every machine that
+    ran an earlier build — an uninstall that forgot them would leave gigabytes behind in a
+    directory the owner has no reason to associate with this app.
+
+    The hub is globbed BY OUR MODELS' NAMES, never wholesale: `~/.cache/huggingface` belongs to
     every tool on the machine that uses the hub, so `rm -rf` there would delete somebody else's
-    gigabytes. `models--*faster-whisper*` matches only the speech models this app fetches.
+    gigabytes.
     """
+    out = []
+    from . import transcribe
+    stt = transcribe.stt_dir()
+    if stt.is_dir():
+        out.extend(sorted(f for f in stt.glob("ggml-*.bin") if f.is_file()))
     root = pathlib.Path(os.getenv("HF_HOME") or (pathlib.Path.home() / ".cache/huggingface"))
     hub = root / "hub"
-    if not hub.is_dir():
-        return []
-    return sorted(d for d in hub.glob("models--*faster-whisper*") if d.is_dir())
+    if hub.is_dir():
+        out.extend(sorted(d for d in hub.glob("models--*faster-whisper*") if d.is_dir()))
+    return out
 
 
 def app_bundle() -> pathlib.Path | None:
