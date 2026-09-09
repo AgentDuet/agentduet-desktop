@@ -455,9 +455,20 @@ derived from no longer exists, it is the only place that says so.
       Until then setup shows the three buttons and, since 2026-09-04, a VISIBLE way past them
       that says single sign-on is not switched on yet. That skip existed before but only as a
       side effect of pressing a button that looked mandatory, so the screen read as blocked.
-- [ ] **Record Call has nothing behind it** — `carry.py` bridges and the recorders start, but the
-      platform does not hand the app conference audio, so the directory the panel lists is empty.
-      This is the design's FIRST service. Being added on the AgentDuet side.
+- [x] ~~**Record Call has nothing behind it.**~~ **THE AUDIO ARRIVED, 2026-09-09 12:28.** The
+      first carried call to produce anything: a 12.6s caller leg and a 13.1s callee leg, both
+      transcribed, merged into one stereo file and one labelled transcript. It was an OUTGOING
+      call, which is also the first time `on_outgoing_call` has fired in anger. So the platform
+      side of this is done and the entry that said otherwise is cleared — every empty recording
+      before that date was this gap, not a defect in `carry.py`.
+      **What it also proved, because none of it had ever run on real audio:** the `.start`
+      sidecars earned their place (0.400s between the two legs' first frames, so the merge
+      padded and made 13.1s of stereo from a 12.6s leg), and the index had a live bug — it
+      globbed the owner's folder after the legs moved out of it, so the row named no files and
+      the hub reported "No recording." over 1.2 MB of audio.
+      **STILL UNPROVEN: an INBOUND carried call through this path.** Every direction-specific
+      thing here was written from the outgoing case now, so do not assume the inbound one is
+      covered — `far, near` swap by role and only outgoing has been exercised end to end.
 - [ ] **Record Message (SMS) does not exist at all.** We have WhatsApp through the SDK, not SMS
       archiving. This is a channel we do not ingest, not a screen we have not drawn.
 - [ ] **Connect AI is a SUMMARISER in the design** — transcripts go to a cloud model for action
@@ -910,7 +921,10 @@ recordings are **stored** only there. The media still transits B3's WSS to reach
 leaves your machine" is false; "stored only on your machine" is defensible and is the stronger
 claim anyway, because it is the one a regulated buyer is actually asking about.
 
-- [ ] **Carrying a call is built; what is missing is the platform handing us its audio.**
+- [x] ~~**Carrying a call is built; what is missing is the platform handing us its audio.**~~
+      **CLOSED 2026-09-09 — the audio arrived.** See the recorder section above for the call and
+      what it proved. Kept in place rather than deleted because the topology notes below it are
+      still the reference for how the two legs exist at all.
       **REWRITTEN 2026-09-08. This item used to say "We never touch audio: no `.wav`, no frames,
       nothing", and that has been false since 2026-08-14** — `voice._Recorder` wraps the
       ModelSession and writes `<stamp>-<call>-caller.wav` and `-agent.wav` for every ANSWERED
