@@ -3314,6 +3314,16 @@ def test_apple_is_quarantined_but_not_deleted() -> None:
            / "transcribe.py").read_text()
     ok("and its cost is written down where the flag is",
        "88.5s CPU" in src and "not compiled with CUDA support" in src)
+    # AND THE ENGINE DROPDOWN GOES WITH IT. Its options are one per TIER, which doubles as an
+    # engine picker only while a non-Whisper row is in the list — so with Apple held back it is
+    # the model list again, with the same rows. Stanley read it as a duplicate because it is one.
+    st = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+          / "settings.html").read_text()
+    ok("the engine dropdown hides when there is only one engine",
+       "if ($('engGrp')) $('engGrp').hidden = !engines;" in st)
+    ok("and it keys on a built-in row, not on a platform check",
+       "(d.tiers || []).some(t => t.builtin)" in st)
+
     # A Mac owner seeing Whisper with no reason would go looking in settings.md, where the
     # answer is not.
     with mock.patch.object(t.sys, "platform", "darwin"), \

@@ -297,7 +297,7 @@
                Apple's — and the only way to change it was a "Use this" button in the list
                below, which also downloads and deletes. Selecting and managing what is on
                disk are two jobs; this does the first. -->
-          <div class="grp"><label class="fl">Transcription engine</label>
+          <div class="grp" id="engGrp"><label class="fl">Transcription engine</label>
             <select id="sttEngine"></select></div>
         <div class="grp"><label class="fl">Language of your calls</label>
           <select id="language">
@@ -635,6 +635,14 @@
         + '</option>').join('');
       eng.disabled = !d.installed && !(d.tiers || []).some(t => t.builtin);
     }
+    // HIDDEN WHILE THERE IS ONLY ONE ENGINE, because then it is not a choice — it is the model
+    // list above, again, with the same rows. It reads as a duplicate because it IS one:
+    // the options are one per TIER, which doubles as an engine picker only while a
+    // non-Whisper row (Apple, `builtin`) is in the list. With Apple held back every option is
+    // a Whisper model, so the control asks a question whose answer is already below it.
+    // Stanley spotted it on 2026-09-09, the same day the quarantine removed the second engine.
+    const engines = (d.tiers || []).some(t => t.builtin);
+    if ($('engGrp')) $('engGrp').hidden = !engines;
 
     const busy = !!d.running;
     const sttSig = JSON.stringify([(d.tiers || []).map(t => [t.model, t.downloaded, t.in_use]),
