@@ -106,6 +106,16 @@ def can_pick() -> tuple[bool, str]:
     return False, "no folder chooser installed (zenity or kdialog)"
 
 
+def _applescript_string(value: str) -> str:
+    """`value` as an AppleScript string literal — double quotes, backslash-escaped.
+
+    Its own function so the quoting is one line to read and one thing to test. A path with a
+    quote or a backslash in it is unusual and entirely legal, and building the literal inline
+    is how the wrong quote character got there in the first place.
+    """
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 def pick_folder(start: str = "") -> str:
     """Show the desktop's folder chooser. Returns the chosen absolute path, or "".
 
@@ -118,8 +128,14 @@ def pick_folder(start: str = "") -> str:
     system = platform.system()
     start = start or str(pathlib.Path.home())
     if system == "Darwin":
+        # APPLESCRIPT STRINGS ARE DOUBLE-QUOTED, and this used Python's !r, which emits single
+        # quotes. So the script was a SYNTAX ERROR on every macOS install since it was written
+        # ("Expected expression... but found unknown token. (-2741)"), osascript exited 1, and
+        # the non-zero branch below read that as the owner cancelling. The Browse button in the
+        # wizard and in Settings therefore did nothing at all, silently, and said nothing.
+        # Reported by Stanley 2026-09-09.
         script = ('POSIX path of (choose folder with prompt "Where should recordings go?" '
-                  f'default location POSIX file {start!r})')
+                  f'default location POSIX file {_applescript_string(start)})')
         cmd = ["osascript", "-e", script]
     elif system == "Windows":
         ps = ("Add-Type -AssemblyName System.Windows.Forms;"
@@ -134,9 +150,18 @@ def pick_folder(start: str = "") -> str:
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=PICK_TIMEOUT)
     except subprocess.TimeoutExpired:
+        # NOT A CANCELLATION. Nobody chose anything, so returning "" says "changed their mind"
+        # about someone who never saw a working dialog.
+        raise RuntimeError(f"the folder chooser did not respond within {PICK_TIMEOUT}s") from None
+    if out.returncode == 0:
+        return (out.stdout or "").strip()
+    # CANCELLED AND BROKEN BOTH EXIT NON-ZERO, and treating them alike is what hid the bug
+    # above for as long as it existed. They are distinguishable:
+    #   - osascript reports a cancelled chooser as error -128 ("User canceled") and every other
+    #     failure with its own code and message.
+    #   - zenity/kdialog/qarma/yad exit 1 on cancel and print NOTHING; a real failure talks.
+    #   - the Windows dialog exits 0 on cancel with empty output, so it never reaches here.
+    err = (out.stderr or "").strip()
+    if "-128" in err or "user canceled" in err.lower() or not err:
         return ""
-    # A non-zero exit is how every one of these reports "cancelled", so it is not logged as a
-    # failure and not distinguished from one — there is nothing the owner needs to do either way.
-    if out.returncode != 0:
-        return ""
-    return (out.stdout or "").strip()
+    raise RuntimeError(err.splitlines()[-1][:200])

@@ -3270,6 +3270,63 @@ def test_the_secretary_keeps_its_knowledge() -> None:
        "add_knowledge" in dir(_t) and "read_knowledge" in dir(_t))
 
 
+def test_the_folder_chooser_opens_and_says_when_it_cannot() -> None:
+    """Browse did nothing, silently, on every macOS install since it was written."""
+    print("\n  -- the folder chooser --")
+    import subprocess as _sp
+    import types as _ty
+    from agentduet_desktop import reveal
+
+    # THE BUG: the script was built with Python's !r, so the path arrived single-quoted and
+    # AppleScript — whose strings are DOUBLE-quoted — rejected the whole line with -2741.
+    lit = reveal._applescript_string("/Users/stanley/x")
+    ok("a path becomes a double-quoted AppleScript string", lit == '"/Users/stanley/x"')
+    ok("and never Python's repr form", lit != repr("/Users/stanley/x"))
+    ok("a quote in the path is escaped",
+       reveal._applescript_string('/tmp/od"d') == '"/tmp/od\\"d"')
+    ok("a backslash is escaped",
+       reveal._applescript_string("/tmp/b\\s") == '"/tmp/b\\\\s"')
+    ok("the source no longer interpolates a repr",
+       "POSIX file {start!r}" not in (pathlib.Path(__file__).parent.parent / "src"
+                                     / "agentduet_desktop" / "reveal.py").read_text())
+
+    # AND THE SWALLOW THAT HID IT. Cancelled and broken both exit non-zero; reading them alike
+    # turned a syntax error into "the owner changed their mind", every time, for as long as the
+    # bug existed. They are distinguishable, so they are distinguished.
+    def _fake(rc, stdout="", stderr=""):
+        return lambda cmd, **kw: _ty.SimpleNamespace(returncode=rc, stdout=stdout, stderr=stderr)
+
+    real = _sp.run
+    try:
+        for rc, so, se, want in (
+                (0, "/tmp/Chosen\n", "", "/tmp/Chosen"),          # chosen
+                (1, "", "execution error: User canceled. (-128)", ""),   # cancelled
+                (1, "", "", ""),                                    # zenity-style cancel
+        ):
+            _sp.run = _fake(rc, so, se)
+            eq(f"exit {rc} / {se[:18]!r}", reveal.pick_folder("/tmp"), want)
+        for se in ("99:100: syntax error: (-2741)", "no access for assistive devices"):
+            _sp.run = _fake(1, "", se)
+            raised = ""
+            try:
+                reveal.pick_folder("/tmp")
+            except RuntimeError as exc:
+                raised = str(exc)
+            ok(f"a real failure is raised, not swallowed: {se[:22]!r}", se[:20] in raised)
+        # A dialog that never answers is not a cancellation either.
+        def _timeout(cmd, **kw):
+            raise _sp.TimeoutExpired(cmd, 1)
+        _sp.run = _timeout
+        raised = ""
+        try:
+            reveal.pick_folder("/tmp")
+        except RuntimeError as exc:
+            raised = str(exc)
+        ok("a timeout is reported, not read as cancelled", "did not respond" in raised)
+    finally:
+        _sp.run = real
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -3290,6 +3347,7 @@ def main() -> None:
     test_a_skill_is_owner_approved_and_capped()
     test_a_bad_reply_says_so_instead_of_leaking()
     test_the_secretary_keeps_its_knowledge()
+    test_the_folder_chooser_opens_and_says_when_it_cannot()
     test_the_hub_does_not_invent_a_sign_in_state()
     test_the_binary_can_reach_the_platform()
     test_a_declined_window_declines_the_browser()
