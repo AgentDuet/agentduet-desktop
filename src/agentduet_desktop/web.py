@@ -800,6 +800,24 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         # queue needs no second flag and cannot go stale: a message that has left it has gone
         # out, and the mark disappears on its own without anything having to remember to clear
         # it. Only asked for people the owner has actually written to.
+        # WHAT WAS ARRANGED, if anything. A stored verdict only — `for_texts` reads a file and
+        # never calls a model, because this is a polled endpoint. The digest is computed from
+        # the SAME text the pass judged, which is why the two callers of
+        # `carry.transcript_of` have to be one function: judge one text and render another and
+        # a suggestion would cite words that are not on the screen.
+        from . import suggest as _sg
+        for p_ in people:
+            keys = {}
+            for c in p_["calls"]:
+                keys[id(c)] = c["transcript"]
+            for m in p_["messages"]:
+                keys[id(m)] = "\n".join(x for x in (m["them"], m["us"]) if x)
+            found = _sg.for_texts(list(keys.values()))
+            for row in (*p_["calls"], *p_["messages"]):
+                key = _sg.digest(keys[id(row)])
+                hit = found.get(key)
+                row["suggest"] = {**hit, "key": key} if hit else None
+
         for p_ in people:
             if not any(m["by"] == "owner" for m in p_["messages"]):
                 continue
@@ -1284,6 +1302,22 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         msg = _a.resolve(str(body.get("id") or ""), bool(body.get("approve")))
         return web.json_response({"message": msg, "proposals": _a.pending()})
 
+    async def api_suggestion(request):
+        """Add the suggested event, or dismiss it. THE CLICK IS THE APPROVAL.
+
+        No proposal card and no second confirmation, and the reason is that the click already
+        carries everything one would: the owner is reading the words that produced the offer,
+        the offer states the event and its time, and what happens next is a PREFILLED PAGE they
+        still have to press Save on. A confirm step here would be asking the same person the
+        same question twice.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import suggest as _sg
+        body = await request.json()
+        msg = _sg.resolve(str(body.get("key") or ""), str(body.get("action") or ""))
+        return web.json_response({"message": msg})
+
     # ---- simulator -------------------------------------------------------
     # Stands in for the DDUET backend so the POC is testable now. It calls
     # brain.handle_query — the SAME path a real inbound message takes — so what you
@@ -1614,6 +1648,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/chat_new", api_chat_new),
         web.get("/api/proposals", api_proposals),
         web.post("/api/proposal", api_proposal),
+        web.post("/api/suggestion", api_suggestion),
         web.get("/c/{token}", canvas_page),
         web.get("/api/canvas/available", api_canvas_available),
         web.get("/api/canvas/info", api_canvas_info),

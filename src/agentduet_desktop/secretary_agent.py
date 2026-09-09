@@ -881,6 +881,14 @@ async def main() -> None:
     from . import update as _u
     asyncio.create_task(_u.worker())
 
+    # WAS ANYTHING ARRANGED? A pass over recent messages and transcripts that offers ONE
+    # calendar entry under the balloon it came from. Same placement argument as the two above:
+    # the daemon's own loop, after the site binds, regardless of the connector — the queue is
+    # derived from what is already on disk, so it is a no-op on an install with no model and
+    # nothing to read.
+    from . import suggest as _sg
+    asyncio.create_task(_sg.worker())
+
     if not connector_ready():
         logger.info("No AgentDuet connector yet — running the owner's view only. "
                     "Sign in, or set AGENTDUET_API_KEY and AGENTDUET_CONNECTOR_UUID. "
