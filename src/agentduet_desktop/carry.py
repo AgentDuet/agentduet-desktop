@@ -191,6 +191,10 @@ async def _record_leg(party, stamp: str, call_id: str, leg: str) -> None:
     path = final.with_name(final.name + ".part")
     writer = None
     frames = 0
+    # THIS leg's own clock. It was the process start time for one draft, which would have
+    # printed the daemon's uptime and read as a call duration — a wrong number in a diagnostic
+    # is worse than no number, because it is the one the next person reasons from.
+    started = time.time()
     try:
         legs().mkdir(parents=True, exist_ok=True)
         writer = wave.open(str(path), "wb")
@@ -216,7 +220,21 @@ async def _record_leg(party, stamp: str, call_id: str, leg: str) -> None:
                                    call_id, leg, exc)
             writer.writeframes(chunk)
             frames += len(chunk)
+        # THE STREAM ENDED BY ITSELF, which is the case worth separating. Reaching here means
+        # `audio_stream` raised StopAsyncIteration — the SDK puts a sentinel on the queue when
+        # its voice session closes — rather than this task being cancelled at the end of the
+        # call. If it happens while the call is still up, the audio stops and nothing says so:
+        # exactly a recording that ends mid-sentence. Logged loudly because the fix depends on
+        # knowing which of the two happened, and a normal end is indistinguishable in the file.
+        logger.warning("call %s: the %s leg's audio stream ENDED ON ITS OWN after %.1fs of "
+                       "audio (%.1fs of wall clock) — the SDK closed it rather than us; if the "
+                       "call was still up, this is where the recording stops",
+                       call_id, leg, frames / (SAMPLE_RATE * SAMPLE_WIDTH),
+                       time.time() - started)
     except asyncio.CancelledError:
+        # THE NORMAL END: the call finished and `handle` cancelled us.
+        logger.info("call %s: the %s leg was closed with the call (%.1fs of audio)",
+                    call_id, leg, frames / (SAMPLE_RATE * SAMPLE_WIDTH))
         raise
     except Exception as exc:
         logger.error("call %s: recording the %s leg failed (%s: %s)",
@@ -289,9 +307,26 @@ async def handle(sm, noti) -> None:
         return
 
     done = asyncio.Event()
+    taken = time.time()
 
     @call.on_hangup
     def _(_evt) -> None:
+        # SAY WHY, because the reasons are not equivalent and the event was discarded. The SDK
+        # SYNTHESISES a terminated event when its own transport dies — `reason:
+        # "transport_closed"` — so a network blip on our side is delivered here exactly like the
+        # far end hanging up, and we stop recording a call that is still in progress. Stanley's
+        # calls stop at ~22s with both legs ending mid-speech at full volume, which is what that
+        # looks like. Until this line the log could not tell the two apart.
+        why = ""
+        for attr in ("reason", "code", "type"):
+            got = getattr(_evt, attr, None) or (
+                _evt.get(attr) if isinstance(_evt, dict) else None)
+            if got:
+                why = f"{attr}={got}"
+                break
+        logger.info("call %s: hangup received (%s) after %.1fs — closing the recording",
+                    call_id, why or f"no reason on {type(_evt).__name__}",
+                    time.time() - taken)
         done.set()
 
     # RECORDERS FIRST, THEN CONNECT. `connect()` rings the destination and returns once it is
