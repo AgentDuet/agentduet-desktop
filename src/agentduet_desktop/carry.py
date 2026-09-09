@@ -386,7 +386,12 @@ def register(sm) -> bool:
     sm.on_incoming_call(_handler)
     sm.on_outgoing_call(_handler)
 
-    logger.info("calls are CARRIED to the configured destination, and BOTH LEGS ARE RECORDED "
-                "to %s — inbound AND calls this line places; the agent does not answer in "
-                "this mode", RECORDINGS)
+    # SAY WHERE THE OWNER'S FILE LANDS, not where the working files go. This said "BOTH LEGS
+    # ARE RECORDED to <recordings>" and both halves stopped being true on 2026-09-09: the legs
+    # are written to run/legs, and what arrives in the owner's folder is one merged recording
+    # per call. A start-up line naming the wrong directory sends someone to an empty folder.
+    logger.info("calls are CARRIED to the configured destination and RECORDED — both legs, "
+                "merged into one stereo file per call in %s (the legs themselves are working "
+                "files in %s) — inbound AND calls this line places; the agent does not answer "
+                "in this mode", recordings(), legs())
     return True
