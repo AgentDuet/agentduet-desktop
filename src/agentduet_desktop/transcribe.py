@@ -554,10 +554,12 @@ def pending() -> list[pathlib.Path]:
     (an unbridged call produces exactly that), and one already marked `.failed`.
     """
     from . import carry
-    if not carry.recordings().is_dir():
+    # THE LEGS, not the owner's folder. The per-leg audio is the work; the merged file in the
+    # owner's folder is the product, and globbing the product would re-transcribe it forever.
+    if not carry.legs().is_dir():
         return []
     out = []
-    for wav in sorted(carry.recordings().glob("*.wav")):
+    for wav in sorted(carry.legs().glob("*.wav")):
         if wav.with_suffix(".txt").exists() or wav.with_suffix(".failed").exists():
             continue
         if wav.stat().st_size <= EMPTY_WAV_BYTES:
@@ -640,6 +642,13 @@ async def worker() -> None:
             await asyncio.to_thread(drain_once)
         except Exception as exc:            # a worker that dies takes the queue with it
             logger.error("the transcription worker hit %s: %s", type(exc).__name__, exc)
+        # MERGE AFTER TRANSCRIBING, in its own try: a merge that raises must not stop the next
+        # poll from transcribing, and a transcription failure must not stop a call whose legs
+        # are already settled from being merged. They are separate jobs on one queue.
+        try:
+            await asyncio.to_thread(merge_once)
+        except Exception as exc:
+            logger.error("the merge step hit %s: %s", type(exc).__name__, exc)
 
 
 # ---- what is on disk -------------------------------------------------------------------
@@ -742,3 +751,156 @@ def catalogue() -> list[dict]:
                     "downloaded": done,
                     "in_use": running == "local" and model == current})
     return out
+
+
+# ---- merging a call into one file the owner keeps -----------------------------------------
+#
+# The legs exist because keeping the parties apart is what lets a transcript say who spoke
+# without diarisation. What the owner asked for is ONE file per call, so the pair is merged
+# after the fact — here, on the same queue as transcription, where nothing is waiting. It is
+# deliberately not done in `carry._record_leg`: that runs while two people are talking, and
+# "a failure here must not kill the call".
+#
+# STEREO, ONE PARTY PER CHANNEL — not a sum. Summing is what the old comment in carry.py warns
+# about: the legs are not sample-aligned, so adding them puts one voice ahead of the other and
+# compresses both. Two channels keep every sample of each party exactly, stay separable for a
+# future re-transcription, and open in any player as one recording.
+MERGE_SUFFIX = ".merged"
+
+
+def _leg_start(wav: pathlib.Path) -> float | None:
+    """When this leg's first frame arrived, from the sidecar `carry` wrote."""
+    try:
+        return float(wav.with_suffix(".start").read_text().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def merge_ready() -> list[str]:
+    """Stems whose legs are all transcribed and which have not been merged yet."""
+    from . import carry
+    if not carry.legs().is_dir():
+        return []
+    by_stem: dict[str, list[pathlib.Path]] = {}
+    for wav in sorted(carry.legs().glob("*.wav")):
+        by_stem.setdefault(carry.stem_of(wav.name), []).append(wav)
+    out = []
+    for stem, wavs in by_stem.items():
+        if (carry.legs() / f"{stem}{MERGE_SUFFIX}").exists():
+            continue
+        # EVERY leg settled, one way or the other. A leg still queued for transcription would
+        # otherwise be merged without its words and never revisited, because the merge marker
+        # is what stops this looking again.
+        if not all(w.with_suffix(".txt").exists() or w.with_suffix(".failed").exists()
+                   or w.stat().st_size <= EMPTY_WAV_BYTES for w in wavs):
+            continue
+        out.append(stem)
+    return out
+
+
+def _merge_audio(stem: str, wavs: list[pathlib.Path]) -> bool:
+    """Write one stereo WAV: caller left, callee right, aligned by their start sidecars."""
+    from . import carry
+    sides: dict[str, pathlib.Path] = {}
+    for w in wavs:
+        for leg in ("caller", "callee"):
+            if w.stem.endswith("-" + leg):
+                sides[leg] = w
+    if not sides:
+        return False
+    frames: dict[str, bytes] = {}
+    rate = carry.SAMPLE_RATE
+    for leg, w in sides.items():
+        try:
+            with wave.open(str(w), "rb") as r:
+                rate = r.getframerate() or rate
+                frames[leg] = r.readframes(r.getnframes())
+        except (OSError, wave.Error) as exc:
+            logger.warning("merge %s: cannot read the %s leg (%s)", stem, leg, exc)
+            return False
+    # PAD THE LATE ONE WITH SILENCE, by the gap between the two first frames. Without this,
+    # sample zero of each file is treated as the same instant, and the far leg — originated
+    # toward the PBX, which may ring for seconds — arrives shifted by however long that took.
+    starts = {leg: _leg_start(w) for leg, w in sides.items()}
+    if len(starts) == 2 and all(v is not None for v in starts.values()):
+        late = max(starts, key=lambda k: starts[k])
+        gap = starts[late] - min(starts.values())
+        pad = int(gap * rate) * carry.SAMPLE_WIDTH
+        if pad:
+            frames[late] = b"\x00" * pad + frames[late]
+            logger.info("merge %s: padded the %s leg by %.2fs", stem, late, gap)
+    width = carry.SAMPLE_WIDTH
+    n = max((len(b) // width for b in frames.values()), default=0)
+    if not n:
+        return False
+    left = frames.get("caller", b"").ljust(n * width, b"\x00")
+    right = frames.get("callee", b"").ljust(n * width, b"\x00")
+    out = carry.merged_wav(stem)
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(out), "wb") as w:
+            w.setnchannels(2)
+            w.setsampwidth(width)
+            w.setframerate(rate)
+            # Interleave the two channels: L,R,L,R… CALLER IS LEFT and callee right, always,
+            # so a listener can tell the parties apart by ear and a splitter by index.
+            w.writeframes(b"".join(left[i:i + width] + right[i:i + width]
+                                   for i in range(0, n * width, width)))
+    except (OSError, wave.Error) as exc:
+        logger.warning("merge %s: could not write %s (%s)", stem, out.name, exc)
+        return False
+    return True
+
+
+def _merge_text(stem: str, wavs: list[pathlib.Path]) -> None:
+    """One transcript per call, each turn labelled with who said it.
+
+    NOT INTERLEAVED YET, and it says so rather than implying an order it does not know. Turn
+    order needs per-utterance timings: faster-whisper already returns them and this package
+    throws them away, and Apple's helper prints bare text. Until both are carried, the honest
+    output is each party's words under their own label — a guessed order on a call record is
+    the one error worse than no order.
+    """
+    from . import carry
+    parts = []
+    for leg, label in (("caller", "them"), ("callee", "you")):
+        hit = next((w for w in wavs if w.stem.endswith("-" + leg)), None)
+        if hit is None:
+            continue
+        txt = hit.with_suffix(".txt")
+        body = ""
+        if txt.exists():
+            try:
+                body = txt.read_text().strip()
+            except OSError:
+                body = ""
+        if body:
+            parts.append(f"{label}: {body}")
+    if not parts:
+        return
+    header = ("# not in speaking order — each party's words are grouped, because the speech "
+              "engine did not report when each turn was said\n\n") if len(parts) > 1 else ""
+    try:
+        carry.merged_txt(stem).write_text(header + "\n".join(parts) + "\n")
+    except OSError as exc:
+        logger.warning("merge %s: could not write the transcript (%s)", stem, exc)
+
+
+def merge_once() -> int:
+    """Merge every call whose legs are settled. Returns how many were written."""
+    from . import carry
+    done = 0
+    for stem in merge_ready():
+        wavs = sorted(w for w in carry.legs().glob("*.wav")
+                      if carry.stem_of(w.name) == stem)
+        if _merge_audio(stem, wavs):
+            _merge_text(stem, wavs)
+            done += 1
+        # MARKED EITHER WAY. A call whose legs are all empty — an unbridged call, which is every
+        # call until the platform hands us audio — has nothing to merge and must not be
+        # reconsidered on every poll for the life of the instance.
+        try:
+            (carry.legs() / f"{stem}{MERGE_SUFFIX}").write_text("")
+        except OSError as exc:
+            logger.warning("merge %s: could not mark it done (%s)", stem, exc)
+    return done

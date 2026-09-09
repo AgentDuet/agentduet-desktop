@@ -31,6 +31,7 @@ that switches it on says so in the file the owner reads.
 import asyncio
 import logging
 import pathlib
+import time
 import wave
 from datetime import datetime
 
@@ -60,6 +61,63 @@ def recordings() -> pathlib.Path:
 #: not the setting — call `recordings()` for what is actually in use.
 RECORDINGS = paths.RUN / "recordings"
 
+
+def legs() -> pathlib.Path:
+    """Where the PER-LEG audio is written, which is not where the owner looks.
+
+    The two legs are working files: they exist because keeping the parties apart is what lets a
+    transcript say who spoke without diarisation, and because a re-transcription can still
+    separate the speakers later. They are not what the owner asked to keep — one file per call
+    is — so they live inside the instance and only the merged pair lands in the chosen folder.
+
+    That also splits two questions the one folder was answering at once: what still needs work
+    (here) and what the owner keeps (there). And it stays restart-safe, which
+    `transcribe.pending` relies on: legs left behind by a crash are still on disk, so the merge
+    finishes on the next start rather than being lost.
+    """
+    return paths.RUN / "legs"
+
+
+def stem_of(name: str) -> str:
+    """`20260909T103616-<uuid>-caller.wav` -> `20260909T103616-<uuid>`."""
+    base = name[:-4] if name.endswith(".wav") or name.endswith(".txt") else name
+    for suffix in ("-caller", "-callee", "-agent"):
+        if base.endswith(suffix):
+            return base[: -len(suffix)]
+    return base
+
+
+def merged_wav(stem: str) -> pathlib.Path:
+    """The one file per call the owner keeps: both parties, one channel each."""
+    return recordings() / f"{stem}.wav"
+
+
+def merged_txt(stem: str) -> pathlib.Path:
+    return recordings() / f"{stem}.txt"
+
+
+def call_audio(names: list[str]) -> tuple[pathlib.Path, list[str]]:
+    """(folder, filenames) to show for one indexed call — the merge if it is done, else legs.
+
+    The index is written when the call ENDS and the merge happens later, on the transcription
+    queue, so for a few seconds a row legitimately has legs and no merge. Readers therefore
+    cannot assume either one: asking only for the merged name would report a just-finished call
+    as "No recording.", which is a false claim about audio that is sitting on disk.
+    """
+    stems = {stem_of(n) for n in names}
+    merged = [f"{st}.wav" for st in sorted(stems) if merged_wav(st).is_file()]
+    if merged:
+        return recordings(), merged
+    here = [n for n in names if (legs() / n).is_file()]
+    if here:
+        return legs(), here
+    # LEGS RECORDED BEFORE THEY MOVED. Every call carried until 2026-09-09 wrote both legs
+    # straight into the owner's folder, so those rows name files that were never in `legs()`
+    # and would otherwise read as "No recording." — a real transcript on disk reported as
+    # absent. Nothing is migrated: they are already where the owner keeps things, and moving
+    # someone's saved audio to tidy up our layout is not a fix.
+    return recordings(), [n for n in names if (recordings() / n).is_file()]
+
 #: Subdirectory for calls the AGENT answered. Defined here, beside the directory it sits in,
 #: rather than in `voice.py` — the settings page and the hub both build this path, and reaching
 #: into the answering agent for a five-letter string made two recorder endpoints import it.
@@ -83,12 +141,18 @@ RING_SECONDS = 30
 MAX_CALL_SECONDS = 4 * 60 * 60
 
 
-def _wav_path(call_id: str, leg: str) -> "paths.pathlib.Path":
-    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-    return recordings() / f"{stamp}-{call_id}-{leg}.wav"
+def _wav_path(stamp: str, call_id: str, leg: str) -> "paths.pathlib.Path":
+    """One leg's working file. THE STAMP IS PASSED IN, not taken here.
+
+    It used to call `datetime.now()` itself, once per leg — so the two legs of a call got
+    different stamps whenever they straddled a second boundary, and the pair no longer shared a
+    stem. Nothing noticed while every reader globbed on the call id, and it breaks the moment
+    the merge has to find one leg from the other. Today's recordings match by luck.
+    """
+    return legs() / f"{stamp}-{call_id}-{leg}.wav"
 
 
-async def _record_leg(party, call_id: str, leg: str) -> None:
+async def _record_leg(party, stamp: str, call_id: str, leg: str) -> None:
     """Drain one leg's audio into its own WAV file.
 
     ONE FILE PER LEG, not a mix. They arrive as separate streams because they ARE separate
@@ -98,16 +162,32 @@ async def _record_leg(party, call_id: str, leg: str) -> None:
     A failure here must not kill the call. The people talking do not know we exist, and losing
     a recording is a smaller harm than dropping their conversation, so this logs and returns.
     """
-    path = _wav_path(call_id, leg)
+    path = _wav_path(stamp, call_id, leg)
     writer = None
     frames = 0
     try:
-        recordings().mkdir(parents=True, exist_ok=True)
+        legs().mkdir(parents=True, exist_ok=True)
         writer = wave.open(str(path), "wb")
         writer.setnchannels(CHANNELS)
         writer.setsampwidth(SAMPLE_WIDTH)
         writer.setframerate(SAMPLE_RATE)
         async for chunk in party.audio_stream():
+            # WHEN THIS LEG ACTUALLY STARTED TALKING, written once, beside the audio.
+            #
+            # The merge needs it and cannot recover it afterwards. Both recorders are created
+            # in the same breath, but the streams do not begin yielding together — the far leg
+            # is originated toward the PBX and may ring for seconds before it carries anything.
+            # Treating sample zero of each file as the same instant would put one side of the
+            # conversation ahead of the other by exactly that gap.
+            #
+            # A sidecar per leg rather than one file for the call, because two tasks writing
+            # one JSON is a race for no benefit.
+            if not frames:
+                try:
+                    path.with_suffix(".start").write_text(f"{time.time():.3f}\n")
+                except OSError as exc:
+                    logger.warning("call %s: could not note the %s leg's start (%s)",
+                                   call_id, leg, exc)
             writer.writeframes(chunk)
             frames += len(chunk)
     except asyncio.CancelledError:
@@ -176,8 +256,12 @@ async def handle(sm, noti) -> None:
     # `<id>-caller.wav` therefore always holds the OTHER party and `<id>-callee.wav` always
     # holds this line, whichever way the call was set up.
     far, near = (call.callee, call.caller) if outgoing else (call.caller, call.callee)
-    legs = [asyncio.create_task(_record_leg(far, str(call.id), "caller")),
-            asyncio.create_task(_record_leg(near, str(call.id), "callee"))]
+    # ONE STAMP FOR THE CALL, so both legs share a stem and the merge can find the pair.
+    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    # `recorders`, not `legs` — that name is now the folder they are written to, and a local
+    # shadowing it here is a trap for whoever next needs the folder in this function.
+    recorders = [asyncio.create_task(_record_leg(far, stamp, str(call.id), "caller")),
+                 asyncio.create_task(_record_leg(near, stamp, str(call.id), "callee"))]
     try:
         # DO NOT ANSWER FIRST. Connect straight away.
         #
@@ -250,9 +334,9 @@ async def handle(sm, noti) -> None:
         # The streams end when the call does, but a bridge that never connected leaves them
         # open with nothing coming — so cancel rather than await, and let each recorder close
         # its own file in its finally block.
-        for t in legs:
+        for t in recorders:
             t.cancel()
-        await asyncio.gather(*legs, return_exceptions=True)
+        await asyncio.gather(*recorders, return_exceptions=True)
         # WRITE THE INDEX LAST, once the files are closed and their sizes are final. Recording
         # filenames carry a CALL ID, not a person, so without this row there is no way back from
         # a .wav to whoever was on it — which is the whole basis of a per-person view. The
