@@ -3411,6 +3411,20 @@ def test_a_suggestion_is_judged_once_and_never_guessed() -> None:
         ok(f"the offer does not say {hedge!r}", hedge.lower() not in offer.lower())
     ok("it is absent when there is nothing", "if (!sg) return '';" in offer)
 
+    # WHY THERE ARE NO SUGGESTIONS is answerable from `status`, because it is NOT answerable
+    # from the screen: the page says nothing when there is nothing, deliberately, so a remote
+    # tester's "I see no suggestions" could equally mean no model, a model that found nothing,
+    # or a backlog. Those need different answers.
+    with mock.patch("agentduet_desktop.llm.configured", return_value=False):
+        ok("status says when there is no model", "no model" in sg.summary())
+    with mock.patch("agentduet_desktop.llm.configured", return_value=True), \
+         mock.patch.object(sg, "_load", return_value={"a": {}, "b": {"kind": "calendar"}}), \
+         mock.patch.object(sg, "candidates", return_value=[]):
+        out = sg.summary()
+        ok("and how many it judged", "2 judged" in out)
+        ok("and how many stand", "1 offered" in out)
+    ok("status prints it", "_sg.summary()" in (src.parent / "agentduet_desktop" / "cli.py").read_text())
+
     # ONE TEXT, ONE READER. The page renders `carry.transcript_of` and the pass judges it; two
     # copies would drift and a suggestion would cite words that are not on the screen.
     ok("the pass reads the same transcript the page shows",

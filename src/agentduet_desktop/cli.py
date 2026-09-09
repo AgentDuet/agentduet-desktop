@@ -155,6 +155,9 @@ def cmd_status(args) -> int:
         print(f"  transcript: {transcribe.describe()}")
         if waiting := len(transcribe.pending()):
             print(f"  queued   : {waiting} recording(s) waiting to be transcribed")
+        # WHY THERE ARE NO SUGGESTIONS, which the screen deliberately does not say.
+        from . import suggest as _sg
+        print(f"  suggest  : {_sg.summary()}")
     else:
         print("  calls    : answered by the agent")
 

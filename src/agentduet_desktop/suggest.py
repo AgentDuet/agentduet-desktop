@@ -261,6 +261,26 @@ def analyse_once() -> int:
     return done
 
 
+def summary() -> str:
+    """One line for `status`: what the pass has done, and what it is waiting on.
+
+    THIS EXISTS FOR A REMOTE TESTER'S BUG REPORT. With no model the feature is silently absent
+    — correctly, since the alternative is an on-screen apology for a gap — and "I see no
+    suggestions" then means either that, or a model that judged everything and found nothing,
+    or a backlog still being judged. Those need different answers and the screen cannot tell
+    them apart, so the diagnostic belongs here, where someone is already looking for one.
+    """
+    from . import llm
+    judged = len(_load())
+    waiting = len(candidates())
+    if not llm.configured():
+        return f"no model, so nothing is judged ({waiting} would be)"
+    offered = len([1 for v in _load().values()
+                   if v.get("kind") == "calendar" and not v.get("state")])
+    return (f"{judged} judged, {offered} offered"
+            + (f", {waiting} waiting" if waiting else ""))
+
+
 async def worker() -> None:
     """Judge new items forever, off the event loop.
 
