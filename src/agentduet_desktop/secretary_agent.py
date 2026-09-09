@@ -718,11 +718,14 @@ async def run_channel() -> None:
                 type(exc).__name__, exc)
 
         asyncio.create_task(drain_outbox())
-        # Recordings become transcripts here, not on the call path. Started unconditionally:
-        # the queue is derived from the filesystem, so it is a no-op when nothing was carried,
-        # and it also picks up anything a previous run left unfinished.
-        from . import transcribe
-        asyncio.create_task(transcribe.worker())
+        # THE TRANSCRIPTION WORKER IS NOT STARTED HERE. It used to be, with a comment claiming
+        # it was "started unconditionally" — and this function is reached only after `main`
+        # waits for a connector, and is then re-entered by the reconnect loop below it. So the
+        # claim was false in both directions: no connector meant no transcripts and no merge at
+        # all, including for legs a previous run left unfinished, which is the case the comment
+        # cited as the reason for starting it; and every channel drop started ANOTHER worker,
+        # against a queue derived from the filesystem and documented as strictly sequential.
+        # Moved to `main`, once, before the connector wait.
 
         logger.info("AgentDuet channel connected — inbound is live")
         status.set_channel("live")
@@ -862,6 +865,15 @@ async def main() -> None:
     # process — so the only thing that made a restart necessary was this branch never looking
     # again. The symptom was a chip reading "not connected" while the credential sat there
     # correct, advising the owner to check a network that was fine.
+    # RECORDINGS BECOME TRANSCRIPTS REGARDLESS OF THE CHANNEL, and exactly once. The queue is
+    # derived from the filesystem, so this is a no-op when nothing was carried — and it is the
+    # only thing that picks up legs a previous run left unfinished, which must not depend on a
+    # connector the owner may have signed out of. Started here rather than in `run_channel`
+    # because that is re-entered on every reconnect: one worker per drop, all draining the same
+    # directory, against a queue whose whole design is one file at a time.
+    from . import transcribe as _t
+    asyncio.create_task(_t.worker())
+
     if not connector_ready():
         logger.info("No AgentDuet connector yet — running the owner's view only. "
                     "Sign in, or set AGENTDUET_API_KEY and AGENTDUET_CONNECTOR_UUID. "

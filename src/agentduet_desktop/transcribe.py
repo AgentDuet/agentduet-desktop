@@ -231,9 +231,16 @@ def backend() -> str:
         return ""
     try:
         import pywhispercpp
-        here = pathlib.Path(pywhispercpp.__file__).parent.parent
-        if list(here.glob("libggml-metal*.dylib")):
-            return "GPU (Metal)"
+        pkg = pathlib.Path(pywhispercpp.__file__).parent
+        # BOTH LAYOUTS, because they differ between a venv and the shipped binary and I got
+        # this wrong first: in site-packages the libraries sit as version aliases at the ROOT,
+        # beside the package; PyInstaller collects the delocated originals into
+        # `pywhispercpp/.dylibs/` INSIDE it. Globbing only the root would have made every
+        # frozen build report "CPU" while running on Metal — a status line lying about the one
+        # fact that made this engine worth switching to.
+        for where in (pkg / ".dylibs", pkg.parent, pkg):
+            if list(where.glob("libggml-metal*")):
+                return "GPU (Metal)"
     except Exception:                      # never let a status line raise
         pass
     return "CPU"
@@ -451,7 +458,11 @@ def describe() -> str:
                 why = " — Apple's on-device engine is available here; clear `## Transcription` in settings.md to use it"
             elif _apple_choice() != "whisper" and not ok and reason:
                 why = f" — Apple's engine unavailable: {reason}"
-        return f"local ({local_model()}, on this machine){why}"
+        # THE BACKEND ON EVERY LOCAL BRANCH, not only the quarantine one. It was on the branch
+        # I happened to be editing, so a build without the Swift helper — which is every
+        # pywebview build, and was the first frozen binary I checked — reported the engine with
+        # no word about the GPU. The backend is a fact about the ENGINE, not about Apple.
+        return f"Whisper {local_model()} on this machine{on}{why}"
     return "OFF — " + available()[1]
 
 
