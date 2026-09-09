@@ -279,6 +279,30 @@ def _apple_choice() -> str:
     return ""
 
 
+#: APPLE IS QUARANTINED, 2026-09-09 — Stanley's call, to keep this stage simple.
+#:
+#: Nothing is deleted: `_apple`, `apple_ready`, the bundled `agentduet-stt` helper and the
+#: measurements that justify it all stand, and clearing this flag brings it back. What it buys
+#: is ONE engine while the recording pipeline settles, and specifically EXACT turn order —
+#: faster-whisper returns `.start`, `.end` and word-level `words` per segment, so interleaving
+#: two legs is arithmetic. Apple's helper prints bare text, and everything approximate in this
+#: file (the mono downmix, the difflib alignment, the confidence floor, the sentence snapping)
+#: exists only to work around that.
+#:
+#: KNOW WHAT IT COSTS, because it is not small and there is no GPU to soften it. Measured on a
+#: 222-second call: Whisper large-v3-turbo 21.5s wall and 88.5s CPU, against Apple's 1.1s and
+#: 0.06s. CTranslate2 — the runtime under faster-whisper — is compiled with CPU and CUDA
+#: backends only and has no Metal path, so on Apple Silicon this is CPU-only whatever the
+#: settings say: `get_cuda_device_count()` is 0 here and asking it for CUDA compute types
+#: raises "not compiled with CUDA support". The LLM does use the GPU on a Mac (llama.cpp, via
+#: `models._gpu_layers`), which is why the two look like they should behave the same and do not.
+#: It also costs a 1.6 GB+ model download on a fresh install, and en-SG accuracy: the 29-call
+#: sweep found one outright language misdetection and about eight more scoring under 0.6.
+#:
+#: So this is a SIMPLIFICATION WITH A PRICE, taken deliberately and reversible in one line.
+APPLE_QUARANTINED = True
+
+
 def engine() -> str:
     """`apple`, `local`, or `` when nothing here can transcribe.
 
@@ -291,6 +315,11 @@ def engine() -> str:
     Whisper, not asking for a faster engine that ignores the choice.
     """
     choice = _apple_choice()
+    if APPLE_QUARANTINED:
+        # EVEN IF THE SETTING ASKS FOR IT. A quarantine that an owner can step around by
+        # typing "apple" is not one, and the point of this stage is that exactly one engine
+        # runs. `describe()` says so on screen rather than silently ignoring the setting.
+        return "local" if _local_available() else ""
     if choice != "whisper" and apple_ready()[0]:
         return "apple"
     if choice == "apple" and not _local_available():
@@ -321,6 +350,12 @@ def describe() -> str:
         return f"Apple on-device ({lang}, on this machine)" + (f" — installed: {locales}…" if locales else "")
     if which == "local":
         why = ""
+        # SAY THE QUARANTINE OUT LOUD. On a Mac that can run Apple's engine, Whisper appearing
+        # here with no reason reads as a broken setting — and the owner would go looking in
+        # settings.md, where the answer is not.
+        if APPLE_QUARANTINED and sys.platform == "darwin" and apple_ready()[0]:
+            return (f"Whisper {local_model()} on this machine — Apple's on-device engine is "
+                    f"held back for now, so every language uses Whisper")
         # SAY WHY WHISPER. Two different reasons, and both leave a Mac owner staring at Whisper
         # with nowhere to look: either Apple's engine cannot run here, or it can and their
         # settings.md still holds the model name seeded before Apple existed — which every
@@ -729,6 +764,12 @@ def catalogue() -> list[dict]:
     # and the page suppresses Delete for it. Choosing it clears `## Transcription` to `apple`;
     # choosing a Whisper tier names that model, which IS choosing Whisper.
     ready, why = apple_ready()
+    # WHILE QUARANTINED IT IS NOT OFFERED. A row that can be chosen and then does nothing is
+    # the failure this file keeps finding — the click lands, the setting is written, and the
+    # engine ignores it. Withheld from the list rather than shown as disabled, because the
+    # dropdown is a choice and this is not currently one.
+    if APPLE_QUARANTINED:
+        ready = False
     if ready or running == "apple":
         out.append({"model": APPLE, "name": "Apple on-device",
                     "mb": 0, "got_mb": 0, "downloaded": True,
