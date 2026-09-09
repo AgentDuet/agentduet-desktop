@@ -3290,6 +3290,115 @@ def test_a_bad_reply_says_so_instead_of_leaking() -> None:
            withheld not in _asst.assistant_tools())
 
 
+def test_the_update_check_is_quiet_and_cannot_lie() -> None:
+    """Notice a release, say so once, and never delay or invent anything."""
+    print("\n  -- update check --")
+    import unittest.mock as mock
+    import urllib.error
+    from agentduet_desktop import update as up
+
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+
+    # NOT `/releases/latest`. It EXCLUDES prereleases, and every release of this project is
+    # one — so that endpoint answers 404 here and a check built on it reports "no releases"
+    # forever, confidently, with no error to notice.
+    body = (src / "update.py").read_text()
+    ok("the feed is the full release list", "/releases?per_page=" in up.FEED)
+    ok("and not the latest-release endpoint", "/releases/latest" not in up.FEED)
+    ok("the reason is written down where the constant is", "EXCLUDES PRERELEASES" in body)
+
+    # ORDER, including the part a plain string compare gets wrong: a prerelease comes BEFORE
+    # the release of the same triple.
+    ok("a14 is newer than a13", up._order("v0.1.0a14") > up._order("0.1.0a13"))
+    ok("0.1.0 is newer than 0.1.0rc1", up._order("0.1.0") > up._order("0.1.0rc1"))
+    ok("0.2.0 is newer than 0.1.9", up._order("v0.2.0") > up._order("v0.1.9"))
+    ok("a10 is newer than a9 (not a string compare)", up._order("0.1.0a10") > up._order("0.1.0a9"))
+    for junk in ("nightly", "", "v1", "latest", "0.1.0a"):
+        eq(f"{junk!r} is not ordered", up._order(junk), None)
+
+    release = [{"tag_name": "v0.1.0a14", "html_url": "https://example.invalid/a14",
+                "published_at": "2026-09-20T00:00:00Z", "draft": False}]
+
+    # A TAG WE CANNOT READ IS NEVER ANNOUNCED. Reporting an unparseable tag as newer is how a
+    # branch build or a mistyped tag becomes an update notice.
+    with mock.patch.object(up, "_fetch", return_value=[{"tag_name": "nightly", "draft": False}]), \
+         mock.patch.object(up, "_save", side_effect=lambda r: r):
+        ok("an unreadable tag says nothing", not up.check()["newer"])
+
+    # A DRAFT IS NOT INSTALLABLE, so it is not an update.
+    with mock.patch.object(up, "_fetch",
+                           return_value=[{"tag_name": "v0.9.0", "draft": True}] + release), \
+         mock.patch.object(up, "_save", side_effect=lambda r: r):
+        answer = up.check()
+        eq("the draft is skipped", answer["version"], "0.1.0a14")
+
+    # THE REUSED-TAG TRAP. a13 was overwritten rather than superseded, so an install can be
+    # behind the release carrying its own version number — and a version comparison alone calls
+    # that up to date. The build stamp is what separates them.
+    same = [{"tag_name": "v" + up.__version__, "html_url": "https://example.invalid/same",
+             "published_at": "2026-09-20T00:00:00Z", "draft": False}]
+    import datetime as _dt
+    older = _dt.datetime(2026, 9, 1, tzinfo=_dt.timezone.utc)
+    with mock.patch.object(up, "_fetch", return_value=same), \
+         mock.patch.object(up, "_save", side_effect=lambda r: r), \
+         mock.patch.object(up, "_built_at", return_value=older):
+        answer = up.check()
+        ok("a rebuilt tag is noticed", answer["newer"])
+        ok("and says so in those words", "rebuilt" in answer["note"])
+    # AND ONLY FOR A REAL BINARY. `_build.py` is written into src/ by the spec, so any checkout
+    # where someone has built locally carries a stamp — and a source run is not an install.
+    ok("the stamp is ignored unless frozen", 'getattr(sys, "frozen", False)' in body)
+    with mock.patch.object(up, "_fetch", return_value=same), \
+         mock.patch.object(up, "_save", side_effect=lambda r: r):
+        ok("from source the same version is not an update", not up.check()["newer"])
+
+    # OFFLINE IS THE SUPPORTED CASE, not a fault: it must not raise, must not erase the last
+    # answer, and must not report itself as up to date.
+    with mock.patch.object(up, "_fetch", side_effect=urllib.error.URLError("no route")), \
+         mock.patch.object(up, "state", return_value={"newer": True, "note": "Version X.",
+                                                      "url": "https://example.invalid/x"}), \
+         mock.patch.object(up, "_save", side_effect=lambda r: r):
+        answer = up.check()
+        ok("an unreachable GitHub does not raise", isinstance(answer, dict))
+        ok("and is recorded as unreachable", answer["reachable"] is False)
+        ok("and keeps the notice it already had", answer["newer"] and answer["note"] == "Version X.")
+
+    # NOTHING THE PAGE CALLS TOUCHES THE NETWORK. `state()` and `summary()` are what the hub
+    # and `status` use, and a GitHub round trip on a request path would put the owner's own
+    # page at the mercy of a host this product is supposed to work without.
+    with mock.patch("urllib.request.urlopen",
+                    side_effect=AssertionError("state() must not open a socket")):
+        up.state()
+        up.summary()
+        ok("state() and summary() read the cache only", True)
+
+    # NOT ON THE STARTUP PATH. The daemon must bind with no network at all, so the check is a
+    # task that sleeps first — never a call in the boot sequence.
+    boot = (src / "secretary_agent.py").read_text()
+    ok("the check is a background task", "asyncio.create_task(_u.worker())" in boot)
+    ok("and is not awaited during startup", "await _u.check()" not in boot)
+    ok("it sleeps before the first ask", up.FIRST_CHECK_AFTER > 0)
+    ok("and polls well inside 60 requests an hour", up.CHECK_EVERY >= 3600)
+
+    # SAYS NOTHING WHEN THERE IS NOTHING TO SAY. "You are up to date" is a claim about GitHub
+    # made from a cache, and on a machine that has never reached it, a wrong one.
+    with mock.patch.object(up, "state", return_value={"newer": False, "note": ""}):
+        eq("no notice when current", up.summary(), "")
+    ok("the hub hides the row unless newer", "$('updRow').hidden = !upd.newer;"
+       in (src / "web.html").read_text())
+    ok("the menu bar hides its item unless newer",
+       "updateItem.isHidden = true" in (pathlib.Path(__file__).parent.parent / "macos"
+                                        / "Sources" / "AgentDuetShell" / "AppDelegate.swift").read_text())
+
+    # ONE POLLER, and it is the daemon's. A second one in the shell would double the requests
+    # to answer the same question and disagree with the hub whenever they looked at different
+    # moments.
+    shell = (pathlib.Path(__file__).parent.parent / "macos" / "Sources" / "AgentDuetShell"
+             / "Daemon.swift").read_text()
+    ok("the shell reads the daemon's file", "run/update.json" in shell)
+    ok("and asks GitHub nothing itself", "api.github.com" not in shell)
+
+
 def test_a_link_tool_cannot_choose_a_destination() -> None:
     """The calendar and email tools pass FIELDS. Our code owns the URL."""
     print("\n  -- calendar and email links --")
@@ -3966,6 +4075,7 @@ def main() -> None:
     test_a_person_is_a_number_not_a_direction()
     test_a_skill_is_owner_approved_and_capped()
     test_a_bad_reply_says_so_instead_of_leaking()
+    test_the_update_check_is_quiet_and_cannot_lie()
     test_a_link_tool_cannot_choose_a_destination()
     test_the_secretary_keeps_its_knowledge()
     test_apple_is_quarantined_but_not_deleted()

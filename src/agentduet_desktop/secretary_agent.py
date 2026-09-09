@@ -874,6 +874,13 @@ async def main() -> None:
     from . import transcribe as _t
     asyncio.create_task(_t.worker())
 
+    # IS THERE A NEWER BUILD? Started here for the same reason as the queue above — after the
+    # site is bound, on the daemon's own loop, and regardless of the connector. It sleeps first
+    # and asks GitHub four times a day; an offline machine gets a log line at info and nothing
+    # else, which is the supported case rather than a fault.
+    from . import update as _u
+    asyncio.create_task(_u.worker())
+
     if not connector_ready():
         logger.info("No AgentDuet connector yet — running the owner's view only. "
                     "Sign in, or set AGENTDUET_API_KEY and AGENTDUET_CONNECTOR_UUID. "

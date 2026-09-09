@@ -21,8 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private var statusItem: NSStatusItem!
     private var stateItem: NSMenuItem!
     private var loginItem: NSMenuItem!
+    private var updateItem: NSMenuItem!
     private let daemon = Daemon()
     private var siteURL: URL?
+    /// Where the update item points, set as the menu opens.
+    private var releaseURL: URL?
 
     /// `--bg` from app.css. Set on the window so the gap before the first paint is the app's
     /// own colour rather than a white flash.
@@ -101,6 +104,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         stateItem = NSMenuItem(title: "Starting…", action: nil, keyEquivalent: "")
         stateItem.isEnabled = false
         menu.addItem(stateItem)
+        // A NEWER BUILD, WHEN THERE IS ONE. Hidden the rest of the time rather than reading
+        // "up to date": that would be a claim about GitHub made from a cache, and on a machine
+        // that has never reached it, a wrong one. Clicking opens the release page — this app
+        // does not download or install anything, so the owner is never mid-update.
+        updateItem = NSMenuItem(title: "", action: #selector(openRelease), keyEquivalent: "")
+        updateItem.isHidden = true
+        menu.addItem(updateItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Open AgentDuet", action: #selector(openWindow), keyEquivalent: "")
         loginItem = NSMenuItem(title: "Start at Login", action: #selector(toggleLoginItem),
@@ -112,7 +122,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // Items whose action lives on THIS object need it as their target; the Quit item is a
         // responder-chain message and finds NSApp on its own.
         for item in menu.items
-        where item.action == #selector(openWindow) || item.action == #selector(toggleLoginItem) {
+        where item.action == #selector(openWindow) || item.action == #selector(toggleLoginItem)
+              || item.action == #selector(openRelease) {
             item.target = self
         }
         statusItem.menu = menu
@@ -143,6 +154,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             loginItem.title = "Start at Login"
         }
 
+        // RE-READ EVERY OPEN, for the same reason the state line is: the daemon writes this
+        // hours after launch, so a value read once at startup would be the one thing that
+        // could never show a release.
+        if let notice = daemon.updateNotice {
+            updateItem.title = notice.note
+            releaseURL = notice.url
+            updateItem.isHidden = false
+        } else {
+            updateItem.isHidden = true
+            releaseURL = nil
+        }
+
         switch daemon.spawnedAndAlive {
         case .some(true):
             stateItem.title = siteURL.map(Self.answering) ?? "Answering"
@@ -156,6 +179,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                                           : "Not running"
             }
         }
+    }
+
+    @objc private func openRelease() {
+        if let url = releaseURL { NSWorkspace.shared.open(url) }
     }
 
     /// Register or unregister THIS APP as a login item.

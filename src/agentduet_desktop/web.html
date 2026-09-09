@@ -44,6 +44,10 @@
   .store .r{display:flex;justify-content:space-between;align-items:center;color:var(--muted);}
   .store a{color:var(--blue400);font-size:10px;text-decoration:none;}
   .store a:hover{text-decoration:underline;}
+  /* One row, one gap — the same rhythm as the channel line above it. Its own top border
+     because it is a different subject from where the recordings go, and it appears and
+     disappears, so without one the block changes shape with nothing to explain the seam. */
+  .store .upd{margin-top:.375rem;padding-top:.375rem;border-top:1px solid var(--slate700);}
   .store .path{font-family:var(--mono);color:#cbd5e1;font-size:10px;overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap;}
 
@@ -210,6 +214,7 @@
       <div class="who-list" id="whoList"></div>
       <div class="store">
         <div class="r"><span id="chanState">—</span><a href="#" id="toSettings2">Settings</a></div>
+        <div class="r upd" id="updRow" hidden><a id="updLink" target="_blank" rel="noopener">—</a></div>
       </div>
     </aside>
 
@@ -788,6 +793,15 @@
     $('ovPill').className = 'pill' + (live ? '' : ' off');
     $('ovPill').innerHTML = '<span class="dot"></span>' + (live ? 'Listening' : 'Not connected');
     $('chanState').textContent = live ? 'Recording calls' : 'Not connected';
+
+    // A NEWER BUILD, IF THERE IS ONE. Absent unless there is: an "up to date" line would be a
+    // claim, and on a machine that has never reached GitHub it would be a wrong one.
+    const upd = D.update || {};
+    $('updRow').hidden = !upd.newer;
+    if (upd.newer) {
+      $('updLink').textContent = upd.note || ('Version ' + (upd.version || '') + ' is available');
+      $('updLink').href = upd.url || '#';
+    }
 
     // WHICH MODEL IS ANSWERING, in the pane that is answering. Without it the owner cannot
     // tell a local 135M model from a hosted one, and the two give very different replies.

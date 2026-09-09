@@ -238,7 +238,34 @@ encoded. The day someone needs the transcript emailed, the answer is not a longe
 real Gmail API call, which means a Google token, which means either a verified app of our own or
 wss-edge brokering the scope. That is a platform decision, not a desktop one.
 
-.
+### Detecting a new release: tell, do not update (decided 2026-09-09)
+
+Three stages, and each is separately useful: **detect and tell**, then **download and verify**,
+then a self-updater (Sparkle) only if the second proves not to be enough. Stage one shipped
+alone, because it is the only one that cannot go wrong on the owner's machine — it changes
+nothing, so the worst case is a stale line.
+
+The constraints are what shape it, and they come from the product rather than from GitHub: the
+daemon must bind with **no network at all** (a self-hosted box with no route out is a supported
+install, not a broken one), the API allows **60 requests an hour** unauthenticated for a whole
+NAT, and nothing may act **during a call**. So the check is a task that sleeps first, `state()`
+reads a cached file and never opens a socket, and the answer lives in `run/update.json` where
+the macOS shell reads it directly instead of polling GitHub a second time.
+
+**Two API traps, both of which return a confident wrong answer rather than an error.**
+`/releases/latest` excludes prereleases, and every release of this project is one — so it 404s
+here and a check built on it reports "no releases" forever. And a REUSED TAG defeats a version
+comparison: a13 was overwritten rather than superseded, so an install can be behind the release
+carrying its own version number. The build stamp (`__built__`, baked in by the spec) is what
+separates them.
+
+**It says nothing when there is nothing to say.** No "up to date" line — that is a claim about
+GitHub made from a cache, and on a machine that has never reached it, a wrong one.
+
+**What would reverse the stop-at-stage-one part:** testers not updating. If a13 is still in use
+a month after a14 ships, telling them was not enough and stage two earns its keep. Stage two is
+also where "never during a call" stops being free — there is no in-call flag today, and whoever
+builds it adds one.
 
 ### Tools are a granted resource, per caller
 

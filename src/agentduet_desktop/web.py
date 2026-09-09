@@ -634,6 +634,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
         from . import carry, llm as _llm, owner as _own, reveal as _reveal, transcribe
+        from . import update as _update
 
         def _listing(folder, limit=25):
             if not folder.is_dir():
@@ -691,6 +692,11 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             "files": {"calls": _listing(carry.recordings()),
                       "answered": _listing(carry.recordings() / carry.ANSWERED),
                       "messages": []},
+            # WHETHER A NEWER BUILD IS OUT, read from the cache a worker writes every few
+            # hours. Never a network call from here: this endpoint is polled by an open page,
+            # and a GitHub round trip on the request path would put the hub's responsiveness
+            # at the mercy of a host the whole product is supposed to work without.
+            "update": _update.state(),
         })
 
     async def api_threads(request):
