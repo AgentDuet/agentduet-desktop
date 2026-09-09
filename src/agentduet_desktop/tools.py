@@ -697,7 +697,7 @@ def list_calls(days: str = "7") -> str:
                 continue
         except ValueError:
             pass
-        names = [n for n in r.get("recordings", []) if (folder / n).is_file()]
+        folder, names = carry.call_audio(r.get("recordings", []))
         done = any((folder / n).with_suffix(".txt").is_file() for n in names)
         out.append(f"- {at}  {r.get('caller') or '?'}  "
                    f"({'transcript ready' if done else 'no transcript yet'})")
@@ -723,14 +723,17 @@ def untrusted(text: str) -> str:
 def read_call(who: str = "", when: str = "") -> str:
     """The transcript of a recorded call. `who` is the caller; `when` narrows to one date."""
     from . import calls as _calls, carry
-    folder = carry.recordings()
     hits = []
     for r in _calls.recent():
         if who and who.strip().lower() not in (r.get("caller") or "").lower():
             continue
         if when and not (r.get("at") or "").startswith(when.strip()):
             continue
-        for n in r.get("recordings", []):
+        # The merged transcript when the call has been merged, else the legs — same rule as the
+        # hub. A leg name looked up in the owner's folder stopped resolving the moment the legs
+        # moved out of it.
+        folder, names = carry.call_audio(r.get("recordings", []))
+        for n in names:
             t = (folder / n).with_suffix(".txt")
             if t.is_file():
                 try:

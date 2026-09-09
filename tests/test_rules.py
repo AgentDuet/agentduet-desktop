@@ -776,16 +776,24 @@ def test_answered_call_recording() -> None:
 
     # ANSWERED CALLS MUST NOT ENTER THE TRANSCRIPTION QUEUE. They already have a transcript,
     # written turn by turn from the model's own events; transcribing the audio too would file a
-    # second, differently-worded copy of the same conversation. pending() globs non-recursively,
-    # so the subdirectory is what keeps them out.
+    # second, differently-worded copy of the same conversation.
+    #
+    # It used to be a non-recursive glob of the owner's folder that kept them out — the answered
+    # audio sits in a subdirectory of it. Since the carried legs moved to their own folder the
+    # guarantee is stronger and simpler: `pending` does not look in the owner's folder at all,
+    # so nothing there can be queued whatever it is called or however deeply it is nested.
     from agentduet_desktop import carry, transcribe
     home = pathlib.Path(tempfile.mkdtemp(prefix="answered-test-"))
-    with mock.patch.object(carry, "recordings", lambda: home / "recordings"):
+    with mock.patch.object(carry, "recordings", lambda: home / "recordings"), \
+         mock.patch.object(carry, "legs", lambda: home / "legs"):
         (carry.recordings() / voice.ANSWERED).mkdir(parents=True)
+        carry.legs().mkdir(parents=True)
         (carry.recordings() / voice.ANSWERED / "x-1-caller.wav").write_bytes(b"RIFF" + b"\0" * 4000)
-        (carry.recordings() / "y-2-caller.wav").write_bytes(b"RIFF" + b"\0" * 4000)
+        # A merged file in the owner's folder, which must never be re-queued either.
+        (carry.recordings() / "z-3.wav").write_bytes(b"RIFF" + b"\0" * 4000)
+        (carry.legs() / "y-2-caller.wav").write_bytes(b"RIFF" + b"\0" * 4000)
         names = [p.name for p in transcribe.pending()]
-        eq("only carried recordings are queued", names, ["y-2-caller.wav"])
+        eq("only carried legs are queued", names, ["y-2-caller.wav"])
 
 
 def test_transcribe_queue() -> None:
@@ -801,10 +809,15 @@ def test_transcribe_queue() -> None:
     from agentduet_desktop import carry, transcribe
 
     home = pathlib.Path(tempfile.mkdtemp(prefix="queue-test-"))
-    with mock.patch.object(carry, "recordings", lambda: home / "recordings"):
+    # THE QUEUE IS THE LEGS FOLDER, not the owner's. The per-leg audio is the work; the merged
+    # file in the owner's folder is the product, and globbing the product would re-transcribe
+    # it for ever. Both are mocked because the merge writes across them.
+    with mock.patch.object(carry, "recordings", lambda: home / "recordings"), \
+         mock.patch.object(carry, "legs", lambda: home / "legs"):
         carry.recordings().mkdir(parents=True)
+        carry.legs().mkdir(parents=True)
         def wav(name, size=4096):
-            p = carry.recordings() / name
+            p = carry.legs() / name
             p.write_bytes(b"RIFF" + b"\0" * (size - 4))
             return p
 
@@ -3355,6 +3368,80 @@ def test_a_question_survives_a_redraw() -> None:
        "if (BUSY) return;" in hub)
 
 
+def test_one_call_one_file() -> None:
+    """Two legs go in, one stereo file and one labelled transcript come out."""
+    print("\n  -- merging a call --")
+    import math
+    import struct
+    import unittest.mock as mock
+    import wave as _wave
+    from agentduet_desktop import carry, transcribe
+
+    home = pathlib.Path(tempfile.mkdtemp(prefix="merge-test-"))
+    R, L = home / "recordings", home / "legs"
+
+    def tone(path, hz, secs, rate=24000):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with _wave.open(str(path), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(rate)
+            w.writeframes(b"".join(
+                struct.pack("<h", int(12000 * math.sin(2 * math.pi * hz * i / rate)))
+                for i in range(int(rate * secs))))
+
+    with mock.patch.object(carry, "recordings", lambda: R), \
+         mock.patch.object(carry, "legs", lambda: L):
+        stem = "20260909T120000-callX"
+        tone(L / f"{stem}-caller.wav", 440, 1.0)
+        tone(L / f"{stem}-callee.wav", 880, 1.0)
+        # The callee leg began HALF A SECOND LATER. Sample zero of the two files is not the
+        # same instant — the far leg is originated toward the PBX and may ring first — so the
+        # merge has to pad, or one side of the conversation runs ahead of the other.
+        (L / f"{stem}-caller.start").write_text("1000.000\n")
+        (L / f"{stem}-callee.start").write_text("1000.500\n")
+        (L / f"{stem}-caller.txt").write_text("is that the delivery for tuesday\n")
+        (L / f"{stem}-callee.txt").write_text("yes tuesday morning\n")
+
+        eq("the call is ready to merge", transcribe.merge_ready(), [stem])
+        eq("and one is written", transcribe.merge_once(), 1)
+
+        with _wave.open(str(carry.merged_wav(stem)), "rb") as w:
+            eq("the merge is STEREO, not a sum", w.getnchannels(), 2)
+            rate, n = w.getframerate(), w.getnframes()
+            raw = w.readframes(n)
+        eq("and 0.5s longer than either leg", round(n / rate, 2), 1.5)
+
+        got = struct.unpack("<%dh" % (len(raw) // 2), raw)
+        left, right = got[0::2], got[1::2]
+        quarter = int(0.25 * rate)
+        rms = lambda xs: (sum(x * x for x in xs) / max(1, len(xs))) ** 0.5
+        ok("the caller is on the LEFT from the first sample", rms(left[:quarter]) > 1000)
+        ok("and the right channel is silent until its leg starts",
+           rms(right[:quarter]) == 0)
+        ok("the late leg is present once it starts",
+           rms(right[int(0.75 * rate):rate]) > 1000)
+
+        body = carry.merged_txt(stem).read_text()
+        ok("each turn is labelled", "them: is that the delivery" in body
+           and "you: yes tuesday" in body)
+        # A GUESSED ORDER IS WORSE THAN NO ORDER on a call record, so it says which it is.
+        ok("and it says it is not in speaking order", "not in speaking order" in body)
+
+        eq("the owner keeps exactly two files",
+           sorted(x.name for x in R.iterdir()), [f"{stem}.txt", f"{stem}.wav"])
+        ok("the legs are kept for a future re-transcription",
+           len(list(L.glob("*.wav"))) == 2)
+        eq("and it is not merged twice", transcribe.merge_ready(), [])
+
+        # LEGS RECORDED BEFORE THEY MOVED must still resolve, or a real transcript on disk
+        # reads as "No recording."
+        old = "20260101T090000-legacy-caller.wav"
+        (R / old).write_bytes(b"RIFF" + b"\0" * 4000)
+        folder, names = carry.call_audio([old])
+        eq("a pre-move recording is still found", (folder, names), (R, [old]))
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -3377,6 +3464,7 @@ def main() -> None:
     test_the_secretary_keeps_its_knowledge()
     test_the_folder_chooser_opens_and_says_when_it_cannot()
     test_a_question_survives_a_redraw()
+    test_one_call_one_file()
     test_the_hub_does_not_invent_a_sign_in_state()
     test_the_binary_can_reach_the_platform()
     test_a_declined_window_declines_the_browser()

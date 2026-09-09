@@ -712,7 +712,12 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         for who, rows in calls.by_person().items():
             items = []
             for r in rows:
-                names = [n for n in r.get("recordings", []) if (folder / n).is_file()]
+                # THE MERGE IF IT IS DONE, ELSE THE LEGS. The index row is written when the
+                # call ends and the merge happens later on the transcription queue, so a
+                # just-finished call legitimately has legs and no merged file. Asking only for
+                # the merged name would report it as "No recording." while its audio sat on
+                # disk — a false claim, and the exact shape of failure this file keeps finding.
+                af, names = carry.call_audio(r.get("recordings", []))
                 # A .wav with no sibling .txt is still in the transcription queue — that is the
                 # queue, so the UI can say "pending" without a second source of truth.
                 # BOTH LEGS, LABELLED. This broke out of the loop on the first transcript it
@@ -724,7 +729,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                 # whichever way the call was set up.
                 parts = []
                 for n in names:
-                    t = (folder / n).with_suffix(".txt")
+                    t = (af / n).with_suffix(".txt")
                     if not t.is_file():
                         continue
                     try:
@@ -737,7 +742,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                             else "you" if n.endswith("-callee.txt") else "")
                     parts.append(f"{side}: {body}" if side else body)
                 text = "\n".join(parts)[:4000]
-                audio = sum((folder / n).stat().st_size for n in names) if names else 0
+                audio = sum((af / n).stat().st_size for n in names) if names else 0
                 items.append({
                     "at": r.get("at", ""), "call_id": r.get("call_id", ""),
                     "mode": r.get("mode", ""), "files": len(names), "bytes": audio,
