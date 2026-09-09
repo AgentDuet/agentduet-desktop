@@ -762,25 +762,6 @@ def _display_for(asker: str) -> str:
     return (seen.get(asker) or {}).get("display") or asker
 
 
-def messages_summary(days: int = 7) -> str:
-    """How many messages, from whom, how many unanswered — and NOT A WORD anyone else wrote.
-
-    Every character of this is computed here from the log, so unlike `read_messages` it carries
-    no asker-authored text and does not taint a conversation. That is what lets it be handed to
-    the assistant on EVERY turn.
-
-    It exists because the model would not look. Asked "any new msg?" with a few turns of history
-    behind it, glm-4-9b answered from what it remembered instead of calling read_messages — and
-    then, asked who they were from, invented an account uid and a message
-    ("a8e0c4d9-...: Just checking in, hope all is well") that had never existed. Neither the
-    person nor the words were real.
-
-    Making the tool available was not enough, because a weak model deciding whether to look is
-    itself the failure. Code looks, every turn, and hands over the answer.
-    """
-    return read_messages(days=days).split("\n", 1)[0]
-
-
 def read_messages(who: str = "", limit: int = 20, days: int = 0) -> str:
     """The message conversation with someone — DDUET or WhatsApp, oldest first.
 
@@ -802,8 +783,13 @@ def read_messages(who: str = "", limit: int = 20, days: int = 0) -> str:
              and (not who or who.strip().lower() in (r.get("asker") or "").lower())
              and (not cutoff or (r.get("at") or "") >= cutoff)]
     if not rows_:
-        return ("No messages with them. Messages are carried to the owner and not answered, so "
-                "a thread exists only once someone has written.")
+        # NAME THE SUBJECT. This said "No messages with them", and with `who` empty there is no
+        # antecedent for "them" anywhere in the prompt. On a fresh install it is also the ONLY
+        # concrete sentence in the assistant's context, so the model resolves the pronoun to the
+        # one name it can see — the owner's. Asked to "say hi", qwen3-8b answered "No messages
+        # with Stanley." (2026-09-08, a12 on a call-less instance).
+        return (f"No messages with {who.strip() or 'anyone'}. Messages are carried to the owner "
+                f"and not answered, so a thread exists only once someone has written.")
     # A COUNTED SUMMARY FIRST, because "are there recent messages?" is arithmetic and not
     # comprehension. Asked to derive it from the lines below, a 9B model answered "There are
     # recent messages" — true, useless, and the owner already suspected that much. Counting is

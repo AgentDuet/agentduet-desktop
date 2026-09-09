@@ -727,8 +727,17 @@ class OwnerChat:
         # "it did not look it up" stops being a failure mode: asked what two messages were, the
         # model invented an account uid and a quote from a person who does not exist, and no
         # amount of prompt wording fixes a model answering a question it was given no data for.
-        context = ("RIGHT NOW, in the last 7 days: " + tools.messages_summary()
-                   + "\n\nTHE MESSAGES:\n" + tools.read_messages(days=7))
+        # ONCE, NOT TWICE. This paired `messages_summary()` with `read_messages()` — and
+        # `messages_summary` WAS `read_messages(...).split("\n", 1)[0]`, so the counted head was
+        # stated, then stated again immediately below itself. It cost nothing on a busy instance
+        # and everything on an empty one: with no messages the whole block became the same
+        # sentence of negation twice over, and repetition is what primes a model to repeat.
+        # `read_messages` opens with that counted head itself, so nothing is lost — code still
+        # looks every turn and hands over the answer, which is why this is unconditional.
+        # (The reason it must be code and not the model's choice: asked "any new msg?" with a
+        # few turns behind it, glm-4-9b answered from memory rather than looking, then invented
+        # an account uid and a quote from a person who did not exist.)
+        context = "RIGHT NOW, in the last 7 days:\n" + tools.read_messages(days=7)
         if viewing:
             # BOTH HALVES OF THE RELATIONSHIP. Calls only, and "help me reply to this" was
             # answered from nothing — the message the owner is looking at was the one thing the
