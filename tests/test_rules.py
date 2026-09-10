@@ -3503,8 +3503,23 @@ def test_the_update_check_is_quiet_and_cannot_lie() -> None:
     ok("0.1.0 is newer than 0.1.0rc1", up._order("0.1.0") > up._order("0.1.0rc1"))
     ok("0.2.0 is newer than 0.1.9", up._order("v0.2.0") > up._order("v0.1.9"))
     ok("a10 is newer than a9 (not a string compare)", up._order("0.1.0a10") > up._order("0.1.0a9"))
-    for junk in ("nightly", "", "v1", "latest", "0.1.0a"):
+    for junk in ("nightly", "", "v1", "latest", "v1.0", "v0.1.0.post1"):
         eq(f"{junk!r} is not ordered", up._order(junk), None)
+
+    # THE NEXT RELEASE MIGHT NOT BE ANOTHER ALPHA, and each of these has to sort ABOVE the
+    # current alpha or an installed app stays quiet about it. Asked directly on 2026-09-10.
+    a15 = up._order("0.1.0a15")
+    for tag in ("v0.1.0a16", "v0.1.0b1", "v0.1.0rc1", "v0.1.0", "v0.1.1", "v0.2.0",
+                "v1.0.0b1", "v1.0.0-rc.1", "v1.0.0", "v1.0.0-beta"):
+        ok(f"{tag} is newer than a15", up._order(tag) is not None and up._order(tag) > a15)
+    # AND THE ORDER WITHIN A TRIPLE: alpha < beta < rc < the release itself.
+    rungs = [up._order(f"0.1.0{x}") for x in ("a1", "b1", "rc1", "")]
+    ok("a prerelease sorts below the release of the same version", rungs == sorted(rungs))
+    # A BARE STAGE COUNTS AS 0, which is how PEP 440 reads `1.0b`. It used to fail to parse,
+    # and an unparseable tag is never announced — so naming a release `v1.0.0-beta` would have
+    # been invisible to every installed app, with nothing to notice.
+    eq("a bare stage parses", up._order("v1.0.0-beta"), (1, 0, 0, 1, 0))
+    ok("and sorts below the numbered one", up._order("v1.0.0-beta") < up._order("v1.0.0b1"))
 
     release = [{"tag_name": "v0.1.0a14", "html_url": "https://example.invalid/a14",
                 "published_at": "2026-09-20T00:00:00Z", "draft": False}]
