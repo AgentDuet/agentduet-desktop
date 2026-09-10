@@ -362,6 +362,38 @@
         </div>
       </div>
 
+      <!-- LAST, AND IT IS A DIAGNOSTIC RATHER THAN A SETTING. Nothing here is adjustable
+           except asking for a fresh check. It exists because two reports on 2026-09-10 both
+           came down to "which build are you running?" and neither could be answered without a
+           terminal — one was a stale update notice, the other a feature that was simply not in
+           the build being tested. -->
+      <div class="card">
+        <div class="head">
+          <div class="tile"><span class="material-symbols-rounded">info</span></div>
+          <div><h2>About</h2></div>
+        </div>
+        <div class="row">
+          <div class="lbl">Version</div>
+          <div class="lbl3" id="abVer">…</div>
+        </div>
+        <div class="row">
+          <div class="lbl">Backend</div>
+          <div class="lbl3" id="abBackend">…</div>
+        </div>
+        <div class="row">
+          <div class="lbl">Your files</div>
+          <div class="lbl3" id="abHome" style="font-family:var(--mono);font-size:10px">…</div>
+        </div>
+        <div class="row">
+          <div class="lbl">Newer version
+            <span class="sublbl" id="abWhen"></span></div>
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <a class="lbl3" id="abNew" target="_blank" rel="noopener">…</a>
+            <button class="btn ghost" id="abCheck">Check now</button>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -759,6 +791,52 @@
     $('doInstall').textContent = d.installed && !d.current ? 'Update it' : 'Install';
     $('doInstall').hidden = done;
   }
+  // Same shape as the hub's, deliberately: a timestamp should read identically on both pages.
+  // Not shared because these two files have no module system between them — the one thing they
+  // do share is `app.css`, and this is behaviour rather than style.
+  const when = iso => {
+    if (!iso) return '';
+    const d = new Date(iso.replace(' ', 'T'));
+    return isNaN(d) ? iso : d.toLocaleString(undefined,
+      {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
+  };
+
+  // ABOUT. Facts only: what is running, what it talks to, where its files are, and whether a
+  // newer build exists. No "you are up to date" — that is a claim about GitHub made from a
+  // cache, and on a machine that has never reached it, a wrong one. It says when it last
+  // managed to look instead, which is a fact either way.
+  function aboutRender(d){
+    $('abVer').textContent = d.version || '—';
+    $('abBackend').textContent = d.backend || '—';
+    $('abHome').textContent = d.instance || '—';
+    const u = d.update || {};
+    const link = $('abNew');
+    if (u.newer && u.version) {
+      link.textContent = u.version;
+      link.href = u.url || '#';
+    } else {
+      link.textContent = u.checked ? 'none found' : 'not checked yet';
+      link.removeAttribute('href');
+    }
+    $('abWhen').textContent = u.checked
+      ? 'last looked ' + when(u.checked) + (u.reachable === false ? ' — could not reach GitHub' : '')
+      : '';
+  }
+  fetch(`/api/about?t=${T}`).then(r => r.json()).then(aboutRender).catch(() => {});
+  $('abCheck').addEventListener('click', async () => {
+    const b = $('abCheck');
+    b.disabled = true; b.textContent = 'Checking…';
+    try {
+      const r = await fetch(`/api/about/check?t=${T}`, {method:'POST'});
+      const d = await r.json();
+      // RE-READ THE WHOLE CARD rather than patch the one line: `check()` rewrites the row, and
+      // a half-updated card is how a stale field survives a refresh that looked like it worked.
+      const a = await (await fetch(`/api/about?t=${T}`)).json();
+      aboutRender(a);
+    } catch (e) { /* the card keeps what it had */ }
+    b.disabled = false; b.textContent = 'Check now';
+  });
+
   fetch(`/api/install?t=${T}`).then(r => r.json()).then(instRender).catch(() => {});
   $('doInstall').onclick = async () => {
     $('doInstall').disabled = true; $('spInst').textContent = 'installing…';

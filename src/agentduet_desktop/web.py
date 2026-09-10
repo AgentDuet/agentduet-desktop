@@ -1302,6 +1302,42 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         msg = _a.resolve(str(body.get("id") or ""), bool(body.get("approve")))
         return web.json_response({"message": msg, "proposals": _a.pending()})
 
+    async def api_about(request):
+        """Which build this is, where it keeps its files, and what it talks to.
+
+        EXISTS BECAUSE A REMOTE TESTER COULD NOT ANSWER "WHICH BUILD ARE YOU ON?". Two reports
+        on 2026-09-10 both turned on that question and both needed a terminal to settle: an
+        update notice naming a stale version, and a feature "not working" that was simply not
+        in the build being run. Neither is diagnosable from the app, and asking a tester to run
+        a CLI is how a round trip becomes a day.
+
+        `build_id()` rather than `__version__`, because during an alpha the version alone names
+        a dozen binaries — the commit and the build stamp are what identify one.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import build_id, connector as _conn, paths as _paths, update as _upd, version_string
+        return web.json_response({
+            "version": version_string(),
+            "build": build_id(),
+            "instance": str(_paths.HOME),
+            "backend": _conn.environment(),
+            "update": _upd.state(),
+        })
+
+    async def api_about_check(request):
+        """Ask GitHub now, instead of waiting for the next scheduled pass.
+
+        ON A THREAD, like the worker: `check()` opens a socket and this is a request handler.
+        Manual because the schedule is deliberately slow — up to six hours — and a tester who
+        has just been told a new build exists should not have to wait for it or restart.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import update as _upd
+        row = await asyncio.to_thread(_upd.check)
+        return web.json_response({"update": row})
+
     async def api_suggestion(request):
         """Add the suggested event, or dismiss it. THE CLICK IS THE APPROVAL.
 
@@ -1649,6 +1685,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/api/proposals", api_proposals),
         web.post("/api/proposal", api_proposal),
         web.post("/api/suggestion", api_suggestion),
+        web.get("/api/about", api_about),
+        web.post("/api/about/check", api_about_check),
         web.get("/c/{token}", canvas_page),
         web.get("/api/canvas/available", api_canvas_available),
         web.get("/api/canvas/info", api_canvas_info),
