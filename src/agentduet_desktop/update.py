@@ -72,7 +72,18 @@ TIMEOUT = 10
 
 #: `v0.1.0a13`, and the shapes a future tag might plausibly take. Anything else is not ordered
 #: rather than guessed at: a tag we cannot parse must never be reported as newer.
-TAG = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:[-.]?(a|alpha|b|beta|rc)\.?(\d+))?$", re.I)
+#:
+#: THE NUMBER AFTER THE STAGE IS OPTIONAL, and that is not cosmetic. It was required, so
+#: `v1.0.0-beta` did not parse at all — and an unparseable tag is never announced, by design.
+#: Cutting a release named that way would therefore have been invisible to every installed app,
+#: silently, which is the failure shape this file exists to avoid. PEP 440 treats a bare `1.0b`
+#: as `1.0b0`, so defaulting to 0 is also the more correct reading. Asked by Stanley on
+#: 2026-09-10, considering a `b1` or a `1.0.0`.
+#:
+#: STILL UNPARSEABLE, deliberately: `v1.0` (a version needs three components here) and
+#: `v0.1.0.post1`. Neither is a shape this project uses, and inventing an order for them is how
+#: a wrong answer gets announced confidently.
+TAG = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:[-.]?(a|alpha|b|beta|rc)\.?(\d*))?$", re.I)
 
 #: A prerelease sorts BEFORE the release of the same triple, which is why the final gets 3.
 STAGES = {"a": 0, "alpha": 0, "b": 1, "beta": 1, "rc": 2}
