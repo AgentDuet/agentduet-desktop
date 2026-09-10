@@ -447,14 +447,28 @@ Each of these is a STUB shipping now and a thing to build, not a design to trim.
 optional-by-default: this list is what we agreed the product is, and since the mockup it was
 derived from no longer exists, it is the only place that says so.
 
-- [ ] **Single sign-on** — Apple, Google and Microsoft, which is how the design gets the owner's
-      identity, phone number and connector without anyone typing a uuid. `connector.OAUTH_URL`
-      and `oauth_available()` already gate the page on a backend that is BUILT ON BOTH SIDES
-      and deployed only to the VPN'd dev server — see the OAuth entry under Release blockers,
-      which is the same gap. What is missing here is one environment variable and one deploy.
-      Until then setup shows the three buttons and, since 2026-09-04, a VISIBLE way past them
-      that says single sign-on is not switched on yet. That skip existed before but only as a
-      side effect of pressing a button that looked mandatory, so the screen read as blocked.
+- [ ] **Single sign-on — PROVEN END TO END ON PROD, 2026-09-10. What is left is one deployed
+      environment variable.** Tuan Vo deployed the prod endpoint (`AGENTDUET_OAUTH_URL=
+      https://auth.agentduet.com`, no VPN) and it was driven through on a PARKED, genuinely
+      empty instance: one click, and the install had an identity, a connector and a credential
+      with **nothing typed and no `.env` at all** — `api_key=None`, `connector_uuid=None`, the
+      connector arriving as a claim inside the token, channel live. That is the design's promise
+      met. `about` reports `auth.agentduet.com (sign-in)`.
+      **THE CONNECTOR CLAIM RIDES THE TOKEN FAMILY, which cost an afternoon.** Sign-in kept
+      returning `9410b337-…` — the connector the DEV server minted on 2026-08-31 — instead of
+      the production `bb27e3d4-…`, and it CONNECTED to `wss-prod` happily, so nothing looked
+      wrong. Tuan Phan: "the connectorUuid is bound to token and i forgot to revoke the old
+      token". Re-signing-in reissues the same claim until the old refresh chain is revoked. So
+      after any connector change upstream, the token family must be revoked or the app keeps
+      the stale connector — and a signed-in install IGNORES `AGENTDUET_CONNECTOR_UUID`, so
+      there is no local override to fall back on.
+      **Still to prove: that a WhatsApp message actually ARRIVES on a signed-in install.** A
+      connector with no business account bound connects perfectly and receives nothing (see the
+      2026-09-07 note under Connector provisioning), so "signed in and live" is not the same as
+      "usable".
+      Apple and Microsoft stay refused upstream — Entra does not issue `email_verified` — and
+      both stay visible per the agreed design, saying so when pressed. The skip past them
+      remains for an install where the variable is unset.
 - [x] ~~**Record Call has nothing behind it.**~~ **THE AUDIO ARRIVED, 2026-09-09 12:28.** The
       first carried call to produce anything: a 12.6s caller leg and a 13.1s callee leg, both
       transcribed, merged into one stereo file and one labelled transcript. It was an OUTGOING
