@@ -3515,6 +3515,19 @@ def test_about_answers_which_build_this_is() -> None:
     ok("and distinguishes never-checked from nothing-found",
        "not checked yet" in card and "none found" in card)
 
+    # AND THE VERSION IS ON THE HUB, beside the mark — the first place anyone looks, and it
+    # costs one fetch on load rather than a field on the five-second poll, since it cannot
+    # change while the page is open.
+    hub = (src / "web.html").read_text()
+    ok("the hub titlebar has a version slot", 'id="ver"' in hub)
+    ok("filled from the about endpoint", "/api/about" in hub)
+    ok("and not added to the poll", "/api/about" not in hub.split("async function refresh", 1)[-1]
+       if "async function refresh" in hub else True)
+    # THE BARE NUMBER SHOWS, THE FULL BUILD HOVERS. A version alone is what misled us twice.
+    ok("it shows the bare number", "d.number" in hub)
+    ok("with the build as its tooltip", "$('ver').title = d.version" in hub)
+    ok("and the endpoint serves both", '"number": __version__,' in web)
+
     # CHECK NOW IS OFF THE LOOP. `check()` opens a socket and this is a request handler; the
     # loop it would block also carries call audio.
     ok("a manual check runs on a thread", "asyncio.to_thread(_upd.check)" in web)

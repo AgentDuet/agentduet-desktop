@@ -107,6 +107,11 @@
   .mdl{font-family:var(--mono);font-size:10px;color:var(--faint);padding:.2rem .5rem;
     border-radius:.3rem;background:var(--slate900);border:1px solid var(--line);}
 
+  /* BESIDE THE MARK, NOT COMPETING WITH IT. Monospace and faint, the same register as the
+     other small data labels in this page — it is a fact someone looks up, not a heading.
+     Empty until the fetch answers, so it never renders a placeholder. */
+  .brand .ver{font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.02em;}
+
   .chat{display:flex;flex-direction:column;gap:1.1rem;max-width:44rem;}
   /* THE RECONCILE HOSTS AND ROW WRAPPERS ARE TRANSPARENT TO LAYOUT. `.chat` and `.thread` are
      flex columns with a gap, so a plain wrapper div would collect every bubble into one flex
@@ -210,7 +215,8 @@
 <div class="window">
   <div class="titlebar">
     <div class="lights">
-      <div class="brand"><img class="ad" src="/logo.png" alt=""><span>AgentDuet</span></div>
+      <div class="brand"><img class="ad" src="/logo.png" alt=""><span>AgentDuet</span>
+        <span class="ver" id="ver"></span></div>
     </div>
     <div class="linebadge" id="lineBadge">
       <span class="dot"></span><span class="l">Power Mobile Line:</span>
@@ -293,6 +299,17 @@
     return isNaN(d) ? iso : d.toLocaleString(undefined,
       {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
   };
+  // THE VERSION, IN THE TITLEBAR. Fetched once rather than added to the five-second poll: it
+  // cannot change while the page is open, and a restart reloads the page anyway.
+  //
+  // The bare number shows; the FULL build string is the tooltip. A version alone is what misled
+  // us twice on 2026-09-10 — during an alpha one version names a dozen binaries — so the commit
+  // and build stamp are one hover away, and the About card carries them in full.
+  fetch(`/api/about?t=${T}`).then(r => r.json()).then(d => {
+    $('ver').textContent = d.number || '';
+    $('ver').title = d.version || '';
+  }).catch(() => {});
+
   const post = (path, body) => fetch(`${path}?t=${T}`, {method: 'POST',
     headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}).then(r => r.json());
 
