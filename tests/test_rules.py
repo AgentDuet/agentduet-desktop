@@ -3480,6 +3480,48 @@ def test_the_prompt_says_what_it_means_to_say() -> None:
     ok("and the typed-out date after it", call.index("strftime") < call.index("isoformat"))
 
 
+def test_about_answers_which_build_this_is() -> None:
+    """A tester must be able to answer "which build?" without a terminal."""
+    print("\n  -- the About card --")
+    from agentduet_desktop import build_id
+
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    page = (src / "settings.html").read_text()
+    web = (src / "web.py").read_text()
+
+    # WHY IT EXISTS. Two reports on 2026-09-10 both came down to which build was running — a
+    # stale update notice, and a feature "not working" that was not in the build being tested —
+    # and neither was answerable from the app.
+    ok("settings has an About card", ">About<" in page)
+    for field in ("abVer", "abBackend", "abHome", "abNew", "abCheck"):
+        ok(f"it renders {field}", f'id="{field}"' in page)
+
+    # THE BUILD, NOT JUST THE VERSION. During an alpha one version names a dozen binaries, so
+    # `0.1.0a15` alone cannot identify the one someone is running.
+    ok("the endpoint reports the build id", '"build": build_id(),' in web)
+    ok("and build_id names more than the version", "+" in build_id() or build_id().count(".") > 2
+       or not __import__("agentduet_desktop").__commit__)
+
+    # AND WHAT IT TALKS TO, which is the OAuth trap: signing in against the wrong endpoint
+    # silently moves an install onto another connector.
+    ok("it reports the backend", '"backend": _conn.environment(),' in web)
+
+    # NO "UP TO DATE" CLAIM. That is a statement about GitHub made from a cache, and on a
+    # machine that has never reached it, a wrong one. It reports when it last looked instead.
+    card = page.split("function aboutRender(", 1)[1].split("\n  }", 1)[0]
+    for claim in ("up to date", "latest version", "you're current"):
+        ok(f"the card does not claim {claim!r}", claim.lower() not in card.lower())
+    ok("it says when it last looked", "last looked" in card)
+    ok("and distinguishes never-checked from nothing-found",
+       "not checked yet" in card and "none found" in card)
+
+    # CHECK NOW IS OFF THE LOOP. `check()` opens a socket and this is a request handler; the
+    # loop it would block also carries call audio.
+    ok("a manual check runs on a thread", "asyncio.to_thread(_upd.check)" in web)
+    ok("both about routes are behind the token",
+       web.count('return web.json_response({"error": "unauthorised"}, status=401)') >= 2)
+
+
 def test_the_update_check_is_quiet_and_cannot_lie() -> None:
     """Notice a release, say so once, and never delay or invent anything."""
     print("\n  -- update check --")
@@ -4318,6 +4360,7 @@ def main() -> None:
     test_a_bad_reply_says_so_instead_of_leaking()
     test_a_suggestion_is_judged_once_and_never_guessed()
     test_the_prompt_says_what_it_means_to_say()
+    test_about_answers_which_build_this_is()
     test_the_update_check_is_quiet_and_cannot_lie()
     test_a_link_tool_cannot_choose_a_destination()
     test_the_secretary_keeps_its_knowledge()
