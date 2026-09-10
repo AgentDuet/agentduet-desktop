@@ -3570,6 +3570,42 @@ def test_the_update_check_is_quiet_and_cannot_lie() -> None:
     ok("it sleeps before the first ask", up.FIRST_CHECK_AFTER > 0)
     ok("and polls well inside 60 requests an hour", up.CHECK_EVERY >= 3600)
 
+    # A ROW FROM ANOTHER BUILD IS NOT AN ANSWER ABOUT THIS ONE. `run/` survives an upgrade, so
+    # the row written while running a13 ("a14 is available") is still there after installing
+    # a14 — and the app went on advertising the version it had just become. Cen, 2026-09-10.
+    import datetime as _dt
+    import tempfile as _tf
+    now = _dt.datetime.now(_dt.timezone.utc)
+    _dir = pathlib.Path(_tf.mkdtemp())
+
+    def _cached(row: dict):
+        """Point the cache at a real file holding `row` — CACHE is a Path, not mockable."""
+        f = _dir / "update.json"
+        f.write_text(json.dumps(row))
+        return mock.patch.object(up, "CACHE", f)
+
+    stale = {"checked": now.isoformat(), "current": "0.1.0a13", "reachable": True,
+             "newer": True, "version": "0.1.0a14", "note": "Version 0.1.0a14 is available."}
+    with _cached(stale):
+        eq("a row from another build is ignored", up.state(), {})
+        eq("so nothing is advertised", up.summary(), "")
+        ok("and a check is owed at once", up.due())
+        # AND THE SAME ROW STAMPED WITH THIS BUILD IS HONOURED, so the check above is about
+        # the version and not about some other field being malformed.
+        with _cached({**stale, "current": up.__version__}):
+            eq("the same row from this build is used", up.summary(), stale["note"])
+
+    # AND THE INTERVAL IS WALL CLOCK, not time spent awake. `asyncio.sleep` counts the loop's
+    # monotonic clock, which does not advance while a Mac is asleep — so a six-hour sleep on a
+    # laptop shut overnight still has hours to run in the morning.
+    for hours, owed in ((0.5, False), (5.9, False), (6.1, True), (48, True)):
+        with _cached({"checked": (now - _dt.timedelta(hours=hours)).isoformat(),
+                      "current": up.__version__, "reachable": True, "newer": False}):
+            eq(f"checked {hours}h ago -> due {owed}", up.due(), owed)
+    ok("the worker wakes far more often than it asks", up.WAKE_SECONDS < up.CHECK_EVERY)
+    ok("and gates the ask on the clock, not the sleep",
+       "if due():" in body and "asyncio.sleep(WAKE_SECONDS)" in body)
+
     # SAYS NOTHING WHEN THERE IS NOTHING TO SAY. "You are up to date" is a claim about GitHub
     # made from a cache, and on a machine that has never reached it, a wrong one.
     with mock.patch.object(up, "state", return_value={"newer": False, "note": ""}):
