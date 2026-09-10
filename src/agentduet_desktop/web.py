@@ -1095,6 +1095,36 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         _pending_signin.update(state=state, verifier=verifier)
         raise web.HTTPFound(url)
 
+    async def api_signin_open(request):
+        """Begin sign-in in the owner's OWN browser, and let the page wait for it.
+
+        The sibling GET redirects the caller, which is right in a browser tab and wrong in the
+        native window — see `oauth.open_consent`. This one opens the system browser and returns,
+        so the page can poll `signed_in` instead of navigating away.
+
+        The state and verifier land in the same `_pending_signin` either way, so `/callback`
+        cannot tell the two entry points apart and needs no branch of its own.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import oauth
+        if not oauth.available():
+            return web.json_response({"ok": False, "message":
+                "Sign-in is not available yet. Enter the key manually."})
+        provider = (request.query.get("provider") or "").lower()
+        if provider and provider != oauth.PROVIDER:
+            return web.json_response({"ok": False, "message":
+                f"{provider.title()} sign-in is not available yet — only Google is."})
+        url, state, verifier = oauth.begin(PORT)
+        _pending_signin.clear()
+        _pending_signin.update(state=state, verifier=verifier)
+        # ON A THREAD: launching a browser spawns a process, and this handler is on the loop
+        # that also carries call audio.
+        opened = await asyncio.to_thread(oauth.open_consent, url)
+        # THE URL COMES BACK EITHER WAY, so a page whose browser did not open can offer it to
+        # paste — the same fallback the console flow has always printed.
+        return web.json_response({"ok": opened, "url": url})
+
     async def api_stt_model(request):
         """Delete one downloaded speech model. Downloading is `POST /api/setup/stt`."""
         if not authed(request):
@@ -1675,6 +1705,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/api/install", api_install),
         web.post("/api/install", api_install),
         web.get("/api/connector/signin", api_connector_signin),
+        web.post("/api/connector/signin/open", api_signin_open),
         web.post("/api/connector/signin", api_connector_signin),
         web.post("/api/connector/signout", api_connector_signout),
         web.post("/api/stt-model", api_stt_model),
