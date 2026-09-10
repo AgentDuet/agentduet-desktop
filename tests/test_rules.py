@@ -3505,6 +3505,43 @@ def test_the_prompt_says_what_it_means_to_say() -> None:
     ok("and the typed-out date after it", call.index("strftime") < call.index("isoformat"))
 
 
+def test_sign_in_uses_the_owners_own_browser() -> None:
+    """In the app's own window, consent belongs in the system browser."""
+    print("\n  -- sign-in opens a real browser --")
+    from agentduet_desktop import oauth
+
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    web = (src / "web.py").read_text()
+    oa = (src / "oauth.py").read_text()
+
+    # WHY. `location.href` navigates whatever shows the page, and in the native window that is
+    # an embedded webview with its own cookie jar — the owner's existing Google session counts
+    # for nothing. Google also blocks OAuth in embedded views, and RFC 8252 says to use the
+    # system browser for exactly this flow. Reported 2026-09-10.
+    ok("there is a system-browser entry point", callable(oauth.open_consent))
+    ok("it says why, citing the spec", "RFC 8252" in oa)
+    ok("and it opens a browser rather than redirecting", "webbrowser.open(url" in oa)
+    ok("the route exists", '"/api/connector/signin/open"' in web)
+    ok("and launches off the loop", "asyncio.to_thread(oauth.open_consent" in web)
+    # THE URL COMES BACK EVEN WHEN NOTHING OPENED, so a page can offer it to paste — the same
+    # fallback the console flow prints.
+    ok("the url is returned either way", '"url": url}' in web)
+
+    # BOTH SURFACES, and neither may navigate the window when it is the native one.
+    for page in ("setup.html", "settings.html"):
+        body = (src / page).read_text()
+        ok(f"{page} decides at click time",
+           "window.pywebview || window.agentduetNative" in body)
+        ok(f"{page} navigates only in a browser",
+           "if (!isNative()) { location.href" in body)
+        ok(f"{page} waits for the browser instead",
+           "signin/open" in body and "signed_in" in body)
+
+    # THE CALLBACK NEEDS NO BRANCH: both entry points store the same pending state, so the
+    # daemon cannot tell them apart — which is the point of a loopback redirect.
+    ok("one pending-signin store", web.count("_pending_signin.update(state=state") == 2)
+
+
 def test_about_answers_which_build_this_is() -> None:
     """A tester must be able to answer "which build?" without a terminal."""
     print("\n  -- the About card --")
@@ -4398,6 +4435,7 @@ def main() -> None:
     test_a_bad_reply_says_so_instead_of_leaking()
     test_a_suggestion_is_judged_once_and_never_guessed()
     test_the_prompt_says_what_it_means_to_say()
+    test_sign_in_uses_the_owners_own_browser()
     test_about_answers_which_build_this_is()
     test_the_update_check_is_quiet_and_cannot_lie()
     test_a_link_tool_cannot_choose_a_destination()

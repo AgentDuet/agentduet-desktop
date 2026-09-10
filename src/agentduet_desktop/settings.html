@@ -610,7 +610,35 @@
   $('toManual').onclick = showManual;
   $('toManual2').onclick = showManual;
   $('replaceKey').onclick = showManual;
-  const goSignIn = () => { location.href = `/api/connector/signin?t=${T}&provider=google`; };
+  // IN THE APP'S OWN WINDOW, SIGN IN IN THE OWNER'S OWN BROWSER. `location.href` navigates
+  // whatever is showing this page, which in the native window is an embedded webview with its
+  // own cookie jar — so the owner's existing Google session counts for nothing, and Google
+  // blocks OAuth in embedded views anyway (RFC 8252 says use the system browser). Checked at
+  // CLICK time, which sidesteps pywebview injecting its object late.
+  //
+  // Nothing else changes: the redirect is a loopback url this daemon serves, so it does not
+  // care which browser finishes the flow.
+  const isNative = () => !!(window.pywebview || window.agentduetNative);
+
+  async function signInWithGoogle(waiting) {
+    if (!isNative()) { location.href = `/api/connector/signin?t=${T}&provider=google`; return; }
+    const d = await fetch(`/api/connector/signin/open?t=${T}&provider=google`,
+                          {method: 'POST'}).then(r => r.json()).catch(() => ({}));
+    if (!d.ok) { waiting(d.url ? `Open this in your browser to finish signing in: ${d.url}`
+                               : (d.message || 'Could not open your browser.')); return; }
+    waiting('Waiting for your browser…');
+    // POLL, rather than trust the window to be told. The consent screen is in a different
+    // application now, so nothing navigates back here — the daemon's /callback is what
+    // completes it, and this is how the page finds out.
+    for (let i = 0; i < 150; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      const cur = await fetch(`/api/setup/current?t=${T}`).then(r => r.json()).catch(() => null);
+      if (cur && cur.oauth && cur.oauth.signed_in) { location.reload(); return; }
+    }
+    waiting('Sign-in did not finish. Try again.');
+  }
+
+  const goSignIn = () => signInWithGoogle(m => say('mConn', false, m));
   $('signIn').onclick = goSignIn;
   $('toSignIn').onclick = goSignIn;
   $('signOut').onclick = async () => {

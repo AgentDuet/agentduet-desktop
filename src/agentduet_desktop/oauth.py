@@ -255,6 +255,35 @@ def token_provider() -> str:
 
 # ---- signing in from a terminal ----------------------------------------------------------
 
+def open_consent(url: str) -> bool:
+    """Show the consent screen in the SYSTEM browser. True if something opened.
+
+    WHY NOT IN THE APP'S OWN WINDOW, which is what the button used to do. Two reasons, and the
+    second is not a preference:
+
+    1. The embedded webview has its OWN cookie jar. The owner is already signed in to Google in
+       the browser they use, and the window knows nothing about it — so a one-click sign-in
+       became a full login, plus any second factor, typed into something that is not a browser.
+    2. **Google blocks OAuth in embedded webviews** (`disallowed_useragent`), and RFC 8252 —
+       OAuth for native apps — says to use the system browser and not an embedded view, for
+       exactly this flow. We were getting away with it because pywebview's user-agent is
+       ambiguous, which is a dependency on Google not tightening a check they have announced.
+
+    Nothing else has to change to support it: the redirect is already a LOOPBACK url served by
+    this daemon (`/callback`), and the daemon does not care which browser completes it. That is
+    the whole reason loopback redirect exists for native apps.
+
+    Reported by Stanley on 2026-09-10 — "why doesn't the app open an external browser? I've
+    already logged in on the main browser."
+    """
+    import webbrowser
+    try:
+        return bool(webbrowser.open(url, new=2))
+    except Exception as exc:                     # no handler, or a broken desktop session
+        logger.warning("could not open a browser for sign-in: %s", exc)
+        return False
+
+
 def browser_available() -> bool:
     """Whether this machine can show a consent screen at all.
 
