@@ -55,8 +55,9 @@ STORE = paths.RUN / "suggestions.json"
 #: worth offering to add now.
 DAYS = 14
 
-#: The furthest ahead a suggested event may be, and the furthest behind. A date outside this is
-#: taken as a misread rather than a plan — models reach for 2023 and 1970 when they are guessing.
+#: The furthest ahead a suggested event may be. A date beyond it is taken as a misread rather
+#: than a plan — models reach for 2099 when they are guessing. There is no window BEHIND:
+#: anything already past is refused outright, since it cannot be an appointment to keep.
 WINDOW_DAYS = 365
 
 #: How many items one pass will judge. The queue comes round again, so this is a pace limit
@@ -138,22 +139,40 @@ def resolve(key: str, action: str) -> str:
     return out
 
 
-PROMPT = """Read this conversation and decide whether the two people AGREED on a specific \
-appointment: a meeting, a call back, a delivery, a visit, at a specific date and time.
+#: WHAT COUNTS AS AN APPOINTMENT, and the wording is load-bearing.
+#:
+#: THIS ASKED WHETHER THE TWO PEOPLE **AGREED**, and that was too strict — measured against
+#: `gemini-flash-latest` on 2026-09-10, which follows the instruction literally. A real call
+#: where the owner said "I want to go for lunch tomorrow at 11am" and the other side never
+#: confirmed came back `{}`: correct to the letter, and useless to the owner, who had just said
+#: a time out loud and would want it captured. `qwen3-8b` offered it anyway, which hid the
+#: problem — the loose model looked like the prompt working.
+#:
+#: So the bar is now that the conversation NAMES a specific appointment, by either party.
+#: Agreement is not required, because the owner is the one who decides — the offer is a button
+#: they can ignore, and a missed offer costs more than a declined one.
+#:
+#: WHAT STAYS STRICT: a vague plan, something already past, and anything the model is unsure
+#: of. Those were never the complaint.
+PROMPT = """Read this conversation and decide whether it names a specific appointment: a \
+meeting, a call back, a delivery, a visit, a lunch — with a date and a time.
 
 Today is %s.
 
 Answer with one line of JSON and nothing else.
 
-If they did agree on something, answer:
+If an appointment is named, answer:
 {"title": "what it is, 6 words at most", "start": "YYYY-MM-DD HH:MM", "end": "YYYY-MM-DD HH:MM"}
 
-If they did not, answer:
+If none is, answer:
 {}
 
+EITHER PERSON may name it. They do not have to agree out loud, and one of them saying "lunch \
+tomorrow at 11am" is enough.
+
 Answer {} unless there is a real date and a real time. Say {} for a vague plan ("next week \
-sometime", "I will call you"), for something already past, and for anything you are unsure of. \
-Most conversations are {}. Do not invent a time that was not said.
+sometime", "I will call you"), for a time that has already passed, and for anything you are \
+unsure of. Do not invent a time that was not said.
 
 CONVERSATION:
 %s"""
@@ -187,8 +206,15 @@ def _judge(text: str, model_client) -> dict:
     except ValueError as exc:
         logger.info("discarded a suggestion: %s", exc)
         return {}
-    if abs((when.date() - date.today()).days) > WINDOW_DAYS:
-        logger.info("discarded a suggestion dated %s — outside the window", when.date())
+    # ALREADY HAPPENED, so there is nothing to put in a calendar. CODE decides this rather
+    # than trusting the prompt's "say {} for a time that has already passed": `qwen3-8b`
+    # offered 10:00 on a day when it was already 13:45, and the prompt had asked it not to.
+    # A model that is wrong about the clock must not be able to put a stale event on screen.
+    if when < datetime.now().astimezone():
+        logger.info("discarded a suggestion dated %s — already past", when)
+        return {}
+    if (when.date() - date.today()).days > WINDOW_DAYS:
+        logger.info("discarded a suggestion dated %s — too far ahead", when.date())
         return {}
     return {"kind": "calendar", "title": title, "start": start, "end": end,
             "when": when.strftime("%a %d %b, %H:%M")}
