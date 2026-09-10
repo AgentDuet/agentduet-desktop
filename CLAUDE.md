@@ -466,9 +466,11 @@ derived from no longer exists, it is the only place that says so.
       padded and made 13.1s of stereo from a 12.6s leg), and the index had a live bug — it
       globbed the owner's folder after the legs moved out of it, so the row named no files and
       the hub reported "No recording." over 1.2 MB of audio.
-      **STILL UNPROVEN: an INBOUND carried call through this path.** Every direction-specific
-      thing here was written from the outgoing case now, so do not assume the inbound one is
-      covered — `far, near` swap by role and only outgoing has been exercised end to end.
+      **INBOUND IS PROVEN TOO, 2026-09-10.** This said it was unproven and had been true for a
+      day. `calls.jsonl` holds two INBOUND carried calls from 2026-09-09 (12:48:40 and
+      15:22:57), each with merged audio — 1.8 MB and 2.3 MB — and a labelled transcript, beside
+      three outgoing ones. So `far, near` swapping by role is exercised in both directions and
+      the direction-specific code is no longer written from one case only.
 - [ ] **Record Message (SMS) does not exist at all.** We have WhatsApp through the SDK, not SMS
       archiving. This is a channel we do not ingest, not a screen we have not drawn.
 - [ ] **Connect AI is a SUMMARISER in the design** — transcripts go to a cloud model for action
