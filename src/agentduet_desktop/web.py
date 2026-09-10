@@ -1316,8 +1316,14 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         """
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
-        from . import build_id, connector as _conn, paths as _paths, update as _upd, version_string
+        from . import __version__, build_id, connector as _conn, paths as _paths
+        from . import update as _upd, version_string
         return web.json_response({
+            # `number` is the bare version for the titlebar; `version` is the full sentence for
+            # the About card. Two fields rather than one, so neither surface parses the other's
+            # string — the titlebar wants "0.1.0b1" and the card wants the build and where it
+            # came from.
+            "number": __version__,
             "version": version_string(),
             "build": build_id(),
             "instance": str(_paths.HOME),
