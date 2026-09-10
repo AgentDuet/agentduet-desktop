@@ -59,6 +59,14 @@ CHECK_EVERY = 6 * 3600
 #: when the owner is looking at the window; a release that appeared this morning can wait.
 FIRST_CHECK_AFTER = 180
 
+#: How often the worker WAKES to ask whether a check is due. Separate from `CHECK_EVERY`, and
+#: that separation is the fix for a second bug: `asyncio.sleep` counts the event loop's
+#: monotonic clock, which on macOS does not advance while the machine is asleep. A six-hour
+#: sleep on a laptop that is shut overnight has hours left to run in the morning, so "every six
+#: hours" silently became "every six hours of being awake" — days, on a machine that is closed
+#: more than it is open. Waking often and comparing WALL CLOCK costs a file read.
+WAKE_SECONDS = 300
+
 #: Short, because nothing waits for this and a hung socket must not hold the worker.
 TIMEOUT = 10
 
@@ -108,11 +116,26 @@ def _published(row: dict) -> datetime | None:
 
 
 def state() -> dict:
-    """The last answer, read from disk. NO NETWORK — this is what a page may call."""
+    """The last answer, read from disk. NO NETWORK — this is what a page may call.
+
+    A ROW WRITTEN BY A DIFFERENT BUILD IS NOT AN ANSWER ABOUT THIS ONE. The cache lives in
+    `$AGENTDUET_HOME`, which SURVIVES AN UPGRADE — that is the whole point of that directory —
+    so the row an install writes while running a13 ("Version 0.1.0a14 is available") is still
+    sitting there after the owner installs a14. Nothing re-read it against the running version,
+    so the app went on advertising the version it had just become, until the next check up to
+    six hours later. Reported by Cen on 2026-09-10, on a14.
+    """
     try:
-        return json.loads(CACHE.read_text())
+        row = json.loads(CACHE.read_text())
     except (OSError, ValueError):
         return {}
+    if not isinstance(row, dict):
+        return {}
+    # `current` is stamped by `check()` on every successful pass, so its absence means a row
+    # from before this field existed — also not to be trusted.
+    if row.get("current") != __version__:
+        return {}
+    return row
 
 
 def _save(row: dict) -> dict:
@@ -190,17 +213,39 @@ def summary() -> str:
     return row.get("note", "") if row.get("newer") else ""
 
 
+def due() -> bool:
+    """Whether a check is owed, by the WALL CLOCK rather than by how long we have been awake.
+
+    An upgrade makes one owed immediately: `state()` refuses a row from another build, so it
+    reads as never-checked, which is exactly right — the answer on disk was about the version
+    the owner just replaced.
+    """
+    last = state().get("checked", "")
+    if not last:
+        return True
+    try:
+        when = datetime.fromisoformat(last)
+    except ValueError:
+        return True
+    return (datetime.now(timezone.utc) - when).total_seconds() >= CHECK_EVERY
+
+
 async def worker() -> None:
-    """Check on a schedule, off the event loop, forever.
+    """Check when one is due, off the event loop, forever.
 
     On a THREAD every time: the loop this runs on also carries call audio, and `urlopen` blocks
     for as long as a socket wants to. Started after the site binds, never on the import path.
+
+    WAKES OFTEN, ASKS RARELY. The interval is enforced by `due()` against the stored timestamp,
+    not by the length of a sleep — see `WAKE_SECONDS` for why a long sleep does not survive a
+    laptop lid.
     """
     import asyncio
     await asyncio.sleep(FIRST_CHECK_AFTER)
     while True:
         try:
-            await asyncio.to_thread(check)
+            if due():
+                await asyncio.to_thread(check)
         except Exception as exc:            # a worker that dies takes the notice with it
             logger.error("the update check hit %s: %s", type(exc).__name__, exc)
-        await asyncio.sleep(CHECK_EVERY)
+        await asyncio.sleep(WAKE_SECONDS)
