@@ -3310,6 +3310,7 @@ def test_a_bad_reply_says_so_instead_of_leaking() -> None:
 def test_a_suggestion_is_judged_once_and_never_guessed() -> None:
     """The pass may offer a calendar entry. It may not act, re-ask, or show a guess."""
     print("\n  -- suggesting a calendar entry --")
+    import datetime as _dt2
     import unittest.mock as mock
     from datetime import date, timedelta
     from agentduet_desktop import suggest as sg
@@ -3347,6 +3348,30 @@ def test_a_suggestion_is_judged_once_and_never_guessed() -> None:
         got = sg._judge("them: Tuesday at ten?\nyou: yes", _Says(said))
         eq(f"kept ({why}): the title", got.get("title"), "Delivery")
         ok(f"kept ({why}): a readable time", bool(got.get("when")))
+
+    # A MENTION IS ENOUGH — no agreement required. Stanley, 2026-09-10: "If there's a mention,
+    # it's good enough to trigger the balloon." The prompt used to ask whether the two people
+    # AGREED, and `gemini-flash-latest` follows that literally: a real call where the owner said
+    # "I want to go for lunch tomorrow at 11am" with nobody confirming came back `{}`. Correct
+    # to the letter and useless to the owner. `qwen3-8b` offered it anyway, which HID the
+    # problem — a loose model made a too-strict prompt look like it worked.
+    ok("the prompt no longer demands agreement", "AGREED" not in sg.PROMPT)
+    ok("and says either person may name it", "EITHER PERSON may name it" in sg.PROMPT)
+    ok("while still refusing a vague plan", "vague plan" in sg.PROMPT)
+
+    # ALREADY PAST IS REFUSED BY CODE, not by asking the model nicely. `qwen3-8b` offered 10:00
+    # on a day when it was already 13:45, with the prompt explicitly asking it not to. A model
+    # that is wrong about the clock must not be able to put a stale event on the screen.
+    from datetime import timedelta as _td
+    _now = _dt2.datetime.now().astimezone()
+    for label, at, offered in (("an hour ago", _now - _td(hours=1), False),
+                               ("yesterday", _now - _td(days=1), False),
+                               ("in an hour", _now + _td(hours=1), True),
+                               ("next week", _now + _td(days=7), True),
+                               ("in two years", _now + _td(days=730), False)):
+        said = '{"title": "X", "start": "%s"}' % at.strftime("%Y-%m-%d %H:%M")
+        got = bool(sg._judge("them: a\nyou: b c d", _Says(said)))
+        eq(f"a start {label} is {'offered' if offered else 'refused'}", got, offered)
 
     # NEVER ASKED TWICE, and the NEGATIVE verdict is the whole reason. Without storing "nothing
     # here" a quiet inbox re-asks the model about the same message every time the queue turns
