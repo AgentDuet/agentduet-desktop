@@ -1,0 +1,15 @@
+arrow_back
+arrow_forward
+call
+chat_bubble
+close
+dialpad
+download
+event
+folder
+folder_open
+info
+person
+settings
+smart_toy
+tune

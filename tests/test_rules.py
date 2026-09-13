@@ -3505,6 +3505,54 @@ def test_the_prompt_says_what_it_means_to_say() -> None:
     ok("and the typed-out date after it", call.index("strftime") < call.index("isoformat"))
 
 
+def test_the_icon_font_ships_in_the_binary() -> None:
+    """An icon font that fails renders its own LIGATURE NAMES as text."""
+    print("\n  -- the icon font --")
+    import re as _re
+
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    font = src / "fonts" / "material-symbols-rounded.woff2"
+
+    # IT IS IN THE TREE, AND IT IS WOFF2. Google serves `ttf` to an unrecognised user-agent and
+    # `woff2` to a browser, while `app.css` declares `format("woff2")` — so a file fetched by a
+    # bare `curl` is silently the wrong one and every icon breaks.
+    ok("the font is in the tree", font.is_file())
+    eq("and it really is woff2", font.read_bytes()[:4], b"wOF2")
+
+    # NOT FROM GOOGLE. This is the whole bug: on 2026-09-13, after a reboot with the network not
+    # yet up, the sidebar read "smart_toy Personal Assistant" and the titlebar "settings
+    # Settings". Offline is most of what this product claims.
+    for page in ("web.html", "settings.html", "setup.html"):
+        body = (src / page).read_text()
+        ok(f"{page} does not fetch the icon font", "Material+Symbols" not in body)
+    css = (src / "app.css").read_text()
+    ok("app.css serves it from this daemon", '"/fonts/material-symbols-rounded.woff2"' in css)
+    # BLANK BEATS "smart_toy" if it ever fails again — `block` hides the glyph while waiting
+    # instead of flashing the ligature name.
+    ok("and hides the glyph rather than the name while loading", "font-display:block" in css)
+    ok("the daemon serves it", '"/fonts/material-symbols-rounded.woff2", icon_font'
+       in (src / "web.py").read_text())
+
+    # EVERY ICON THE PAGES USE WAS IN THE SUBSET. The font is cut to fifteen icons — the full
+    # one is 3.7 MB — so a SIXTEENTH added to a page renders as its name while every other icon
+    # is fine, which is a confusing way to discover the file exists.
+    used = set()
+    for page in src.glob("*.html"):
+        used |= set(_re.findall(r'material-symbols-rounded">([a-z_]+)<', page.read_text()))
+    fetched = {l.strip() for l in (src / "fonts" / "icons.txt").read_text().split() if l.strip()}
+    missing = sorted(used - fetched)
+    ok(f"every icon used is in the subset{'' if not missing else ' — MISSING: ' + str(missing)}",
+       not missing)
+    ok("and the pages actually use some", len(used) >= 10)
+
+    # PACKAGED IN BOTH PLACES. The spec's collect_data_files resolves the INSTALLED package, so
+    # a data file missing from pyproject is missing from the frozen build whatever the spec says.
+    root = src.parent.parent
+    ok("pyproject ships it", "fonts/**/*" in (root / "pyproject.toml").read_text())
+    ok("and so does the spec",
+       "fonts/**/*" in (root / "packaging" / "agentduet-desktop.spec").read_text())
+
+
 def test_sign_in_uses_the_owners_own_browser() -> None:
     """In the app's own window, consent belongs in the system browser."""
     print("\n  -- sign-in opens a real browser --")
@@ -4435,6 +4483,7 @@ def main() -> None:
     test_a_bad_reply_says_so_instead_of_leaking()
     test_a_suggestion_is_judged_once_and_never_guessed()
     test_the_prompt_says_what_it_means_to_say()
+    test_the_icon_font_ships_in_the_binary()
     test_sign_in_uses_the_owners_own_browser()
     test_about_answers_which_build_this_is()
     test_the_update_check_is_quiet_and_cannot_lie()

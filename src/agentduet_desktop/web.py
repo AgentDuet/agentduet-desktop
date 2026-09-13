@@ -138,6 +138,27 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         return web.Response(text=(HERE / "app.css").read_text(), content_type="text/css",
                             headers={"Cache-Control": "no-cache"})
 
+    async def icon_font(request):
+        """The icon font, from the binary rather than from Google.
+
+        NO TOKEN, like `app.css` and for the same reasons: there is nothing in a font worth
+        protecting, and a token would defeat browser caching across the three pages that use it.
+
+        Cached HARD, unlike the stylesheet. `app.css` is `no-cache` so an edit shows on refresh
+        while iterating; a font is an immutable binary that changes only when the icon list
+        does, and re-reading 22 KB off disk on every page load is pure waste.
+        """
+        path = HERE / "fonts" / "material-symbols-rounded.woff2"
+        if not path.is_file():
+            # SAY SO IN THE LOG. A missing font renders the ligature NAMES as text — the very
+            # failure this file exists to end — and a 404 in a page's network tab is not
+            # somewhere anyone looks. If this fires, the packaging dropped the file.
+            logger.error("the icon font is missing from this build (%s) — icons will render "
+                         "as their names", path)
+            return web.Response(status=404, text="not found")
+        return web.Response(body=path.read_bytes(), content_type="font/woff2",
+                            headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
     async def secretary_page(request):
         """The secretary's own view — people, threads, escalations.
 
@@ -1675,6 +1696,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/", index),
         web.get("/setup", setup_page),
         web.get("/app.css", app_css),
+        web.get("/fonts/material-symbols-rounded.woff2", icon_font),
         web.get("/secretary", secretary_page),
         web.get("/settings", settings_page),
         web.post("/api/setup/setting", api_setup_setting),
