@@ -52,6 +52,12 @@ datas = collect_data_files("agentduet_desktop",
                                      # every page shows its logo — which looks like a broken
                                      # asset rather than a missing packaging line.
                                      "*.png",
+                                     # The icon font, subset to the fifteen icons the pages
+                                     # use. Without it every icon renders as its own LIGATURE
+                                     # NAME — "smart_toy Personal Assistant" — which is what
+                                     # loading it from Google did on a machine whose network
+                                     # was not up yet (2026-09-13).
+                                     "fonts/**/*",
                                      "templates/**/*", "examples/**/*",
                                      # Prompts are DATA. Without this the binary builds
                                      # clean and voice dies at render time on a real call.

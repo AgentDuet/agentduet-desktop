@@ -73,4 +73,4 @@ version = {attr = "agentduet_desktop.__version__"}
 # app icon. It must be listed HERE as well as in the PyInstaller spec: the spec's
 # collect_data_files resolves the INSTALLED package, so a data file missing from this line is
 # missing from the frozen build no matter what the spec says.
-agentduet_desktop = ["*.html", "*.css", "*.png", "templates/**/*", "examples/**/*", "prompts/**/*", "wasm/**/*"]
+agentduet_desktop = ["*.html", "*.css", "*.png", "fonts/**/*", "templates/**/*", "examples/**/*", "prompts/**/*", "wasm/**/*"]
