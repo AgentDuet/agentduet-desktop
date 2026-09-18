@@ -88,14 +88,26 @@ datas += collect_data_files("certifi")
 #
 # The platform directory is part of the destination: wasmtime looks for it under
 # wasmtime/<platform>/, so flattening it into the root does not help.
+#
+# TWO NAMES, because Windows does not use the `lib` prefix. Unix ships `_libwasmtime.so` and
+# `_libwasmtime.dylib`; the win_amd64 wheel ships `wasmtime/win32-x86_64/_wasmtime.dll`. The
+# glob was written for Unix and silently matched NOTHING on Windows, so the first Windows build
+# produced an .exe that ran, printed most of `status`, and then died on
+# "Failed to load dynlib _wasmtime.dll" (2026-09-18) — the exact failure the note above
+# describes, in the one naming convention it did not anticipate.
 _wasm_binaries = []
 try:
     import wasmtime as _wt
     _wt_root = Path(_wt.__file__).parent
-    for _lib in _wt_root.rglob("_libwasmtime.*"):
-        _wasm_binaries.append((str(_lib), f"wasmtime/{_lib.parent.name}"))
+    for _pattern in ("_libwasmtime.*", "_wasmtime.dll"):
+        for _lib in _wt_root.rglob(_pattern):
+            _wasm_binaries.append((str(_lib), f"wasmtime/{_lib.parent.name}"))
 except Exception as _exc:
     print(f"WARNING: wasmtime not collected ({_exc}) — customer tools will fail at runtime")
+# ZERO IS ALWAYS WRONG, exactly as for the speech engine below. A runtime that was never
+# collected is invisible until a customer tool runs, and the glob that missed it looked correct.
+if not _wasm_binaries:
+    print("WARNING: no wasmtime runtime collected — customer tools will fail at runtime")
 
 # THE LOCAL LLM ENGINE, ADDED BY HAND FOR THE SAME REASON AS WASMTIME.
 #
