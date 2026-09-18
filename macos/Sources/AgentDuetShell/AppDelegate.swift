@@ -9,6 +9,48 @@ import WebKit
 /// no GUI backend to fall back on, the traffic lights are drawn in HTML and have to be hidden
 /// when macOS draws its own, and there is nowhere to put a menu bar, a Dock icon or (later) a
 /// status item. None of that is reachable from Python here.
+/// The strip across the top of the page that behaves like a title bar.
+///
+/// WHY THIS EXISTS. The window is `.fullSizeContentView` with a transparent titlebar, so the
+/// page draws its own titlebar row under macOS's real traffic lights — which is the layout the
+/// design asks for. The cost is that the WKWebView covers the whole titlebar area and swallows
+/// every mouse event in it, so the window could not be DRAGGED and did not respond to a
+/// double-click. Both are things every other Mac app does, and their absence reads as the
+/// window being broken rather than as a missing feature. Reported by Stanley 2026-09-18.
+///
+/// The fix is a transparent view sitting ABOVE the web view across that strip, doing the two
+/// things AppKit would have done if the titlebar were not covered.
+final class TitlebarDragView: NSView {
+    /// The page's own titlebar height — `.titlebar{height:2.75rem}` in `app.css`, at a 16px
+    /// root. `tests/test_rules.py` compares the two, so changing the CSS fails the suite rather
+    /// than silently leaving a drag strip that no longer lines up with what it looks like.
+    static let height: CGFloat = 36
+
+    /// Left free on the right so the page's own Settings button stays clickable. Generous on
+    /// purpose: a few dead pixels beside a button cost nothing, and a strip that swallows the
+    /// button costs the only control up there. Dragging from the brand end is the natural
+    /// gesture anyway.
+    static let rightInset: CGFloat = 160
+
+    override func mouseDown(with event: NSEvent) {
+        guard event.clickCount != 2 else { return doubleClick() }
+        // `performDrag` runs its own event loop until the mouse is released, which is what makes
+        // this behave exactly like a real titlebar rather than an approximation of one.
+        window?.performDrag(with: event)
+    }
+
+    /// WHAT A DOUBLE-CLICK DOES IS A SYSTEM PREFERENCE, not our choice. macOS offers zoom,
+    /// minimise or nothing under Desktop & Dock, and an app that always zooms is wrong for
+    /// everyone who set it to something else. Absent key = Maximize, which is the macOS default.
+    private func doubleClick() {
+        switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") ?? "Maximize" {
+        case "Minimize": window?.performMiniaturize(nil)
+        case "None":     break
+        default:         window?.performZoom(nil)
+        }
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate,
                          NSMenuDelegate {
 
@@ -235,6 +277,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     @objc private func openWindow() {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        // Reopening lays the titlebar out afresh, so the lights need putting back.
+        centreWindowButtons()
     }
 
     // MARK: - window
@@ -268,7 +312,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         window.titleVisibility = .hidden
         window.backgroundColor = pageBackground
         window.minSize = NSSize(width: 900, height: 600)
-        window.contentView = webView
+        // A CONTAINER, not the web view itself, so the drag strip can sit ABOVE it. Adding a
+        // subview to a WKWebView works but reaches into WebKit's own view tree; a plain host
+        // view keeps the two siblings and the z-order ours to state.
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 1360, height: 900))
+        webView.frame = container.bounds
+        webView.autoresizingMask = [.width, .height]
+        container.addSubview(webView)
+
+        let dragStrip = TitlebarDragView(frame: NSRect(
+            x: 0, y: container.bounds.height - TitlebarDragView.height,
+            width: container.bounds.width - TitlebarDragView.rightInset,
+            height: TitlebarDragView.height))
+        // Pinned to the TOP and stretching with the width: `.maxYMargin` would pin it to the
+        // bottom, which is the easy way to get a drag strip that drifts off the titlebar the
+        // first time the window is resized.
+        dragStrip.autoresizingMask = [.width, .minYMargin]
+        container.addSubview(dragStrip, positioned: .above, relativeTo: webView)
+
+        window.contentView = container
         window.center()
         // Remembers position and size between launches, keyed by this name. Free, and its
         // absence is noticed immediately by anyone who moves a window.
@@ -279,6 +341,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+
+        // AFTER makeKeyAndOrderFront, not before: ordering the window in is what builds the
+        // titlebar, so a call ahead of it finds no buttons to move and returns silently.
+        centreWindowButtons()
+        // And again whenever AppKit re-lays the titlebar out on its own schedule — a resize, a
+        // fullscreen exit, becoming key — each of which puts the buttons back where IT wants
+        // them. Without this the lights drift up the first time the window is resized.
+        for name in [NSWindow.didResizeNotification, NSWindow.didBecomeKeyNotification,
+                     NSWindow.didExitFullScreenNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) {
+                [weak self] _ in self?.centreWindowButtons()
+            }
+        }
+    }
+
+    /// Put the traffic lights on the page's own titlebar centre line.
+    ///
+    /// macOS centres them in ITS 28pt titlebar, so in a taller bar they sit high — 4pt high at
+    /// 36pt, which is enough to read as "the buttons are stuck to the top" even when everything
+    /// else in the row is centred. Chrome solves it the same way.
+    ///
+    /// Views are NOT flipped here, so `origin.y` counts from the BOTTOM of the titlebar
+    /// container. Centring on `height/2` from the top therefore means placing the button
+    /// `container.height - height/2 - button.height/2` up from the bottom.
+    private func centreWindowButtons() {
+        let buttons = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
+            .compactMap { window.standardWindowButton($0) }
+        guard let container = buttons.first?.superview else { return }
+        for b in buttons {
+            let y = container.bounds.height - TitlebarDragView.height / 2 - b.frame.height / 2
+            b.setFrameOrigin(NSPoint(x: b.frame.origin.x, y: y))
+        }
     }
 
     /// A message rendered in the webview itself, so starting and failing look like the app

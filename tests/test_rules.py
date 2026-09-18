@@ -3508,6 +3508,70 @@ def test_the_prompt_says_what_it_means_to_say() -> None:
     ok("and the typed-out date after it", call.index("strftime") < call.index("isoformat"))
 
 
+def test_the_window_can_be_dragged_by_its_titlebar() -> None:
+    """A full-size content view puts the web view over the titlebar, so it has to be given back."""
+    print("\n  -- dragging the window --")
+    import re as _re
+
+    root = pathlib.Path(__file__).parent.parent
+    shell = (root / "macos" / "Sources" / "AgentDuetShell" / "AppDelegate.swift").read_text()
+    css = (root / "src" / "agentduet_desktop" / "app.css").read_text()
+
+    # WHY. `.fullSizeContentView` + a transparent titlebar is what lets the page draw its own
+    # titlebar row under the real traffic lights — and it means the WKWebView covers that strip
+    # and eats every mouse event in it. The window could not be dragged and ignored a
+    # double-click, which reads as broken rather than as missing. Stanley, 2026-09-18.
+    ok("the window still uses a full-size content view", ".fullSizeContentView" in shell)
+    ok("there is a drag strip", "final class TitlebarDragView" in shell)
+    ok("it drags the window", "window?.performDrag(with: event)" in shell)
+    ok("and it is above the web view", "positioned: .above, relativeTo: webView" in shell)
+
+    # THE STRIP MUST MATCH THE TITLEBAR IT IMITATES. The height is stated in two languages —
+    # `.titlebar{height:2.75rem}` in CSS and a CGFloat in Swift — and nothing but this test
+    # connects them, so a CSS change would leave a drag region that no longer lines up with the
+    # thing that looks draggable.
+    rem = _re.search(r"\.titlebar\{height:([\d.]+)rem", css)
+    ok("the page states a titlebar height", rem is not None)
+    swift_h = _re.search(r"static let height: CGFloat = (\d+)", shell)
+    ok("and so does the shell", swift_h is not None)
+    if rem and swift_h:
+        eq("they agree (rem x 16 == px)", float(rem.group(1)) * 16, float(swift_h.group(1)))
+
+    # DOUBLE-CLICK IS A SYSTEM PREFERENCE, not ours. macOS offers zoom, minimise or nothing; an
+    # app that always zooms is wrong for anyone who chose otherwise.
+    ok("double-click reads the system setting", "AppleActionOnDoubleClick" in shell)
+    for action in ("performZoom", "performMiniaturize"):
+        ok(f"and can {action}", action in shell)
+
+    # AND IT LEAVES THE SETTINGS BUTTON ALONE. A strip across the full width would swallow the
+    # only control in that row.
+    ok("the strip stops short of the right edge", "rightInset" in shell)
+    ok("it is pinned to the top, not the bottom", ".minYMargin" in shell)
+
+    # THE LIGHTS ARE MOVED TO THE BAR, now that the bar is chosen for looks (36pt, against
+    # Terminal and Chrome) rather than to match the 28pt macOS positions them for.
+    ok("the shell re-centres the window buttons", "func centreWindowButtons" in shell)
+    # AFTER the window is ordered in — ordering it in is what builds the titlebar, so a call
+    # before it finds no buttons and returns silently. That is exactly what happened first: the
+    # call landed in `openWindow()` (the menu-bar action) instead of `buildWindow()`, so it only
+    # ran if you reopened the window from the menu, and the lights never moved at launch.
+    build = shell.split("private func buildWindow()", 1)[1].split("private func centreWindowButtons", 1)[0]
+    ok("it runs in buildWindow, not only on reopen", "centreWindowButtons()" in build)
+    ok("and after the window is ordered in",
+       build.index("makeKeyAndOrderFront") < build.index("centreWindowButtons()"))
+    # AppKit re-lays the titlebar out on its own schedule and puts them back.
+    for n in ("didResizeNotification", "didBecomeKeyNotification", "didExitFullScreenNotification"):
+        ok(f"re-applied on {n}", n in shell)
+
+    # THE MARK IS CACHED BY URL. Changing the image without changing the URL leaves an upgraded
+    # install drawing the old one — which is what happened when it was made transparent, and
+    # the reason `?v=` exists. Bump it whenever the artwork changes.
+    for page in ("web.html", "settings.html", "setup.html"):
+        body = (root / "src" / "agentduet_desktop" / page).read_text()
+        ok(f"{page} versions the mark's url", 'logo.png?v=' in body)
+        ok(f"{page} has no unversioned reference", '"/logo.png"' not in body)
+
+
 def test_the_icon_font_ships_in_the_binary() -> None:
     """An icon font that fails renders its own LIGATURE NAMES as text."""
     print("\n  -- the icon font --")
@@ -4486,6 +4550,7 @@ def main() -> None:
     test_a_bad_reply_says_so_instead_of_leaking()
     test_a_suggestion_is_judged_once_and_never_guessed()
     test_the_prompt_says_what_it_means_to_say()
+    test_the_window_can_be_dragged_by_its_titlebar()
     test_the_icon_font_ships_in_the_binary()
     test_sign_in_uses_the_owners_own_browser()
     test_about_answers_which_build_this_is()

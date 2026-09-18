@@ -94,7 +94,18 @@ html.native .window{max-width:none;height:100%;max-height:none;flex:1;
 /* THE THREE CIRCLES ARE DRAWN BY US. In a browser they are the illusion the design intends; in
  * the native window macOS draws its own, and two sets of lights is worse than none. `.native`
  * goes on <html> when window.pywebview exists — see nativeChrome() in the pages. */
-.titlebar{height:2.75rem;background:var(--sidebar);border-bottom:1px solid var(--line);
+/* 2.25rem = 36pt, chosen against Terminal and Chrome rather than against macOS's minimum.
+   The history is worth keeping because it is a real constraint, not indecision: with
+   `.fullSizeContentView` macOS places the traffic lights for ITS 28pt titlebar, centring them
+   on row 14, and does not move them for a taller bar. 44pt put them 8pt above the brand beside
+   them; 32pt still read as 2.5pt out, measured off a screenshot; 28pt lined up perfectly
+   because it IS the height macOS is positioning for — and then looked short next to every
+   other app.
+   So the bar stops chasing the lights and the shell MOVES them instead — see
+   `centreWindowButtons()`. That is what Chrome does, and it is only worth its fragility once
+   the height is chosen for looks rather than to make the arithmetic work.
+   `TitlebarDragView.height` MUST match; test_rules.py compares them. */
+.titlebar{height:2.25rem;background:var(--sidebar);border-bottom:1px solid var(--line);
   padding:0 1rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
 /* NO SIMULATED TRAFFIC LIGHTS ANYWHERE, since 2026-09-08. Three coloured dots that do nothing
    were the design's way of making a browser tab feel like a window; in a native host macOS draws
