@@ -144,9 +144,15 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         NO TOKEN, like `app.css` and for the same reasons: there is nothing in a font worth
         protecting, and a token would defeat browser caching across the three pages that use it.
 
-        Cached HARD, unlike the stylesheet. `app.css` is `no-cache` so an edit shows on refresh
-        while iterating; a font is an immutable binary that changes only when the icon list
-        does, and re-reading 22 KB off disk on every page load is pure waste.
+        `no-cache`, LIKE THE STYLESHEET — which is a correction. This shipped as
+        `max-age=31536000, immutable` on the reasoning that a font changes only when the icon
+        list does. True, and it misses what happens WHEN it changes: the owner's browser would
+        keep the old file for a year, so adding an icon would ship a build whose new glyph
+        renders as its ligature name on every machine that had ever loaded the old one. The same
+        staleness bit the logo the day it was made transparent — the window went on drawing the
+        white version from cache while the daemon served the new one.
+        `no-cache` means revalidate, not "do not store". Over loopback that is a conditional
+        request for 22 KB; the correctness is worth more than the microseconds.
         """
         path = HERE / "fonts" / "material-symbols-rounded.woff2"
         if not path.is_file():
@@ -157,7 +163,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                          "as their names", path)
             return web.Response(status=404, text="not found")
         return web.Response(body=path.read_bytes(), content_type="font/woff2",
-                            headers={"Cache-Control": "public, max-age=31536000, immutable"})
+                            headers={"Cache-Control": "no-cache"})
 
     async def secretary_page(request):
         """The secretary's own view — people, threads, escalations.
@@ -285,7 +291,10 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         if not path.is_file():
             return web.Response(status=404)
         return web.Response(body=path.read_bytes(), content_type="image/png",
-                            headers={"Cache-Control": "max-age=86400"})
+                            # NOT a day. The mark is part of the brand and changes with a
+                            # build; a day-long cache means an upgraded install keeps drawing
+                            # the old one, which is exactly what happened on 2026-09-18.
+                            headers={"Cache-Control": "no-cache"})
 
     async def api_setup_login_item(request):
         """Record whether this machine should start the app at login, and make it so.
