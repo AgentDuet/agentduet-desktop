@@ -1482,9 +1482,12 @@ def test_setup_mode() -> None:
 
     for page_name, page_text in (("web.html", web_page_l), ("setup.html", setup_page),
                                  ("settings.html", settings_page)):
+        # The url carries a `?v=` now — the mark is cached by url, so changing the artwork
+        # without changing the url leaves an upgraded install drawing the old one. Matched on
+        # the prefix so a future bump does not fail this.
         ok(f"{page_name} shows the mark, not the letters",
-           'class="ad" src="/logo.png"' in page_text)
-        ok(f"{page_name} has a favicon", 'rel="icon" href="/logo.png"' in page_text)
+           'class="ad" src="/logo.png?v=' in page_text)
+        ok(f"{page_name} has a favicon", 'rel="icon" href="/logo.png?v=' in page_text)
     ok("the letters are gone", '<div class="ad">AD</div>' not in settings_page)
     ok("the mark is served", 'web.get("/logo.png", logo)' in web_src_l)
     ok("and the favicon route exists, which is what was 404ing",

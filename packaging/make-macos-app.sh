@@ -91,10 +91,15 @@ chmod +x "$APP/Contents/MacOS/AgentDuet Desktop" "$APP/Contents/MacOS/agentduet-
 # the blank generic application icon. That reads as a broken or untrusted download, which is an
 # expensive first impression for something a tester was asked to install.
 #
-# SQUARE, PADDED WHITE. macOS applies no mask to an .icns — whatever shape the art has is the
-# shape the icon has — and the mark is 306x222 on an opaque white ground. So it is padded to a
-# square on the same white rather than stretched, which would distort it, or padded transparent,
-# which would leave a white rectangle floating in a transparent square.
+# SQUARE, PADDED TRANSPARENT — and the reason changed on 2026-09-18. This padded with WHITE,
+# correctly at the time: the mark arrived on an opaque white ground, so a transparent pad would
+# have left a white rectangle floating inside a transparent square. The ground is transparent
+# now, so white padding would be the only thing MAKING it a square, and macOS applies no mask to
+# an .icns — whatever shape the art has is the shape the icon has.
+#
+# STILL NOT RIGHT, and the checklist keeps the item open: macOS convention is a rounded squircle
+# with the art inset, and the source is 306x222, which cannot fill 1024 without going soft. A
+# floating mark beats a hard white square; a designed 1024x1024 master beats both.
 LOGO="$(cd "$(dirname "$0")/.." && pwd)/src/agentduet_desktop/logo.png"
 if [ -f "$LOGO" ] && command -v iconutil >/dev/null 2>&1; then
   ICONSET="$(mktemp -d)/AgentDuet.iconset"
@@ -102,7 +107,8 @@ if [ -f "$LOGO" ] && command -v iconutil >/dev/null 2>&1; then
   SQUARE="$(mktemp -d)/square.png"
   # The long edge decides the canvas, so nothing is cropped.
   LONG=$(sips -g pixelWidth -g pixelHeight "$LOGO" | awk '/pixel/ {print $2}' | sort -rn | head -1)
-  sips -p "$LONG" "$LONG" --padColor FFFFFF "$LOGO" --out "$SQUARE" >/dev/null 2>&1
+  # No --padColor: sips keeps the alpha channel and pads with transparency.
+  sips -p "$LONG" "$LONG" "$LOGO" --out "$SQUARE" >/dev/null 2>&1
   for SZ in 16 32 64 128 256 512; do
     sips -z "$SZ" "$SZ" "$SQUARE" --out "$ICONSET/icon_${SZ}x${SZ}.png" >/dev/null 2>&1
     DBL=$((SZ * 2))
