@@ -47,7 +47,23 @@ jobs:
           # Check the chip before sending them anything.
           - os: ubuntu-latest
             name: linux-x86_64
+          # WINDOWS, x86-64 ONLY — and that is forced rather than chosen. `pywhispercpp` ships
+          # `win32` and `win_amd64` wheels and NO `win_arm64`, so a native ARM build has no
+          # speech engine. An ARM machine runs the x64 binary under Prism emulation instead,
+          # which is fine for function and useless for timing.
+          #
+          # Everything else the build needs is available here: llama-cpp-python has cp312
+          # win_amd64 wheels on its own index (the `else` branch below already fetches from
+          # there), and pywebview, wasmtime, the SDK and mcp are pure Python.
+          - os: windows-latest
+            name: windows-x86_64
     runs-on: ${{ matrix.os }}
+    # BASH ON ALL THREE, or nothing here runs on Windows: GitHub defaults `run:` to PowerShell
+    # there, and every step in this file is a bash script. Git Bash is preinstalled on the
+    # Windows image, so this is a one-line fix rather than a rewrite of the job.
+    defaults:
+      run:
+        shell: bash
     permissions:
       contents: read        # GITHUB_TOKEN needs this to clone the SDK repo
     # JOB level, not step level, and that is load-bearing: a step's `if:` cannot read env the
@@ -157,6 +173,7 @@ jobs:
           # onefile, where the same path IS the executable.
           BIN=./dist-bin/agentduet-desktop
           [ "$RUNNER_OS" = "macOS" ] && BIN=./dist-bin/agentduet-desktop/agentduet-desktop
+          [ "$RUNNER_OS" = "Windows" ] && BIN=./dist-bin/agentduet-desktop.exe
           echo "smoke-testing $BIN"
           "$BIN" status | tee status.txt
           for p in gemini anthropic qwen; do
@@ -406,9 +423,12 @@ jobs:
           path: agentduet-desktop-${{ matrix.name }}.dmg
           if-no-files-found: error
 
+      # A GLOB, because Windows emits `agentduet-desktop.exe` and Linux `agentduet-desktop`.
+      # Both are onefile (the spec only branches to onedir on darwin), so this stays one file
+      # per platform rather than the 241 MB tree the macOS branch above exists to avoid.
       - uses: actions/upload-artifact@v4
         if: runner.os != 'macOS'
         with:
           name: agentduet-desktop-${{ matrix.name }}
-          path: dist-bin/agentduet-desktop
+          path: dist-bin/agentduet-desktop*
           if-no-files-found: error
