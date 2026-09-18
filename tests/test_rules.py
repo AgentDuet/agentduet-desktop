@@ -3572,6 +3572,27 @@ def test_the_window_can_be_dragged_by_its_titlebar() -> None:
         ok(f"{page} has no unversioned reference", '"/logo.png"' not in body)
 
 
+def test_the_spec_collects_native_libraries_by_every_name() -> None:
+    """A ctypes-loaded runtime is invisible to PyInstaller, so the spec globs for it by hand."""
+    print("\n  -- native libraries in the spec --")
+
+    spec = (pathlib.Path(__file__).parent.parent / "packaging"
+            / "agentduet-desktop.spec").read_text()
+
+    # WINDOWS DOES NOT USE THE `lib` PREFIX. Unix ships `_libwasmtime.so`/`.dylib`; the
+    # win_amd64 wheel ships `wasmtime/win32-x86_64/_wasmtime.dll`. The glob was Unix-only, so
+    # the first Windows build made an .exe that ran, printed most of `status` and then died on
+    # "Failed to load dynlib _wasmtime.dll" — a missing runtime that nothing warned about,
+    # because a glob matching nothing looks exactly like a glob matching nothing to collect.
+    ok("the spec globs the unix wasmtime name", '"_libwasmtime.*"' in spec)
+    ok("and the windows one", '"_wasmtime.dll"' in spec)
+
+    # AND IT SAYS SO WHEN IT FINDS NONE. Same rule the speech engine already follows: zero
+    # collected libraries is always a bug, never a valid state, and it is silent otherwise.
+    ok("zero collected is reported", "no wasmtime runtime collected" in spec)
+    ok("the speech engine has the same guard", "ZERO IS ALWAYS WRONG" in spec)
+
+
 def test_the_icon_font_ships_in_the_binary() -> None:
     """An icon font that fails renders its own LIGATURE NAMES as text."""
     print("\n  -- the icon font --")
@@ -4551,6 +4572,7 @@ def main() -> None:
     test_a_suggestion_is_judged_once_and_never_guessed()
     test_the_prompt_says_what_it_means_to_say()
     test_the_window_can_be_dragged_by_its_titlebar()
+    test_the_spec_collects_native_libraries_by_every_name()
     test_the_icon_font_ships_in_the_binary()
     test_sign_in_uses_the_owners_own_browser()
     test_about_answers_which_build_this_is()
