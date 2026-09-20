@@ -4078,6 +4078,20 @@ def test_the_folder_chooser_opens_and_says_when_it_cannot() -> None:
     def _fake(rc, stdout="", stderr=""):
         return lambda cmd, **kw: _ty.SimpleNamespace(returncode=rc, stdout=stdout, stderr=stderr)
 
+    # THE PLATFORM MUST BE PINNED, or none of the above is reached. This is a test about macOS
+    # behaviour that ran on whatever OS it happened to be on: CI's Linux runner has no desktop,
+    # so `can_pick` refused before any chooser ran, raised "no desktop session" out of the first
+    # call, and took the whole suite down — the `tests` workflow had been red since 2026-09-09
+    # for exactly that. A workflow that always fails is a workflow nobody reads, which is why it
+    # went a week unnoticed while three more commits were pushed past it.
+    #
+    # Standing down `can_pick` alone is NOT enough, and that near-miss is worth the line: the
+    # Linux branch then picks its chooser with `next(t for t in (...) if which(t))`, which on a
+    # runner with no zenity raises a bare StopIteration. Pinning the platform fixes the real
+    # problem — the test asserts macOS quoting, so it should run the macOS path everywhere.
+    real_can, real_sys = reveal.can_pick, reveal.platform.system
+    reveal.can_pick = lambda: (True, "")
+    reveal.platform.system = lambda: "Darwin"
     real = _sp.run
     try:
         for rc, so, se, want in (
@@ -4106,7 +4120,23 @@ def test_the_folder_chooser_opens_and_says_when_it_cannot() -> None:
             raised = str(exc)
         ok("a timeout is reported, not read as cancelled", "did not respond" in raised)
     finally:
+        reveal.can_pick, reveal.platform.system = real_can, real_sys
         _sp.run = real
+
+    # THE OTHER HALF OF THE NAME. `can_pick` is what says "it cannot", and standing it down above
+    # left it untested on every platform, so it is exercised here directly instead.
+    import unittest.mock as _mock
+    with _mock.patch.object(reveal.platform, "system", return_value="Linux"), \
+         _mock.patch.dict(reveal.os.environ, {}, clear=True):
+        eq("a headless Linux box says so", reveal.can_pick(), (False, "no desktop session"))
+    with _mock.patch.object(reveal.platform, "system", return_value="Linux"), \
+         _mock.patch.dict(reveal.os.environ, {"DISPLAY": ":0"}, clear=True), \
+         _mock.patch.object(reveal.shutil, "which", return_value=None):
+        ok("a desktop with no chooser names the packages to install",
+           reveal.can_pick() == (False, "no folder chooser installed (zenity or kdialog)"))
+    with _mock.patch.object(reveal.platform, "system", return_value="Darwin"), \
+         _mock.patch.object(reveal.shutil, "which", return_value="/usr/bin/osascript"):
+        eq("a Mac can always pick", reveal.can_pick(), (True, ""))
 
 
 def test_a_question_survives_a_redraw() -> None:
