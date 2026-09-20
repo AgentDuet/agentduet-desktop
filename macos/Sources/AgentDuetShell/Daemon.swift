@@ -45,6 +45,15 @@ final class Daemon {
     /// owner an empty reason for the one failure it exists to explain.
     private var logFile: URL { instanceHome.appendingPathComponent("run/daemon.log") }
 
+    /// `run/daemon-start.log` — whatever the daemon printed on its way up, this run only.
+    ///
+    /// The daemon opens `daemon.log` only once startup gets as far as configuring logging, so the
+    /// failures that happen BEFORE that — the single-instance guard is the one that bites — leave
+    /// nothing in it. This output went to /dev/null, so the dialog could show only a tail of the
+    /// PREVIOUS session and handed the owner healthy-looking traffic under the words "did not
+    /// start". Captured here, and quoted verbatim in the failure.
+    private var startLog: URL { instanceHome.appendingPathComponent("run/daemon-start.log") }
+
     /// `run/update.json`, written by the daemon's own check every few hours.
     private var updateFile: URL { instanceHome.appendingPathComponent("run/update.json") }
 
@@ -84,8 +93,13 @@ final class Daemon {
         p.executableURL = bin
         // --no-window: THIS is the window. The daemon must not try to open one of its own.
         p.arguments = ["run", "--no-window"]
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError = FileHandle.nullDevice
+        // NOT nullDevice — see `startLog`. The one failure this dialog exists to explain is
+        // reported here and nowhere else.
+        let captured = startLogHandle()
+        p.standardOutput = captured
+        p.standardError = captured
+        let logWasAt = logSize()
+        let started = Date()
         do {
             try p.run()
         } catch {
@@ -96,13 +110,14 @@ final class Daemon {
 
         // Poll for a URL THAT ANSWERS, not merely a file that exists: `run/site-url` survives a
         // crash, so a stale one would send the window at a port with nothing behind it.
-        let deadline = Date().addingTimeInterval(45)
+        let deadline = started.addingTimeInterval(45)
         while Date() < deadline {
             if let u = recordedURL(), responds(u) { return .success(u) }
             if !p.isRunning { break }          // it died; stop waiting and say why
             Thread.sleep(forTimeInterval: 0.25)
         }
-        return .failure(Failure.neverCameUp(logTail()))
+        return .failure(Failure.neverCameUp(
+            startupReport(p, waited: Date().timeIntervalSince(started), logWasAt: logWasAt)))
     }
 
     func stop() {
@@ -184,6 +199,53 @@ final class Daemon {
         guard let text = try? String(contentsOf: logFile, encoding: .utf8) else {
             return "No log at \(logFile.path)."
         }
-        return text.split(separator: "\n").suffix(lines).joined(separator: "\n")
+        return lastLines(text, lines)
+    }
+
+    private func lastLines(_ text: String, _ n: Int) -> String {
+        text.split(separator: "\n").suffix(n).joined(separator: "\n")
+    }
+
+    /// Truncating, so what it holds is always THIS run — a stale reason is the failure being
+    /// fixed here, not an acceptable fallback.
+    private func startLogHandle() -> FileHandle {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: startLog.deletingLastPathComponent(),
+                                withIntermediateDirectories: true)
+        fm.createFile(atPath: startLog.path, contents: nil)
+        return (try? FileHandle(forWritingTo: startLog)) ?? FileHandle.nullDevice
+    }
+
+    private func logSize() -> UInt64 {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: logFile.path),
+              let size = attrs[.size] as? UInt64 else { return 0 }
+        return size
+    }
+
+    /// Why the daemon is not answering, in the order an owner can act on: what the process did,
+    /// what it said, and only then the daemon log — labelled as an earlier session when it did
+    /// not grow, so it can never again be read as evidence about this launch.
+    private func startupReport(_ p: Process, waited: TimeInterval, logWasAt: UInt64) -> String {
+        var parts: [String] = []
+        if p.isRunning {
+            parts.append(String(format: "It is still running after %.0fs, but never answered.",
+                                waited))
+        } else {
+            parts.append(String(format: "It exited after %.1fs with status %d.",
+                                waited, p.terminationStatus))
+        }
+
+        let printed = (try? String(contentsOf: startLog, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        parts.append(printed.isEmpty ? "It printed nothing."
+                                     : "What it printed:\n\(lastLines(printed, 15))")
+
+        if logSize() > logWasAt {
+            parts.append("Last from \(logFile.lastPathComponent):\n\(logTail())")
+        } else {
+            parts.append("It wrote nothing to \(logFile.lastPathComponent) this run, so that "
+                       + "log is from an earlier session and does not explain this.")
+        }
+        return parts.joined(separator: "\n\n")
     }
 }
