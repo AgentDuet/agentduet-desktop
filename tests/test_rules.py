@@ -18,6 +18,7 @@ which is precisely the kind of destructive surprise a "safe" unit test should ne
 """
 
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -4595,6 +4596,29 @@ def test_a_daemon_does_not_mistake_itself_for_a_predecessor() -> None:
        "logSize() > logWasAt" in swift and "does not explain this" in swift)
 
 
+def test_signing_survives_apples_timestamp_service() -> None:
+    """A red build caused by nothing in the tree is still a red build."""
+    print("\n  -- codesign retries the timestamp, and only the timestamp --")
+    root = pathlib.Path(__file__).parent.parent
+    wrapper = root / "packaging" / "codesign-retry.sh"
+
+    ok("the wrapper exists", wrapper.is_file())
+    ok("and is executable — xargs runs it directly", os.access(wrapper, os.X_OK))
+    body = wrapper.read_text()
+    ok("it retries", "CODESIGN_ATTEMPTS" in body and "sleep" in body)
+    # THE PART THAT MAKES IT SAFE. Retrying a missing identity five times just buries the real
+    # message under four repeats and costs a minute before saying the same thing.
+    ok("but only when the timestamp service is what failed", 'grep -qi "timestamp"' in body)
+
+    # BOTH PATHS, or they drift — the local script and CI signed independently before this.
+    for f in (".github/workflows/build.yml", "packaging/sign-macos.sh"):
+        text = (root / f).read_text()
+        bare = [l for l in text.splitlines()
+                if "codesign " in l and "--timestamp" in l and "codesign-retry" not in l]
+        ok(f"{f} signs nothing with a bare timestamped codesign", not bare, str(bare[:1]))
+        ok(f"{f} goes through the wrapper", "codesign-retry.sh" in text)
+
+
 def test_the_content_can_be_copied_out() -> None:
     """A transcript nobody can select is a transcript nobody can use."""
     print("\n  -- content is selectable, chrome is not --")
@@ -4690,6 +4714,7 @@ def main() -> None:
     test_setup_mode()
     test_schedule()
     test_a_daemon_does_not_mistake_itself_for_a_predecessor()
+    test_signing_survives_apples_timestamp_service()
     test_capabilities()
     test_capability_disclosure()
     test_policy()

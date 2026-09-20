@@ -330,11 +330,14 @@ jobs:
           # its contents, so signing the outer .app before its dylibs invalidates the outer one.
           # `--deep` looks like the shortcut for this and is deprecated by Apple precisely
           # because it applies the same entitlements to nested code that should not have them.
+          # THROUGH THE RETRY WRAPPER, because --timestamp is a network call to Apple made once
+          # per signature and ~140 of them in a burst gets throttled. That, and nothing else,
+          # failed the 2026-09-18 build. See packaging/codesign-retry.sh.
           find "$APP" -type f \( -name "*.dylib" -o -name "*.so" -o -perm +111 \) -print0 \
-            | xargs -0 -I{} codesign --force --options runtime --timestamp \
+            | xargs -0 -I{} packaging/codesign-retry.sh --force --options runtime --timestamp \
                 --entitlements packaging/entitlements.plist --sign "$IDENTITY" {}
 
-          codesign --force --options runtime --timestamp \
+          packaging/codesign-retry.sh --force --options runtime --timestamp \
             --entitlements packaging/entitlements.plist --sign "$IDENTITY" "$APP"
 
           # --strict, because a signature that merely exists is not one Gatekeeper accepts.
@@ -386,7 +389,7 @@ jobs:
                      | awk '/Developer ID Application/ {print $2; exit}')
           # The disk image is signed too. Notarization accepts it either way, but an unsigned
           # container around a signed app is a needless question mark for anyone who checks.
-          codesign --force --timestamp --sign "$IDENTITY" "$DMG"
+          packaging/codesign-retry.sh --force --timestamp --sign "$IDENTITY" "$DMG"
 
           echo "$APPLE_API_KEY_P8" | base64 --decode > key.p8
           trap 'rm -f key.p8' EXIT      # even if notarytool fails

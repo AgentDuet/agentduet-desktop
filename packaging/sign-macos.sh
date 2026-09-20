@@ -115,10 +115,10 @@ find "$APP" -name "*.cstemp" -delete 2>/dev/null || true
 # by Apple precisely because it applies the same entitlements to nested code that should not have
 # them.
 find "$APP" -type f \( -name "*.dylib" -o -name "*.so" -o -perm +111 \) -print0 \
-  | xargs -0 -I{} codesign --force --options runtime --timestamp ${KC_ARGS[@]+"${KC_ARGS[@]}"} \
+  | xargs -0 -I{} "$HERE/codesign-retry.sh" --force --options runtime --timestamp ${KC_ARGS[@]+"${KC_ARGS[@]}"} \
       --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" {}
 
-codesign --force --options runtime --timestamp ${KC_ARGS[@]+"${KC_ARGS[@]}"} \
+"$HERE/codesign-retry.sh" --force --options runtime --timestamp ${KC_ARGS[@]+"${KC_ARGS[@]}"} \
   --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$APP"
 
 # --strict, because a signature that merely exists is not one Gatekeeper accepts.
@@ -144,7 +144,7 @@ ln -s /Applications "$STAGE/Applications"
 echo "app is ${MB} MB; creating a $((MB + 200)) MB image"
 hdiutil create -volname "AgentDuet Desktop" -srcfolder "$STAGE" \
   -size $((MB + 200))m -ov -format UDZO "$DMG" >/dev/null
-codesign --force --timestamp ${KC_ARGS[@]+"${KC_ARGS[@]}"} --sign "$IDENTITY" "$DMG"
+"$HERE/codesign-retry.sh" --force --timestamp ${KC_ARGS[@]+"${KC_ARGS[@]}"} --sign "$IDENTITY" "$DMG"
 
 if ! xcrun notarytool history --keychain-profile "$PROFILE" >/dev/null 2>&1; then
   echo
