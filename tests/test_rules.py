@@ -4517,6 +4517,54 @@ def test_a_poll_notices_everything_it_renders() -> None:
        "(last.a || '').length" in hub)
 
 
+def test_a_daemon_does_not_mistake_itself_for_a_predecessor() -> None:
+    """A pid file survives a reboot; login hands out pids in nearly the same order every time."""
+    print("\n  -- the daemon is not its own predecessor --")
+    import os
+    import unittest.mock as mock
+    from agentduet_desktop import service
+
+    pidfile = TMP / "self-pid" / "secretary.pid"
+    pidfile.parent.mkdir(parents=True, exist_ok=True)
+
+    with mock.patch.object(service, "PIDFILE", pidfile):
+        # THE BUG: `SMAppService` auto-launches the app seconds into a boot, the daemon it spawns
+        # is handed a pid near the one the previous boot's daemon left in the file, and sooner or
+        # later it is the SAME one. The daemon then finds a live process named agentduet-desktop
+        # (itself), reports "already running" and exits 0 — before logging is configured, so
+        # nothing is written anywhere. Observed 2026-09-20, booted 21:23:55, app up 21:24:22,
+        # file held 816, new daemon WAS 816.
+        pidfile.write_text(str(os.getpid()))
+        eq("a pid file naming us is stale, not a running daemon", service.running_pid(), None)
+
+        # AND THE GUARD IT SITS BESIDE STILL WORKS — this must not become "ignore the pid file".
+        pidfile.write_text(str(os.getpid() + 1))
+        with mock.patch.object(service, "_alive", return_value=True), \
+             mock.patch.object(service, "_is_ours", return_value=True):
+            eq("another live daemon is still reported", service.running_pid(), os.getpid() + 1)
+        with mock.patch.object(service, "_alive", return_value=True), \
+             mock.patch.object(service, "_is_ours", return_value=False):
+            eq("a recycled pid owned by something else is still refused",
+               service.running_pid(), None)
+
+    # THE SHELL MUST BE ABLE TO SAY WHY. The exit above prints its reason on stdout and never
+    # reaches daemon.log, so discarding that output left the dialog tailing the PREVIOUS
+    # session — healthy 200s under the words "did not start", which is what Stanley was shown.
+    swift = (pathlib.Path(__file__).parent.parent / "macos" / "Sources" / "AgentDuetShell"
+             / "Daemon.swift").read_text()
+    ok("the daemon's own output is kept, not sent to /dev/null",
+       "p.standardOutput = captured" in swift and "p.standardError = captured" in swift)
+    ok("nullDevice is no longer wired to either stream",
+       "standardOutput = FileHandle.nullDevice" not in swift)
+    ok("it is truncated per run, so the reason is never a stale one",
+       "createFile(atPath: startLog.path" in swift)
+    ok("the failure quotes what the daemon printed", "What it printed:" in swift)
+    ok("and says the exit status", "It exited after" in swift and "terminationStatus" in swift)
+    # THE PART THAT MADE THE DIALOG MISLEADING rather than merely unhelpful.
+    ok("an unchanged daemon.log is labelled as an earlier session",
+       "logSize() > logWasAt" in swift and "does not explain this" in swift)
+
+
 def test_the_content_can_be_copied_out() -> None:
     """A transcript nobody can select is a transcript nobody can use."""
     print("\n  -- content is selectable, chrome is not --")
@@ -4611,6 +4659,7 @@ def main() -> None:
     test_hosts()
     test_setup_mode()
     test_schedule()
+    test_a_daemon_does_not_mistake_itself_for_a_predecessor()
     test_capabilities()
     test_capability_disclosure()
     test_policy()

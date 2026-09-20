@@ -133,6 +133,24 @@ def running_pid() -> int | None:
         pid = int(PIDFILE.read_text().strip())
     except (OSError, ValueError):
         return None
+    if pid == os.getpid():
+        # A pid file naming THIS process is stale by definition: `cmd_run` asks before writing
+        # ours, and no other caller here is the daemon.
+        #
+        # THE REBOOT MAKES THIS ROUTINE, NOT A COINCIDENCE. The pid file survives a restart, and
+        # login starts the same processes in nearly the same order every time, so the daemon that
+        # `SMAppService` auto-launches is handed a pid very close to the one the previous boot's
+        # daemon left behind — sooner or later, the same one. It then reads the file, recognises a
+        # live `agentduet-desktop` (itself), and exits as a second instance.
+        #
+        # Observed 2026-09-20: booted 21:23:55, the app auto-launched at 21:24:22, the pid file
+        # still held 816 from that morning, and the new daemon WAS 816. It printed "already
+        # running (pid 816)" to a stdout the Swift shell sent to /dev/null and exited 0 without
+        # opening daemon.log — so the shell showed "The AgentDuet service did not start" over a
+        # tail of the PREVIOUS session's healthy traffic.
+        logger.warning("pid file holds %d, which is this very process — a stale file from before "
+                       "a restart. Treating it as stopped.", pid)
+        return None
     if not _alive(pid):
         return None
     if not _is_ours(pid):
