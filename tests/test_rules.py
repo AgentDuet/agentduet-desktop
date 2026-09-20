@@ -550,7 +550,13 @@ def test_answered_call_recording() -> None:
     # guarding the documented failure (an upgrade silently moving an instance to another tier).
     # `_repo` is gone with faster-whisper: ggml is one file per model in a directory we own,
     # so "does the engine know this name" is a membership test rather than a repo lookup.
-    engine_known = "small" in _t._known_models()
+    # NOT `"small" in _known_models()`, which is what this was and which is wrong in the one
+    # case it exists to catch: with pywhispercpp absent the function falls back to
+    # frozenset(TIERS), and TIERS CONTAINS "small" — so the guard reported the engine present on
+    # exactly the dependency-free runner it was written to skip. The four `tiny`/`base` checks
+    # below then ran against the fallback and failed, red on CI and green on every machine with
+    # the speech extra. The fallback IS frozenset(TIERS), so compare against it directly.
+    engine_known = _t._known_models() != frozenset(_t.TIERS)
     if not engine_known:
         print("     (faster-whisper absent — name-resolution checks skipped, legacy map still checked)")
     for model in _t.TIERS:
