@@ -36,8 +36,14 @@ jobs:
       - name: Look at what came down
         run: find artifacts -type f -printf "%s\t%p\n" | sort -rn | head -20
 
-      # The .dmg is what a person double-clicks; the bare binary is what a Linux user wants.
-      # Uploaded under names that say which is which, since the artifact directories do not.
+      # The .dmg is what a person double-clicks; the bare binary is what a Linux user wants;
+      # the .exe is both at once on Windows. Uploaded under names that say which is which, since
+      # the artifact directories do not.
+      #
+      # THE WINDOWS NAME KEEPS ITS `.exe`. The other two are extensionless because their
+      # platforms do not care, and Windows does — a downloaded `agentduet-desktop-windows-x86_64`
+      # with no extension will not run, and the person who downloaded it has no reason to guess
+      # that renaming it would help.
       - name: Attach to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -52,6 +58,12 @@ jobs:
           for f in artifacts/agentduet-desktop-linux-x86_64/*/agentduet-desktop \
                    artifacts/agentduet-desktop-linux-x86_64/agentduet-desktop; do
             cp "$f" "agentduet-desktop-linux-x86_64" && FILES+=("agentduet-desktop-linux-x86_64")
+            break
+          done
+          for f in artifacts/agentduet-desktop-windows-x86_64/*/agentduet-desktop.exe \
+                   artifacts/agentduet-desktop-windows-x86_64/agentduet-desktop.exe; do
+            cp "$f" "agentduet-desktop-windows-x86_64.exe"
+            FILES+=("agentduet-desktop-windows-x86_64.exe")
             break
           done
           [ ${#FILES[@]} -gt 0 ] || { echo "::error::nothing to attach"; exit 1; }
