@@ -201,6 +201,37 @@ PyInstaller output is not reproducible byte-for-byte, so they are different file
   `--onefile` shows TWO processes per launch — a bootloader and its child — which is normal, not
   a duplicate.
 
+## Git and releases — THIS REPO OVERRIDES THE GLOBAL RULES
+
+The global conventions are written for the B3 microservices: several teams, a monthly deploy
+train, and a prod that other people depend on between trains. None of that is true here. This is
+a pre-1.0 product with one maintainer, no train, and releases cut by hand when there is something
+worth shipping. Three of those rules are therefore OFF, and the reasons are not interchangeable —
+do not generalise one into the others.
+
+- **PUSH WITHOUT ASKING.** The global rule gates `git push` on the user typing "push", because
+  there push is what lands work on a shared master that a train will carry to prod. Here the loop
+  is push → CI → download → test, and a Windows or macOS binary CANNOT be built or tested any
+  other way — PyInstaller does not cross-compile. Asking before every push makes a round trip out
+  of a build step. So: commit finished work and push it.
+- **STILL DO THE SQUASH REVIEW.** This is the part that stays. Before pushing, read
+  `git log origin/main..HEAD` and reshape what should be reshaped — the test is unchanged: commits
+  where a later one replaces what an earlier one built are one arc and belong together, and a
+  commit a bisect should land on stays separate. Losing the ceremony around push is not licence
+  to push a mess. Note that an already-pushed commit is NOT squashable, so the review is worth
+  something only while the work is still local.
+- **NO RELEASE-NOTES DRAFT TO MAINTAIN.** There is no per-push obligation to update a GitHub
+  draft. Release notes here are written when a release is actually cut, from what the release
+  contains. (The published notes are owner-facing prose — see *Releasing* above — not a changelog
+  assembled a line at a time.)
+- **NO `DEPLOY_CHECKLIST.md`.** There is no scheduled deploy, so there is no window between merge
+  and deploy for an out-of-band step to get lost in. Anything that must happen around a release is
+  in *Releasing* above, or it is an issue. Do not create the file.
+
+**What does NOT change:** verify what shipped rather than trusting a version label, and test the
+artifact rather than the source — both learned here and both still the whole point. See
+*Releasing — build, VERIFY, then tag*.
+
 ## Invariants — enforced in code, not by convention
 
 **These govern the SECRETARY.** They are about what an agent may say or do on the owner's
