@@ -105,17 +105,34 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         from . import connector
         return bool(owner.setup_pending(deep=True)) or not connector.configured()
 
+    def _asset(path) -> str:
+        """An asset's text, ALWAYS decoded as UTF-8 — never with the machine's locale.
+
+        `Path.read_text()` with no `encoding=` uses `locale.getencoding()`. That is UTF-8 on
+        Linux and macOS, which is why every one of these calls looked fine for a year, and
+        **cp1252 on Windows**, which cannot decode a UTF-8 continuation byte. `web.html` holds
+        72 em-dashes, so the very first Windows build anyone ran reached the wizard (setup.html
+        happens to be cp1252-clean, so it rendered and the build looked healthy) and then 500'd
+        the instant setup completed, with the hub unreachable — issue #5.
+
+        These files are UTF-8 on disk whatever the machine believes, so it is STATED here rather
+        than inferred per call site. One function because seven call sites drift: the eighth page
+        someone adds would be written the way the other seven read, and this bug only shows up on
+        a platform most of us never build on.
+        """
+        return pathlib.Path(path).read_text(encoding="utf-8")
+
     async def index(request):
         if not authed(request):
             return web.Response(status=401, text="bad or missing token")
         page = "setup.html" if needs_setup() else "web.html"
-        return web.Response(text=(HERE / page).read_text(), content_type="text/html")
+        return web.Response(text=_asset(HERE / page), content_type="text/html")
 
     async def setup_page(request):
         """The first-run WIZARD. Reachable later too — it reconciles rather than duplicating."""
         if not authed(request):
             return web.Response(status=401, text="bad or missing token")
-        return web.Response(text=(HERE / "setup.html").read_text(), content_type="text/html")
+        return web.Response(text=_asset(HERE / "setup.html"), content_type="text/html")
 
     async def settings_page(request):
         """Changing things afterwards: direct fields, no steps, no welcome.
@@ -126,7 +143,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         """
         if not authed(request):
             return web.Response(status=401, text="bad or missing token")
-        return web.Response(text=(HERE / "settings.html").read_text(), content_type="text/html")
+        return web.Response(text=_asset(HERE / "settings.html"), content_type="text/html")
 
     async def app_css(request):
         """The house style, shared by every page.
@@ -135,7 +152,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         would mean the browser could not cache it across the pages that link it. The site binds
         loopback only regardless.
         """
-        return web.Response(text=(HERE / "app.css").read_text(), content_type="text/css",
+        return web.Response(text=_asset(HERE / "app.css"), content_type="text/css",
                             headers={"Cache-Control": "no-cache"})
 
     async def icon_font(request):
@@ -174,7 +191,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         """
         if not authed(request):
             return web.Response(text="unauthorised", status=401)
-        return web.Response(text=(HERE / "secretary.html").read_text(), content_type="text/html")
+        return web.Response(text=_asset(HERE / "secretary.html"), content_type="text/html")
 
     async def api_setup_about(request):
         """Who the owner is — WITHOUT needing a model.
@@ -1435,7 +1452,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.Response(status=401, text="bad or missing token")
         if not sim_on:
             return web.Response(status=404, text="simulator disabled (set SECRETARY_SIM=1)")
-        return web.Response(text=(HERE / "sim.html").read_text(), content_type="text/html")
+        return web.Response(text=_asset(HERE / "sim.html"), content_type="text/html")
 
     async def api_sim(request):
         if not authed(request):
@@ -1524,7 +1541,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         if not canvas.holder(request.match_info.get("token", "")):
             return web.Response(status=404, text="not found")
         rec = canvas.holder(request.match_info.get("token", "")) or {}
-        return web.Response(text=canvas.page_for(rec.get("capability", "")).read_text(),
+        return web.Response(text=_asset(canvas.page_for(rec.get("capability", ""))),
                             content_type="text/html")
 
     async def api_canvas_available(request):

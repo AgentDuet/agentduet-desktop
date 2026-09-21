@@ -4625,6 +4625,42 @@ def test_signing_survives_apples_timestamp_service() -> None:
         ok(f"{f} goes through the wrapper", "codesign-retry.sh" in text)
 
 
+def test_assets_are_utf8_whatever_the_machine_thinks() -> None:
+    """The first Windows build ever run reached the wizard and then 500'd on the hub."""
+    print("\n  -- assets decode as UTF-8, not as the locale --")
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    web = (src / "web.py").read_text(encoding="utf-8")
+
+    # THE BUG: Path.read_text() with no encoding uses locale.getencoding() — UTF-8 on Linux and
+    # macOS, cp1252 on Windows. web.html holds 72 em-dashes, so the hub was unreachable on
+    # Windows while setup.html, which happens to be cp1252-clean, rendered fine (#5).
+    ok("the asset reader states its encoding", 'read_text(encoding="utf-8")' in web)
+    served = [l.strip() for l in web.splitlines()
+              if "web.Response(text=" in l and "read_text()" in l]
+    ok("no asset is served through a bare read_text()", not served, str(served[:2]))
+
+    # THE TEST MUST BE ABLE TO FAIL. If every asset were plain ASCII this would pass against the
+    # old code too, so assert the files really do carry characters cp1252 cannot represent.
+    offenders = []
+    for f in sorted(src.glob("*.html")) + [src / "app.css"]:
+        try:
+            f.read_bytes().decode("cp1252")
+        except UnicodeDecodeError:
+            offenders.append(f.name)
+    ok("and some assets genuinely break under cp1252, so this test can fail",
+       {"web.html", "settings.html", "sim.html"} <= set(offenders), str(offenders))
+
+    # EVERY asset must be valid UTF-8 — a page saved in another encoding would now serve mojibake
+    # instead of raising, which is the harder failure to notice.
+    bad = []
+    for f in sorted(src.glob("*.html")) + [src / "app.css"]:
+        try:
+            f.read_bytes().decode("utf-8")
+        except UnicodeDecodeError:
+            bad.append(f.name)
+    ok("every served asset is valid UTF-8 on disk", not bad, str(bad))
+
+
 def test_the_content_can_be_copied_out() -> None:
     """A transcript nobody can select is a transcript nobody can use."""
     print("\n  -- content is selectable, chrome is not --")
@@ -4721,6 +4757,7 @@ def main() -> None:
     test_schedule()
     test_a_daemon_does_not_mistake_itself_for_a_predecessor()
     test_signing_survives_apples_timestamp_service()
+    test_assets_are_utf8_whatever_the_machine_thinks()
     test_capabilities()
     test_capability_disclosure()
     test_policy()
