@@ -502,10 +502,45 @@ def send_if_asked(chat, message: str, viewing: str = "") -> str | None:
         return None
     from . import secretary_tools, tools
     draft = chat.last_draft()
-    # WHOEVER THE DRAFT NAMED, first. `viewing` is the owner pointing at a conversation in the
-    # window; the draft's own recipient is the model repeating back who they asked for; and
-    # sole_unanswered is the last resort, which only answers when exactly one person is waiting.
-    target = viewing or chat.last_draft_for() or sole_unanswered()
+    # WHOEVER THE DRAFT NAMED, first — and `first` is the entire fix. This read
+    # `viewing or chat.last_draft_for() or ...`, so the SCREEN outranked the draft: a reply
+    # composed for Cen was delivered to Stanley because Stanley's thread happened to be the last
+    # one clicked (#4). The comment above it already claimed the draft came first. Only the code
+    # disagreed — and the test guarding the line matched the substring
+    # "chat.last_draft_for() or sole_unanswered()", which the `viewing or` prefix slips straight
+    # past, so it passed while asserting the opposite of the behaviour.
+    #
+    # It also defeated the draft fence rather than merely misrouting: the owner reads a draft
+    # addressed to Cen and approves THAT. The approval is real, the destination was not the one
+    # approved, and the label agreed with the screen rather than the text because it came from
+    # the same place.
+    #
+    # `viewing` stays as a FALLBACK — for a draft written before pinning existed, or one the
+    # model made without naming anyone. sole_unanswered is the last resort and only answers when
+    # exactly one person is waiting.
+    # RESOLVED BEFORE IT IS RANKED, so that one line decides the recipient and nothing downstream
+    # quietly overrides it. The first version of this fix resolved the pin AFTER the line below
+    # and reassigned `target` there — which made the precedence line decorative: flipping it back
+    # to the buggy order changed no behaviour at all, and the test written to catch exactly that
+    # regression passed against the bug. Two places deciding one thing is how this class of
+    # failure survives a test.
+    #
+    # Only when no name was spoken: an explicit recipient outranks the pin, so an ambiguous pin
+    # must not refuse a send the owner said out loud.
+    pinned = ""
+    if not named:
+        pinned = chat.last_draft_for()
+        if pinned:
+            # THE PIN IS MODEL-TYPED TEXT. `draft_reply(asker=...)` stores whatever the model
+            # passed, which is usually the display name it was shown rather than an identifier.
+            # A spoken name is resolved before it is trusted; now that the pin outranks the
+            # screen it clears the same bar, or an ambiguous name would be guessed at on the one
+            # action that cannot be taken back.
+            key, why = secretary_tools.resolve_asker(pinned)
+            if why:
+                return why
+            pinned = key
+    target = pinned or viewing or sole_unanswered()
     if named:
         # AN EXPLICIT NAME MUST RESOLVE TO SOMEONE WE ALREADY KNOW, and this is a guard rather
         # than a convenience. "send to Bob and tell him we close at six" parses as a recipient
