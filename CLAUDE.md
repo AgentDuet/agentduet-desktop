@@ -148,7 +148,29 @@ build works.
 **The order that works:**
 
 1. `gh workflow run build.yml --ref main` — no tag, nothing promised.
-2. **Verify the artifact.** Download it, and on a Mac: apply a quarantine attribute (only a
+2. **Verify the artifact.** THE RULE IS THAT THE ARTIFACT IS VERIFIED BEFORE THE TAG EXISTS —
+   not that whoever tags did the verifying. This work runs across more than one machine, and
+   only a Mac can run `spctl`/`stapler`/`codesign`; a Linux box cannot, and a Windows build can
+   only really be exercised in a VM. Read as "the tagger must do all of it", this step blocks
+   the machine that happens to be holding the release for a reason that has nothing to do with
+   whether the build is good.
+
+   So it splits by platform, and each half is checked wherever it can be:
+
+   - **macOS** — on a Mac, per the checks below.
+   - **Linux** — run the binary anywhere with a Linux box.
+   - **Windows** — run the `.exe`; the VM at `~/VMs/agentduet-win11` exists for this.
+
+   **What must hold, and is the whole point:** every artifact attached was verified by someone,
+   and the RUN ID attached is the run that was verified. Carry the run id with the verification
+   — "the Mac is done" is not enough, because a6's lesson is not that checks are nice but that
+   the thing shipped must be the thing checked. Two different builds of the same commit are not
+   the same file; PyInstaller output is not reproducible byte-for-byte.
+
+   **What must never happen:** tagging with nobody having checked, or attaching a run that
+   nobody checked.
+
+   On a Mac: apply a quarantine attribute (only a
    browser sets one, so `gh run download` alone does not reproduce what a tester gets), then
    `spctl -a -t open --context context:primary-signature -vv` on the **`.app`**,
    `xcrun stapler validate` on the **DMG**, and **start the daemon**. `status` is not
