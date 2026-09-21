@@ -4660,6 +4660,21 @@ def test_assets_are_utf8_whatever_the_machine_thinks() -> None:
             bad.append(f.name)
     ok("every served asset is valid UTF-8 on disk", not bad, str(bad))
 
+    # AND THE WHOLE INTERPRETER, because the seven asset reads were the loud half. cp1252 maps an
+    # em-dash's three bytes to three valid characters, so settings.md and knowledge/secretary.md —
+    # seeded into EVERY install — decoded to mojibake on Windows with no error at all. Fixing call
+    # sites by hand cannot reach ~150 of them, and a file that merely reads wrongly generates no
+    # bug report.
+    spec = (pathlib.Path(__file__).parent.parent / "packaging"
+            / "agentduet-desktop.spec").read_text(encoding="utf-8")
+    ok("the frozen build runs in UTF-8 mode", '("X utf8=1", None, "OPTION")' in spec)
+    # BOTH BRANCHES. macOS builds onedir and everything else onefile, and Windows is the onefile
+    # one — so passing it to the macOS EXE alone would fix the platform that never had the bug.
+    ok("and both the onedir and onefile executables get it",
+       spec.count("python_options") == 3, f"{spec.count('python_options')} mentions, want 3")
+    ok("the seeded templates are the reason, and it is written down where the option is",
+       "settings.md" in spec and "mojibake" in spec.lower())
+
 
 def test_the_content_can_be_copied_out() -> None:
     """A transcript nobody can select is a transcript nobody can use."""

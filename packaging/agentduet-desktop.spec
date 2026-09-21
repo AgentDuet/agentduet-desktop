@@ -249,9 +249,29 @@ pyz = PYZ(a.pure)
 # CONSEQUENCE FOR ANYTHING THAT INVOKES THE BUILD: on macOS `dist-bin/agentduet-desktop` is now a
 # DIRECTORY, and the executable is `dist-bin/agentduet-desktop/agentduet-desktop`. CI's smoke
 # steps and any local script that runs the bare path must branch on the OS.
+# UTF-8 MODE (PEP 540), ON EVERY PLATFORM. Without it Python decodes text with the machine's
+# locale: UTF-8 on Linux and macOS, and cp1252 on Windows. That made the first Windows build
+# unusable — web.html carries 72 em-dashes and cp1252 has no mapping for the curly quote's 0x9d,
+# so the hub returned 500 the moment setup completed (#5).
+#
+# THE CRASH WAS THE MILD HALF. cp1252 maps an em-dash's three UTF-8 bytes to three valid
+# characters, so `settings.md` and `knowledge/secretary.md` — seeded into every install — decoded
+# to mojibake SILENTLY, with no error to report. Fixing the seven asset reads by hand cleared the
+# 500 and left that untouched, and there is no bug report coming for a file that merely reads
+# wrongly.
+#
+# So the default is stated for the whole interpreter rather than argued per call site: roughly 150
+# read_text()/write_text() calls in src/ name no encoding, and each one is this bug waiting for a
+# non-ASCII name, transcript or knowledge file.
+#
+# BLAST RADIUS, deliberately: this changes stdout, stderr and every filesystem-text default too,
+# so on Windows the console, the .env write and daemon.log all become UTF-8. That is the same
+# behaviour Linux and macOS already have by accident, and what Python 3.15 makes the default.
+python_options = [("X utf8=1", None, "OPTION")]
+
 if sys.platform == "darwin":
     exe = EXE(
-        pyz, a.scripts,
+        pyz, a.scripts, python_options,
         exclude_binaries=True,      # the binaries go to COLLECT, not inside the executable
         name="agentduet-desktop",
         console=True,      # it IS a terminal tool: init is an interview, run prints the URL
@@ -294,7 +314,7 @@ if sys.platform == "darwin":
     )
 else:
     exe = EXE(
-        pyz, a.scripts, a.binaries, a.datas,
+        pyz, a.scripts, python_options, a.binaries, a.datas,
         name="agentduet-desktop",
         console=True,
         onefile=True,
