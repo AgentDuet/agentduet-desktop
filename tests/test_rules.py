@@ -2727,7 +2727,18 @@ def test_sending_is_code_on_both_surfaces() -> None:
              / "assistant.py").read_text()
     ok("a draft records who it is for", 'turn["draft_for"] = who' in a_src)
     ok("taken from the call that made it", 'name == "draft_reply"' in a_src)
-    ok("and send prefers it", "chat.last_draft_for() or sole_unanswered()" in a_src)
+    # NOT A SUBSTRING CHECK. This asserted "chat.last_draft_for() or sole_unanswered()" while the
+    # code read "viewing or chat.last_draft_for() or sole_unanswered()" — the prefix slips
+    # straight past `in`, so the test passed for weeks asserting the opposite of the behaviour.
+    # The order is what matters, so the order is what is checked, and the real one is driven in
+    # test_a_draft_goes_to_who_it_was_written_for below.
+    # COMMENTS STRIPPED FIRST. The fix's own comment quotes the old expression to explain what
+    # went wrong, and the bare `in` duly matched the explanation — the very trap being fixed,
+    # reproduced inside the test written to prevent it.
+    a_code = "\n".join(l for l in a_src.splitlines() if not l.strip().startswith("#"))
+    ok("the screen no longer outranks the draft",
+       "viewing or chat.last_draft_for()" not in a_code)
+    ok("and the pin is read first", "target = pinned or viewing or" in a_src)
 
     # "send to <someone>" — the same instruction with the recipient said out loud. Needed
     # because the alternative was a dead end: told "I do not know who to send that to", every
@@ -4676,6 +4687,64 @@ def test_assets_are_utf8_whatever_the_machine_thinks() -> None:
        "settings.md" in spec and "mojibake" in spec.lower())
 
 
+def test_a_draft_goes_to_who_it_was_written_for() -> None:
+    """A reply written for Cen was delivered to Stanley, live, during a demo (#4)."""
+    print("\n  -- the recipient comes from the draft, not the screen --")
+    import unittest.mock as mock
+    from agentduet_desktop import assistant, secretary_tools, tools
+
+    class _Chat:
+        def __init__(self, who):
+            self._who, self.noted = who, None
+        def last_draft(self):
+            return "Hi Cen, we are having Hawaiian pizza for dinner."
+        def last_draft_for(self):
+            return self._who
+        def note_sent(self, q, r, delivered=True):
+            self.noted = (r, delivered)
+
+    sent = []
+    def _reply_to(asker, text, *a, **k):
+        sent.append(asker)
+        return f"Closed: x. Sending to {asker} now."
+
+    plain = mock.patch.object(secretary_tools, "resolve_asker", lambda w: (w, ""))
+    with mock.patch.object(secretary_tools, "reply_to", _reply_to), plain, \
+         mock.patch.object(tools, "_display_for", lambda k: k), \
+         mock.patch.object(assistant, "_known", lambda k: True):
+
+        # THE DEMO, EXACTLY. Drafted for Cen; Stanley's thread happened to be the last one
+        # clicked, so `viewing` was Stanley. It went to Stanley.
+        sent.clear()
+        out = assistant.send_if_asked(_Chat("Cen Lee"), "send it", viewing="Stanley Leong")
+        eq("it goes to who the draft was written for", sent, ["Cen Lee"])
+        ok("and the confirmation names them", "Cen Lee" in (out or ""))
+        ok("not the thread that was open", "Stanley" not in (out or ""))
+
+        # THE FALLBACK IS KEPT. A draft made before pinning existed, or one the model wrote
+        # without naming anyone, still sends to the conversation the owner has open.
+        sent.clear()
+        assistant.send_if_asked(_Chat(""), "send it", viewing="Stanley Leong")
+        eq("with nothing pinned, the open thread is still used", sent, ["Stanley Leong"])
+
+        # AND AN EXPLICIT NAME OUTRANKS BOTH — the owner saying it out loud is the strongest
+        # signal there is.
+        sent.clear()
+        assistant.send_if_asked(_Chat("Cen Lee"), "send it to Pauline", viewing="Stanley Leong")
+        eq("a spoken recipient wins over the pin and the screen", sent, ["Pauline"])
+
+    # AN AMBIGUOUS PIN IS REFUSED, NOT GUESSED. The pin is whatever the model typed into
+    # draft_reply(asker=...), so it gets the same resolution an explicitly named recipient does.
+    sent.clear()
+    with mock.patch.object(secretary_tools, "reply_to", _reply_to), \
+         mock.patch.object(secretary_tools, "resolve_asker",
+                           lambda w: ("", "Two people are called Cen — say which.")), \
+         mock.patch.object(tools, "_display_for", lambda k: k):
+        out = assistant.send_if_asked(_Chat("Cen"), "send it", viewing="Stanley Leong")
+        eq("an ambiguous pin sends nothing at all", sent, [])
+        ok("and says why rather than picking one", "Two people" in (out or ""))
+
+
 def test_the_content_can_be_copied_out() -> None:
     """A transcript nobody can select is a transcript nobody can use."""
     print("\n  -- content is selectable, chrome is not --")
@@ -4773,6 +4842,7 @@ def main() -> None:
     test_a_daemon_does_not_mistake_itself_for_a_predecessor()
     test_signing_survives_apples_timestamp_service()
     test_assets_are_utf8_whatever_the_machine_thinks()
+    test_a_draft_goes_to_who_it_was_written_for()
     test_capabilities()
     test_capability_disclosure()
     test_policy()
