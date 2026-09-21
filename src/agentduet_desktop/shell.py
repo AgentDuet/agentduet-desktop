@@ -46,6 +46,62 @@ _CAPTION_BG = 0x00151212
 _CAPTION_FG = 0x00F9F5F1
 
 
+def _window_handle(window) -> int:
+    """The app window's HWND, by whichever route this pywebview build allows.
+
+    `window.native` IS the top-level form — `winforms.py` sets `pywebview_window.native = self`
+    inside `BrowserForm(WinForms.Form)` — so its `Handle` is the right window. Getting an int
+    OUT of it is the part that is not portable: it is a .NET `IntPtr`, and pywebview's own code
+    reaches for `.ToInt32()` rather than `int()`, which is a strong hint that `int()` does not
+    work on every pythonnet. All three conversions are tried because the failure is invisible —
+    a raised `TypeError` here just means no theming, and the window looks the same as a machine
+    that does not support the attributes at all.
+
+    The fallback asks the OS instead: our own process's visible top-level window whose title is
+    ours. That is what `Process.MainWindowHandle` does, and it is the route that was proven by
+    hand on the VM before any of this was written. It depends on nothing inside pywebview, so it
+    survives a backend change.
+    """
+    import ctypes
+    handle = getattr(getattr(window, "native", None), "Handle", None)
+    if handle is not None:
+        for convert in (lambda h: h.ToInt64(), lambda h: h.ToInt32(), int):
+            try:
+                hwnd = int(convert(handle))
+            except Exception:
+                continue
+            if hwnd:
+                return hwnd
+    return _own_top_level_window()
+
+
+def _own_top_level_window() -> int:
+    """This process's visible top-level window called TITLE, or 0.
+
+    Matched on the title as well as the process, because a one-file build can own more than one
+    top-level window and picking the first would be a coin toss.
+    """
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+    mine = ctypes.windll.kernel32.GetCurrentProcessId()
+    hits: list[int] = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def visit(hwnd, _lparam):
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value == mine and user32.IsWindowVisible(hwnd):
+            buf = ctypes.create_unicode_buffer(256)
+            user32.GetWindowTextW(hwnd, buf, 256)
+            if buf.value == TITLE:
+                hits.append(int(hwnd))
+        return True
+
+    user32.EnumWindows(visit, 0)
+    return hits[0] if hits else 0
+
+
 def _match_caption_to_app(window) -> None:
     """Paint the Windows caption bar to match the app. A no-op on every other platform.
 
@@ -68,26 +124,32 @@ def _match_caption_to_app(window) -> None:
     checked per attribute, not one all-or-nothing block.
 
     `DwmSetWindowAttribute` reports failure by HRESULT and does not raise, so an unsupported
-    attribute returns a non-zero value and is simply skipped. Only the handle lookup can throw.
+    attribute returns a non-zero value and is simply skipped.
 
-    Verified on Windows 11 25H2 against a live window before it was written: all three returned
-    S_OK and the caption sampled #121215, continuous with the strip beneath it.
+    THE ONLY FAILURE THAT MATTERS IS "NO HANDLE", AND IT IS LOGGED AT INFO. The first version of
+    this logged everything at debug, the app logs at INFO, and so a build where the handle could
+    not be read was indistinguishable from one where the theming had worked — the caption was
+    white either way and nothing said why. A cosmetic miss does not deserve a warning, but it
+    does deserve to be visible to whoever is looking for it.
     """
     if not sys.platform.startswith("win"):
         return
     try:
-        import ctypes
-        hwnd = int(getattr(window, "native", None).Handle)      # winforms/EdgeChromium backend
+        hwnd = _window_handle(window)
     except Exception as exc:
-        # Not fatal and not worth a warning: the window works, it is only dressed wrong.
-        logger.debug("no window handle for caption theming (%s)", exc)
+        logger.info("caption theming skipped: no window handle (%s)", exc)
         return
+    if not hwnd:
+        logger.info("caption theming skipped: no window handle found for %r", TITLE)
+        return
+    import ctypes
     for attr, value in ((20, 1), (35, _CAPTION_BG), (36, _CAPTION_FG)):
         try:
             hr = ctypes.windll.dwmapi.DwmSetWindowAttribute(
                 hwnd, attr, ctypes.byref(ctypes.c_int(value)), ctypes.sizeof(ctypes.c_int))
             if hr:
-                logger.debug("caption attribute %d unsupported here (hr=0x%08x)", attr, hr & 0xFFFFFFFF)
+                logger.debug("caption attribute %d unsupported here (hr=0x%08x)",
+                             attr, hr & 0xFFFFFFFF)
         except Exception as exc:
             logger.debug("caption attribute %d failed (%s)", attr, exc)
 
