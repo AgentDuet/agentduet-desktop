@@ -37,6 +37,61 @@ logger = logging.getLogger("dduet.shell")
 TITLE = "AgentDuet Desktop"
 
 
+#: The caption bar colours, as Windows wants them. See `_match_caption_to_app`.
+#:
+#: COLORREF IS 0x00BBGGRR, NOT RGB — the bytes run backwards. `--sidebar` #121215 is 0x00151212
+#: and `--ink` #f1f5f9 is 0x00f9f5f1. Getting this wrong is silent: it sets a real colour, just
+#: not the one you asked for, which is a slow thing to notice on two near-greys.
+_CAPTION_BG = 0x00151212
+_CAPTION_FG = 0x00F9F5F1
+
+
+def _match_caption_to_app(window) -> None:
+    """Paint the Windows caption bar to match the app. A no-op on every other platform.
+
+    THE FRAME IS THE SYSTEM'S, NOT THE PAGE'S. pywebview gives us a standard Win32 window, so
+    Windows paints the caption in the SYSTEM theme while the page paints everything below it in
+    ours. On a light-themed machine that is pure white directly above `--sidebar` #121215, and
+    no amount of CSS can reach it — the document stops at the client area. Measured rather than
+    eyeballed: the caption really was #ffffff and the strip under it #121215.
+
+    Three DWM attributes, each allowed to fail on its own because they arrived in different
+    Windows releases and an older machine must degrade rather than raise:
+
+        20  DWMWA_USE_IMMERSIVE_DARK_MODE  light glyphs and a dark frame   (Win10 2004+)
+        35  DWMWA_CAPTION_COLOR            the exact caption fill          (Win11 22000+)
+        36  DWMWA_TEXT_COLOR               the exact caption text          (Win11 22000+)
+
+    20 alone gets the standard dark caption, which is what Terminal and Edge show and is already
+    a large improvement. 35 and 36 are what make it seamless rather than merely dark, and they
+    are the two that quietly do nothing on Windows 10 — hence separate calls and a return code
+    checked per attribute, not one all-or-nothing block.
+
+    `DwmSetWindowAttribute` reports failure by HRESULT and does not raise, so an unsupported
+    attribute returns a non-zero value and is simply skipped. Only the handle lookup can throw.
+
+    Verified on Windows 11 25H2 against a live window before it was written: all three returned
+    S_OK and the caption sampled #121215, continuous with the strip beneath it.
+    """
+    if not sys.platform.startswith("win"):
+        return
+    try:
+        import ctypes
+        hwnd = int(getattr(window, "native", None).Handle)      # winforms/EdgeChromium backend
+    except Exception as exc:
+        # Not fatal and not worth a warning: the window works, it is only dressed wrong.
+        logger.debug("no window handle for caption theming (%s)", exc)
+        return
+    for attr, value in ((20, 1), (35, _CAPTION_BG), (36, _CAPTION_FG)):
+        try:
+            hr = ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, attr, ctypes.byref(ctypes.c_int(value)), ctypes.sizeof(ctypes.c_int))
+            if hr:
+                logger.debug("caption attribute %d unsupported here (hr=0x%08x)", attr, hr & 0xFFFFFFFF)
+        except Exception as exc:
+            logger.debug("caption attribute %d failed (%s)", attr, exc)
+
+
 def site_url(timeout: float = 20.0) -> str | None:
     """Wait for the daemon to write its token, then build the owner URL.
 
@@ -156,8 +211,15 @@ def run_with_window(start_daemon, want_window: bool = True,
             # copied, and there is no other route to it. app.css already draws the line in the
             # right place — chrome that is furniture stays unselectable, so dragging across the
             # sidebar still does not highlight the navigation. Reported by Stanley 2026-09-09.
-            webview.create_window(TITLE, url, width=1360, height=900, min_size=(900, 600),
-                                  text_select=True)
+            win = webview.create_window(TITLE, url, width=1360, height=900,
+                                        min_size=(900, 600), text_select=True)
+            # ON `shown`, NOT BEFORE `start()`: the handle does not exist until the window is
+            # realised, so theming it any earlier silently themes nothing. Subscribing is itself
+            # guarded — an older pywebview without this event must not cost us the window.
+            try:
+                win.events.shown += lambda: _match_caption_to_app(win)
+            except Exception as exc:
+                logger.debug("cannot hook window shown event (%s)", exc)
             webview.start()
             return 0
         except Exception as exc:
