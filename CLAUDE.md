@@ -93,6 +93,13 @@ an open tab keeps working either way.
 the same binary and both surfaces exist everywhere — this is about which one is DOCUMENTED and
 led with, not which one works.
 
+**REVISED 2026-09-23: Linux is no longer a design target.** Hosting moves to a separate team on a
+separate project, so this product is **macOS and Windows**. Linux keeps building and must not
+break, but it stops shaping decisions. The rest of this section is written for the Linux console
+path and is kept as the record of why `init` looks the way it does: the parity test in
+`tests/test_rules.py` stays, so nothing already covered regresses, but new work is designed for
+the page and need not be built console-first.
+
 The reasoning is who is holding it. Mac is where the testers are today. Windows is where the
 SIs will be, and neither audience wants a terminal. Linux is where someone SELF-HOSTS, on a box
 they reached over ssh, where opening a loopback browser page is the awkward path rather than the
@@ -408,6 +415,13 @@ Break one of these and the secretary is a different product.
 - **`chmod 0600` is a no-op on Windows.** The model key in `$AGENTDUET_HOME/.env` is unprotected there.
 - **Python ≥3.12** — the SDK requires it.
 
+- **THE MODEL LIST IS CHECKED AGAINST HUGGING FACE, NEVER RECALLED.** The catalogue's 2026-08-27
+  refresh installed Qwen3 and Gemma 3 six months after Qwen3.5 and Gemma 4 had shipped — it was
+  written from a model's memory, and the same mistake was nearly made again on 2026-09-23. One
+  request to `https://huggingface.co/api/models?author=<org>&search=<family>` answers it. Take files
+  from the vendor where the vendor publishes them, never by download count: the most-downloaded
+  Qwen3.5 9B GGUF is an uncensored community merge.
+
 - **Assembling the native shell: hand it the `.app`, and sign AFTER assembling.** Two traps,
   each of which produces a launch failure that blames the wrong thing.
   **(1) Not the COLLECT directory.** Since macOS went `--onedir`, PyInstaller's bootloader sees
@@ -544,6 +558,11 @@ derived from no longer exists, it is the only place that says so.
       items and summaries, after the call. That is not what `llm.py` does today, which is drive a
       live agent. The providers and key handling carry over; the feature does not exist.
       Its provider list also differs (OpenAI is offered, Qwen is not).
+      **2026-09-23: the summariser is LOCAL, not a cloud model** — Stanley's call, made while
+      streamlining for consumer machines. Hosted providers are quarantined, so "connect a model"
+      now means the machine's own, picked automatically (see *The local model* below). The
+      provider-list mismatch is moot while that quarantine holds. The summariser itself is still
+      unbuilt.
 - [ ] **Accelerating Whisper — MEASURED 2026-09-09, and the answer is METAL, not Core ML.**
       This item argued a 1.3-1.5x ceiling because Core ML accelerates the ENCODER only. That
       reasoning is sound and it was aimed at the wrong route: `ggml` has a full **Metal**
@@ -711,6 +730,33 @@ binary in a folder"). Ordered; each is worth doing alone.
       pywebview stays as the Windows and fallback path, so `[ui]` stays too, and
       `macos-shell.yml` is now redundant as a compile check — left in place rather than deleted,
       since it costs a couple of minutes and catches a Swift break without a full build.
+
+**The local model — the machine picks it** (decided 2026-09-23; the reasoning, and what would
+reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*)
+
+- [ ] **Pick the model from the machine — fit AND speed, uncapped.** Take only what
+      `machine.verdict()` calls "fits"; Metal's `recommendedMaxWorkingSetSize` is the CEILING, not
+      the budget — Gemma 4 12B fitted inside it on the 16 GB M5 and still swapped 1.9 GB. Speed from
+      bandwidth ÷ ACTIVE-weight bytes: it held for every dense model (94–108 GB/s), and Gemma's
+      E-models read only ~3.1 GB of a 4.8 GB file per token, so file size would wrongly rule out
+      the fastest one. Confirm with one timed generation after download; step down a tier below
+      the floor. No ceiling at 24 GB or 12B — MoE (Gemma 4 26B-A4B) is what makes big machines
+      worth it.
+- [ ] **Quarantine the picker AND the hosted providers** — a flag, code kept. An install on Gemini
+      or Claude falls back to the local pick on upgrade, which the release notes must say. Voice is
+      NOT in scope: it runs its own hosted realtime model and was never chosen in the overlay.
+- [ ] **Developer override** in Settings: a Hugging Face name, `owner/repo` or
+      `owner/repo:QUANT`, through the existing HF-only `models.add_custom`.
+- [ ] **Never size by VRAM on the CPU wheel.** Windows and Linux ship llama-cpp-python from
+      `/whl/cpu`, so `machine.budget_gb()` sizing an NVIDIA machine by its card — and
+      `models._gpu_layers()` logging "GPU" — are both wrong there. Latent while the owner chose;
+      a real bug once the app does. Decide from `llama_supports_gpu_offload()`.
+- [ ] **Refresh the catalogue to Gemma 4 / Qwen3.5, from Hugging Face, and measure each entry's
+      `ram_mb`.** Its last refresh (2026-08-27) was a generation behind, filled from memory.
+- [ ] **Confirm the lead family on QUALITY.** Gemma 4 leads on speed, measured 2026-09-23 on the
+      M5: E4B read a 1.6k-token call and wrote the reply in 8.7 s, against 15.2 s for Qwen3.5 9B and
+      13.8 s for today's Qwen3 8B. Quality is unmeasured — a blind comparison on our own calls can
+      still overturn it. The table is in `docs/design.md`.
 
 **Release blockers**
 

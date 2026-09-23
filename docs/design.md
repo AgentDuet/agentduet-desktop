@@ -664,6 +664,106 @@ actually be enforced.
 
 ---
 
+## The model: local, and the machine picks it (decided 2026-09-23)
+
+**The text model runs on the owner's machine, and the app chooses it.** The owner is not asked.
+The model picker in Settings and the hosted providers behind it (Gemini, Claude and the rest) are
+QUARANTINED — hidden behind a flag, code kept, one flag brings them back. A developer option in
+Settings overrides the pick with a Hugging Face name. Stanley's call, made while streamlining for
+consumer laptops and desktops.
+
+**Why the owner is not asked.** `best_of` already said it: *which weight is an arithmetic question
+about their machine, and it has a right answer we can compute.* A list of 21 models asked an owner
+to do that arithmetic, and to pick a vendor on top of it. For a consumer install neither question
+is theirs.
+
+**The boundary — this is the TEXT model only.** It covers the assistant, summaries, drafting and
+calendar suggestions. **Answering a call is still hosted**: voice runs `qwen3.5-omni-flash-realtime`
+over DashScope on its own key, it was never chosen in the overlay, and a local cascade was rejected
+on latency (see *Voice is weaker than text*). So "local" is a claim about the recorder and the
+owner's assistant, not about the secretary on a call. Do not describe the product as local-only
+without that sentence.
+
+**Quarantine means quarantine** — the rule the Apple STT flag set: *a quarantine an owner can step
+around by typing a setting is not a quarantine.* An install configured for Gemini or Claude falls
+back to the local pick on upgrade, rather than keeping its hosted model. A release that ships this
+says so in its notes, because it changes what an existing tester is running.
+
+### How the pick works — fit AND speed
+
+Capacity decides whether a model fits; memory bandwidth decides how fast it answers. Both are needed.
+
+- **Fit — and Metal's limit is a CEILING, not the budget.** On Apple the GPU may use up to
+  `recommendedMaxWorkingSetSize` (12.7 GB on a 16 GB M5). Gemma 4 12B fitted inside that, and
+  still pushed the machine from 0 to 1.9 GB of swap under ordinary use, with 7.5 GB free when it
+  started: the owner's own apps are the real constraint. `machine.verdict()`'s existing margin
+  separated the two correctly — E4B "fits", 12B "tight" — so the pick takes only "fits", and the
+  Metal figure is the hard stop above that. On a CPU-only machine the budget is two thirds of RAM.
+- **Never size by VRAM on the CPU wheel.** Windows and Linux install llama-cpp-python from the
+  `/whl/cpu` index, which cannot offload. `machine.budget_gb()` and `models._gpu_layers()` still
+  read `nvidia-smi` and size an NVIDIA machine by its card — and `_gpu_layers` logs "GPU" while the
+  engine runs on the CPU. Harmless while the owner chose; wrong the moment the app chooses. Decide
+  from `llama_cpp.llama_supports_gpu_offload()`, never from whether a GPU exists.
+- **Speed: decode ≈ bandwidth ÷ active-weight bytes.** Measured, not assumed: Qwen3 8B decodes at
+  21.7 tok/s from a 4.68 GB file on the M5 — **101.6 GB/s** effective, against 99.9 GB/s from a copy
+  benchmark. It held for every dense model tested (94–108 GB/s). This is why MoE models matter:
+  Gemma 4 26B-A4B and Qwen3.5 35B-A3B fit big machines and decode at the cost of their ~4B active
+  weights.
+- **Gemma's E-models break the file-size estimate, in their favour.** E4B decodes at 32.9 tok/s from
+  a 4.8 GB file — about 3.1 GB read per token, with the rest of the file off the hot path. llama.cpp
+  honours that. So the estimate must use ACTIVE bytes, or it rejects the fastest option as slow.
+- **Reading costs as much as writing.** The same model spent 6.9 s prefilling a 1,542-token call
+  before its first word — as long as generating the whole 150-token reply. Prefill is compute-bound,
+  not bandwidth-bound, so a speed floor that looks only at decode undersells a long transcript.
+- **Where the bandwidth figure comes from.** A CPU copy benchmark is a fair proxy on Windows, where
+  inference runs on the CPU. It is a weak one on Apple, where inference runs on the GPU through a
+  path the CPU cannot see — more threads measured SLOWER there (99.9 → 66.7 GB/s). So it is used to
+  choose, and the choice is confirmed by one real timed generation after download, cached; below the
+  floor, the pick steps down a tier.
+- **No cap.** The tiers continue past 24 GB and 12B, to 64 GB machines and above.
+
+Measured 2026-09-23 on the 16 GB M5 under ordinary use, loaded exactly as the app loads a model
+(Metal, all layers, 8k context), on a 1.6k-token call transcript plus "summarise and draft a reply":
+
+| | Qwen3 8B | Qwen3.5 9B | **Gemma 4 E4B** | Gemma 4 12B |
+|---|---|---|---|---|
+| file | 4.68 GB | 5.29 GB | 4.80 GB | 6.50 GB |
+| decode | 21.7 tok/s | 20.4 | **32.9** | 14.5 |
+| prefill | 225 tok/s | 207 | **388** | 140 |
+| read the call + write the reply | 13.8 s | 15.2 s | **8.7 s** | 21.9 s |
+| peak memory | 5.87 GB | 5.77 GB | **5.55 GB** | 7.47 GB |
+| a Vietnamese paragraph | 88 tokens | 78 | 80 | 80 |
+| swap | — | — | — | 0 → 1.9 GB |
+
+**So a 16 GB Mac gets Gemma 4 E4B.** A tier up is not a free upgrade there: the 12B takes two
+and a half times as long, swaps, and misses a 15 tok/s floor. Qwen3.5 9B is dense and reads all
+5.29 GB per token, which is why it came in slower than the Qwen3 8B it replaces. It does not
+think by default in this build — the same 15 tokens with or without `/no_think`.
+
+**The download stays one explicit click.** The app decides *which*; the owner still decides
+*whether* to pull several gigabytes.
+
+**The developer override** takes llama.cpp's own naming, `owner/repo` or `owner/repo:QUANT`
+(e.g. `unsloth/Qwen3.5-9B-GGUF:Q4_K_M`). With no quant it takes Q4_K_M, or the vendor's QAT file.
+It builds on `models.add_custom`, which only ever fetches from huggingface.co and builds the URL
+itself rather than accepting one.
+
+### Where the model list comes from
+
+**Checked against Hugging Face, never recalled.** The catalogue was refreshed on 2026-08-27 to
+Qwen3 and Gemma 3 — six months after Qwen3.5 (Feb 2026) and Gemma 4 (Mar 2026) shipped. It was
+filled in from a model's memory, and the same mistake was nearly repeated in the conversation that
+produced this section. The HF API answers the question in one request.
+
+**From the vendor where the vendor publishes it; never by download count.** Google publishes Gemma
+4's 4-bit GGUFs itself, quantisation-aware trained, Apache 2.0 and ungated — an app downloading on
+the owner's behalf should take those. The most-downloaded Qwen3.5 9B GGUF is a community
+*uncensored* merge.
+
+**What would reverse this:** the confirming generation coming in below the floor on most real
+installs — local too slow for the median owner machine — or a B3-proxied model (see the
+checklist), which would restore a hosted option as one we operate rather than a vendor picker.
+
 ## Installers
 
 Per-platform, and the first thing a new owner touches.
@@ -764,6 +864,11 @@ here, which is how this document grew a second copy of itself.
    page on macOS and Windows and in the console on Linux, so both are first-class and must cover
    the same ground. Neither may be load-bearing for ANSWERING: the daemon carries on when the
    site fails to bind.
+   **Revised 2026-09-23: Linux is no longer a design target.** Hosting moves to a separate team
+   and project, so this product is macOS and Windows. Linux keeps building and must not break, but
+   it stops shaping decisions — and with it goes the reason the console had to cover everything
+   the page does. The existing parity test stays, so nothing already covered regresses; new work
+   is designed for the page.
 8. **A new install carries calls; answering is opt-in.** The recorder is the product a new owner
    gets, and it needs no model key. Choosing to answer requires one.
 9. **The owner reaches their assistant from their own WhatsApp number** (2026-09-07). A message
@@ -804,15 +909,22 @@ here, which is how this document grew a second copy of itself.
   line: the model calls `search_knowledge` itself, so it can be told to try different words before
   escalating. On TEXT it cannot — `brain` runs the search, so a retry means `brain` reformulating
   the query, which needs a model round trip or embeddings. Open, with evidence.
+- **Gemma 4 leads the pick — on SPEED, which is measured; QUALITY is not.** E4B beat Qwen3.5 9B
+  by ~60% on both reading and writing on the M5, with vendor-published QAT files under Apache 2.0.
+  Nothing yet shows it writes better summaries or drafts. The honest test is a blind comparison on
+  our own calls — the 29 from the language sweep include a Vietnamese one — and it can still
+  overturn this.
 - Map our controls to the OWASP API Security Top 10 item by item? The thesis shows every issue we
   found lands on a named category; a formal mapping is what an audit tier would be sold on.
 
 ## Next
 
-1. **The Windows binary.** Not started, and the two pieces most likely to break are known: the
-   GUI window should work through WebView2 where it has no backend on Linux, and the file mode
-   protecting stored credentials is a no-op there — which OAuth makes sharper, since a rotating
-   refresh token in a plaintext file is a worse story than a static key was.
+1. **The Windows install.** The binary builds, runs and shipped in b2; setup through to the hub is
+   verified on Windows 11. What remains is the install story — issue #7: where the instance
+   directory lives, an installer, and code signing. On file permissions the fear was worse than the
+   fact: under the user profile the credential store inherits an owner-only ACL, so it is
+   protected in practice, but only by LOCATION — a data folder moved outside the profile inherits
+   `Users: read`, silently.
 2. **Conference audio for carried calls.** The bridge works and both people can talk, but the
    platform does not hand the app the media yet, so the recorder — the first thing a new install
    is for — records nothing. Not ours to build.
