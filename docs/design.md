@@ -740,6 +740,51 @@ and a half times as long, swaps, and misses a 15 tok/s floor. Qwen3.5 9B is dens
 5.29 GB per token, which is why it came in slower than the Qwen3 8B it replaces. It does not
 think by default in this build — the same 15 tokens with or without `/no_think`.
 
+### Why Gemma 4 — the record for the announcement
+
+Chosen 2026-09-23, by Stanley, after the measurement above. Written for whoever announces it, so
+the reasons stay attached to their evidence and the limits travel with them.
+
+**The reasons, in the order they matter to an owner:**
+
+1. **It answers faster.** On a typical 16 GB Mac, reading a call and drafting the reply took
+   **8.7 s**, against **13.8 s** for the model it replaces (Qwen3 8B) — about 40% less waiting.
+   Reading alone went from 6.9 s to 4.1 s.
+2. **It is lighter on the machine.** The smallest memory footprint of the four tested (5.6 GB),
+   and it did not push the machine into swap — the owner's other apps keep their memory.
+3. **Vietnamese costs almost nothing extra.** It spends 80 tokens on a Vietnamese paragraph against
+   75 for the same English. The model it replaces spent 88 against 71, a ~24% penalty on every
+   Vietnamese message, paid in time.
+4. **It comes from Google, built to run at this size.** Google publishes the files itself, trained
+   to run compressed to 4-bit rather than compressed afterwards, so less quality is lost to fitting
+   it on a laptop. Not a community repackage.
+5. **It is open and free to ship.** Apache 2.0, no sign-up, no licence to accept — so the app can
+   download it on the owner's behalf.
+6. **One family covers every machine.** Larger Gemma 4 models exist for bigger machines — 12B, a
+   26B mixture-of-experts, 31B — so the app can step up without changing vendor.
+
+**Why not Qwen3.5**, which was the other candidate: at the same tier it was the slowest of the
+four (15.2 s), because it is dense and reads all of its weights for every word; and its files come
+from community packagers. It is still a strong multilingual family and stays the fallback — not
+rejected, not chosen.
+
+**What the announcement must NOT claim:**
+
+- **"Better" or "smarter".** Quality has not been measured. Every reason above is speed, size,
+  efficiency or provenance. A blind comparison on our own calls is still to come, and could change
+  the choice.
+- **"Everything runs on your machine."** The TEXT model does — summaries, drafts, the assistant.
+  **Answering a call is still a hosted model.**
+- **One set of numbers for every machine.** These are one 16 GB M5 Mac under ordinary use. A
+  Windows laptop without a graphics card will be slower; a bigger Mac faster; a 16 GB Mac may get a
+  different model than a 32 GB one — that is the point of picking automatically.
+- **The 26B's speed.** "About as fast as a 4B model" is what its design predicts — only ~4B of it
+  works on each word — and it has not been measured.
+- **That it has shipped.** This is a decision; the automatic pick is designed, not built.
+
+Re-run the numbers with `docs/bench-models.py` before quoting them in anything that will be read
+after another model release.
+
 **The download stays one explicit click.** The app decides *which*; the owner still decides
 *whether* to pull several gigabytes.
 
