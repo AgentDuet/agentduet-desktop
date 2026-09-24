@@ -1279,9 +1279,13 @@ def test_setup_mode() -> None:
     # `init.py` against `settings.html` — the hub, not the installer. `init` offered a local
     # model and setup.html did not, so a tester who set up in the browser was never asked.
     setup_page = (src / "setup.html").read_text()
-    ok("the wizard offers a model too", "setupModel" in setup_page)
-    ok("optional, and it says so", 'value=""' in setup_page and "Choose later" in setup_page)
-    ok("and the fetch is not waited for", "continues in the background" in setup_page)
+    # STATED, NOT ASKED (2026-09-24). The model is the machine's pick; the wizard names it and
+    # fetches it at Finish, and a developer overrides it in Settings. Nothing to choose here.
+    ok("the wizard names the model", '<input type="text" id="setupModel" readonly>' in setup_page)
+    ok("and offers no choice of it", "<select id=\"setupModel\"" not in setup_page
+       and "Choose later" not in setup_page)
+    ok("a refused download does not stop setup",
+       "{action: 'download', name: want}).catch" in setup_page and "if (!m.ok)" not in setup_page)
     # THE FOLDER CHOOSER EXISTS, and the wizard's Browse button claimed for ten days that it
     # did not — telling the owner to set AGENTDUET_HOME, which is not even the right variable
     # (this is `## Recordings`, not the instance directory). A stub that outlived the feature it
@@ -1392,7 +1396,6 @@ def test_setup_mode() -> None:
     ok("only a second fetch of the SAME model is refused", "if model in _jobs:" in mods)
     # A queue nobody can see is the same failure as a silent download.
     ok("the queue is served to the page", '"queued": models.queued()' in webs)
-    ok("and its position is shown", "in line" in settings_page)
     ok("a queued model can be dropped, which needs no job to flag",
        "dropped = [m for m in _waiting" in mods)
     # The sentence has to be true when it is written: create_task only SCHEDULES the fetch, so
@@ -1406,30 +1409,9 @@ def test_setup_mode() -> None:
        "claim_wanted(target)" in webs and "def claim_wanted" in mods)
     ok("and the newest want replaces the older one", "was, _wanted = _wanted, model" in mods)
 
-    ok("each download draws its own bar", 'data-bar="${esc(x.id)}"' in settings_page)
-    ok("and every bar is patched each tick", "querySelectorAll('[data-bar]')" in settings_page)
-    ok("no button is disabled by another model's download",
-       "${busy ? 'disabled' : ''}" not in settings_page.split("modelList")[-1])
-    # A Range request resumes either way; the label was offering to fetch what it would skip.
-    ok("a partly-downloaded model offers Resume", "Resume from" in settings_page)
     ok("and the page is told how much is already there", '"partial":' in webs)
-    # [data-use] belongs to the hosted-provider list, which does a document-wide query on it.
-    ok("model cards use their own attribute", "data-usemodel=" in settings_page)
 
-    # ---- AN ACTION SPEAKS IN ITS OWN CARD --------------------------------------------------
-    #
-    # Every model action wrote to a single #mPull div BELOW the whole list, and say() scrolls its
-    # target into view — so clicking Download on any card threw the panel to the bottom to read
-    # a sentence about the card you had just been looking at. Reported 2026-09-08.
-    ok("a named action records against the model", "cardNote[name] = {ok: r.ok" in settings_page)
-    ok("and no longer shouts at the foot of the list",
-       "say('mPull', r.ok, r.message);\n      loadModels();" not in settings_page)
-    ok("the note renders inside the card", 'class="cmsg"' in settings_page)
-    ok("the card carries a stable hook for it", 'data-card="${esc(x.id)}"' in settings_page)
-    # The list rebuilds every poll, so a note written straight into the DOM would flash away —
-    # and the signature has to notice a new note or send()'s loadModels() takes the fast path.
-    ok("a new note forces a rebuild", "Object.entries(cardNote)" in settings_page)
-    ok("and a note dies when the state moves on", "note.state !== x.state" in settings_page)
+    # ---- say() AND waiting() ---------------------------------------------------------------
     # say() and waiting() both take an element or an id now. waiting() read `$(el).innerHTML`
     # while scrolling `el`, so generalising say() alone left it scrolling a string into a silent
     # catch.
@@ -1454,7 +1436,7 @@ def test_setup_mode() -> None:
     ok("a raising fetch is recorded, not lost",
        'logger.exception("download of %s raised"' in web_src_f)
     ok("the page is served it", '"failed": {m["id"]' in web_src_f)
-    ok("and shows it on the row", "failed[x.id]" in settings_page)
+    ok("and the Model card says it", "pk.failed" in settings_page)
 
     # A STALE .part IS NOT A RUNNING DOWNLOAD. `downloading()` answers "is there a partial
     # file", which is right for "how far along" and wrong for "is a fetch live". Reporting it as
@@ -1596,13 +1578,8 @@ def test_setup_mode() -> None:
     # not, so choosing a Qwen3 left the row hidden until a manual reload.
     ok("the row is driven by what the model can honour",
        "hidden = !cur.thinking_possible" in settings_page)
-    # THE BLOCK, not a byte window. This read the first 700 characters after the handler
-    # started, and adding three comment lines to it pushed the call out of range — a test that
-    # fails when a comment is written is testing the wrong thing.
-    _send = settings_page.split("const send = async (action, name)")[1].split("\n    };")[0]
-    ok("and switching a LOCAL model refreshes the card", "refreshCurrent()" in _send)
 
-    ok("the wizard filters on the shared field", "m.offerable" in setup_page)
+    ok("the wizard shows the machine's pick, as Settings does", "PICK = d.pick" in setup_page)
     ok("which the console's gate agrees with", "can_run(name)" in init_src)
     from agentduet_desktop import models as _models
     listed = {m["id"]: m for m in _models.listing()}
@@ -2600,28 +2577,12 @@ def test_hosted_model_lists() -> None:
 
     page = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
             / "settings.html").read_text()
-    ok("the page says when the list is the built-in fallback", "models_from" in page)
-    # THE INVARIANT IS NOT "no dropdown" — an early version of this test said that, which was
-    # the wrong lesson from the same bug. A list you can SEE is the right control for the common
-    # case; what must also be true is that a name the list does not contain stays reachable.
-    ok("a keyed card shows the models as a list", 'select class="hmodel"' in page)
-    ok("and a name that is not on it can still be typed", 'hmodel typed' in page)
-    ok("reached by an explicit affordance, not by guessing", "data-typed=" in page)
-    # And the ORDER: a key alone is enough to learn the models, so it is asked for alone.
-    ok("a listable provider asks for the key by itself", "data-checkkey=" in page)
-    ok("which the server answers by listing, not by completing", "/api/provider/key" in page)
-    ok("the two model controls cannot be confused", ".typed[data-p=" in page)
-
-    # NOTHING TO DOWNLOAD MEANS NOTHING TO DO. A hosted model already running still offered
-    # "Use this", a button whose only effect is to re-attach what is attached.
-    ok("a running hosted model says so instead of offering an action", "'In use'" in page)
-    ok("and the button knows what is actually attached", "data-current=" in page)
-    ok("kept true as the selection changes", "syncUse" in page)
+    # The hosted cards left the page with the picker (2026-09-24); the listing above stays for
+    # the day the quarantine lifts. What remains on the page is the waiting bar, used by sign-in.
 
     # WAITING IS A STATE. Checking a key is a round trip; the only feedback was a greyed button.
-    ok("a hosted wait shows the same bar a download does", ".bar.wait" in page)
+    ok("a wait shows the same bar a download does", ".bar.wait" in page)
     ok("indeterminate, because the length is genuinely unknown", "@keyframes slide" in page)
-    ok("and it says what it is waiting on", "Checking the key with" in page)
     # A PERCENTAGE WOULD HAVE TO BE INVENTED, and an invented one can be timed with a stopwatch.
     ok("without claiming a percentage", "wait\"><i></i>" in page)
 
@@ -5030,9 +4991,17 @@ def test_the_pages_offer_the_pick_not_a_picker() -> None:
        (pk["model"], pk["name"], pk["dl_mb"], pk["downloaded"]),
        ("gemma-4-e4b", "Gemma 4 E4B", 4916, False))
 
-    # THE PICKER IS HIDDEN, NOT DELETED: one flag brings it back.
-    ok("Settings hides the picker under the quarantine", "$('openModels').hidden = q;" in st)
-    ok("the picker's markup is kept", 'id="openModels"' in st and 'id="ovlModels"' in st)
+    # NO PICKER ON THE PAGE (2026-09-24). The catalogue and the hosted cards are gone from
+    # Settings; the model is the machine's pick, overridden by name in a developer dialog at the
+    # foot of the page. The backend keeps the quarantine flag.
+    ok("Settings has no model picker", 'id="openModels"' not in st and 'id="ovlModels"' not in st
+       and 'id="modelList"' not in st)
+    ok("the override lives in the developer dialog",
+       st.index('id="ovlDev"') < st.index('id="mOverride"') and "Advanced (For developer)" in st)
+    ok("which opens from the foot of the page, after About",
+       st.index('<h2>About</h2>') < st.index('id="openDev"'))
+    ok("and is not in the Advanced card", 'id="mOverride"' not in
+       st[st.index("<h2>Advanced</h2>"):st.index("<h2>About</h2>")])
     ok("and offers one button for the pick", 'id="getPick"' in st and 'id="pickBar"' in st)
 
     # WHY IT WAS PICKED IS NEVER SHOWN. It is a note about our machinery, not an outcome.
@@ -5045,13 +5014,6 @@ def test_the_pages_offer_the_pick_not_a_picker() -> None:
     ok("and refreshCurrent is never put on a timer",
        not re.search(r"set(Timeout|Interval)\(\s*refreshCurrent", st))
 
-    # THE WIZARD OFFERS ONE ANSWER, and "later" stays the default — a multi-gigabyte download is
-    # the owner's to start.
-    ok("the wizard offers only the pick under the quarantine", "d.choice_quarantined" in su
-       and "(pk.model ? [{id: pk.model" in su)
-    ok("and 'Choose later' is still the first option", "Choose later in Settings" in su)
-    ok("it never advises attaching a hosted provider while hosted is quarantined",
-       "if (!offer.length && !d.choice_quarantined)" in su)
 
     # THE STATUS LINE TELLS THE TRUTH ABOUT A LOCAL MODEL. It said "gemma-4-e4b is chosen, but has
     # no key yet" — a local model has no key; it was not downloaded — and it showed the catalogue key.
@@ -5125,16 +5087,13 @@ def test_the_developer_override() -> None:
     # EVERY INPUT CARRIES A TYPE. app.css styles `input[type=text]`, and an input with no type
     # attribute does not match it even though the browser treats it as text — so the override
     # field first rendered as a bare white browser box. Found only by looking at a screenshot.
-    # One pre-existing exception, named so it cannot outlive its field.
-    EXEMPT = {"hmodel": "in the quarantined hosted pane, hidden; not verifiable while hidden"}
+    # The one exception — the hosted pane's model field — left the page with the picker.
     for f in ("settings.html", "setup.html"):
         page = (src / f).read_text()
         untyped = [m.group(0) for m in re.finditer(r"<input\b[^>]*>", page)
                    if not re.search(r"\btype\s*=", m.group(0))]
-        left = [u for u in untyped if not any(k in u for k in EXEMPT)]
-        ok(f"every input on {f} has a type", not left, str([u[:60] for u in left]))
+        ok(f"every input on {f} has a type", not untyped, str([u[:60] for u in untyped]))
     st = (src / "settings.html").read_text()
-    ok("the exemption still names a real field", all(k in st for k in EXEMPT))
 
 
 def test_the_content_can_be_copied_out() -> None:

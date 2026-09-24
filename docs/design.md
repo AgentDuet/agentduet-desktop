@@ -667,10 +667,13 @@ actually be enforced.
 ## The model: local, and the machine picks it (decided 2026-09-23)
 
 **The text model runs on the owner's machine, and the app chooses it.** The owner is not asked.
-The model picker in Settings and the hosted providers behind it (Gemini, Claude and the rest) are
-QUARANTINED — hidden behind a flag, code kept, one flag brings them back. A developer option in
-Settings overrides the pick with a Hugging Face name. Stanley's call, made while streamlining for
-consumer laptops and desktops.
+The hosted providers (Gemini, Claude and the rest) are QUARANTINED in the backend — behind
+`llm.CHOICE_QUARANTINED`, code kept. The picker and hosted cards are GONE from the pages
+(2026-09-24): the wizard names the machine's pick and fetches it at Finish, with nothing to change,
+and Settings shows the model in use. A developer overrides the pick by Hugging Face name in an
+"Advanced (For developer)" dialog opened from the foot of Settings. Lifting the quarantine now
+means rebuilding a page, not flipping a flag — `git log` holds the old one. Stanley's call, made
+while streamlining for consumer laptops and desktops.
 
 **Why the owner is not asked.** `best_of` already said it: *which weight is an arithmetic question
 about their machine, and it has a right answer we can compute.* A list of 21 models asked an owner
