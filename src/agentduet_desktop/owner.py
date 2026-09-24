@@ -290,6 +290,18 @@ def recordings_dir() -> pathlib.Path:
         return default
 
 
+def answer_here() -> bool:
+    """Whether a carried inbound call rings IN THE APP first. Default OFF — pass through.
+
+    Off unless an explicit yes, like `start_at_login`: the useful value changes what happens to
+    every inbound call, so a typo must not switch it on. Only meaningful in carry mode, and only
+    while a hub page is open to ring; otherwise the call passes through exactly as before. Read
+    at use time — the hub's toggle writes it, and the next call must see it without a restart.
+    """
+    first = _first_line(_strip_guidance(_sections().get("Answer here", ""))).strip().lower()
+    return first in ("yes", "on", "true")
+
+
 def record_calls() -> bool:
     """Whether an ANSWERED call is written to disk as audio. Default ON.
 

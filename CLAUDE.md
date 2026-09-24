@@ -1148,6 +1148,26 @@ claim anyway, because it is the one a regulated buyer is actually asking about.
       **The mode collision is still real and still unresolved:** `voice.register()` claims
       `on_incoming_call`, and one connector has one handler, so answering and carrying are
       mutually exclusive per install. That is a MODE, not a preference.
+- [ ] **Answer a carried call IN THE APP — BUILT 2026-09-24, NOT YET RUN ON A REAL CALL.** A
+      hub switch, "Answer calls here" (`## Answer here`, off unless an explicit yes), shown in
+      carry mode only. On, and with a hub page open, an inbound call rings in the page for
+      `phone.RING_SECONDS` (20); answering bridges the caller to the page's microphone and
+      speaker; declining, not answering, or no page open falls through to the ordinary
+      `connect()` pass-through. Outgoing calls (the owner's own line) are never rung here.
+      **No SIP**: it is the SDK's own "Answer a call" sample — `answer()`, the caller's stream
+      in, `send_audio()` out — with a person where the echo loop is. The mic is the page's
+      (`getUserMedia` with echo cancellation), over `/api/phone`, 24 kHz mono PCM16 on the
+      wire. Recorded as the usual caller/callee legs, so merge and transcription are unchanged.
+      **Pass-through is the platform default** (Stanley, 2026-09-24): with no WSS client the
+      backend passes a call through by itself, so the app is only a capture layer and a closed
+      app strands nothing. The multi-destination question to Cedric is ON HOLD because of it.
+      **Unproven, in order of risk:** (1) whether `connect()` still works after a call has rung
+      unanswered in the app for 20s — the fallback path; August proved only that it fails after
+      `answer()`; (2) the microphone inside the SIGNED `.app` — needs the new `audio-input`
+      entitlement, `NSMicrophoneUsageDescription` and the web view's permission handler, all
+      three added, none exercised; (3) echo cancellation in WKWebView on speakers rather than
+      headphones; (4) end-to-end latency. The test drives the whole flow with a fake call and a
+      fake page; only a real call answers the four.
 - [ ] **Consent gates this AND outbound campaigns, and neither has an answer.** Recording has
       jurisdiction-specific rules (PDPA here, two-party-consent regimes elsewhere); an outbound
       campaign needs to know who is on the list and whether they agreed. Same class of question

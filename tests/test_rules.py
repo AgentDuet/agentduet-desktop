@@ -371,7 +371,13 @@ def test_carry_mode() -> None:
     # side — confirmed 2026-08-12). We ran the unsupported one for a day because a doc page
     # showed it, and read the resulting timeouts as a SIP problem. This pins the supported order
     # so the doc cannot quietly win again.
-    ok("carrying does NOT answer before bridging", "await call.answer()" not in csrc_)
+    # SCOPED TO THE PASS-THROUGH, since 2026-09-24: `_answer_here` answers, legitimately — the
+    # owner picked up in the app — and it never connects. What must not exist is the two in
+    # one flow, so each function is checked for the verb it must not use.
+    _handle = csrc_.split("async def handle(")[1].split("\nasync def ")[0].split("\ndef ")[0]
+    _here = csrc_.split("async def _answer_here(")[1].split("\ndef ")[0]
+    ok("carrying does NOT answer before bridging", "await call.answer()" not in _handle)
+    ok("and answering here never bridges onward", "call.connect(" not in _here)
     ok("and asks for spy mode rather than assuming the default", "call.spy()" in csrc_)
 
     # NO AGENT ON THIS PATH. The check is the DECISION surface, not the word "brain": carrying
@@ -5143,6 +5149,174 @@ def test_the_content_can_be_copied_out() -> None:
        "-webkit-font-smoothing:antialiased;user-select:none;}" in css)
 
 
+def test_a_call_can_be_answered_in_the_app() -> None:
+    """Carry mode can ring the hub instead of passing through; answering bridges the page's audio.
+
+    Driven end to end through `carry.handle` with a fake call and a fake page socket, because
+    every part that matters — the decision, the fallback, which page's mic reaches the call, the
+    recording — happens in the order the coroutines interleave, not in any one function.
+    """
+    print("\n  -- a call can be answered in the app --")
+    import asyncio as _aio
+    import types as _t
+    import unittest.mock as mock
+    from aiohttp import WSMsgType
+    from agentduet_desktop import calls, carry, owner, phone
+
+    class _Page:
+        """A hub tab: records what it was sent, and replays what it 'says'."""
+        def __init__(self):
+            self.sent, self.audio, self.inbox = [], [], _aio.Queue()
+        async def send_json(self, obj): self.sent.append(obj)
+        async def send_bytes(self, b): self.audio.append(b)
+        def say(self, **obj):
+            self.inbox.put_nowait(_t.SimpleNamespace(type=WSMsgType.TEXT, json=lambda o=obj: o))
+        def mic(self, b):
+            self.inbox.put_nowait(_t.SimpleNamespace(type=WSMsgType.BINARY, data=b))
+        def close(self): self.inbox.put_nowait(None)
+        def __aiter__(self): return self
+        async def __anext__(self):
+            m = await self.inbox.get()
+            if m is None: raise StopAsyncIteration
+            return m
+
+    class _Party:
+        def __init__(self, n, gone): self.n, self.gone = n, gone
+        async def audio_stream(self):
+            for _ in range(self.n):
+                yield b"\x01\x02" * 480
+                await _aio.sleep(0.01)
+            await self.gone.wait()
+
+    class _Call:
+        def __init__(self):
+            self.id, self.hangup, self.answered, self.connected = "cHere", None, False, False
+            self.sent, self.disconnected, self.gone = [], False, _aio.Event()
+            self.caller, self.callee = _Party(5, self.gone), _Party(0, self.gone)
+        def on_hangup(self, f): self.hangup = f; return f
+        async def answer(self): self.answered = True; return True
+        async def connect(self, **kw):
+            self.connected = True
+            return _t.SimpleNamespace(__bool__=lambda s: True)
+        async def spy(self): return True
+        async def send_audio(self, b): self.sent.append(b)
+        async def disconnect(self):
+            self.disconnected = True; self.gone.set(); self.hangup(None); return True
+
+    def _sm(call):
+        async def process_call(noti): return call
+        async def open_session(sid, sub): return _t.SimpleNamespace(process_call=process_call)
+        return _t.SimpleNamespace(open_session=open_session)
+
+    noti = _t.SimpleNamespace(call_id="cHere", subscriber="s",
+                              participant=_t.SimpleNamespace(value="+6590000000"))
+    home = pathlib.Path(tempfile.mkdtemp(prefix="phone-test-"))
+    rows = []
+
+    async def _run(script, here=True, pages=1):
+        call, tabs = _Call(), [_Page() for _ in range(pages)]
+        served = [_aio.create_task(phone.on_page(t)) for t in tabs]
+        await _aio.sleep(0)
+        task = _aio.create_task(carry.handle(_sm(call), noti))
+        await script(call, tabs)
+        await _aio.wait_for(task, 5)
+        for t in tabs: t.close()
+        await _aio.gather(*served)
+        return call, tabs
+
+    with mock.patch.object(carry, "legs", lambda: home / "legs"), \
+         mock.patch.object(carry, "recordings", lambda: home / "recordings"), \
+         mock.patch.object(calls, "record", lambda *a, **k: rows.append((a, k))), \
+         mock.patch.object(phone, "RING_SECONDS", 0.5):
+        (home / "legs").mkdir(parents=True)
+
+        # ANSWERED: the page answers, its mic reaches the call, the caller reaches the page.
+        async def answer(call, tabs):
+            await _aio.sleep(0.05)
+            eq("the page is told it is ringing", tabs[0].sent[-1]["type"], "ringing")
+            tabs[0].say(type="answer")
+            await _aio.sleep(0.05)
+            for _ in range(3): tabs[0].mic(b"\x05\x06" * 480)
+            await _aio.sleep(0.1)
+            tabs[0].say(type="hangup")
+        with mock.patch.object(owner, "answer_here", lambda: True):
+            call, tabs = _aio.run(_run(answer))
+        ok("the call is answered, not passed through", call.answered and not call.connected)
+        eq("the owner's microphone reaches the call", len(call.sent), 3)
+        ok("the caller reaches the page", len(tabs[0].audio) >= 5, len(tabs[0].audio))
+        ok("hanging up in the app ends the call for the caller", call.disconnected)
+        legs = sorted(p.name for p in (home / "legs").glob("*cHere*.wav"))
+        eq("both sides are recorded as the usual two legs", legs,
+           [n for n in legs if n.endswith(("-caller.wav", "-callee.wav"))])
+        eq("two legs", len(legs), 2)
+        ok("and the index says where it was taken", rows[-1][1].get("note") == "answered in the app")
+        eq("every page is told it is over", tabs[0].sent[-1]["type"], "idle")
+
+        # NOT ANSWERED: it rings out in the app and passes through, as before.
+        async def ignore(call, tabs): await _aio.sleep(0.8); call.gone.set(); call.hangup(None)
+        with mock.patch.object(owner, "answer_here", lambda: True):
+            call, _ = _aio.run(_run(ignore))
+        ok("an unanswered ring passes through", call.connected and not call.answered)
+
+        # DECLINED: straight to pass-through, without waiting out the ring.
+        async def decline(call, tabs):
+            await _aio.sleep(0.05); tabs[0].say(type="decline")
+            await _aio.sleep(0.1); call.gone.set(); call.hangup(None)
+        with mock.patch.object(owner, "answer_here", lambda: True):
+            call, _ = _aio.run(_run(decline))
+        ok("a declined call passes through", call.connected and not call.answered)
+
+        # OFF, or no page open: it never rings here at all.
+        async def nothing(call, tabs):
+            await _aio.sleep(0.05); call.gone.set(); call.hangup(None)
+        with mock.patch.object(owner, "answer_here", lambda: False):
+            call, tabs = _aio.run(_run(nothing))
+        ok("with the toggle off the call passes through", call.connected and not call.answered)
+        ok("and no page rings", all(m["type"] != "ringing" for m in tabs[0].sent))
+        with mock.patch.object(owner, "answer_here", lambda: True):
+            call, _ = _aio.run(_run(nothing, pages=0))
+        ok("with no page open the call passes through", call.connected and not call.answered)
+
+        # A SECOND TAB IS NOT HEARD. Only the page that answered may speak into the call.
+        async def two(call, tabs):
+            await _aio.sleep(0.05); tabs[0].say(type="answer"); await _aio.sleep(0.05)
+            tabs[1].mic(b"\x07\x08" * 480); tabs[0].mic(b"\x05\x06" * 480)
+            await _aio.sleep(0.1); tabs[0].say(type="hangup")
+        with mock.patch.object(owner, "answer_here", lambda: True):
+            call, _ = _aio.run(_run(two, pages=2))
+        eq("only the answering tab's microphone reaches the call", call.sent, [b"\x05\x06" * 480])
+
+        # THE ANSWERING TAB CLOSING ENDS THE CALL — a caller must not be left talking to nobody.
+        async def closes(call, tabs):
+            await _aio.sleep(0.05); tabs[0].say(type="answer"); await _aio.sleep(0.05)
+            tabs[0].close()
+        with mock.patch.object(owner, "answer_here", lambda: True):
+            call, _ = _aio.run(_run(closes))
+        ok("closing the answering tab hangs up", call.disconnected)
+
+    # THE SETTING is off unless an explicit yes, and the hub owns the switch.
+    ok("answer_here is settable", "answer_here" in __import__("agentduet_desktop.tools",
+                                                             fromlist=["x"]).SETTING_FIELDS)
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    ok("only an explicit yes turns it on", 'first in ("yes", "on", "true")' in
+       (src / "owner.py").read_text().split("def answer_here")[1][:900])
+    hub = (src / "web.html").read_text()
+    ok("the hub has the switch, shown in carry mode only", 'id="hereOn"' in hub
+       and "$('hereRow').hidden = !ph.carry;" in hub
+       and "const ph = D.answer_here || {};" in hub)
+    ok("the microphone asks for echo cancellation", "echoCancellation: true" in hub)
+    ok("a microphone that fails declines rather than leaving the caller ringing",
+       "ws.send(JSON.stringify({type: 'decline'}));" in hub.split("$('callAnswer').onclick")[1][:900])
+    # THE MAC NEEDS THREE THINGS, and missing any one fails silently or kills the app.
+    root = src.parent.parent
+    ok("the entitlement is granted", "com.apple.security.device.audio-input" in
+       (root / "packaging" / "entitlements.plist").read_text().split("<dict>")[1])
+    ok("Info.plist says why", "NSMicrophoneUsageDescription" in
+       (root / "packaging" / "make-macos-app.sh").read_text())
+    ok("the web view answers the permission request", "requestMediaCapturePermissionFor" in
+       (root / "macos" / "Sources" / "AgentDuetShell" / "AppDelegate.swift").read_text())
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -5213,6 +5387,7 @@ def main() -> None:
     test_one_place_decides_the_model_and_hosted_is_quarantined()
     test_the_pages_offer_the_pick_not_a_picker()
     test_the_developer_override()
+    test_a_call_can_be_answered_in_the_app()
     test_capabilities()
     test_capability_disclosure()
     test_policy()

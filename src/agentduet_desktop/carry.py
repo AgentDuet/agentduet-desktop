@@ -37,7 +37,7 @@ from datetime import datetime
 
 from agentduet import OutgoingCallNotification
 
-from . import callmode, paths
+from . import callmode, paths, phone
 
 logger = logging.getLogger("secretary")
 
@@ -373,6 +373,23 @@ async def handle(sm, noti) -> None:
                     time.time() - taken)
         done.set()
 
+    # RING HERE FIRST, when the owner asked for it and a page is open to ring. Inbound only: an
+    # outgoing call is the owner's own line, already in their hand. Anything but an answer falls
+    # through to the ordinary pass-through below, so turning this on can never cost a call that
+    # would otherwise have reached the destination.
+    from . import owner as _owner          # at use time, like every setting read here
+    if not outgoing and _owner.answer_here() and phone.present():
+        decision = await phone.ring(str(call_id), other, done)
+        if decision == "answer":
+            await _answer_here(call, call_id, other, done)
+            return
+        if decision == "gone":
+            logger.info("call %s %s: the caller hung up while it rang in the app", call_id, who)
+            from . import calls as _calls
+            _calls.record(call_id, other, "carried", note="missed in the app")
+            return
+        logger.info("call %s %s: %s in the app — passing it through", call_id, who, decision)
+
     # RECORDERS FIRST, THEN CONNECT. `connect()` rings the destination and returns once it is
     # bridged, so a recorder started afterwards misses everything said before the far end picks
     # up — including the caller's opening words, which on an inbound call is often the whole
@@ -490,6 +507,38 @@ async def handle(sm, noti) -> None:
         # `transcribe` picks it up within a poll. That keeps the call path free of a network
         # round trip it must not depend on, survives a restart mid-transcription, and means a
         # provider being down costs a text file rather than anything on the call.
+
+
+async def _answer_here(call, call_id: str, other: str, done: asyncio.Event) -> None:
+    """The owner picked up in the app: answer, bridge to the page, record both sides.
+
+    The SDK's own "Answer a call" shape — `answer()`, the caller's stream in, `send_audio()` out
+    — with the owner's microphone where its echo loop is. Recorded as the same caller/callee
+    legs a carried call writes, so the merge and transcription are unchanged: the caller from
+    their stream, the owner from the microphone as it is sent.
+    """
+    from . import calls as _calls
+    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    far_rec, near_rec = phone._QueueParty(), phone._QueueParty()
+    recorders = [asyncio.create_task(_record_leg(far_rec, stamp, str(call.id), "caller")),
+                 asyncio.create_task(_record_leg(near_rec, stamp, str(call.id), "callee"))]
+    try:
+        if not await call.answer():
+            logger.error("call %s from %s: answer() failed after it was picked up in the app",
+                         call_id, other)
+            return
+        logger.info("call %s from %s: answered in the app, recording both sides", call_id, other)
+        await phone.bridge(call, done, far_rec, near_rec)
+    except Exception as exc:
+        logger.error("call %s from %s: the in-app call failed (%s: %s)",
+                     call_id, other, type(exc).__name__, exc)
+    finally:
+        await phone.finish()
+        for t in recorders:
+            t.cancel()
+        await asyncio.gather(*recorders, return_exceptions=True)
+        _calls.record(call_id, other, "carried", note="answered in the app", recordings=sorted(
+            str(p.name) for p in legs().glob(f"*{call_id}*.wav")))
 
 
 def register(sm) -> bool:

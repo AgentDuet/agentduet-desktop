@@ -34,11 +34,13 @@ allow-dyld-environment-variables
   libraries. The hardened runtime strips those by default, and the two-process onefile launch
   described in CLAUDE.md is exactly the shape that depends on them.
 
-NOT INCLUDED, on purpose:
+device.audio-input
+  The in-app phone (phone.py) answers a call through the page's microphone. Under the hardened
+  runtime the microphone is refused without this — silently: getUserMedia fails and nothing
+  says why. Paired with NSMicrophoneUsageDescription in Info.plist, without which the app is
+  killed on first use.
 
-  device.audio-input — the agent's audio arrives over the network from the AgentDuet WSS
-  connection. Nothing opens a local microphone. Add it only if that changes, and note it needs
-  an NSMicrophoneUsageDescription in Info.plist too or the app is killed on first use.
+NOT INCLUDED, on purpose:
 
   network.* — those are sandbox keys and mean nothing here. The loopback site on 8899 and the
   outbound WSS connection both work under the hardened runtime with no entitlement.
@@ -52,6 +54,8 @@ NOT INCLUDED, on purpose:
 	<key>com.apple.security.cs.disable-library-validation</key>
 	<true/>
 	<key>com.apple.security.cs.allow-dyld-environment-variables</key>
+	<true/>
+	<key>com.apple.security.device.audio-input</key>
 	<true/>
 </dict>
 </plist>

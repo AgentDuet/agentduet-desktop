@@ -150,6 +150,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
        item, nothing to click. Which is why the PyInstaller bundle in
        packaging/agentduet-desktop.spec keeps this FALSE — pywebview has no status item. -->
   <key>LSUIElement</key><true/>
+  <!-- THE IN-APP PHONE answers a call through the page's microphone. Without this string
+       macOS KILLS the app the first time anything asks for the microphone. -->
+  <key>NSMicrophoneUsageDescription</key><string>AgentDuet uses the microphone when you answer a call in the app.</string>
   <!-- The window loads http://127.0.0.1. Loopback is the ONE exemption ATS grants by name;
        without this key a debug build can still be refused, and NSAllowsArbitraryLoads would
        buy the same thing by switching the policy off everywhere. -->
