@@ -669,7 +669,8 @@ actually be enforced.
 **The text model runs on the owner's machine, and the app chooses it.** The owner is not asked.
 The hosted providers (Gemini, Claude and the rest) are QUARANTINED in the backend — behind
 `llm.CHOICE_QUARANTINED`, code kept. The picker and hosted cards are GONE from the pages
-(2026-09-24): the wizard names the machine's pick and fetches it at Finish, with nothing to change,
+(2026-09-24): the wizard names the machine's pick and starts fetching it as soon as that step is on
+screen, with nothing to change — the hub's Assistant tab shows the progress,
 and Settings shows the model in use. A developer overrides the pick by Hugging Face name in an
 "Advanced (For developer)" dialog opened from the foot of Settings. Lifting the quarantine now
 means rebuilding a page, not flipping a flag — `git log` holds the old one. Stanley's call, made

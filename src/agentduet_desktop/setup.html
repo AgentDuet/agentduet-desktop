@@ -263,6 +263,7 @@
   }
   function show(v){
     ['login', 'setup'].forEach(k => $('v-' + k).classList.toggle('on', k === v));
+    startPick();
   }
 
   // Everything sign-on will supply — connector, name, number — is configured in Settings,
@@ -384,15 +385,30 @@
   }).catch(() => {});
 
   // THE MACHINE'S PICK, from the same builder Settings uses, so the two pages cannot name
-  // different models. Held for Finish, which fetches it if it is not already here.
-  let PICK = {};
+  // different models.
+  let PICK = {}, STARTED = false;
   fetch(`/api/models?t=${T}`).then(r => r.json()).then(d => {
     PICK = d.pick || {};
     if (!PICK.model) return;
     $('setupModel').value = PICK.downloaded
       ? PICK.name : `${PICK.name} \u00b7 ${(PICK.dl_mb / 1024).toFixed(1)} GB`;
     $('modelField').hidden = false;
+    startPick();
   }).catch(() => {});
+
+  // THE DOWNLOAD STARTS WHEN THIS STEP IS ON SCREEN, not at Finish — 4.8 GB is minutes, and the
+  // owner is still choosing a folder. Two triggers because either can arrive first: the step
+  // being shown, and the pick being fetched. It runs in the daemon, not the page, so leaving
+  // setup does not stop it, and the hub's Assistant tab shows its progress. A refusal (no
+  // network, no room) is not the owner's problem to solve here: Finish tries once more, and
+  // Settings' Model card offers it after that.
+  async function startPick(){
+    if (STARTED || !PICK.model || PICK.downloaded || PICK.job) return;
+    if (!$('v-setup').classList.contains('on')) return;
+    STARTED = true;
+    const r = await post('/api/models', {action: 'download', name: PICK.model});
+    if (!r.ok) STARTED = false;
+  }
 
   // THE CHOOSER HAS EXISTED SINCE 2026-08-27 and this button said it did not, telling the
   // owner to set AGENTDUET_HOME — which is not even the right variable: this is the RECORDINGS
@@ -424,12 +440,9 @@
     // — there it is a daemon restart fired from a Settings button.
     if (DONE) { location.href = '/?t=' + T; return; }
     $('doDone').disabled = true;
-    const want = PICK.model && !PICK.downloaded ? PICK.model : '';
-    // Started, not waited for. A multi-gigabyte fetch must not hold the installer open, and
-    // the server's download is a detached child the model is used from when it lands. A
-    // refusal (no network, no room) does NOT stop setup: the owner did not ask for this, so it
-    // must not be what they are stuck on, and Settings' Model card offers it again.
-    if (want) await post('/api/models', {action: 'download', name: want}).catch(() => {});
+    // Normally already running. If the first attempt was refused, one more try — and a refusal
+    // still does not stop setup.
+    await startPick();
     // BEFORE HANDOVER, because handover stands this process down and promotes the installed
     // copy — anything posted after it is a request to a daemon that is going away.
     await post('/api/setup/login-item', {want: $('atLogin').checked});

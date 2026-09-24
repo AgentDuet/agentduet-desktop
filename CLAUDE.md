@@ -742,9 +742,14 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       downloaded" rather than the old "gemma-4-e4b is chosen, but has no key yet" — and one button,
       "Download Gemma 4 E4B · 4.8 GB", while the pick is not yet here. During the download the
       button is disabled and the house-style bar reports progress; the pick switches in on its own
-      when it lands. **The wizard NAMES the pick and fetches it at Finish** (2026-09-24) — no
-      choice, no "Choose later"; a refused download does not stop setup, and Settings offers it
-      again.
+      when it lands. **The wizard NAMES the pick and starts fetching it the moment its setup
+      step is on screen** (2026-09-24) — no choice, no "Choose later". It runs in the daemon, so
+      it outlives the wizard, and the hub's Assistant tab shows a progress bar until it lands. A
+      refusal does not stop setup: Finish retries once, then Settings offers it.
+      **One path it does NOT survive: the console install's handover.** With a `~/.local/bin`
+      symlink, Finish SIGTERMs this process for the installed copy, the fetch dies with it, and
+      nothing restarts it — the `.part` stays, so Settings' button resumes it. A Mac `.app` has
+      no such symlink and never hands over, so this is Linux-only today.
       **Progress has its own poll**, because `refreshCurrent()` resets the form fields and polling
       it would overwrite what the owner is typing. Nothing on either page says WHY the model was
       picked.

@@ -1284,8 +1284,22 @@ def test_setup_mode() -> None:
     ok("the wizard names the model", '<input type="text" id="setupModel" readonly>' in setup_page)
     ok("and offers no choice of it", "<select id=\"setupModel\"" not in setup_page
        and "Choose later" not in setup_page)
-    ok("a refused download does not stop setup",
-       "{action: 'download', name: want}).catch" in setup_page and "if (!m.ok)" not in setup_page)
+    # THE DOWNLOAD STARTS WITH THE STEP, not at Finish: 4.8 GB is minutes, and the owner is still
+    # choosing a folder. Either trigger can arrive first, so both call it, and it runs once.
+    show_fn = setup_page.split("function show(v){")[1].split("\n  }")[0]
+    ok("showing the step starts the download", "startPick();" in show_fn)
+    ok("and so does the pick arriving", "$('modelField').hidden = false;\n    startPick();" in setup_page)
+    ok("only while the step is on screen", "$('v-setup').classList.contains('on')" in setup_page)
+    ok("and only once", "if (STARTED || !PICK.model || PICK.downloaded || PICK.job) return;" in setup_page)
+    ok("a refused download does not stop setup", "await startPick();" in setup_page
+       and "if (!m.ok)" not in setup_page)
+    # AND THE HUB SHOWS IT, since it usually outlasts setup. In the Assistant tab only.
+    hub = (src / "web.html").read_text()
+    ok("the hub is served the pick's download", '"pick": _pick_payload()' in (src / "web.py").read_text())
+    ok("the Assistant tab has a progress bar", 'id="aDl"' in hub and "function drawDownload" in hub)
+    ok("shown only in the Assistant tab, while downloading",
+       "PICKED === ASSISTANT && !!job && !pk.downloaded" in hub)
+    ok("and the composer no longer says to attach a model", "Attach a model in Settings" not in hub)
     # THE FOLDER CHOOSER EXISTS, and the wizard's Browse button claimed for ten days that it
     # did not — telling the owner to set AGENTDUET_HOME, which is not even the right variable
     # (this is `## Recordings`, not the instance directory). A stub that outlived the feature it
