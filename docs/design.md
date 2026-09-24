@@ -843,7 +843,8 @@ rejected, not chosen.
   different model than a 32 GB one — that is the point of picking automatically.
 - **The 26B's speed.** "About as fast as a 4B model" is what its design predicts — only ~4B of it
   works on each word — and it has not been measured.
-- **That it has shipped.** This is a decision; the automatic pick is designed, not built.
+- **That it has been measured on quality, or on any Mac but one.** It SHIPPED in 0.1.0b3
+  (2026-09-24); this line said "designed, not built" until then.
 
 Re-run the numbers with `docs/bench-models.py` before quoting them in anything that will be read
 after another model release.
