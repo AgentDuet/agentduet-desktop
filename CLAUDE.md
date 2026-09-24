@@ -81,6 +81,16 @@ Instance data lives in **`$AGENTDUET_HOME`** (default `~/.agentduet-desktop` —
 Build: `uv build --wheel` · `pyinstaller --distpath dist-bin packaging/agentduet-desktop.spec`
 (needs a build venv with the working SDK — see Blockers). ~35s, output `dist-bin/agentduet-desktop`.
 
+**On a Mac, test in the NATIVE WINDOW: `./dev-app.sh`** (2026-09-24, Stanley's call — stop using
+Chrome). It builds the real Swift shell into `dist-dev/AgentDuet Dev.app` around a daemon that is a
+two-line script running `src/`, signed ad hoc WITH the hardened runtime and the real entitlements.
+So the window, menu bar and macOS permissions are the shipped ones, and a page change is still
+only Cmd-R. A browser proves none of what the signed app must earn — above all the microphone.
+Its own bundle id (`.dev`) keeps its permissions apart from the installed app's. It quits the
+installed app and any daemon first, because the shell ATTACHES to whatever already answers. It
+supplies `AGENTDUET_OAUTH_URL` (the public production address) because a signed-in install cannot
+connect without it and the product still ships it unset.
+
 **Don't rebuild to iterate.** `./dev.sh` restarts from source in ~3s against the same
 `$AGENTDUET_HOME`, and the pages (`web.html`, `settings.html`, `setup.html`, `sim.html`) are
 `read_text()` **per request** — an HTML change needs only a browser refresh, no restart and no
