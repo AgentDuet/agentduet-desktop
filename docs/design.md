@@ -721,6 +721,30 @@ Capacity decides whether a model fits; memory bandwidth decides how fast it answ
   choose, and the choice is confirmed by one real timed generation after download, cached; below the
   floor, the pick steps down a tier.
 - **No cap.** The tiers continue past 24 GB and 12B, to 64 GB machines and above.
+- **The Metal ceiling never binds with this budget**, so nothing needs to query it: two thirds of
+  RAM is always below Metal's working-set limit (0.66 against ~0.79 of RAM on the M5).
+
+What the rule picks (`models.pick()`), across machines, with the bandwidths assumed:
+
+| RAM | Apple (120 GB/s; 400 from 48 GB) | CPU-only, 40 GB/s |
+|---|---|---|
+| 16 GB | E4B | E2B |
+| 24 GB | 12B | E2B |
+| 32 GB | 12B | E2B |
+| 48 GB | 26B MoE | 26B MoE |
+| 64 GB+ | 31B | 26B MoE |
+
+**Two things in that table rest on what has not been measured.** The CPU column's jump from E2B
+straight to the 26B at 48 GB depends entirely on the 26B's active bytes, which are an estimate (4B
+of 26B) because it cannot be run on a 16 GB machine; if it reads more per word than that, those
+machines get a model slower than predicted. And the CPU column's E2B at 16–32 GB comes from a
+single-threaded probe that likely under-reads an x86 laptop, where llama.cpp uses every core. Both
+err toward a smaller or faster model. The confirmation after download is what corrects them, and
+it is not built.
+
+**The speed floor is a product call, not arithmetic.** At 40 GB/s E4B predicts ~13 tok/s, just
+under the 15 floor, so a CPU-only laptop gets E2B at ~20. Whether an owner would rather wait longer
+for a better model is a judgement about the product; `SPEED_FLOOR_TPS` is where it lives.
 
 Measured 2026-09-23 on the 16 GB M5 under ordinary use, loaded exactly as the app loads a model
 (Metal, all layers, 8k context), on a 1.6k-token call transcript plus "summarise and draft a reply":

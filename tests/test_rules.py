@@ -4829,6 +4829,71 @@ def test_the_catalogue_carries_gemma_4_and_says_what_was_measured() -> None:
             eq(f"a {key} install still runs locally", llm.provider(key), "local")
 
 
+def test_the_machine_picks_the_model() -> None:
+    """The app chooses; the owner is not asked. Checked across machines, not just this one."""
+    print("\n  -- the machine picks the model --")
+    import contextlib
+    import unittest.mock as mock
+    from agentduet_desktop import machine, models
+
+    @contextlib.contextmanager
+    def box(ram_gb, bw, kind="apple", vram=0.0, offload=True):
+        with mock.patch.object(machine, "total_ram_gb", return_value=ram_gb), \
+             mock.patch.object(machine, "bandwidth_gbps", return_value=bw), \
+             mock.patch.object(machine, "gpu", return_value={"kind": kind, "name": "", "vram_gb": vram}), \
+             mock.patch.object(machine, "can_offload", return_value=offload):
+            yield models.pick()
+
+    # THE LADDER is one family, smallest first, and every rung is in the catalogue from Google.
+    ok("every rung is in the catalogue", all(k in models.CATALOGUE for k in models.LADDER))
+    ok("smallest first", [models.resident_mb(k) for k in models.LADDER] ==
+       sorted(models.resident_mb(k) for k in models.LADDER))
+
+    # THE MEASURED ANSWER. A 16 GB Mac at the bandwidth this one measured gets E4B — what the
+    # benchmark found by running all four — and NOT the 12B, which is "tight" there and swapped.
+    with box(16, 102.2) as p:
+        eq("a 16 GB Mac gets Gemma 4 E4B", p["model"], "gemma-4-e4b")
+        ok("because it fits comfortably", p["fit"] == "fits")
+        ok("and the prediction matches the measurement within a few percent",
+           abs(p["predicted_tps"] - 32.9) / 32.9 < 0.05, str(p["predicted_tps"]))
+
+    # UNCAPPED. Bigger machines climb the ladder instead of stopping at 24 GB / 12B.
+    with box(24, 120) as p:
+        eq("24 GB steps up to 12B", p["model"], "gemma-4-12b")
+    with box(64, 400) as p:
+        eq("64 GB with high bandwidth reaches the 31B", p["model"], "gemma-4-31b")
+
+    # WHY BANDWIDTH IS IN THE RULE. The same 64 GB on a CPU with a fraction of the bandwidth can
+    # HOLD the 31B and would decode it at ~2 tok/s — so it gets the mixture of experts, which
+    # reads ~4B of weights per word. Fit alone would have chosen the slow one.
+    with box(64, 40, kind="cpu", offload=False) as p:
+        eq("64 GB on a slow CPU gets the 26B MoE, not the dense 31B", p["model"], "gemma-4-26b-a4b")
+
+    # STEP 1 AND STEP 3 TOGETHER: an NVIDIA card on the shipped Windows build. The card must not
+    # size the pick, or a 16 GB laptop would be handed a model for 24 GB of VRAM nothing can use.
+    with box(16, 102.2, kind="cuda", vram=24.0, offload=False) as p:
+        eq("a card the CPU-only build cannot use changes nothing", p["model"], "gemma-4-e4b")
+
+    # DEGRADING, in the order an owner would want.
+    with box(16, 25, kind="cpu", offload=False) as p:
+        eq("when nothing is fast enough, the quickest that fits", p["model"], "gemma-4-e2b")
+        ok("and it says so", "none answers as fast" in p["why"], p["why"])
+    with box(8, 68) as p:
+        eq("8 GB gets the smallest, tight", p["model"], "gemma-4-e2b")
+        ok("and says it will be tight", p["fit"] == "tight" and "tight" in p["why"], p["why"])
+    with box(4, 50) as p:
+        eq("4 GB gets no local model", p["model"], "")
+        ok("and a reason rather than an error", "not have enough memory" in p["why"], p["why"])
+
+    # UNKNOWNS NEVER DEMOTE AND NEVER RAISE.
+    with box(0, 102.2) as p:
+        eq("unreadable memory falls back to the smallest", p["model"], "gemma-4-e2b")
+    with box(16, 0.0) as p:
+        eq("unmeasurable bandwidth counts as fast, not slow", p["model"], "gemma-4-e4b")
+
+    ok("the probe answers a plain number", isinstance(machine.bandwidth_gbps(), float))
+
+
 def test_the_content_can_be_copied_out() -> None:
     """A transcript nobody can select is a transcript nobody can use."""
     print("\n  -- content is selectable, chrome is not --")
@@ -4928,6 +4993,7 @@ def main() -> None:
     test_assets_are_utf8_whatever_the_machine_thinks()
     test_a_draft_goes_to_who_it_was_written_for()
     test_the_catalogue_carries_gemma_4_and_says_what_was_measured()
+    test_the_machine_picks_the_model()
     test_capabilities()
     test_capability_disclosure()
     test_policy()

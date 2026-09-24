@@ -737,6 +737,18 @@ binary in a folder"). Ordered; each is worth doing alone.
 **The local model — the machine picks it** (decided 2026-09-23; the reasoning, and what would
 reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*)
 
+- [ ] **Wire the pick into the app.** `models.pick()` is BUILT AND TESTED (2026-09-24) and
+      NOTHING CALLS IT YET — so an install still runs whatever `SECRETARY_MODEL` says. It picks
+      Gemma 4 E4B on the 16 GB M5, predicting 33.1 tok/s against 32.9 measured, and the test fakes
+      eight machines. The rule and its table are in `docs/design.md`.
+- [ ] **Confirm the pick after download, and step down below the floor.** Designed, not built.
+      Two picks lean on unmeasured figures — the 26B's active bytes, and a single-threaded
+      bandwidth probe that likely under-reads x86 — and this is what corrects them.
+- [ ] **Calibrate the bandwidth probe on Windows.** Unverified there; the VM on the Linux box can
+      compare `machine.bandwidth_gbps()` with a real timed decode (`docs/bench-models.py`).
+- [ ] **Set the speed floor — a product call.** `SPEED_FLOOR_TPS = 15` demotes a CPU-only laptop
+      from E4B (~13 tok/s) to E2B (~20). Whether an owner prefers a better model or a faster one
+      is Stanley's decision, not arithmetic.
 - [ ] **Pick the model from the machine — fit AND speed, uncapped.** Take only what
       `machine.verdict()` calls "fits"; Metal's `recommendedMaxWorkingSetSize` is the CEILING, not
       the budget — Gemma 4 12B fitted inside it on the 16 GB M5 and still swapped 1.9 GB. Speed from

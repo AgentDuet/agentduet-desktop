@@ -218,6 +218,8 @@ CATALOGUE = {
     "gemma-4-e2b": dict(
         name="Gemma 4 E2B", brand="GOOGLE", params="E2B",
         dl_mb=3194, ram_mb=4152,
+        # ESTIMATED: E4B's measured share (0.64 of its file read per token) applied to this file.
+        active_mb=2054,
         repo="google/gemma-4-E2B-it-qat-q4_0-gguf",
         filename="gemma-4-E2B_q4_0-it.gguf",
         url="https://huggingface.co/google/gemma-4-E2B-it-qat-q4_0-gguf/resolve/main/gemma-4-E2B_q4_0-it.gguf",
@@ -229,7 +231,9 @@ CATALOGUE = {
         filename="gemma-4-E4B_q4_0-it.gguf",
         url="https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf/resolve/main/gemma-4-E4B_q4_0-it.gguf",
         # "Effective 4B": ~3.1 GB of this 4.8 GB file is read per token, the rest stays off the hot
-        # path — which is why it outran every dense model its size.
+        # path — which is why it outran every dense model its size. active_mb is DERIVED FROM THE
+        # MEASUREMENT: 101.6 GB/s effective / 32.9 tok/s.
+        active_mb=3162,
         measured=dict(ram_mb=5683, decode_tps=32.9, prefill_tps=387.8, on="Apple M5, 16 GB, under ordinary use", date="2026-09-23"),
         what="Gemma 4 for most laptops. The fastest of everything tested on a 16 GB Mac, and "
              "it handles Vietnamese almost as cheaply as English."),
@@ -246,6 +250,9 @@ CATALOGUE = {
     "gemma-4-26b-a4b": dict(
         name="Gemma 4 26B", brand="GOOGLE", params="26B MoE",
         dl_mb=13770, ram_mb=17901,
+        # ESTIMATED from the active-parameter share, 4B of 26B. Not measured — it cannot be run on
+        # a 16 GB machine — so the speed it implies is a prediction, and says so.
+        active_mb=2118,
         repo="google/gemma-4-26B-A4B-it-qat-q4_0-gguf",
         filename="gemma-4-26B_q4_0-it.gguf",
         url="https://huggingface.co/google/gemma-4-26B-A4B-it-qat-q4_0-gguf/resolve/main/gemma-4-26B_q4_0-it.gguf",
@@ -351,6 +358,88 @@ def resident_mb(model: str) -> int:
     """
     spec = spec_of(model) or {}
     return int((spec.get("measured") or {}).get("ram_mb") or spec.get("ram_mb") or 0)
+
+
+#: What the machine picks from, smallest to largest, in the family that leads (docs/design.md, "Why
+#: Gemma 4"). The ORDER IS THE PREFERENCE: the pick takes the largest rung that fits comfortably
+#: and answers fast enough. Which family is a decision already made; which rung is arithmetic about
+#: this machine, and has a right answer.
+LADDER = ("gemma-4-e2b", "gemma-4-e4b", "gemma-4-12b", "gemma-4-26b-a4b", "gemma-4-31b")
+
+#: Below this a drafted reply takes long enough to feel broken: 150 tokens at 15 tok/s is ten
+#: seconds. A constant, not a setting — it is our judgement about the product, the same for
+#: every owner, and nobody needs to retune it while the app runs.
+SPEED_FLOOR_TPS = 15.0
+
+
+def active_mb(model: str) -> int:
+    """Bytes READ for each generated token — what memory bandwidth divides into.
+
+    The whole file for a dense model. Less for Gemma's E-models, which keep part of the file off
+    the hot path, and for a mixture of experts, which reads only the experts it routes to — both
+    carried in the catalogue as `active_mb`. Using file size for those would call the fastest
+    option slow: E4B decodes at 32.9 tok/s from a 4.8 GB file, which file size says is impossible.
+    """
+    spec = spec_of(model) or {}
+    return int(spec.get("active_mb") or spec.get("dl_mb") or 0)
+
+
+def predicted_tps(model: str) -> float:
+    """Decode speed this machine should get: bandwidth / active bytes. 0.0 when either is unknown.
+
+    A prediction, and it only needs to be good enough to CHOOSE with. It held on the machine it was
+    checked against — E4B predicted 32.6, measured 32.9 — and it has not been checked on Windows.
+    """
+    bw, active = machine.bandwidth_gbps(), active_mb(model)
+    if not bw or not active:
+        return 0.0
+    return round(bw * 1024 / active, 1)
+
+
+def pick() -> dict:
+    """The model this machine should run, and why — the app's answer, so the owner is not asked.
+
+    The largest rung of LADDER that FITS COMFORTABLY and ANSWERS FAST ENOUGH:
+
+    - Fit is `machine.verdict()`'s "fits", never "tight". Gemma 4 12B is tight on a 16 GB Mac, and
+      running it there pushed the machine into 1.9 GB of swap: "tight" is what a model that swaps
+      looks like beforehand.
+    - Fast is `predicted_tps() >= SPEED_FLOOR_TPS`. An unmeasurable bandwidth counts as fast, not
+      slow — an estimate that cannot be made must not demote the owner to a worse model.
+
+    And when nothing qualifies, it degrades in the order an owner would want: the QUICKEST model
+    that fits comfortably; failing that, the smallest that fits at all; failing that, nothing, with
+    the reason. Never an error: a machine we cannot read still gets the smallest rung.
+
+    Returns {"model", "why", "fit", "predicted_tps"}. `model` is "" only when nothing on the ladder
+    can be held at all.
+    """
+    rungs = []
+    for key in LADDER:
+        fit, _ = can_run(key)
+        rungs.append((key, fit, predicted_tps(key)))
+
+    def answer(key, fit, tps, why):
+        return {"model": key, "why": why, "fit": fit, "predicted_tps": tps}
+
+    if all(fit == "unknown" for _, fit, _ in rungs):
+        key, fit, tps = rungs[0]
+        return answer(key, fit, tps, "Could not read this machine's memory, so the smallest model "
+                                     "was chosen.")
+    fits = [r for r in rungs if r[1] == "fits"]
+    fast = [r for r in fits if r[2] == 0.0 or r[2] >= SPEED_FLOOR_TPS]
+    if fast:
+        return answer(*fast[-1], "The largest model that fits this machine comfortably and "
+                                 "answers quickly.")
+    if fits:
+        quickest = max(fits, key=lambda r: r[2])
+        return answer(*quickest, "The quickest model this machine can hold comfortably — none "
+                                 "answers as fast as we would like here.")
+    tight = [r for r in rungs if r[1] == "tight"]
+    if tight:
+        return answer(*tight[0], "The smallest model, and it will be tight: this machine has "
+                                 "little memory to spare.")
+    return answer("", "no", 0.0, "This machine does not have enough memory for a local model.")
 
 
 def can_run(model: str) -> tuple[str, str]:
