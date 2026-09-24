@@ -831,6 +831,13 @@ four (15.2 s), because it is dense and reads all of its weights for every word; 
 from community packagers. It is still a strong multilingual family and stays the fallback — not
 rejected, not chosen.
 
+**Newer Qwen exists, and does not change this for a 16 GB Mac** (checked on Hugging Face
+2026-09-24). Qwen3.6 (April) ships 27B and a 35B-A3B mixture-of-experts; Qwen3.8 (August) ships
+27B, a 180B "Flash-Next" under a custom licence, and a 2.4T. Nothing at 9B or below, and no GGUF
+from Qwen itself — so Qwen3.5 9B is still Qwen's newest model for the machines most owners have.
+**Qwen3.6 35B-A3B is the one to measure** against Gemma 4 26B-A4B on 48 GB+ Macs: both are
+mixtures of experts with 3–4B working per word, and neither has been timed here.
+
 **What the announcement must NOT claim:**
 
 - **"Better" or "smarter".** Quality has not been measured. Every reason above is speed, size,
