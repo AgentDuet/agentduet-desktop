@@ -742,7 +742,9 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       downloaded" rather than the old "gemma-4-e4b is chosen, but has no key yet" — and one button,
       "Download Gemma 4 E4B · 4.8 GB", while the pick is not yet here. During the download the
       button is disabled and the house-style bar reports progress; the pick switches in on its own
-      when it lands. The wizard's dropdown offers only the pick, with "Choose later" still first.
+      when it lands. **The wizard NAMES the pick and fetches it at Finish** (2026-09-24) — no
+      choice, no "Choose later"; a refused download does not stop setup, and Settings offers it
+      again.
       **Progress has its own poll**, because `refreshCurrent()` resets the form fields and polling
       it would overwrite what the owner is typing. Nothing on either page says WHY the model was
       picked.
@@ -770,11 +772,12 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
 - [x] ~~**Quarantine the picker AND the hosted providers.**~~ **DONE 2026-09-24.**
       `llm.CHOICE_QUARANTINED = True`: a hosted `SECRETARY_MODEL` or `SECRETARY_PROVIDER` is
       ignored, and `client()` refuses a hosted name even when passed explicitly. Setting the flag
-      False restores the old behaviour exactly. **Left: hiding the picker and the hosted pane in the
-      pages.** An install on Gemini or Claude falls back to the local pick on upgrade, which the
+      False restores the old BACKEND behaviour; the picker and the hosted pane were then REMOVED
+      from the pages (2026-09-24), so bringing them back is a page rebuild from `git log`. An install on Gemini or Claude falls back to the local pick on upgrade, which the
       release notes must say. Voice is NOT in scope: it runs its own hosted realtime model and was
       never chosen in the overlay.
-- [x] ~~**Developer override**~~ **DONE 2026-09-24**, in Settings -> Advanced, and looked at in a
+- [x] ~~**Developer override**~~ **DONE 2026-09-24**, in an "Advanced (For developer)" dialog at the foot of
+      Settings (moved there 2026-09-24), and looked at in a
       browser. A Hugging Face name in llama.cpp's own form — `owner/repo` or `owner/repo:QUANT`;
       with no quant, Q4_K_M, then the vendor's `q4_0` — resolved through the existing HF-only
       `files()` and `add_custom()`. Saving only REGISTERS it; the Model card then offers its

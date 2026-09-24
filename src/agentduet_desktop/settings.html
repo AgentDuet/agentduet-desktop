@@ -36,28 +36,6 @@
      three sections. The margin that replaced it then ADDED to the card's flex gap, which is how
      rows ended up 22px apart above a model list spaced at 6px. The card's gap is the one place
      that spacing is decided now. */
-  /* A CARD, not a row. A row had space for a name and a size, which is what the picker used
-     to offer — and choosing on size alone is how a model that fits and cannot do the job wins
-     over one that is tight and can. What it is FOR needs a line of its own. */
-  .mcard{border:1px solid var(--line);background:var(--slate900);border-radius:.7rem;
-    padding:.75rem .85rem;margin-top:.5rem;display:flex;flex-direction:column;gap:.5rem;}
-  .mcard.on{border-color:rgba(59,130,246,.55);background:rgba(37,99,235,.1);}
-  .mcard.blocked{opacity:.55;}
-  .mtop{display:flex;align-items:center;gap:.55rem;}
-  .mtop .nm{font-size:.82rem;font-weight:600;color:var(--ink2);flex:1;}
-  .brand{font-family:var(--mono);font-size:9px;letter-spacing:.04em;padding:.15rem .4rem;
-    border-radius:.25rem;background:var(--slate700);color:#cbd5e1;}
-  .rec{font-size:10px;font-weight:700;color:var(--blue400);
-    background:rgba(37,99,235,.18);padding:.15rem .5rem;border-radius:999px;}
-  .mwhat{font-size:11px;color:var(--muted);line-height:1.55;}
-  .mfacts{display:flex;gap:.9rem;flex-wrap:wrap;font-family:var(--mono);font-size:10px;
-    color:var(--faint);font-variant-numeric:tabular-nums;}
-  .mact{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;}
-  /* The hosted cards put a key field and a model select in the action row, so those two
-     controls have to shrink to a row rather than filling the width like a form field. */
-  .mact select,.mact input{width:auto;flex:0 1 11rem;font-size:11px;padding:.25rem .4rem;}
-  .live{font-size:10px;font-weight:700;color:var(--emerald);
-    background:rgba(16,185,129,.18);padding:.15rem .5rem;border-radius:999px;}
   .bar{height:.35rem;border-radius:999px;background:var(--slate700);overflow:hidden;}
   .bar i{display:block;height:100%;background:var(--accent);transition:width .3s;}
   /* INDETERMINATE, for work whose length we genuinely cannot know — a round trip to a
@@ -78,13 +56,6 @@
   .mrow .nm{font-family:var(--mono);font-size:.78rem;color:var(--ink2);flex:1;}
   .mrow .sz{font-family:var(--mono);font-size:11px;color:var(--faint);
     min-width:4.2rem;text-align:right;font-variant-numeric:tabular-nums;}
-  .fitpill{font-size:10px;font-weight:700;padding:.15rem .5rem;border-radius:999px;
-    min-width:3.9rem;text-align:center;}
-  .fitpill.fits{background:rgba(16,185,129,.2);color:var(--emerald);}
-  .fitpill.tight{background:rgba(234,179,8,.18);color:#facc15;}
-  .fitpill.no{background:rgba(239,68,68,.16);color:#fca5a5;}
-  .fitpill.unknown{background:rgba(100,116,139,.2);color:var(--faint);}
-  .mwhy{font-size:11px;color:var(--faint);margin:.3rem 0 0 .2rem;line-height:1.5;}
   /* Scoped to the CONTROL, not to a container. It was `.mrow .act`, so the same buttons in a
      card fell through to the browser default — a rule that looks like it styles a component
      and actually styles a place. */
@@ -100,36 +71,9 @@
   .act:disabled:hover{border-color:var(--line);color:var(--faint);}
   .act.get,.act.use{border-color:rgba(59,130,246,.35);color:var(--blue400);}
   .act.get:hover,.act.use:hover{border-color:rgba(59,130,246,.6);background:rgba(37,99,235,.12);}
-  .hatch{margin-top:1.25rem;border-top:1px solid var(--line);padding-top:.9rem;}
-  .hatch summary{font-size:.75rem;color:var(--blue400);cursor:pointer;list-style:none;}
-  .hatch summary::-webkit-details-marker{display:none;}
-  .hatch summary::before{content:"+ ";font-family:var(--mono);}
-  .hatch[open] summary::before{content:"\2212 ";}
-  .hatch summary:hover{text-decoration:underline;}
-  .hfrow{display:flex;align-items:center;gap:.6rem;padding:.45rem .6rem;border-radius:.45rem;
-    border:1px solid var(--line);background:var(--slate900);margin-top:.35rem;}
-  .hfrow .r{font-family:var(--mono);font-size:11px;color:var(--ink2);flex:1;overflow:hidden;
-    text-overflow:ellipsis;white-space:nowrap;}
-  .hfrow .d{font-family:var(--mono);font-size:10px;color:var(--faint);
-    font-variant-numeric:tabular-nums;}
-  /* The weight is chosen FOR the owner; this is how they overrule it without leaving. */
-  .sizes summary{font-size:10px;color:var(--faint);cursor:pointer;list-style:none;}
-  .sizes summary::-webkit-details-marker{display:none;}
-  .sizes summary::before{content:"+ ";font-family:var(--mono);}
-  .sizes[open] summary::before{content:"\2212 ";}
-  .sizes summary:hover{color:var(--blue400);}
   .inuse{font-size:10px;font-weight:700;color:var(--emerald);
     background:rgba(16,185,129,.18);padding:.15rem .5rem;border-radius:999px;}
 
-  /* One choice, two shapes. The hosted fields are not "extra" — they are the OTHER
-     branch, and showing both at once asked the owner to read past the half that did
-     not apply to them. */
-  .seg{display:inline-flex;background:var(--slate900);border:1px solid var(--line);
-    border-radius:.6rem;padding:.2rem;gap:.2rem;align-self:flex-start;}
-  .seg button{font:inherit;font-size:.75rem;padding:.35rem .85rem;border-radius:.45rem;
-    border:0;background:transparent;color:var(--muted);cursor:pointer;}
-  .seg button.on{background:var(--accent);color:#fff;font-weight:600;}
-  .pickrow{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;}
   /* A field with its button beside it. This class was USED in four places and defined in none
      — so every one of them stacked, and looked deliberate enough that nobody questioned it.
      A class name that does not exist fails silently; only looking at the page finds it. */
@@ -137,7 +81,7 @@
   .frow input{flex:1;min-width:0;}
   /* Wrappers introduced to show one branch at a time. `.card` spaces ITS OWN children, so
      anything nested a level deeper lost that spacing and the fields ran together. */
-  #connManual,#connSignedIn,#connSignIn,#connByKey,#paneHosted,#paneLocal{
+  #connManual,#connSignedIn,#connSignIn,#connByKey{
     display:flex;flex-direction:column;gap:1rem;}
 
   /* Managing models is a DETOUR, not a setting. It only happens when someone is changing
@@ -156,6 +100,7 @@
   .sbody{padding:1.25rem;overflow-y:auto;display:flex;flex-direction:column;gap:.5rem;}
   .x{background:none;border:0;color:var(--muted);cursor:pointer;font:inherit;
     display:flex;align-items:center;padding:.25rem;border-radius:.4rem;}
+  .devfoot{display:flex;justify-content:center;padding:.25rem 0 1rem;}
   .x:hover{color:var(--ink2);background:var(--slate800);}
 </style>
 </head>
@@ -214,11 +159,11 @@
             <span class="sublbl" id="thinkWhy"></span></div>
           <label class="sw"><input type="checkbox" id="thinkOn"><span class="track"></span></label>
         </div>
-        <div class="acts"><button class="btn ghost" id="openModels">Choose a model…</button></div>
-        <!-- UNDER THE QUARANTINE the card offers this machine's pick instead of a picker, and only
-             while it is not yet here. The button says what it downloads and how big; the bar
-             reports progress. Nothing says WHY it was picked — that is our machinery, not an
-             outcome. See llm.CHOICE_QUARANTINED. -->
+        <!-- THE MACHINE'S PICK, and only while it is not yet here. The button says what it
+             downloads and how big; the bar reports progress. There is no picker: the model is
+             chosen from the machine (models.pick), and a developer overrides it by name in the
+             "Advanced (For developer)" dialog at the foot of the page. Nothing says WHY it was
+             picked — that is our machinery, not an outcome. -->
         <div class="acts" id="pickActs" hidden><button class="btn" id="getPick"></button></div>
         <div id="pickBar" hidden></div>
         <div id="mModel"></div>
@@ -365,16 +310,6 @@
           <div class="lbl">Walk through setup again</div>
           <button class="btn ghost" id="rerun">Run setup</button>
         </div>
-        <!-- THE DEVELOPER OVERRIDE. A Hugging Face name, in llama.cpp's own form, replaces the
-             automatic pick; empty goes back to it. Saving only REGISTERS the model — the Model
-             card then offers its download, through the same button the pick uses. -->
-        <div class="grp">
-          <label class="fl" for="mOverride">Model override</label>
-          <input type="text" id="mOverride" placeholder="owner/repo or owner/repo:Q4_K_M"
-                 autocomplete="off" spellcheck="false">
-        </div>
-        <div class="acts"><button class="btn" id="saveOverride">Save</button></div>
-        <div id="mOverrideMsg"></div>
       </div>
 
       <!-- LAST, AND IT IS A DIAGNOSTIC RATHER THAN A SETTING. Nothing here is adjustable
@@ -409,52 +344,32 @@
         </div>
       </div>
 
+      <!-- AT THE FOOT, AND A DIALOG. Nothing in it is for an owner: it replaces what the app
+           chose from the machine, so it stays out of the list of settings to scan past. -->
+      <div class="devfoot"><button class="link" id="openDev">Advanced (For developer)</button></div>
+
     </div>
   </div>
 </div>
 
-<!-- Model manager. Opens over the page; nothing here is a setting to scan past. -->
-<div class="ovl" id="ovlModels" hidden>
-  <div class="sheet" role="dialog" aria-modal="true" aria-label="Choose a model">
+<div class="ovl" id="ovlDev" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="Advanced (For developer)">
     <div class="shead">
-      <div><h2>Choose a Model</h2></div>
-      <button class="x" id="closeModels" aria-label="Close">
+      <div><h2>Advanced (For developer)</h2></div>
+      <button class="x" id="closeDev" aria-label="Close">
         <span class="material-symbols-rounded">close</span></button>
     </div>
     <div class="sbody">
-      <!-- WHERE IT RUNS is the first question, and it belongs with the answer rather than on
-           the settings page. The card behind now shows what is set and one way to change it. -->
-      <div class="seg" id="modelWhere">
-        <button type="button" class="on" data-where="local">On this machine</button>
-        <button type="button" data-where="hosted">Hosted provider</button>
+      <!-- THE MODEL OVERRIDE. A Hugging Face name, in llama.cpp's own form, replaces the
+           automatic pick; empty goes back to it. Saving only REGISTERS the model — the Model
+           card then offers its download, through the same button the pick uses. -->
+      <div class="grp">
+        <label class="fl" for="mOverride">Model</label>
+        <input type="text" id="mOverride" placeholder="owner/repo or owner/repo:Q4_K_M"
+               autocomplete="off" spellcheck="false">
       </div>
-
-      <div id="paneHosted" hidden>
-        <!-- THE MESSAGE GOES ABOVE THE LIST. It was below it — under five provider cards, off
-             the bottom of a scrolling dialog — so choosing a model reported success into empty
-             space. All the owner saw was the card being pinned to the top, which is a side
-             effect of sorting, not feedback: "It just get moved to the top and nothing." -->
-        <div id="mModelH"></div>
-        <div id="hostedList"></div>
-      </div>
-
-      <div id="paneLocal">
-      <div class="state" id="machineState">…</div>
-      <div id="modelList"></div>
-      <div id="mPull"></div>
-
-      <!-- The escape hatch. Folded away because the curated list is the answer for almost
-           everyone, and open one click later because sometimes it is not. -->
-      <details class="hatch" id="hatch">
-        <summary>Get another model from Hugging Face</summary>
-        <div class="frow" style="margin-top:.6rem">
-          <input type="text" id="hfQuery" placeholder="qwen3, gemma, phi…">
-          <button class="btn ghost" id="hfGo" style="flex-shrink:0">Search</button>
-        </div>
-        <div id="hfResults"></div>
-        <div id="mHf"></div>
-      </details>
-      </div><!-- /paneLocal -->
+      <div class="acts"><button class="btn" id="saveOverride">Save</button></div>
+      <div id="mOverrideMsg"></div>
     </div>
   </div>
 </div>
@@ -543,7 +458,6 @@
   function drawPick(cur){
     const q = !!cur.choice_quarantined, pk = cur.pick || {};
     PICK = pk;
-    $('openModels').hidden = q;
     const need = q && !!pk.model && !pk.downloaded;
     $('pickActs').hidden = !need;
     $('pickBar').hidden = !(need && pk.job);
@@ -1044,460 +958,19 @@
     if (!d.ok) $('recCalls').checked = !$('recCalls').checked;
     say('mRec', d.ok, d.message);
   };
-  // ---- one model, two places it can live ----------------------------------------------
-  // The card asks WHERE first and shows only that branch. Hosted needs a key; local needs a
-  // download. Showing both sets of controls at once made the owner read past the half that
-  // did not apply, and made "which one am I actually on?" a question the page did not answer.
-  let where = 'local', touched = false, lastModelSig = '', lastSttSig = '';
-  // WHAT AN ACTION SAID, kept per model so it survives the rebuild. The list re-renders on every
-  // poll — once a second during a download — so a message written straight into a card would
-  // flash and vanish. Keyed by model id, and dropped once that model's state changes, because
-  // the new state is then the better answer.
-  const cardNote = {};
-  function setWhere(w){
-    // ONLY ON AN ACTUAL CHANGE. Switching branch mid-scroll leaves the reader looking at
-    // whitespace, so the sheet returns to the top — but this is called on EVERY poll, and
-    // during a download that poll runs once a second. It scrolled the panel to the top under
-    // the owner's hands while they watched a progress bar.
-    const changed = w !== where;
-    where = w;
-    $('modelWhere').querySelectorAll('button')
-      .forEach(b => b.classList.toggle('on', b.dataset.where === w));
-    $('paneLocal').hidden = w !== 'local';
-    $('paneHosted').hidden = w !== 'hosted';
-    const sb = document.querySelector('.sbody');
-    if (changed && sb) sb.scrollTop = 0;
-  }
-  $('modelWhere').querySelectorAll('button')
-    .forEach(b => b.onclick = () => { touched = true; setWhere(b.dataset.where); });
+  //: The speech list's last-drawn signature — it skips a redraw when nothing it shows changed.
+  let lastSttSig = '';
 
-  const ovl = $('ovlModels');
-  const closeOvl = () => { ovl.hidden = true; };
-  $('openModels').onclick = () => { ovl.hidden = false; loadModels(); };
-  $('closeModels').onclick = closeOvl;
-  ovl.onclick = e => { if (e.target === ovl) closeOvl(); };   // click the dim to dismiss
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeOvl(); });
-
-  // ---- local models, sized against this machine --------------------------------------------
-  // A weight in GB is not a decision. "4.9 GB, and you have 10 usable" is.
-  function modelsRender(d){
-    const m = d.machine || {};
-    const gpu = m.gpu_kind === 'cuda' ? `${esc(m.gpu_name)}, ${m.vram_gb} GB VRAM`
-              : m.gpu_kind === 'apple' ? 'Apple Silicon'
-              : 'no GPU';
-    // FACTS, NOT A SENTENCE. This was a labelled line followed by a paragraph explaining what
-    // a reasonable memory budget is — and nobody reads a paragraph in a status box. The budget
-    // is already expressed where it is USED: every card says what it costs in memory and wears
-    // a fit pill computed against it. Saying the number too was arithmetic homework.
-    //
-    // Each figure carries its own unit, because the line once read "15 GB memory · 278 GB free"
-    // where the 278 was DISK, sitting on the memory line.
-    $('machineState').textContent =
-      `${m.ram_gb} GB memory · ${m.available_gb} GB free · ${d.disk_free_gb} GB disk · ${gpu}`;
-
-    hostedRender(d.hosted);
-    if (!touched) setWhere(d.provider === 'local' || !d.provider ? 'local' : 'hosted');
-
-    if (!d.engine) {
-      $('modelList').innerHTML = `<p class="mwhy">${esc(d.engine_why)}</p>`;
-      return;
-    }
-
-    // MANY AT ONCE. `busy` was the single model downloading and every decision hung off it:
-    // a second Download button was disabled because the first was running, and one
-    // abandoned .part disabled all of them.
-    const jobs = d.jobs || {}, failed = d.failed || {}, partial = d.partial || {};
-    const queued = d.queued || [], wanted = d.wanted || '';
-    const anyJob = Object.keys(jobs).length > 0 || queued.length > 0;
-
-    // REBUILD ONLY WHEN THE SHAPE CHANGES. This polls once a second during a download, and
-    // rewriting innerHTML each time flickered, collapsed any open "sizes" expander, and threw
-    // away whatever the reader was looking at. Progress moves every tick; the LIST does not.
-    const sig = JSON.stringify([(d.models || []).map(x => [x.id, x.state, x.in_use]),
-                                Object.keys(jobs).sort(), queued, wanted,
-                                Object.keys(failed).sort(), d.engine,
-                                // A NEW NOTE HAS TO REBUILD. send() records one and calls
-                                // loadModels() immediately; without this the shape looks
-                                // unchanged, the fast path returns, and nothing is ever shown.
-                                Object.entries(cardNote).map(([k, v]) => k + v.text)]);
-    if (sig === lastModelSig) {
-      // EVERY bar, not the first one. `querySelector('.bar i')` patched whichever card came
-      // first in the list and left the others frozen at whatever they showed when drawn.
-      $('modelList').querySelectorAll('[data-bar]').forEach(box => {
-        const p = jobs[box.dataset.bar];
-        if (!p) return;
-        const bar = box.querySelector('.bar i');
-        const lab = box.querySelector('.barlab span:last-child');
-        if (bar) bar.style.width = p.percent + '%';
-        if (lab) lab.textContent = `${p.done_mb} / ${p.total_mb} MB · ${p.percent}%`;
-      });
-      if (anyJob) setTimeout(loadModels, 1000);
-      return;
-    }
-    lastModelSig = sig;
-
-    $('modelList').innerHTML = (d.models || []).map(x => {
-      const here = x.state === 'loaded';
-      const disk = x.state !== 'absent';
-      const blocked = !disk && (!x.can_download || x.fit === 'no');
-      // ONE BUTTON PER STATE, and the button says what happens rather than naming a mechanism.
-      // "Load Model" is a thing the software does; "Use this" is a thing the owner wants.
-      let act;
-      const p = jobs[x.id];
-      const waitingAt = queued.indexOf(x.id);
-      const useBtn = wanted === x.id
-        ? '<span class="live">will be used</span>'
-        : `<button class="act use" data-usemodel="${esc(x.id)}">Use this</button>`;
-      if (p) {
-        // `elsewhere` means the fetch belongs to another process — the CLI, or the detached
-        // child `init` spawns — and is only visible because its .part file is GROWING on disk.
-        // Stop sets a flag THIS daemon reads, so offering it here would be a button that
-        // reports success and changes nothing. Say where it is running instead.
-        act = `<div style="flex:1" data-bar="${esc(x.id)}">
-                 <div class="barlab"><span>Downloading${p.elsewhere ? ' (started outside the app)' : '…'}</span>
-                   <span>${p.done_mb} / ${p.total_mb} MB · ${p.percent}%</span></div>
-                 <div class="bar"><i style="width:${p.percent}%"></i></div>
-               </div>
-               ${useBtn}
-               ${p.elsewhere ? '' : `<button class="act" data-cancel="${esc(x.id)}">Stop</button>`}`;
-      } else if (waitingAt >= 0) {
-        // A QUEUE NOBODY CAN SEE is the same failure as a silent download, which is the thing
-        // this whole area exists to stop. Say the position, and offer a way out of the line.
-        act = `<span class="live">${waitingAt === 0 ? 'next in line' : 'waiting — ' + (waitingAt + 1) + ' in line'}</span>
-               ${useBtn}
-               <button class="act" data-cancel="${esc(x.id)}">Stop</button>`;
-      } else if (here) {
-        act = `<span class="live">in use</span>
-               <button class="act" data-unload="${esc(x.id)}">Free the memory</button>
-               <button class="act" data-del="${esc(x.id)}">Delete</button>`;
-      } else if (disk) {
-        act = `<button class="act use" data-usemodel="${esc(x.id)}">Use this</button>
-               <button class="act" data-del="${esc(x.id)}">Delete</button>`;
-      } else if (blocked) {
-        act = `<button class="act" disabled>${esc(x.room_why || x.why)}</button>`;
-      } else {
-        // TWO BUTTONS, because they are two decisions: Download gets the bytes and changes
-        // nothing else, Use this switches when they land. Neither is disabled by another
-        // model's download. And RESUME rather than "Download 4.4 GB" when most of it is already
-        // on disk — the fetch sends a Range request either way, but the label was offering to
-        // fetch what it was about to skip.
-        const got = partial[x.id] || 0;
-        const label = got > 0 ? `Resume from ${(got / 1024).toFixed(1)} GB`
-                              : `Download ${x.dl_gb.toFixed(1)} GB`;
-        act = `<button class="act get" data-get="${esc(x.id)}">${label}</button>
-               ${useBtn}`;
-      }
-      // WHY IT FAILED, on the row that failed. A download that dies used to leave the card
-      // exactly as it was, so the only symptom was a button that seemed to do nothing.
-      if (failed[x.id]) act += `<span class="mwhy">${esc(failed[x.id])}</span>`;
-      // IN THE CARD, NOT AT THE FOOT OF THE LIST. Every action used to write to a single #mPull
-      // div below the whole list, and say() scrolls its target into view — so clicking Download
-      // on any card threw the panel to the bottom to show a sentence about the card you had just
-      // been looking at.
-      // THE STATE IS THE BETTER ANSWER once it changes: "Downloading Qwen3 8B" beside a card
-      // that now says "in use" is stale, and stale text is worse than none. The state at the
-      // moment the note was made is remembered on first render, and any change drops it.
-      let note = cardNote[x.id];
-      if (note) {
-        if (note.state === undefined) note.state = x.state;
-        else if (note.state !== x.state) { delete cardNote[x.id]; note = null; }
-      }
-      return `
-      <div class="mcard ${here ? 'on' : ''} ${blocked ? 'blocked' : ''}" data-card="${esc(x.id)}">
-        <div class="mtop">
-          <span class="brand">${esc(x.brand)}</span>
-          <span class="nm">${esc(x.name)}</span>
-          ${x.in_use ? '<span class="rec">in use</span>' : ''}
-          <span class="fitpill ${x.fit}">${x.fit === 'no' ? 'too big' : x.fit}</span>
-        </div>
-        <div class="mwhat">${esc(x.what)}</div>
-        <div class="mfacts">
-          <span>${x.dl_gb.toFixed(1)} GB download</span>
-          <span>${x.ram_gb.toFixed(1)} GB in memory</span>
-          ${x.speed ? `<span>${esc(x.speed)}</span>` : ''}
-          ${x.params ? `<span>${esc(x.params)}</span>` : ''}
-          ${x.estimated ? '<span>memory estimated</span>' : ''}
-          ${x.custom ? `<span>${esc(x.repo)}</span>` : ''}
-        </div>
-        <div class="mact">${act}</div>
-        <div class="cmsg">${note ? `<div class="msg ${note.ok ? 'ok' : 'no'}">${esc(note.text)}</div>` : ''}</div>
-        ${(x.variants || []).length > 1 ? `
-        <details class="sizes">
-          <summary>${x.variants.length} sizes</summary>
-          ${x.variants.map(v => `
-            <div class="hfrow">
-              <span class="r">${esc(v.name)}${v.params ? ' · ' + esc(v.params) : ''}</span>
-              <span class="d">${v.dl_gb.toFixed(1)} GB</span>
-              <span class="fitpill ${v.fit}">${v.fit === 'no' ? 'too big' : v.fit}</span>
-              ${v.id === x.id ? '<span class="d">shown above</span>'
-                : jobs[v.id] ? `<span class="d">${jobs[v.id].percent}%</span>`
-                : v.state !== 'absent'
-                  ? `<button class="act use" data-usemodel="${esc(v.id)}">Use this</button>`
-                  : v.fit === 'no'
-                    ? `<button class="act" disabled title="${esc(v.why)}">too big</button>`
-                    : `<button class="act get" data-get="${esc(v.id)}">Download</button>`}
-            </div>`).join('')}
-        </details>` : ''}
-      </div>`;
-    }).join('');
-
-    const send = async (action, name) => {
-      const r = await post('/api/models', {action, name});
-      // Recorded against the model, then rendered by the pass below — so it lands in the card
-      // and survives the next poll. Anything with no card to belong to still uses #mPull.
-      if (name) { cardNote[name] = {ok: r.ok, text: r.message, at: Date.now()}; }
-      else { say('mPull', r.ok, r.message); }
-      loadModels();
-      // AND THE MODEL CARD, because attaching a model changes what that card may offer:
-      // Enable Thinking Mode exists only for a model that can honour it. The three HOSTED
-      // switch paths all refreshed it and this one — the local list — did not, so choosing a
-      // Qwen3 left the row hidden until the page was reloaded by hand.
-      refreshCurrent();
-      if (r.ok) setTimeout(loadModels, 1500);
-    };
-    $('modelList').querySelectorAll('[data-usemodel]').forEach(el =>
-      el.onclick = () => send('use', el.dataset.usemodel));
-    $('modelList').querySelectorAll('[data-unload]').forEach(el =>
-      el.onclick = () => send('unload', el.dataset.unload));
-    $('modelList').querySelectorAll('[data-get]').forEach(el =>
-      el.onclick = () => send('download', el.dataset.get));
-    $('modelList').querySelectorAll('[data-cancel]').forEach(el =>
-      el.onclick = () => send('cancel', el.dataset.cancel));
-    $('modelList').querySelectorAll('[data-del]').forEach(el => {
-      el.onclick = () => {
-        const n = el.dataset.del;
-        if (!confirm(`Delete ${n}? It frees the disk and can be downloaded again.`)) return;
-        send('delete', n);
-      };
-    });
-
-    // While bytes are moving, keep the bar moving. Nothing else on this page polls.
-    if (anyJob) setTimeout(loadModels, 1000);
-  }
-
-  // ---- hosted providers, in the same three states as a local model ----------------------
-  // no key -> paste one | key stored -> "Use this", no retyping | in use -> "Forget this key".
-  // The middle state existed all along and was invisible: keys live per provider in .env, so
-  // someone who configured Gemini and moved to Claude still HAS their Gemini key, and the page
-  // made them paste it again to come back.
-  function hostedRender(rows){
-    $('hostedList').innerHTML = (rows || []).map(h => `
-      <div class="mcard ${h.in_use ? 'on' : ''}">
-        <div class="mtop">
-          <span class="brand">${esc(h.brand)}</span>
-          <span class="nm">${esc(h.family)}</span>
-          ${h.in_use ? '<span class="rec">in use</span>' : ''}
-          ${h.has_key ? `<span class="fitpill fits">${esc(h.how)}</span>`
-                      : '<span class="fitpill unknown">no key</span>'}
-        </div>
-        <div class="mwhat">${esc(h.what)}</div>
-        ${h.in_use ? `<div class="mfacts"><span>${esc(h.model)}</span></div>` : ''}
-        <!-- WHERE THE LIST CAME FROM. With a key we ask the provider, so a retired model is not
-             offered; without one (or offline) the list is whatever was built into this app, and
-             may name something the provider has since dropped. Only worth saying in the second
-             case, and only once a key exists — otherwise it is noise on every card. -->
-        ${h.has_key && h.models_from !== 'live'
-          ? `<div class="mwhat">Could not reach ${esc(h.family)} to list its models — showing the
-               list built into this app, which may be out of date.</div>` : ''}
-        <!-- THE KEY FIRST, THEN THE LIST. A model name and a credential are two decisions,
-             and asking for both at once is what made a wrong name look like a wrong key: the
-             only names on offer were compiled into the build, two of them were fiction, and
-             the page reported NOT saved as though the key had failed.
-             So with a listable provider this asks for the key alone, checks it by LISTING
-             models (no tokens, and a 401 is unambiguous), and only then offers a real choice.
-             Bedrock has no listing endpoint, so it keeps the old key-and-model form — the
-             only way to check that key is to call a model with it.
-             A SELECT, not an input with a datalist: the datalist had no arrow and showed
-             nothing unless what you typed prefix-matched, so a real list looked like no list.
-             Typing is still reachable, behind the link, for a name too new to be listed.
-             NO BACKTICKS IN THIS COMMENT: it sits inside a JS template literal, and one
-             backtick ends the string and kills the whole script. -->
-        <div class="mact">
-          ${h.has_key
-            ? `<select class="hmodel" data-p="${esc(h.id)}"
-                       data-current="${esc(h.in_use ? h.model : '')}">
-                 ${h.models.map(m => `<option ${m === h.model ? 'selected' : ''}>${esc(m)}</option>`).join('')}
-               </select>
-               <input class="hmodel typed" data-p="${esc(h.id)}" hidden
-                      placeholder="model name" spellcheck="false">
-               <button class="act use" data-use="${esc(h.id)}"
-                       ${h.in_use ? 'disabled' : ''}>${h.in_use ? 'In use' : 'Use this'}</button>
-               <a class="link" data-typed="${esc(h.id)}">Type a name instead</a>
-               <button class="act" data-forget="${esc(h.id)}">Forget this key</button>`
-            : h.can_list
-            ? `<input class="hkey" type="password" data-p="${esc(h.id)}"
-                      placeholder="${esc(h.key_env)}" autocomplete="off">
-               <button class="act get" data-checkkey="${esc(h.id)}">Check key</button>`
-            : `<input class="hkey" type="password" data-p="${esc(h.id)}"
-                      placeholder="${esc(h.key_env)}" autocomplete="off">
-               <select class="hmodel" data-p="${esc(h.id)}">
-                 ${h.models.map(m => `<option>${esc(m)}</option>`).join('')}
-               </select>
-               <button class="act get" data-save="${esc(h.id)}">Check and save</button>`}
-        </div>
-        <details class="sizes">
-          <summary>another ${esc(h.family)} model</summary>
-          <div class="frow" style="margin-top:.5rem">
-            <input type="text" class="hother" data-p="${esc(h.id)}"
-                   placeholder="exact model name">
-            <button class="act get" data-other="${esc(h.id)}" style="flex-shrink:0">Use it</button>
-          </div>
-          <p class="mwhy">A provider's catalogue cannot be listed the way a repository's files
-            can, so anything newer than the names above is typed here.</p>
-        </details>
-      </div>`).join('');
-
-    // TWO CONTROLS CARRY THE MODEL NAME on a keyed card: the select, and the input revealed by
-    // "Type a name instead". querySelector returns the first, so reading blindly would have sent
-    // the dropdown's value while the owner watched their typed name sit there ignored. The
-    // visible one wins.
-    const pick = (p, cls) => {
-      const typed = document.querySelector(`.${cls}.typed[data-p="${p}"]`);
-      if (typed && !typed.hidden) return typed.value.trim();
-      const el = document.querySelector(`.${cls}:not(.typed)[data-p="${p}"]`)
-              || document.querySelector(`.${cls}[data-p="${p}"]`);
-      return (el || {}).value || '';
-    };
-    const send = async body => {
-      waiting('mModelH', body.name ? `Attaching ${body.name}` : 'Working');
-      const r = await post('/api/models', body);
-      // NAME THE MODEL BACK. The server's own message does not always contain it, and the one
-      // question the owner has after pressing Use this is which model they are now on.
-      say('mModelH', r.ok, r.ok && body.name ? `${r.message} Now using ${body.name}.` : r.message);
-      if (r.ok) { refreshCurrent(); loadModels(); }
-    };
-
-    // CHECK THE KEY ALONE, by listing. On success the card re-renders into its keyed state,
-    // whose select is populated from what the provider just told us it serves.
-    $('hostedList').querySelectorAll('[data-checkkey]').forEach(el => el.onclick = async () => {
-      const p = el.dataset.checkkey;
-      const key = (document.querySelector(`.hkey[data-p="${p}"]`) || {}).value || '';
-      const family = el.closest('.mcard').querySelector('.nm');
-      waiting('mModelH', `Checking the key with ${family ? family.textContent.trim() : p}`);
-      el.disabled = true;
-      const was = el.textContent;
-      el.textContent = 'Checking…';
-      const r = await post('/api/provider/key', {provider: p, key: key.trim()});
-      el.textContent = was;
-      el.disabled = false;
-      say('mModelH', r.ok, r.ok
-        ? `${r.message} Now choose one and press Use this.` : r.message);
-      if (r.ok) { refreshCurrent(); loadModels(); }
-    });
-
-    // NOTHING TO DOWNLOAD MEANS NOTHING TO DO. A hosted model that is already running still
-    // offered "Use this" — a button whose whole effect is to re-attach what is attached, which
-    // reads as an action and is not one. The local cards have said "in use" for months; this is
-    // the same state, and it has to follow the SELECTION rather than the render, because
-    // picking a different model from the same provider makes the button meaningful again.
-    const syncUse = p => {
-      const btn = document.querySelector(`[data-use="${p}"]`);
-      const sel = document.querySelector(`select.hmodel[data-p="${p}"]`);
-      if (!btn || !sel) return;
-      const same = pick(p, 'hmodel') === (sel.dataset.current || '\u0000');
-      btn.disabled = same;
-      btn.textContent = same ? 'In use' : 'Use this';
-    };
-    $('hostedList').querySelectorAll('select.hmodel').forEach(sel => {
-      sel.onchange = () => syncUse(sel.dataset.p);
-    });
-    $('hostedList').querySelectorAll('.hmodel.typed').forEach(inp => {
-      inp.oninput = () => syncUse(inp.dataset.p);
-    });
-
-    // The escape hatch for a model too new to be listed. Deliberately a link rather than a
-    // second field on show: the list is right almost always, and two inputs asking for the
-    // same thing is how the wrong one gets filled in.
-    $('hostedList').querySelectorAll('[data-typed]').forEach(el => el.onclick = () => {
-      const p = el.dataset.typed;
-      const sel = document.querySelector(`select.hmodel[data-p="${p}"]`);
-      const inp = document.querySelector(`.hmodel.typed[data-p="${p}"]`);
-      if (!inp) return;
-      const showing = !inp.hidden;
-      inp.hidden = showing;
-      if (sel) sel.hidden = !showing;
-      el.textContent = showing ? 'Type a name instead' : 'Choose from the list';
-      if (!showing) { inp.value = sel ? sel.value : ''; inp.focus(); }
-      syncUse(p);
-    });
-    $('hostedList').querySelectorAll('[data-use]').forEach(el => el.onclick = () =>
-      send({action: 'use_hosted', name: pick(el.dataset.use, 'hmodel'), provider: el.dataset.use}));
-    $('hostedList').querySelectorAll('[data-other]').forEach(el => el.onclick = () => {
-      const v = pick(el.dataset.other, 'hother');
-      if (!v) return say('mModelH', false, 'Type a model name first.');
-      send({action: 'use_hosted', name: v, provider: el.dataset.other});
-    });
-    $('hostedList').querySelectorAll('[data-forget]').forEach(el => el.onclick = () => {
-      if (!confirm(`Forget this key? You will need it again to come back.`))
-        return;
-      send({action: 'forget_key', name: el.dataset.forget});
-    });
-    $('hostedList').querySelectorAll('[data-save]').forEach(el => el.onclick = async () => {
-      const pr = el.dataset.save, key = pick(pr, 'hkey');
-      if (!key) return say('mModelH', false, 'Paste a key first.');
-      const d = await post('/api/setup/model', {model: pick(pr, 'hmodel'), key});
-      say('mModelH', d.ok, d.message);
-      if (d.ok) { refreshCurrent(); loadModels(); }
-    });
-  }
-
-  // ---- the escape hatch ----------------------------------------------------------------
-  // TWO STEPS, because a repository is not a model. It is a shelf of quantisations of one —
-  // Q2 through Q8 — and choosing between them IS the size-against-quality decision the owner
-  // came here to make. Picking one for them would be guessing at exactly that.
-  async function hfSearch(){
-    const q = $('hfQuery').value.trim();
-    if (!q) return;
-    $('hfResults').innerHTML = '<p class="mwhy">Searching…</p>';
-    const d = await fetch(`/api/models/hf?t=${T}&q=${encodeURIComponent(q)}`)
-                      .then(r => r.json()).catch(() => ({ok: false, message: 'No network.'}));
-    if (!d.ok) { $('hfResults').innerHTML = ''; return say('mHf', false, d.message); }
-    const rows = (d.results || []);
-    if (!rows.length) return $('hfResults').innerHTML = '<p class="mwhy">Nothing matched.</p>';
-    $('hfResults').innerHTML = rows.map(r => `
-      <div class="hfrow">
-        <span class="r" title="${esc(r.repo)}">${esc(r.repo)}</span>
-        <span class="d">${r.downloads.toLocaleString()}</span>
-        <button class="act use" data-repo="${esc(r.repo)}">Files</button>
-      </div>`).join('');
-    $('hfResults').querySelectorAll('[data-repo]').forEach(el =>
-      el.onclick = () => hfFiles(el.dataset.repo));
-  }
-
-  async function hfFiles(repo){
-    $('hfResults').innerHTML = '<p class="mwhy">Reading ' + esc(repo) + '…</p>';
-    const d = await fetch(`/api/models/hf?t=${T}&repo=${encodeURIComponent(repo)}`)
-                      .then(r => r.json()).catch(() => ({ok: false, message: 'No network.'}));
-    if (!d.ok) { $('hfResults').innerHTML = ''; return say('mHf', false, d.message); }
-    const files = d.files || [];
-    if (!files.length)
-      return $('hfResults').innerHTML = '<p class="mwhy">No .gguf files in ' + esc(repo) + '.</p>';
-    $('hfResults').innerHTML =
-      `<div class="hfrow"><span class="r">${esc(repo)}</span>
-         <button class="act" data-back="1">Back</button></div>`
-      + files.map(f => `
-      <div class="hfrow">
-        <span class="r" title="${esc(f.file)}">${esc(f.file)}</span>
-        <span class="d">${(f.mb / 1024).toFixed(1)} GB</span>
-        <button class="act get" data-file="${esc(f.file)}">Download and use</button>
-      </div>`).join('');
-    $('hfResults').querySelector('[data-back]').onclick = hfSearch;
-    $('hfResults').querySelectorAll('[data-file]').forEach(el => {
-      el.onclick = async () => {
-        const r = await post('/api/models', {action: 'add', repo, file: el.dataset.file});
-        say('mHf', r.ok, r.message);
-        if (r.ok) { $('hfResults').innerHTML = ''; $('hatch').open = false; loadModels(); }
-      };
-    });
-  }
-
-  $('hfGo').onclick = hfSearch;
-  $('hfQuery').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); hfSearch(); } });
-
-  function loadModels(){
-    fetch(`/api/models?t=${T}`).then(r => r.json()).then(modelsRender).catch(() => {});
-  }
-  loadModels();
+  // ---- Advanced (For developer) ----------------------------------------------------------
+  const dev = $('ovlDev');
+  const closeDev = () => { dev.hidden = true; };
+  $('openDev').onclick = () => { dev.hidden = false; $('mOverride').focus(); };
+  $('closeDev').onclick = closeDev;
+  dev.onclick = e => { if (e.target === dev) closeDev(); };     // click the dim to dismiss
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDev(); });
+  $('mOverride').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); $('saveOverride').click(); }
+  });
 </script>
 </body>
 </html>

@@ -57,13 +57,6 @@
      and this page has none. */
   .togrow{display:flex;align-items:center;justify-content:space-between;gap:1rem;width:100%;}
   .frow{display:flex;gap:.5rem;}
-  /* The model row. Matches the folder field rather than inventing a look: it is the same kind
-     of question, asked once, on the same panel. */
-  #setupModel{width:100%;padding:.5rem .6rem;border-radius:.5rem;background:var(--slate900);
-    color:#fff;border:1px solid var(--line);font:inherit;font-size:.8rem;}
-  .opt{font-size:10px;color:var(--faint);font-weight:400;text-transform:uppercase;
-    letter-spacing:.04em;margin-left:.4rem;}
-  .hint{font-size:11px;color:var(--faint);line-height:1.45;margin:0;}
   /* A LINK, NOT A BUTTON. Boxing these was the second wrong answer: three bordered boxes under
      three bordered sign-in buttons read as six competing choices, and it looked heavy. Faint
      grey small print was the first wrong answer — invisible on a projector. Blue and a size up
@@ -191,20 +184,13 @@
         </div>
       </div>
 
-      <!-- OPTIONAL, AND IT STARTS IN THE BACKGROUND. The console `init` has offered a local
-           model since 2026-09-04 and this page never did, so a tester who set up here was
-           never asked and had to find Settings afterwards. Only local models are offered:
-           starting a multi-gigabyte download early is the thing that benefits from being
-           asked now, whereas a hosted key is a 20-second job that belongs in the one place
-           that does it well. The download outlives this page and attaches itself when it
-           lands. -->
-      <div class="field">
-        <label>AI model <span class="opt">optional</span></label>
-        <select id="setupModel">
-          <option value="">Choose later in Settings</option>
-        </select>
-        <p class="hint" id="modelHint">A model is only needed for the assistant and for
-          summaries. Recording and transcription work without one.</p>
+      <!-- STATED, NOT ASKED. The model is chosen from the machine (models.pick), so the wizard
+           names it and fetches it; there is nothing here to change. A developer overrides it in
+           Settings -> Advanced (For developer). The download starts at Finish, outlives this
+           page, and the model is used as soon as it lands. Hidden when nothing fits. -->
+      <div class="field" id="modelField" hidden>
+        <label for="setupModel">AI model</label>
+        <input type="text" id="setupModel" readonly>
       </div>
 
 
@@ -397,35 +383,15 @@
     if (d.line) { $('lineNum').textContent = d.line; $('lineBadge').classList.add('on'); }
   }).catch(() => {});
 
-  // ONE GATE, ANSWERED BY THE SERVER. `offerable` folds together memory (can this load) and
-  // disk (is there room for the file) — two different questions that this page first got
-  // wrong by filtering on the disk one, which would have offered a 9 GB download to a machine
-  // with no memory to load it. The console asks the same field, so the two setup surfaces
-  // cannot disagree about which models exist for this machine.
+  // THE MACHINE'S PICK, from the same builder Settings uses, so the two pages cannot name
+  // different models. Held for Finish, which fetches it if it is not already here.
+  let PICK = {};
   fetch(`/api/models?t=${T}`).then(r => r.json()).then(d => {
-    const sel = $('setupModel');
-    // UNDER THE QUARANTINE THE LIST BECOMES ONE ANSWER: this machine's pick, from the same builder
-    // Settings uses. The owner still decides WHETHER to fetch it — "Choose later" stays the
-    // default, because a multi-gigabyte download is theirs to start — but not which.
-    const pk = d.pick || {};
-    const offer = d.choice_quarantined
-      ? (pk.model ? [{id: pk.model, name: pk.name, state: pk.downloaded ? 'downloaded' : '',
-                      dl_gb: (pk.dl_mb / 1024).toFixed(1)}] : [])
-      : (d.models || []).filter(m => m.offerable);
-    offer.forEach(m => {
-      const o = document.createElement('option');
-      o.value = m.id;
-      o.textContent = m.state === 'downloaded'
-        ? `${m.name} — already on this machine`
-        : `${m.name} — ${m.dl_gb} GB download`;
-      sel.appendChild(o);
-    });
-    // NOT UNDER THE QUARANTINE: there is no hosted provider to attach, so advising one would send
-    // the owner to a screen that no longer offers it.
-    if (!offer.length && !d.choice_quarantined) {
-      $('modelHint').textContent = 'No local model fits this machine\u2019s memory. '
-        + 'Attach a hosted provider in Settings instead.';
-    }
+    PICK = d.pick || {};
+    if (!PICK.model) return;
+    $('setupModel').value = PICK.downloaded
+      ? PICK.name : `${PICK.name} \u00b7 ${(PICK.dl_mb / 1024).toFixed(1)} GB`;
+    $('modelField').hidden = false;
   }).catch(() => {});
 
   // THE CHOOSER HAS EXISTED SINCE 2026-08-27 and this button said it did not, telling the
@@ -458,14 +424,12 @@
     // — there it is a daemon restart fired from a Settings button.
     if (DONE) { location.href = '/?t=' + T; return; }
     $('doDone').disabled = true;
-    const want = $('setupModel').value;
-    if (want) {
-      // Started, not waited for. A multi-gigabyte fetch must not hold the installer open, and
-      // the server's download is a detached child that attaches the model when it lands.
-      const m = await post('/api/models', {action: 'download', name: want});
-      say('mDone', m.ok, m.ok ? `${m.message} It continues in the background.` : m.message);
-      if (!m.ok) { $('doDone').disabled = false; return; }
-    }
+    const want = PICK.model && !PICK.downloaded ? PICK.model : '';
+    // Started, not waited for. A multi-gigabyte fetch must not hold the installer open, and
+    // the server's download is a detached child the model is used from when it lands. A
+    // refusal (no network, no room) does NOT stop setup: the owner did not ask for this, so it
+    // must not be what they are stuck on, and Settings' Model card offers it again.
+    if (want) await post('/api/models', {action: 'download', name: want}).catch(() => {});
     // BEFORE HANDOVER, because handover stands this process down and promotes the installed
     // copy — anything posted after it is a request to a daemon that is going away.
     await post('/api/setup/login-item', {want: $('atLogin').checked});
