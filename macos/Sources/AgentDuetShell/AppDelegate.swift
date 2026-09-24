@@ -447,6 +447,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         completionHandler(alert.runModal() == .alertFirstButtonReturn)
     }
 
+    /// THE IN-APP PHONE needs the microphone. A WKWebView with no answer here DENIES every
+    /// `getUserMedia` silently, so pressing Answer would fail with nothing on screen. Granted for
+    /// our own loopback page only, and microphone only; macOS still shows its own permission
+    /// prompt the first time, driven by NSMicrophoneUsageDescription in Info.plist.
+    func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+                 initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType,
+                 decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        let ours = origin.host == "127.0.0.1" || origin.host == "localhost"
+        decisionHandler(ours && type == .microphone ? .grant : .deny)
+    }
+
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
         let alert = NSAlert()

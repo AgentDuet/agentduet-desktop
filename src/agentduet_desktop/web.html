@@ -46,6 +46,24 @@
   /* One row, one gap — the same rhythm as the channel line above it. Its own top border
      because it is a different subject from where the recordings go, and it appears and
      disappears, so without one the block changes shape with nothing to explain the seam. */
+  /* THE IN-APP PHONE's switch. Same row as the channel line; the switch is app.css's, shrunk to
+     the size of this card's 11px text. */
+  .store .sw .track{width:1.75rem;height:1rem;}
+  .store .sw .track::after{width:.75rem;height:.75rem;}
+  .store .sw input:checked + .track::after{transform:translateX(.75rem);}
+  /* A CALL, above everything in the main column: ringing, or live. One bar for both, because
+     they are one call in two states and the owner's eye should not have to move. */
+  .callbar{display:flex;align-items:center;gap:.75rem;padding:.7rem 1.5rem;flex-shrink:0;
+    background:rgba(37,99,235,.14);border-bottom:1px solid rgba(59,130,246,.35);}
+  .callbar[hidden]{display:none;}
+  .callbar .material-symbols-rounded{color:var(--blue400);font-size:1.2rem;}
+  .callbar .cl{flex:1;min-width:0;font-size:.8rem;color:var(--ink2);}
+  .callbar .cn{font-family:var(--mono);}
+  .callbar .ct{font-family:var(--mono);font-size:11px;color:var(--faint);margin-left:.5rem;
+    font-variant-numeric:tabular-nums;}
+  .callbar .btn{padding:.4rem .9rem;}
+  .callbar .btn.end{background:#dc2626;}
+  .callbar .cerr{font-size:11px;color:#fca5a5;}
   .store .upd{margin-top:.375rem;padding-top:.375rem;border-top:1px solid var(--slate700);}
   .store .path{font-family:var(--mono);color:#cbd5e1;font-size:10px;overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap;}
@@ -245,11 +263,22 @@
       <div class="who-list" id="whoList"></div>
       <div class="store">
         <div class="r"><span id="chanState">—</span><a href="#" id="toSettings2">Settings</a></div>
+        <label class="r" id="hereRow" hidden><span>Answer calls here</span>
+          <span class="sw"><input type="checkbox" id="hereOn"><span class="track"></span></span></label>
         <div class="r upd" id="updRow" hidden><a id="updLink" target="_blank" rel="noopener">—</a></div>
       </div>
     </aside>
 
     <main>
+      <div class="callbar" id="callBar" hidden>
+        <span class="material-symbols-rounded">call</span>
+        <div class="cl"><span id="callWhat"></span> <span class="cn" id="callWho"></span>
+          <span class="ct" id="callTime"></span> <span class="cerr" id="callErr"></span></div>
+        <button class="btn" id="callAnswer">Answer</button>
+        <button class="btn ghost" id="callDecline">Decline</button>
+        <button class="btn ghost" id="callMute" hidden>Mute</button>
+        <button class="btn end" id="callHang" hidden>Hang up</button>
+      </div>
       <div class="thead">
         <div>
           <h1 id="tTitle">Conversations</h1>
@@ -917,6 +946,11 @@
       $('updLink').href = upd.url || '#';
     }
 
+    // THE IN-APP PHONE's switch — only in carry mode, where there is something to pass through.
+    const ph = D.answer_here || {};
+    $('hereRow').hidden = !ph.carry;
+    if (!HERE_SAVING) $('hereOn').checked = !!ph.on;
+
     // WHICH MODEL IS ANSWERING, in the pane that is answering. Without it the owner cannot
     // tell a local 135M model from a hosted one, and the two give very different replies.
     MODEL = D.model || {};
@@ -938,6 +972,193 @@
     // `drawWho`, which both compare a signature first and so only fire on a real change.
     modelControls();
   }
+
+  // ---- the in-app phone ---------------------------------------------------------------------
+  //
+  // A carried call can ring HERE instead of passing through (see phone.py). The daemon rings
+  // every open page over /api/phone; answering bridges the caller to this page's microphone and
+  // speaker. Audio is 24 kHz mono 16-bit PCM on the wire — what the SDK carries — and is
+  // resampled to and from whatever rate this machine's audio runs at.
+  //
+  // The microphone is the browser's, with echoCancellation on: that is the whole reason this is
+  // done in the page rather than natively, since it gives echo cancellation on every platform.
+  let HERE_SAVING = false;
+  $('hereOn').onchange = async () => {
+    HERE_SAVING = true;
+    const want = $('hereOn').checked;
+    const r = await post('/api/setup/setting', {field: 'answer_here', value: want ? 'yes' : 'no'})
+      .catch(() => ({ok: false}));
+    if (!r.ok) $('hereOn').checked = !want;
+    HERE_SAVING = false;
+  };
+
+  const PHONE = (() => {
+    const WIRE = 24000;
+    const WORKLET = `
+      class Cap extends AudioWorkletProcessor {
+        process(inputs) { const c = inputs[0] && inputs[0][0]; if (c) this.port.postMessage(c.slice(0)); return true; }
+      }
+      class Play extends AudioWorkletProcessor {
+        constructor() {
+          super(); this.b = new Float32Array(sampleRate * 2); this.r = 0; this.w = 0; this.n = 0; this.primed = false;
+          this.port.onmessage = e => { const d = e.data;
+            for (let k = 0; k < d.length; k++) {
+              if (this.n >= this.b.length) { this.r = (this.r + 1) % this.b.length; this.n--; }
+              this.b[this.w] = d[k]; this.w = (this.w + 1) % this.b.length; this.n++; } };
+        }
+        process(inputs, outputs) {
+          const ch = outputs[0], out = ch[0];
+          // 60 ms of cushion before playing, and again after any underrun: network audio
+          // arrives in bursts, and a gap is less noticeable than a stutter every packet.
+          if (!this.primed && this.n < sampleRate * 0.06) { out.fill(0); }
+          else { this.primed = true;
+            for (let k = 0; k < out.length; k++) {
+              if (this.n > 0) { out[k] = this.b[this.r]; this.r = (this.r + 1) % this.b.length; this.n--; }
+              else { out[k] = 0; this.primed = false; } } }
+          for (let c = 1; c < ch.length; c++) ch[c].set(out);
+          return true;
+        }
+      }
+      registerProcessor('cap', Cap); registerProcessor('play', Play);`;
+
+    let ws = null, st = {type: 'idle'}, mine = false, muted = false, clock = null;
+    let ctx = null, stream = null, cap = null, play = null, src = null, pend = [], pendN = 0;
+    let ringing = null;
+
+    function resample(f, from, to){
+      if (from === to) return f;
+      const n = Math.round(f.length * to / from), out = new Float32Array(n), r = from / to;
+      for (let i = 0; i < n; i++) {
+        const x = i * r, j = Math.floor(x), t = x - j, a = f[j] || 0;
+        out[i] = a + ((j + 1 < f.length ? f[j + 1] : a) - a) * t;
+      }
+      return out;
+    }
+
+    // ONE AudioContext, made on the first click anywhere. A browser will not start audio
+    // without a gesture, and a ringing call must be able to make a sound before anyone has
+    // pressed Answer — so the context is unlocked by whatever the owner last clicked.
+    function audio(){
+      if (!ctx) { try { ctx = new AudioContext(); } catch (e) { return null; } }
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      return ctx;
+    }
+    document.addEventListener('pointerdown', audio, {once: true});
+
+    function ringTone(on){
+      clearInterval(ringing); ringing = null;
+      if (!on) return;
+      const beep = () => {
+        const c = audio(); if (!c || c.state !== 'running') return;
+        [440, 480].forEach(f => {
+          const o = c.createOscillator(), g = c.createGain();
+          o.frequency.value = f; g.gain.value = 0.05;
+          o.connect(g).connect(c.destination); o.start(); o.stop(c.currentTime + 0.8);
+        });
+      };
+      beep(); ringing = setInterval(beep, 3000);
+    }
+
+    async function startAudio(){
+      const c = audio();
+      if (!c) throw new Error('no audio');
+      if (!startAudio.loaded) {
+        const url = URL.createObjectURL(new Blob([WORKLET], {type: 'application/javascript'}));
+        await c.audioWorklet.addModule(url);
+        startAudio.loaded = true;
+      }
+      stream = await navigator.mediaDevices.getUserMedia({audio: {
+        echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1}});
+      src = c.createMediaStreamSource(stream);
+      cap = new AudioWorkletNode(c, 'cap');
+      play = new AudioWorkletNode(c, 'play', {outputChannelCount: [2]});
+      play.connect(c.destination);
+      // 20 ms frames on the wire: small enough for latency, large enough not to flood.
+      const frame = Math.round(c.sampleRate * 0.02);
+      cap.port.onmessage = e => {
+        if (!ws || ws.readyState !== 1) return;
+        pend.push(e.data); pendN += e.data.length;
+        if (pendN < frame) return;
+        const all = new Float32Array(pendN); let o = 0;
+        pend.forEach(p => { all.set(p, o); o += p.length; }); pend = []; pendN = 0;
+        const f = resample(all, c.sampleRate, WIRE), pcm = new Int16Array(f.length);
+        for (let i = 0; i < f.length; i++) {
+          const v = muted ? 0 : Math.max(-1, Math.min(1, f[i]));
+          pcm[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+        }
+        ws.send(pcm.buffer);
+      };
+      src.connect(cap);
+      // A worklet with no output still has to be pulled, or it never runs.
+      const sink = c.createGain(); sink.gain.value = 0; cap.connect(sink).connect(c.destination);
+    }
+
+    function stopAudio(){
+      try { src && src.disconnect(); cap && cap.disconnect(); play && play.disconnect(); } catch (e) {}
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      stream = src = cap = play = null; pend = []; pendN = 0;
+    }
+
+    function draw(){
+      const bar = $('callBar'), live = st.type === 'live', ring = st.type === 'ringing';
+      bar.hidden = !(live || ring);
+      ringTone(ring);
+      clearInterval(clock); clock = null;
+      if (bar.hidden) return;
+      $('callWho').textContent = st.from || '';
+      $('callAnswer').hidden = $('callDecline').hidden = !ring;
+      $('callMute').hidden = $('callHang').hidden = !(live && mine);
+      $('callMute').textContent = muted ? 'Unmute' : 'Mute';
+      $('callWhat').textContent = ring ? 'Incoming call' : (mine ? 'On a call with' : 'Answered in another window');
+      const t = () => {
+        const s = Math.max(0, Math.round(Date.now() / 1000 - (st.since || 0)));
+        $('callTime').textContent = live ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : '';
+      };
+      t(); if (live) clock = setInterval(t, 1000);
+    }
+
+    function connect(){
+      ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/phone?t=${T}`);
+      ws.binaryType = 'arraybuffer';
+      ws.onmessage = e => {
+        if (typeof e.data !== 'string') {
+          if (!play || !ctx) return;
+          const pcm = new Int16Array(e.data), f = new Float32Array(pcm.length);
+          for (let i = 0; i < pcm.length; i++) f[i] = pcm[i] / 0x8000;
+          play.port.postMessage(resample(f, WIRE, ctx.sampleRate));
+          return;
+        }
+        let m; try { m = JSON.parse(e.data); } catch (x) { return; }
+        st = m;
+        if (m.type !== 'live') { mine = false; muted = false; stopAudio(); }
+        if (m.type === 'ringing') $('callErr').textContent = '';
+        draw();
+      };
+      ws.onclose = () => { st = {type: 'idle'}; mine = false; stopAudio(); draw(); setTimeout(connect, 3000); };
+    }
+
+    $('callAnswer').onclick = async () => {
+      $('callAnswer').disabled = true;
+      try {
+        await startAudio();
+        mine = true;
+        ws.send(JSON.stringify({type: 'answer'}));
+      } catch (e) {
+        // No microphone, or permission refused: the call cannot be taken here, so let it pass
+        // through rather than leave the caller ringing out.
+        stopAudio();
+        $('callErr').textContent = 'Microphone not available';
+        ws.send(JSON.stringify({type: 'decline'}));
+      }
+      $('callAnswer').disabled = false;
+    };
+    $('callDecline').onclick = () => ws && ws.send(JSON.stringify({type: 'decline'}));
+    $('callHang').onclick = () => ws && ws.send(JSON.stringify({type: 'hangup'}));
+    $('callMute').onclick = () => { muted = !muted; draw(); };
+
+    connect();
+    return {state: () => st};
+  })();
 
   async function refresh(){
     THREADS = await fetch(`/api/threads?t=${T}`).then(r => r.json()).catch(() => ({people: []}));

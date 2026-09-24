@@ -301,6 +301,9 @@ SETTING_FIELDS = {"name": "Name", "pronoun": "Pronoun", "voice": "Voice",
                   # match and treats everything else as `answer`, so a typo cannot switch
                   # recording on by accident.
                   "calls": "Calls", "record_calls": "Record calls", "language": "Language",
+                  # In carry mode, whether an inbound call rings in the app before it passes
+                  # through. Off unless an explicit yes — see owner.answer_here().
+                  "answer_here": "Answer here",
                   "transcription": "Transcription",
                   # Where the audio goes. An absolute path; anything else falls back to the
                   # default rather than raising — see owner.recordings_dir().

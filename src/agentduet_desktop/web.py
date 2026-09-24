@@ -294,7 +294,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                       "never_say": "The never-say list", "calls": "What happens to a call",
                       "record_calls": "Call recording", "language": "Language",
                       "transcription": "Transcription quality",
-                      "recordings": "Recordings folder", "thinking": "Thinking"}
+                      "recordings": "Recordings folder", "thinking": "Thinking",
+                      "answer_here": "Answer calls here"}
 
     def _saved(field: str, value: str) -> str:
         """How the page says a setting was stored. The ONLY phrasing for it."""
@@ -696,6 +697,20 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response({"error": "unauthorised"}, status=401)
         return web.json_response(secretary_tools.state())
 
+    async def api_phone(request):
+        """The page's phone socket: ringing and call state out, answer/hang-up in, audio both ways.
+
+        Same token as every other route — a WebSocket carries the query string like any GET.
+        Everything else is in `phone.on_page`.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import phone
+        ws = web.WebSocketResponse(heartbeat=20)
+        await ws.prepare(request)
+        await phone.on_page(ws)
+        return ws
+
     async def api_panel(request):
         """Everything the hub renders, in ONE call.
 
@@ -776,6 +791,11 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             # and a GitHub round trip on the request path would put the hub's responsiveness
             # at the mercy of a host the whole product is supposed to work without.
             "update": _update.state(),
+            # THE IN-APP PHONE. `carry` because the toggle only means something there: in
+            # answer mode the agent takes every call and there is nothing to pass through.
+            # NOT "phone" — that key is the owner's own number, above.
+            "answer_here": {"on": _own.answer_here(),
+                            "carry": _own.calls() == _own.CALLS_CARRY},
         })
 
     async def api_threads(request):
@@ -1804,6 +1824,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/setup/example", api_setup_example),
         web.get("/api/state", api_state),
         web.get("/api/panel", api_panel),
+        web.get("/api/phone", api_phone),
         web.get("/api/threads", api_threads),
         web.get("/api/models", api_models),
         web.post("/api/provider/key", api_provider_key),
