@@ -5315,7 +5315,7 @@ def test_a_call_can_be_answered_in_the_app() -> None:
     ok("and a failed check leaves the switch off", "if (!fine) $('hereOn').checked = !want;" in onchange)
     check = hub.split("async function checkMic()")[1][:2500]
     ok("an all-zero microphone counts as blocked", "peak > 0 ? {ok: true} : {ok: false, why: 'blocked'}" in check)
-    ok("the check releases the microphone", "s.getTracks().forEach(t => t.stop());" in check)
+    ok("the check releases the microphone", "s.getTracks().forEach(tr => tr.stop());" in check)
     ok("a blocked microphone links to the Privacy settings", "Privacy_Microphone" in hub)
     ok("and the window hands that link to macOS", '"x-apple.systempreferences"' in
        (src.parent.parent / "macos" / "Sources" / "AgentDuetShell" / "AppDelegate.swift").read_text())
