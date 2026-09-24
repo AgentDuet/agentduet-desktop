@@ -757,9 +757,25 @@ single-threaded probe that likely under-reads an x86 laptop, where llama.cpp use
 err toward a smaller or faster model. The confirmation after download is what corrects them, and
 it is not built.
 
+**A GPU IS REQUIRED — decided 2026-09-24 (Stanley).** The software targets high-spec machines: a
+usable GPU with at least 8 GB. So the CPU-only column above describes an unsupported configuration,
+and nothing needs to be measured without a GPU. On macOS the requirement is already met by every
+machine we ship to — the build is Apple Silicon only, each has a Metal GPU, and none has under 8 GB
+— so there is nothing to enforce there. **Focus is the Mac**; Windows calibration is deferred.
+
+**What that moves:** the bandwidth probe is a CPU copy, and on Apple the GPU does the work. On the
+base M5 the two agreed (102 GB/s probe, 101.6 effective decoding), but on Pro, Max and Ultra chips
+the GPU reads memory faster than one core can copy it, so the probe under-reads and the pick leans
+a rung SMALL — a 64 GB Max would likely get the 26B MoE rather than the 31B. Safe, never swaps, and
+it may leave quality unused. Unverified, since only a base-chip Mac has been tested. The correction
+is one timed generation on the GPU after the first download, and on a Mac the direction that
+matters is UP.
+
 **The speed floor is a product call, not arithmetic.** At 40 GB/s E4B predicts ~13 tok/s, just
 under the 15 floor, so a CPU-only laptop gets E2B at ~20. Whether an owner would rather wait longer
 for a better model is a judgement about the product; `SPEED_FLOOR_TPS` is where it lives.
+**Set at 15 for now (Stanley, 2026-09-24), to be revisited** — a constant, so moving it is one line
+and a release. With a GPU required, the CPU case that forced the question no longer ships.
 
 Measured 2026-09-23 on the 16 GB M5 under ordinary use, loaded exactly as the app loads a model
 (Metal, all layers, 8k context), on a 1.6k-token call transcript plus "summarise and draft a reply":
