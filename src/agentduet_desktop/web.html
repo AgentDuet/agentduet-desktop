@@ -997,7 +997,12 @@
       const m = await PHONE.checkMic();
       if (!m.ok) {
         fine = false;
-        hereSay(m.why === 'none' ? 'No microphone found.' : 'Microphone access is off.', m.why !== 'none');
+        // THREE DIFFERENT FAULTS, three different fixes, so three messages. SILENT is not a
+        // permission problem and must not send the owner to Privacy settings: it is what a
+        // MacBook's built-in microphone gives with the lid closed (macOS disconnects it in
+        // hardware), found 2026-09-24 after an hour spent on permissions that were fine.
+        hereSay({none: 'No microphone found.', silent: 'The microphone is silent.'}[m.why]
+                || 'Microphone access is off.', m.why === 'blocked');
       }
     }
     if (fine) {
@@ -1192,8 +1197,6 @@
     $('callHang').onclick = () => ws && ws.send(JSON.stringify({type: 'hangup'}));
     $('callMute').onclick = () => { muted = !muted; draw(); };
 
-    // Open the microphone, listen ~1 s, release it. {ok} or {ok: false, why: 'blocked'|'none'}.
-    // 'blocked' also covers the silent refusal: every sample exactly zero.
     // Loudest sample the microphone gives an AudioContext over ~1 s.
     async function peakOf(c, stream){
       const n = c.createMediaStreamSource(stream), an = c.createAnalyser(), g = c.createGain();
@@ -1212,8 +1215,9 @@
       return Math.round(peak * 32767);
     }
 
-    // Open the microphone, listen ~1 s, release it. {ok} or {ok: false, why: 'blocked'|'none'}.
-    // 'blocked' also covers the silent refusal: every sample exactly zero.
+    // Open the microphone, listen ~1 s, release it. {ok} or {ok: false, why}: 'blocked' when
+    // access is refused, 'none' when there is no microphone, 'silent' when it opens and every
+    // sample is exactly zero — a closed MacBook lid, not a permission.
     //
     // MEASURED TWICE when the first reads zero: once in the shared context, made on the first
     // click, and once in a FRESH context made after the microphone opened. After Allow was
@@ -1252,8 +1256,44 @@
       } finally {
         s.getTracks().forEach(tr => tr.stop());
       }
+      // AND WITHOUT ECHO CANCELLATION, if both still read zero. On macOS it routes capture through
+      // Apple's voice-processing unit, which in some setups delivers silence; a plain capture
+      // reading non-zero here names that as the cause.
+      if (!peak) {
+        let raw;
+        try {
+          raw = await navigator.mediaDevices.getUserMedia({audio: {
+            echoCancellation: false, noiseSuppression: false, autoGainControl: false}});
+          const f = new AudioContext();
+          await f.resume().catch(() => {});
+          d.plain_peak = await peakOf(f, raw);
+          await f.close().catch(() => {});
+        } catch (e) {
+          d.plain_error = e && e.name;
+        } finally {
+          if (raw) raw.getTracks().forEach(tr => tr.stop());
+        }
+      }
+      // THE CONTROL: a tone made inside the page, measured the same way. If this reads zero too,
+      // the page's audio graph is not being run at all and the microphone was never the question.
+      if (!peak) {
+        try {
+          const f = new AudioContext();
+          await f.resume().catch(() => {});
+          const o = f.createOscillator(), an = f.createAnalyser(), g = f.createGain();
+          an.fftSize = 2048; g.gain.value = 0;
+          o.connect(an).connect(g).connect(f.destination); o.start();
+          await new Promise(r => setTimeout(r, 300));
+          const buf = new Float32Array(an.fftSize); an.getFloatTimeDomainData(buf);
+          d.tone_peak = Math.round(Math.max(...buf.map(Math.abs)) * 32767);
+          d.tone_state = f.state;
+          o.stop(); await f.close().catch(() => {});
+        } catch (e) {
+          d.tone_error = e && e.name;
+        }
+      }
       if (ws && ws.readyState === 1) ws.send(JSON.stringify(d));
-      return peak > 0 ? {ok: true} : {ok: false, why: 'blocked'};
+      return peak > 0 ? {ok: true} : {ok: false, why: 'silent'};
     }
 
     connect();

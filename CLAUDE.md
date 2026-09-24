@@ -422,6 +422,16 @@ Break one of these and the secretary is a different product.
   where coreutils is standard. Background the command and poll for the condition instead — which
   is better anyway, since it can stop the moment the condition holds.
 
+- **A CLOSED MACBOOK LID SILENCES THE BUILT-IN MICROPHONE, and it looks exactly like a denied
+  permission** (2026-09-24, an hour lost). With the lid shut — an external display in use — macOS
+  disconnects the built-in mic in hardware. It still enumerates as "MacBook Air Microphone", a
+  live unmuted track, and every app, native or WebKit, gets EXACT zeros with no orange dot. We
+  chased permissions, echo cancellation, sample rates and the ad-hoc signature before
+  `ioreg -r -k AppleClamshellState -d 4` said `Yes`. **Check the lid first**, and remember exact
+  zeros from a real microphone are never ambient silence. The in-app phone's check now says "The
+  microphone is silent." for this case instead of "access is off", and only a real refusal links
+  to Privacy settings. `open -n -W "AgentDuet Dev.app" --args --mic-probe <file>` measures the
+  microphone natively as the app, with no WebKit, which is what settled it.
 - **`pkill -f` matches your own command line**, including the shell running it. It has killed
   test blocks and daemons mid-run. Kill by PID or port.
 - **SIGTERM is caught somewhere in the async stack** and does not always exit. `stop` verifies
