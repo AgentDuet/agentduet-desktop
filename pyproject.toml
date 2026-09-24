@@ -16,7 +16,7 @@ dependencies = [
   # all ("cannot import name 'SendDduetMessage'"). PyPI still serves 1.0.0 as latest,
   # so a plain >=1.0.0 resolved a clean install to exactly that build. Naming a
   # prerelease here is what lets pip consider the 1.1.0b* line.
-  "agentduet>=1.1.0b1",      # released SDK: TELCO + WhatsApp + DDUET
+  "agentduet>=1.1.0b5",      # released SDK: TELCO + WhatsApp + DDUET (b5: call.origin, DDUET media)
   "aiohttp>=3.9",            # the local owner site
   "python-dotenv>=1.0",      # reads $AGENTDUET_HOME/.env
   "pyyaml>=6.0",           # writing Goose's config.yaml — YAML needs a real parser
