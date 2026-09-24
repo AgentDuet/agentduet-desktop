@@ -747,10 +747,11 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       NOT in scope: it runs its own hosted realtime model and was never chosen in the overlay.
 - [ ] **Developer override** in Settings: a Hugging Face name, `owner/repo` or
       `owner/repo:QUANT`, through the existing HF-only `models.add_custom`.
-- [ ] **Never size by VRAM on the CPU wheel.** Windows and Linux ship llama-cpp-python from
-      `/whl/cpu`, so `machine.budget_gb()` sizing an NVIDIA machine by its card — and
-      `models._gpu_layers()` logging "GPU" — are both wrong there. Latent while the owner chose;
-      a real bug once the app does. Decide from `llama_supports_gpu_offload()`.
+- [x] ~~**Never size by VRAM on the CPU wheel.**~~ **DONE 2026-09-24.** `machine.can_offload()`
+      asks the engine (`llama_supports_gpu_offload()`, cached), and both `budget_gb()` and
+      `models._gpu_layers()` go through it — so an NVIDIA card on the shipped Windows build no
+      longer sizes the budget or earns a "GPU" log line. The test was checked against the old
+      logic: four assertions fail there.
 - [ ] **Refresh the catalogue to Gemma 4 / Qwen3.5, from Hugging Face, and measure each entry's
       `ram_mb`.** Its last refresh (2026-08-27) was a generation behind, filled from memory.
 - [ ] **Confirm the lead family on QUALITY.** Gemma 4 leads on speed, measured 2026-09-23 on the

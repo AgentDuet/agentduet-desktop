@@ -695,9 +695,16 @@ def _gpu_layers(model: str) -> tuple[int, str]:
            GPU is the one case where a model can be too big for the CARD rather than the
            machine, and asking for more than fits fails at load instead of falling back.
     none   Zero, and nothing is lost — there is nowhere to put them.
+
+    AND THE BUILD HAS TO BE ABLE TO. A GPU in the machine is not a GPU the engine can reach:
+    Windows and Linux ship the `/whl/cpu` wheel, so every layer runs on the CPU there whatever
+    card is fitted. This used to answer -1 for any NVIDIA machine and log "GPU (N GB VRAM)" — a
+    log line claiming the card was in use, on a build with no way to use it.
     """
     g = machine.gpu()
     kind = g.get("kind", "")
+    if kind in ("apple", "cuda") and not machine.can_offload():
+        return 0, "CPU — this build of the engine cannot use the GPU"
     if kind == "apple":
         return -1, "GPU (Metal, unified memory)"
     if kind == "cuda":

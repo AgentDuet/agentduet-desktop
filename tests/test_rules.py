@@ -2266,21 +2266,48 @@ def test_gpu_offload() -> None:
     src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "models.py").read_text()
     ok("the engine is constructed WITH n_gpu_layers", "n_gpu_layers=layers" in src)
 
-    with mock.patch.object(machine, "gpu", return_value={"kind": "apple", "vram_gb": 0.0}):
+    # The cases below model a build that CAN offload — Metal on a Mac, a CUDA build elsewhere —
+    # so they say so. Without that they would answer from whatever engine the test machine has,
+    # and CI's runner has none.
+    able = mock.patch.object(machine, "can_offload", return_value=True)
+    with able, mock.patch.object(machine, "gpu", return_value={"kind": "apple", "vram_gb": 0.0}):
         n, why = models._gpu_layers("gemma-3-270m")
         ok("Apple Silicon offloads everything", n == -1, f"{n} {why}")
-    with mock.patch.object(machine, "gpu", return_value={"kind": "", "vram_gb": 0.0}):
+    with able, mock.patch.object(machine, "gpu", return_value={"kind": "", "vram_gb": 0.0}):
         n, _ = models._gpu_layers("gemma-3-270m")
         ok("no GPU means no offload", n == 0, str(n))
     # A DISCRETE CARD IS THE ONE CASE WITH A SECOND BUDGET: asking for more than fits fails at
     # load rather than falling back, so it is checked against the resident size.
     big = max(models.CATALOGUE, key=lambda k: models.CATALOGUE[k]["ram_mb"])
-    with mock.patch.object(machine, "gpu", return_value={"kind": "cuda", "vram_gb": 2.0}):
+    with able, mock.patch.object(machine, "gpu", return_value={"kind": "cuda", "vram_gb": 2.0}):
         n, why = models._gpu_layers(big)
         ok("a model too big for the VRAM stays on the CPU", n == 0, why)
-    with mock.patch.object(machine, "gpu", return_value={"kind": "cuda", "vram_gb": 80.0}):
+    with able, mock.patch.object(machine, "gpu", return_value={"kind": "cuda", "vram_gb": 80.0}):
         n, _ = models._gpu_layers(big)
         ok("and fits when the card is big enough", n == -1, str(n))
+
+    # THE SHIPPED WINDOWS BUILD CANNOT OFFLOAD, and an NVIDIA card there must change nothing.
+    # Windows and Linux install the `/whl/cpu` wheel. `_gpu_layers` used to answer -1 for any
+    # card and log "GPU (N GB VRAM)" on a build with no way to use one, and `budget_gb` sized
+    # the machine by that card — so an auto-pick would have chosen for hardware nothing touches.
+    cpu_wheel = mock.patch.object(machine, "can_offload", return_value=False)
+    card = {"kind": "cuda", "name": "RTX 4090", "vram_gb": 24.0}
+    with cpu_wheel, mock.patch.object(machine, "gpu", return_value=card):
+        n, why = models._gpu_layers(big)
+        ok("a CPU-only build keeps every layer on the CPU, whatever card is fitted", n == 0, why)
+        ok("and its log says why, rather than claiming the GPU", "cannot use the GPU" in why)
+        with mock.patch.object(machine, "total_ram_gb", return_value=16.0):
+            eq("the budget is the machine's RAM, not the unusable card's VRAM",
+               machine.budget_gb(), round(16.0 * 0.66, 1))
+    with able, mock.patch.object(machine, "gpu", return_value=card):
+        eq("while a build that CAN offload is still sized by the card",
+           round(machine.budget_gb(), 1), round(24.0 * 0.9, 1))
+    with cpu_wheel, mock.patch.object(machine, "gpu", return_value={"kind": "apple", "vram_gb": 0.0}):
+        n, _ = models._gpu_layers("gemma-3-270m")
+        ok("an Apple machine on a build without Metal stays on the CPU too", n == 0, str(n))
+
+    # ASKED OF THE ENGINE, and it never raises: a build without llama_cpp simply cannot offload.
+    ok("can_offload answers a plain bool", isinstance(machine.can_offload(), bool))
 
 
 def test_release_ships_the_native_shell() -> None:
