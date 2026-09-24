@@ -5319,6 +5319,9 @@ def test_a_call_can_be_answered_in_the_app() -> None:
     # SILENT IS NOT A PERMISSION PROBLEM — a closed MacBook lid disconnects the built-in mic — so
     # only a refusal may send the owner to the Privacy settings.
     ok("only a refusal links to Privacy settings", "m.why === 'blocked');" in onchange)
+    # A NEW MICROPHONE WARMS UP IN SILENCE, so the check listens up to 3 s and stops at the first
+    # sound rather than judging one fixed second.
+    ok("the check waits out the warm-up", "i < 30 && !peak" in hub)
     ok("the check releases the microphone", "s.getTracks().forEach(tr => tr.stop());" in check)
     ok("a blocked microphone links to the Privacy settings", "Privacy_Microphone" in hub)
     ok("and the window hands that link to macOS", '"x-apple.systempreferences"' in
