@@ -1194,38 +1194,65 @@
 
     // Open the microphone, listen ~1 s, release it. {ok} or {ok: false, why: 'blocked'|'none'}.
     // 'blocked' also covers the silent refusal: every sample exactly zero.
+    // Loudest sample the microphone gives an AudioContext over ~1 s.
+    async function peakOf(c, stream){
+      const n = c.createMediaStreamSource(stream), an = c.createAnalyser(), g = c.createGain();
+      an.fftSize = 2048; g.gain.value = 0;
+      // Wired to the output through a muted gain: WebKit does not run a node that leads
+      // nowhere, and an analyser that never runs reads zeros — the very thing checked for.
+      n.connect(an).connect(g).connect(c.destination);
+      const buf = new Float32Array(an.fftSize);
+      let peak = 0;
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r => setTimeout(r, 100));
+        an.getFloatTimeDomainData(buf);
+        for (const v of buf) if (Math.abs(v) > peak) peak = Math.abs(v);
+      }
+      n.disconnect(); an.disconnect(); g.disconnect();
+      return Math.round(peak * 32767);
+    }
+
+    // Open the microphone, listen ~1 s, release it. {ok} or {ok: false, why: 'blocked'|'none'}.
+    // 'blocked' also covers the silent refusal: every sample exactly zero.
+    //
+    // MEASURED TWICE when the first reads zero: once in the shared context, made on the first
+    // click, and once in a FRESH context made after the microphone opened. After Allow was
+    // pressed the shared one still read exact zeros; WebKit can feed silence to a context that
+    // predates the capture or runs at a different rate, and only a second context tells that
+    // apart from the permission.
     async function checkMic(){
       let s;
       try {
         s = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: true}});
       } catch (e) {
+        if (ws && ws.readyState === 1)
+          ws.send(JSON.stringify({type: 'diag', check: true, error: e && e.name}));
         return {ok: false, why: (e && e.name === 'NotFoundError') ? 'none' : 'blocked'};
       }
-      const c = audio();
+      const t = s.getAudioTracks()[0], set = (t && t.getSettings) ? t.getSettings() : {};
+      const d = {type: 'diag', check: true, label: t ? t.label : '', muted: t ? t.muted : null,
+                 enabled: t ? t.enabled : null, state: t ? t.readyState : '',
+                 device_rate: set.sampleRate || null};
       let peak = 0;
       try {
+        const c = audio();
         if (c) {
-          const n = c.createMediaStreamSource(s), an = c.createAnalyser(), g = c.createGain();
-          an.fftSize = 2048; g.gain.value = 0;
-          // Wired to the output through a muted gain: WebKit does not run a node that leads
-          // nowhere, and an analyser that never runs reads zeros — the very thing checked for.
-          n.connect(an).connect(g).connect(c.destination);
-          const buf = new Float32Array(an.fftSize);
-          for (let i = 0; i < 10; i++) {
-            await new Promise(r => setTimeout(r, 100));
-            an.getFloatTimeDomainData(buf);
-            for (const v of buf) if (Math.abs(v) > peak) peak = Math.abs(v);
-          }
-          n.disconnect(); an.disconnect(); g.disconnect();
+          d.shared_rate = c.sampleRate; d.shared_state = c.state;
+          d.shared_peak = await peakOf(c, s);
+          peak = d.shared_peak;
+        }
+        if (!peak) {
+          const f = new AudioContext();
+          await f.resume().catch(() => {});
+          d.fresh_rate = f.sampleRate; d.fresh_state = f.state;
+          d.fresh_peak = await peakOf(f, s);
+          peak = d.fresh_peak;
+          await f.close().catch(() => {});
         }
       } finally {
-        s.getTracks().forEach(t => t.stop());
+        s.getTracks().forEach(tr => tr.stop());
       }
-      if (ws && ws.readyState === 1)
-        ws.send(JSON.stringify({type: 'diag', check: true, peak: Math.round(peak * 32767),
-          ctx_state: c ? c.state : 'none'}));
-      // No context to measure with is not evidence of a blocked microphone: permission was granted.
-      if (!c || c.state !== 'running') return {ok: true};
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify(d));
       return peak > 0 ? {ok: true} : {ok: false, why: 'blocked'};
     }
 
