@@ -135,6 +135,52 @@ def gpu() -> dict:
     return {"kind": "cpu", "name": "", "vram_gb": 0.0}
 
 
+_BANDWIDTH: float | None = None
+
+
+def bandwidth_gbps() -> float:
+    """How fast this machine moves memory, in GB/s — what decides how fast a model ANSWERS.
+
+    Capacity decides whether a model fits; bandwidth decides its speed, because generating each
+    token reads every active weight once. So decode rate is about bandwidth / active bytes, and
+    on the machine it was checked against that held within 1%: this measured 100.8 GB/s on a
+    16 GB M5, and Qwen3 8B then decoded there at 101.6 GB/s effective.
+
+    PURE PYTHON, deliberately. `bytes(bytearray)` is a memcpy underneath and measured the same as
+    numpy there (100.8 against 100.9), so this module stays as dependency-free as the rest of it.
+    Best of ten copies of a buffer far larger than any cache — about 0.1 s — so a background
+    burst cannot drag the answer down: best-of-five once read 94.7 where the steady figure is
+    102, and at the speed floor that gap decides a tier.
+
+    AN ESTIMATE TO CHOOSE WITH, NOT A PROMISE. It is single-threaded. That was right on the M5,
+    where more threads measured SLOWER; on an x86 laptop one core cannot saturate memory the way
+    llama.cpp's many threads do, so it will likely under-read there. That errs toward a smaller,
+    faster model — the safe direction — and is unverified on Windows, where it most matters.
+    Cached for the life of the process. 0.0 when it cannot be measured, which callers treat as
+    unknown, never as slow.
+    """
+    global _BANDWIDTH
+    if _BANDWIDTH is None:
+        try:
+            import time
+            mb = 256
+            buf = bytearray(mb * 1024 * 1024)
+            bytes(buf)                                    # fault the pages in before timing
+            best = 0.0
+            for _ in range(10):
+                t0 = time.perf_counter()
+                copy = bytes(buf)
+                dt = time.perf_counter() - t0
+                del copy
+                if dt > 0:
+                    best = max(best, 2 * mb / 1024 / dt)  # a copy is a read plus a write
+            _BANDWIDTH = round(best, 1)
+        except Exception as exc:                          # a number we cannot read is not an error
+            logger.debug("could not measure memory bandwidth: %s", exc)
+            _BANDWIDTH = 0.0
+    return _BANDWIDTH
+
+
 _OFFLOAD: bool | None = None
 
 
