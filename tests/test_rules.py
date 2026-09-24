@@ -4896,6 +4896,27 @@ def test_the_machine_picks_the_model() -> None:
 
     ok("the probe answers a plain number", isinstance(machine.bandwidth_gbps(), float))
 
+    # ON A MAC THE CHIP IS LOOKED UP, NOT MEASURED — the one-core probe under-reads a big GPU.
+    spec = machine.apple_spec_gbps
+    eq("the M5 is rated 153", spec("Apple M5", 10), 153.0)
+    eq("a 30-core M3 Max gets the lower figure", spec("Apple M3 Max", 30), 300.0)
+    eq("a 40-core M3 Max gets the higher one", spec("Apple M3 Max", 40), 400.0)
+    eq("an unreadable core count takes the lower, safe figure", spec("Apple M4 Max", 0), 410.0)
+    eq("a chip the table does not know answers 0, not a guess", spec("Apple M9 Hyper", 80), 0.0)
+    for chip, cores, expect in (("Apple M5", 10, 101.0), ("Apple M4 Max", 40, 360.4)):
+        with mock.patch.object(machine, "apple_chip", return_value=(chip, cores)), \
+             mock.patch.object(machine, "_probe_gbps", side_effect=AssertionError("probed")), \
+             mock.patch.object(machine, "_BANDWIDTH", None):
+            eq(f"{chip} is the published figure scaled, with no probe", machine.bandwidth_gbps(), expect)
+    with mock.patch.object(machine, "apple_chip", return_value=("Apple M9 Hyper", 80)), \
+         mock.patch.object(machine, "_probe_gbps", return_value=123.4), \
+         mock.patch.object(machine, "_BANDWIDTH", None):
+        eq("an unknown chip falls back to the probe", machine.bandwidth_gbps(), 123.4)
+    # The M5 answer matches what a model really decoded at there (101.6), which is the calibration.
+    with mock.patch.object(machine, "_BANDWIDTH", None):
+        if machine.apple_chip()[0] in machine.APPLE_SPEC_GBPS:
+            ok("this Mac is in the table", machine.bandwidth_gbps() > 0, machine.apple_chip())
+
 
 def test_one_place_decides_the_model_and_hosted_is_quarantined() -> None:
     """current_model() is the only answer, and a hosted setting cannot step around the quarantine."""

@@ -746,11 +746,13 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       **Progress has its own poll**, because `refreshCurrent()` resets the form fields and polling
       it would overwrite what the owner is typing. Nothing on either page says WHY the model was
       picked.
-- [ ] **Confirm the pick after download — on a Mac, mainly to step UP.** Designed, not built. The
-      bandwidth probe is a CPU copy and Apple's GPU does the inference; on the base M5 they agree,
-      but on Pro/Max/Ultra the GPU reads memory faster than one core, so the pick leans a rung
-      small (a 64 GB Max likely gets the 26B MoE, not the 31B). One timed generation on the GPU
-      after the first download gives the real speed. Unverified off a base chip.
+- [ ] **Confirm the pick after download.** Designed, not built. Since 2026-09-24 a Mac's bandwidth
+      is LOOKED UP, not probed: `machine.apple_chip()` reads the chip name and GPU core count,
+      `APPLE_SPEC_GBPS` holds Apple's published figure, scaled by `APPLE_EFFICIENCY = 0.66` — which
+      fixed the one-core probe under-reading Pro/Max/Ultra. **But 0.66 is ONE data point (the M5:
+      153 rated, 101.6 decoded)**, and bigger chips may reach a smaller share, so the table may now
+      err the other way and over-predict them. One timed generation after download is what settles
+      it, in either direction. M5 Pro/Max/Ultra are not in the table yet; they fall back to the probe.
 - [x] ~~**Calibrate the bandwidth probe on Windows.**~~ **DEFERRED 2026-09-24 by decision:** a GPU
       is now required and the focus is the Mac. Reopens when Windows does.
 - [x] ~~**Set the speed floor.**~~ **15 tok/s for now** (Stanley, 2026-09-24), to be revisited. A

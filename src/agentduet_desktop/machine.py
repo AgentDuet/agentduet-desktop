@@ -17,6 +17,7 @@ import functools
 import logging
 import os
 import platform
+import re
 import shutil
 import subprocess
 
@@ -141,50 +142,117 @@ def gpu() -> dict:
     return {"kind": "cpu", "name": "", "vram_gb": 0.0}
 
 
+# Apple's published unified-memory bandwidth, GB/s, per chip. A chip sold in two GPU sizes has
+# two figures, keyed by the smallest GPU-core count that earns the higher one. Checked against
+# Apple's own spec pages; the M5 Pro/Max/Ultra are left out until someone checks them, and a chip
+# missing here falls back to the probe rather than a guess.
+APPLE_SPEC_GBPS: dict[str, tuple[tuple[int, float], ...]] = {
+    "Apple M1": ((0, 68.25),), "Apple M1 Pro": ((0, 200.0),),
+    "Apple M1 Max": ((0, 400.0),), "Apple M1 Ultra": ((0, 800.0),),
+    "Apple M2": ((0, 100.0),), "Apple M2 Pro": ((0, 200.0),),
+    "Apple M2 Max": ((0, 400.0),), "Apple M2 Ultra": ((0, 800.0),),
+    "Apple M3": ((0, 100.0),), "Apple M3 Pro": ((0, 150.0),),
+    "Apple M3 Max": ((0, 300.0), (40, 400.0)), "Apple M3 Ultra": ((0, 819.0),),
+    "Apple M4": ((0, 120.0),), "Apple M4 Pro": ((0, 273.0),),
+    "Apple M4 Max": ((0, 410.0), (40, 546.0)),
+    "Apple M5": ((0, 153.0),),
+}
+
+# The share of the published figure a model actually decodes at. ONE DATA POINT: the 16 GB M5,
+# rated 153, where Qwen3 8B decoded at 101.6 GB/s effective (0.66). Assumed for every other chip,
+# which is why the timed run after the first download is still the real check — larger chips may
+# well reach a smaller share, and then this over-predicts them.
+APPLE_EFFICIENCY = 0.66
+
+
+@functools.lru_cache(maxsize=1)
+def apple_chip() -> tuple[str, int]:
+    """(chip name, GPU cores) on Apple Silicon, e.g. ("Apple M5", 10). ("", 0) anywhere else.
+
+    The name is `sysctl machdep.cpu.brand_string`; the core count is the GPU driver's
+    `gpu-core-count` in the IORegistry. Both are plain reads — no permission, no timing.
+    """
+    if gpu()["kind"] != "apple":
+        return "", 0
+    name, cores = "", 0
+    try:
+        name = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"],
+                              capture_output=True, text=True, timeout=5).stdout.strip()
+        out = subprocess.run(["ioreg", "-rc", "AGXAccelerator", "-d1"],
+                             capture_output=True, text=True, timeout=5).stdout
+        m = re.search(r'"gpu-core-count"\s*=\s*(\d+)', out)
+        cores = int(m.group(1)) if m else 0
+    except Exception as exc:
+        logger.debug("could not read the Apple chip: %s", exc)
+    return name, cores
+
+
+def apple_spec_gbps(name: str, cores: int) -> float:
+    """Apple's published bandwidth for this chip, or 0.0 when the table does not know it.
+
+    An unreadable core count takes the LOWER figure of a two-size chip: under-reading picks a
+    smaller, faster model, which is the safe direction.
+    """
+    tiers = APPLE_SPEC_GBPS.get(name)
+    if not tiers:
+        return 0.0
+    return max(gbps for min_cores, gbps in tiers if cores >= min_cores)
+
+
 _BANDWIDTH: float | None = None
 
 
 def bandwidth_gbps() -> float:
-    """How fast this machine moves memory, in GB/s — what decides how fast a model ANSWERS.
+    """How fast this machine moves memory for a model, in GB/s — what decides how fast it ANSWERS.
 
     Capacity decides whether a model fits; bandwidth decides its speed, because generating each
-    token reads every active weight once. So decode rate is about bandwidth / active bytes, and
-    on the machine it was checked against that held within 1%: this measured 100.8 GB/s on a
-    16 GB M5, and Qwen3 8B then decoded there at 101.6 GB/s effective.
+    token reads every active weight once. So decode rate is about bandwidth / active bytes.
 
-    PURE PYTHON, deliberately. `bytes(bytearray)` is a memcpy underneath and measured the same as
-    numpy there (100.8 against 100.9), so this module stays as dependency-free as the rest of it.
-    Best of ten copies of a buffer far larger than any cache — about 0.1 s — so a background
-    burst cannot drag the answer down: best-of-five once read 94.7 where the steady figure is
-    102, and at the speed floor that gap decides a tier.
+    ON A MAC, LOOKED UP, NOT MEASURED. macOS reports no bandwidth, but it names the chip exactly,
+    and Apple publishes each chip's figure; scaled by `APPLE_EFFICIENCY` that is what a model
+    gets. The probe below cannot stand in for it there: it copies on ONE core, and on the M5 that
+    happened to match the GPU (102 against 101.6), but a Pro, Max or Ultra GPU reads memory far
+    faster than one core can copy it, so the probe would pick those machines a rung too small.
 
-    AN ESTIMATE TO CHOOSE WITH, NOT A PROMISE. It is single-threaded. That was right on the M5,
-    where more threads measured SLOWER; on an x86 laptop one core cannot saturate memory the way
-    llama.cpp's many threads do, so it will likely under-read there. That errs toward a smaller,
-    faster model — the safe direction — and is unverified on Windows, where it most matters.
-    Cached for the life of the process. 0.0 when it cannot be measured, which callers treat as
-    unknown, never as slow.
+    Everywhere else, and on a chip the table does not know, the probe answers. Cached for the
+    life of the process. 0.0 when neither can answer, which callers treat as unknown, never slow.
     """
     global _BANDWIDTH
     if _BANDWIDTH is None:
-        try:
-            import time
-            mb = 256
-            buf = bytearray(mb * 1024 * 1024)
-            bytes(buf)                                    # fault the pages in before timing
-            best = 0.0
-            for _ in range(10):
-                t0 = time.perf_counter()
-                copy = bytes(buf)
-                dt = time.perf_counter() - t0
-                del copy
-                if dt > 0:
-                    best = max(best, 2 * mb / 1024 / dt)  # a copy is a read plus a write
-            _BANDWIDTH = round(best, 1)
-        except Exception as exc:                          # a number we cannot read is not an error
-            logger.debug("could not measure memory bandwidth: %s", exc)
-            _BANDWIDTH = 0.0
+        spec = apple_spec_gbps(*apple_chip())
+        _BANDWIDTH = round(spec * APPLE_EFFICIENCY, 1) if spec else _probe_gbps()
     return _BANDWIDTH
+
+
+def _probe_gbps() -> float:
+    """Measure memory bandwidth by timing a copy. The fallback when the chip is not in the table.
+
+    PURE PYTHON, deliberately. `bytes(bytearray)` is a memcpy underneath and measured the same as
+    numpy on the M5 (100.8 against 100.9), so this module stays as dependency-free as the rest of
+    it. Best of ten copies of a buffer far larger than any cache — about 0.1 s — so a background
+    burst cannot drag the answer down: best-of-five once read 94.7 where the steady figure is
+    102, and at the speed floor that gap decides a tier.
+
+    It is single-threaded, so it under-reads any machine where many threads or a GPU can pull
+    more than one core — smaller, faster model, the safe direction. 0.0 on failure.
+    """
+    try:
+        import time
+        mb = 256
+        buf = bytearray(mb * 1024 * 1024)
+        bytes(buf)                                    # fault the pages in before timing
+        best = 0.0
+        for _ in range(10):
+            t0 = time.perf_counter()
+            copy = bytes(buf)
+            dt = time.perf_counter() - t0
+            del copy
+            if dt > 0:
+                best = max(best, 2 * mb / 1024 / dt)  # a copy is a read plus a write
+        return round(best, 1)
+    except Exception as exc:                          # a number we cannot read is not an error
+        logger.debug("could not measure memory bandwidth: %s", exc)
+        return 0.0
 
 
 _OFFLOAD: bool | None = None
