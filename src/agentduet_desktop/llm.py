@@ -78,16 +78,18 @@ def provider(model: str = "") -> str:
     the name first sent a downloaded model to a cloud vendor. An exact id beats a substring.
     """
     named = (os.getenv("SECRETARY_PROVIDER") or "").strip().lower()
-    if named in _IMPLS:
+    # Under the quarantine an explicit HOSTED provider is not honoured — the setting is exactly
+    # the step-around a quarantine must not allow. "local" still is.
+    if named in _IMPLS and (not CHOICE_QUARANTINED or named == "local"):
         return named
-    name = (model or os.getenv("SECRETARY_MODEL") or "").lower()
+    name = (model or current_model()).lower()
     from . import models
     if name in models.CATALOGUE:
         return "local"
     for prov, prefixes in _PROVIDERS.items():
         if any(p in name for p in prefixes):
             return prov
-    return DEFAULT_PROVIDER
+    return "local" if CHOICE_QUARANTINED else DEFAULT_PROVIDER
 
 
 class _Gemini:
@@ -569,13 +571,57 @@ def fallback_model() -> str:
     return picks[0] if picks else ""
 
 
+#: THE MODEL CHOICE IS QUARANTINED (2026-09-23, Stanley): the text model runs locally and the
+#: machine picks it. The hosted providers and the picker are held back — code kept, and this one
+#: flag brings them back. The rule the Apple STT flag set applies here: a quarantine an owner can
+#: step around by typing a setting is not a quarantine, so while this is True a hosted
+#: SECRETARY_MODEL or SECRETARY_PROVIDER is IGNORED. See docs/design.md, "The model: local, and
+#: the machine picks it". Voice is NOT covered: it runs its own realtime model, never chosen here.
+CHOICE_QUARANTINED = True
+
+
+def current_model() -> str:
+    """The TEXT model in use — decided here, and nowhere else.
+
+    TEN CALL SITES EACH READ SECRETARY_MODEL AND FELL BACK ON THEIR OWN, some to a Gemini name
+    Google does not serve and one captured at import, so they could disagree about which model was
+    running. They all ask this now.
+
+    UNDER THE QUARANTINE (the product as it ships), local only, and the machine chooses:
+      1. `models.pick()`, if it is downloaded — the right model for this machine, and ready.
+      2. Otherwise the configured LOCAL model, if it is downloaded. An install already running
+         Qwen3 8B keeps running it until the better pick is downloaded: switching straight to a
+         model that is not on disk would leave the assistant with nothing until someone clicked
+         Download.
+      3. Otherwise the pick, not yet downloaded — so every surface offers exactly that download.
+    A hosted configured model is never returned here. It is ignored, not honoured.
+
+    WITHOUT THE QUARANTINE: SECRETARY_MODEL or the default, exactly as before.
+    """
+    if not CHOICE_QUARANTINED:
+        return os.getenv("SECRETARY_MODEL") or fallback_model()
+    from . import models
+    picked = models.pick()["model"]
+    if picked and models.is_downloaded(picked):
+        return picked
+    configured = (os.getenv("SECRETARY_MODEL") or "").strip()
+    if configured and models.spec_of(configured) and models.is_downloaded(configured):
+        return configured
+    return picked
+
+
 def client(model: str = ""):
     """The live client for `model`, or None when no key is configured.
 
     Cached per (provider, model). Returning None rather than raising is deliberate: the
     agent must degrade to escalating everything when no model is attached, not crash.
     """
-    m = model or os.getenv("SECRETARY_MODEL") or fallback_model()
+    m = model or current_model()
+    if CHOICE_QUARANTINED and provider(m) != "local":
+        # EVEN WHEN NAMED EXPLICITLY. A caller passing a hosted name — brain.py did, captured at
+        # import — must get nothing rather than a way around the quarantine.
+        logger.debug("model choice is quarantined; not building a hosted client for %s", m)
+        return None
     prov = provider(m)
     hit = _cached.get(f"{prov}:{m}")
     if hit is not None:
@@ -611,7 +657,7 @@ def configured(model: str = "") -> bool:
     an assistant is curious; spending a token and a round-trip on each one is a cost nobody
     agreed to.
     """
-    return client(model or os.getenv("SECRETARY_MODEL") or fallback_model()) is not None
+    return client(model or current_model()) is not None
 
 
 def verify(model: str = "") -> tuple[bool, str]:
@@ -625,7 +671,7 @@ def verify(model: str = "") -> tuple[bool, str]:
     key, a spend cap needs a billing change, and both are otherwise reported as "the model
     isn't working".
     """
-    m = model or os.getenv("SECRETARY_MODEL") or fallback_model()
+    m = model or current_model()
     c = client(m)
     if c is None:
         return False, f"No credential found for {provider(m)}."
@@ -673,7 +719,7 @@ def supports_thinking(model: str = "") -> bool:
     reasoning on a streamed request.
     """
     from . import models
-    m = model or os.getenv("SECRETARY_MODEL") or ""
+    m = model or current_model()
     if not m:
         return False
     if models.thinks(m):                        # a local reasoning family
@@ -732,7 +778,7 @@ def summary(model: str = "") -> str:
     describe() names the provider key, the credential kind and the client's health — a
     diagnostic. This answers the only question a settings page is asked: what is it set to?
     """
-    m = model or os.getenv("SECRETARY_MODEL")
+    m = model or current_model()
     if not m:
         return "No model attached. Calls are still carried and recorded without one."
     # AN UPGRADE LEAVES A NAME BEHIND. Instances configured before 2026-08-27 hold an Ollama
@@ -757,7 +803,7 @@ def describe(model: str = "") -> str:
     authenticated. Distinguishing "key" from "signed in" matters: an expired OAuth login
     looks exactly like no model attached (everything escalates), so the owner needs to be
     able to see which one they have."""
-    m = model or os.getenv("SECRETARY_MODEL") or fallback_model()
+    m = model or current_model()
     prov = provider(m)
     impl = _IMPLS[prov]
     cred = impl.credential()

@@ -4894,6 +4894,95 @@ def test_the_machine_picks_the_model() -> None:
     ok("the probe answers a plain number", isinstance(machine.bandwidth_gbps(), float))
 
 
+def test_one_place_decides_the_model_and_hosted_is_quarantined() -> None:
+    """current_model() is the only answer, and a hosted setting cannot step around the quarantine."""
+    print("\n  -- one place decides the model; hosted is quarantined --")
+    import types
+    import unittest.mock as mock
+    from agentduet_desktop import assistant, llm, machine, models
+
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    ok("the model choice is quarantined as shipped", llm.CHOICE_QUARANTINED is True)
+
+    def world(configured="", provider="", downloaded=(), pick="gemma-4-e4b"):
+        env = {"SECRETARY_MODEL": configured, "SECRETARY_PROVIDER": provider}
+        return (mock.patch.dict(llm.os.environ, env),
+                mock.patch.object(models, "pick", return_value={"model": pick, "fit": "fits",
+                                                                "why": "", "predicted_tps": 30.0}),
+                mock.patch.object(models, "is_downloaded", lambda k: k in downloaded))
+
+    def resolve(**kw):
+        a, b, c = world(**kw)
+        with a, b, c:
+            return llm.current_model(), llm.provider()
+
+    # THE ORDER, as designed.
+    eq("the pick, once it is downloaded",
+       resolve(configured="qwen3-8b", downloaded={"gemma-4-e4b", "qwen3-8b"})[0], "gemma-4-e4b")
+    eq("otherwise the configured local model that is on disk — an install keeps working",
+       resolve(configured="qwen3-8b", downloaded={"qwen3-8b"})[0], "qwen3-8b")
+    eq("otherwise the pick, so every surface offers exactly that download",
+       resolve(configured="qwen3-8b", downloaded=())[0], "gemma-4-e4b")
+
+    # THE QUARANTINE CANNOT BE STEPPED AROUND BY A SETTING. A hosted model and provider in .env —
+    # a Gemini install, upgraded — are ignored rather than honoured, which is the rule the Apple
+    # STT flag set.
+    m, prov = resolve(configured="gemini-flash-latest", provider="gemini", downloaded=())
+    eq("a hosted SECRETARY_MODEL is not the model in use", m, "gemma-4-e4b")
+    eq("and a hosted SECRETARY_PROVIDER is not honoured", prov, "local")
+    a, b, c = world()
+    with a, b, c:
+        ok("even an explicit hosted name gets no client", llm.client("gemini-flash-latest") is None)
+        eq("and a name nothing recognises defaults to local, not to a vendor", llm.provider(""), "local")
+        eq("while a hosted name is still CLASSIFIED correctly", llm.provider("claude-sonnet-5"), "anthropic")
+
+    # WITHOUT THE FLAG, EXACTLY THE OLD BEHAVIOUR — so lifting the quarantine is one line.
+    with mock.patch.object(llm, "CHOICE_QUARANTINED", False), \
+         mock.patch.dict(llm.os.environ, {"SECRETARY_MODEL": "claude-sonnet-5", "SECRETARY_PROVIDER": ""}):
+        eq("unquarantined, SECRETARY_MODEL is the model again", llm.current_model(), "claude-sonnet-5")
+
+    # NOTHING ELSE READS THE SETTING. Ten call sites each resolved it, with their own defaults.
+    for f in ("assistant.py", "brain.py", "hosts.py", "init.py", "models.py", "web.py"):
+        code = "\n".join(l for l in (src / f).read_text().splitlines()
+                         if not l.strip().startswith("#"))
+        ok(f"{f} does not read SECRETARY_MODEL itself", 'os.getenv("SECRETARY_MODEL"' not in code)
+    brain_code = (src / "brain.py").read_text()
+    ok("brain no longer captures the model at import, with a name Google does not serve",
+       'MODEL = os.getenv("SECRETARY_MODEL", "gemini-3.1-flash")' not in brain_code)
+    ok("the daemon's startup uses the SHARED assistant, not a second instance",
+       "chat = assistant.owner_chat()" in (src / "web.py").read_text())
+
+    # THE ASSISTANT FOLLOWS A FINISHED DOWNLOAD. owner_chat() resolves per call and rebuilds when
+    # the answer changes, so when the pick lands on disk the next turn uses it — no restart.
+    built = []
+    class Fake:
+        def __init__(self, m): built.append(m)
+    with mock.patch.object(assistant, "OwnerChat", Fake), \
+         mock.patch.object(llm, "client", return_value=object()):
+        assistant.forget_owner_chat()
+        with mock.patch.object(llm, "current_model", return_value="qwen3-8b"):
+            assistant.owner_chat()
+        with mock.patch.object(llm, "current_model", return_value="gemma-4-e4b"):
+            assistant.owner_chat()
+        assistant.forget_owner_chat()
+    eq("the assistant is rebuilt on the new model", built, ["qwen3-8b", "gemma-4-e4b"])
+
+    # gpu() IS ASKED ON EVERY PICK — five times, through verdict — and on an NVIDIA machine each
+    # ask was an nvidia-smi subprocess. It is cached; the hardware cannot change while we run.
+    runs = []
+    fake = lambda *a, **k: runs.append(1) or types.SimpleNamespace(stdout="RTX 4090, 24564\n")
+    machine.gpu.cache_clear()
+    try:
+        with mock.patch.object(machine.platform, "system", return_value="Windows"), \
+             mock.patch.object(machine.shutil, "which", return_value="nvidia-smi"), \
+             mock.patch.object(machine.subprocess, "run", fake):
+            for _ in range(5):
+                machine.gpu()
+        eq("nvidia-smi runs once, not once per ask", len(runs), 1)
+    finally:
+        machine.gpu.cache_clear()
+
+
 def test_the_content_can_be_copied_out() -> None:
     """A transcript nobody can select is a transcript nobody can use."""
     print("\n  -- content is selectable, chrome is not --")
@@ -4994,6 +5083,7 @@ def main() -> None:
     test_a_draft_goes_to_who_it_was_written_for()
     test_the_catalogue_carries_gemma_4_and_says_what_was_measured()
     test_the_machine_picks_the_model()
+    test_one_place_decides_the_model_and_hosted_is_quarantined()
     test_capabilities()
     test_capability_disclosure()
     test_policy()

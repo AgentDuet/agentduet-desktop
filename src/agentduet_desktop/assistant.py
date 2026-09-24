@@ -581,7 +581,7 @@ def owner_chat(model: str = ""):
     Rebuilt when the attached model changes, since the client is bound to it.
     """
     from . import llm
-    m = model or os.getenv("SECRETARY_MODEL", "")
+    m = model or llm.current_model()
     if not m or not llm.client(m):
         return None
     if _shared["chat"] is None or _shared["model"] != m:

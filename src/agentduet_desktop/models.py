@@ -812,7 +812,8 @@ def download(model: str) -> str:
 def delete(model: str) -> str:
     """Remove the weights, freeing the disk. Refuses the model in use, which is the failure
     `attach_model` exists to prevent — a configured-but-absent model answers nothing."""
-    if model == os.getenv("SECRETARY_MODEL"):
+    from . import llm
+    if model == llm.current_model():
         return f"{model} is the model in use. Choose another one first."
     p = path_of(model)
     if not p or not p.parent.is_dir():
@@ -952,7 +953,8 @@ def listing() -> list[dict]:
     # recommendation ranks the vendors, and there is no honest basis for that; alphabetical is
     # the one order that expresses no opinion.
     chosen = set(families()) | {n for n in CATALOGUE if is_downloaded(n)} | set(custom())
-    live = loaded() or os.getenv("SECRETARY_MODEL", "")
+    from . import llm
+    live = loaded() or llm.current_model()
     everything = [(n, CATALOGUE[n], False) for n in chosen if n in CATALOGUE] + \
                  [(n, sp, True) for n, sp in custom().items() if n not in CATALOGUE]
 
