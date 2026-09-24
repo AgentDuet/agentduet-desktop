@@ -737,13 +737,15 @@ binary in a folder"). Ordered; each is worth doing alone.
 **The local model — the machine picks it** (decided 2026-09-23; the reasoning, and what would
 reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*)
 
-- [ ] **Wire the pick into the UI.** The BACKEND IS WIRED (2026-09-24): `llm.current_model()` is
-      the one place that decides the model in use — the pick if downloaded, else the configured
-      local model if downloaded, else the pick — and every reader goes through it. `models.pick()`
-      picks Gemma 4 E4B on the 16 GB M5 (33.1 tok/s predicted, 32.9 measured).
-      **What is NOT done:** the pages still show the old picker, so the owner can choose a hosted
-      model that the backend then ignores, and there is no Download button for the pick. That is
-      the next commit, and until it lands the UI can disagree with what actually runs.
+- [x] ~~**Wire the pick into the UI.**~~ **DONE 2026-09-24, and looked at in a browser.** The
+      Settings card shows the model in use — by name and true state, "Gemma 4 E4B, not
+      downloaded" rather than the old "gemma-4-e4b is chosen, but has no key yet" — and one button,
+      "Download Gemma 4 E4B · 4.8 GB", while the pick is not yet here. During the download the
+      button is disabled and the house-style bar reports progress; the pick switches in on its own
+      when it lands. The wizard's dropdown offers only the pick, with "Choose later" still first.
+      **Progress has its own poll**, because `refreshCurrent()` resets the form fields and polling
+      it would overwrite what the owner is typing. Nothing on either page says WHY the model was
+      picked.
 - [ ] **Confirm the pick after download, and step down below the floor.** Designed, not built.
       Two picks lean on unmeasured figures — the 26B's active bytes, and a single-threaded
       bandwidth probe that likely under-reads x86 — and this is what corrects them.
@@ -760,7 +762,7 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       the fastest one. Confirm with one timed generation after download; step down a tier below
       the floor. No ceiling at 24 GB or 12B — MoE (Gemma 4 26B-A4B) is what makes big machines
       worth it.
-- [ ] **Quarantine the picker AND the hosted providers — the BACKEND HALF IS DONE.**
+- [x] ~~**Quarantine the picker AND the hosted providers.**~~ **DONE 2026-09-24.**
       `llm.CHOICE_QUARANTINED = True`: a hosted `SECRETARY_MODEL` or `SECRETARY_PROVIDER` is
       ignored, and `client()` refuses a hosted name even when passed explicitly. Setting the flag
       False restores the old behaviour exactly. **Left: hiding the picker and the hosted pane in the
