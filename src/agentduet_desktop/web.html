@@ -196,6 +196,13 @@
   .composer{display:flex;flex-direction:column;gap:.5rem;padding:1rem 1.5rem;
     border-top:1px solid var(--line);background:var(--sidebar);flex-shrink:0;}
   .composer .crow{display:flex;gap:.6rem;align-items:flex-end;}
+  /* The model arriving. Same bar as Settings' Model card, so one download looks the same on
+     both pages. */
+  .dl{display:flex;flex-direction:column;gap:.3rem;}
+  .dl .barlab{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;
+    color:var(--faint);font-variant-numeric:tabular-nums;}
+  .dl .bar{height:.35rem;border-radius:999px;background:var(--slate700);overflow:hidden;}
+  .dl .bar i{display:block;height:100%;background:var(--accent);transition:width .3s;}
   /* :not(:empty) so an empty note takes no space at all — the gap above would otherwise
      leave a permanent band of blank sidebar under every composer. */
   .composer .cnote:not(:empty){font-size:.6875rem;line-height:1.5;color:var(--faint);}
@@ -258,6 +265,7 @@
         <div class="thread" id="thread"></div>
       </div>
       <div class="composer" id="composer" hidden>
+        <div class="dl" id="aDl" hidden></div>
         <div class="crow">
           <textarea id="ask" rows="1" placeholder="Ask about your calls…"></textarea>
           <button class="btn" id="send">Send</button>
@@ -358,11 +366,32 @@
   // JUST THE MODEL-DEPENDENT CONTROLS. Called from the poll, where a rebuild is not wanted:
   // no innerHTML, no focus, nothing that can move under someone's cursor or selection.
   function modelControls(){
+    drawDownload();
     if (PICKED !== ASSISTANT || BUSY) return;      // BUSY owns the button during a turn
     const ok = !!MODEL.configured;
     $('ask').disabled = !ok;
     $('send').disabled = !ok;
-    $('ask').placeholder = ok ? 'Ask about your calls…' : 'Attach a model in Settings';
+    $('ask').placeholder = placeholder(ok);
+  }
+
+  //: The composer's empty-box text. While the model is arriving the bar says so, so the box
+  //: says nothing rather than repeating it.
+  function placeholder(ok){
+    if (ok) return 'Ask about your calls…';
+    return (MODEL.pick || {}).job ? '' : 'Download the model in Settings';
+  }
+
+  // THE MODEL ARRIVING, usually started by the setup wizard and still going when the hub opens.
+  // Only in the Assistant tab — it is the one place the model is used — and only while a
+  // download is running. Idempotent element writes, so the 5s poll moves nothing else.
+  function drawDownload(){
+    const pk = MODEL.pick || {}, job = pk.job;
+    const show = PICKED === ASSISTANT && !!job && !pk.downloaded;
+    $('aDl').hidden = !show;
+    if (!show) return;
+    $('aDl').innerHTML = '<div class="barlab"><span>' + esc(pk.name) + '</span><span>'
+      + job.done_mb + ' / ' + job.total_mb + ' MB \u00b7 ' + job.percent + '%</span></div>'
+      + '<div class="bar"><i style="width:' + job.percent + '%"></i></div>';
   }
 
   // `opening` MEANS A PERSON ASKED FOR THIS VIEW — a click, or the first paint. Focus follows
@@ -377,7 +406,8 @@
     const ok = !!MODEL.configured;
     $('ask').disabled = !ok;
     $('send').disabled = !ok;
-    $('ask').placeholder = ok ? 'Ask about your calls…' : 'Attach a model in Settings';
+    $('ask').placeholder = placeholder(ok);
+    drawDownload();
     $('thread').innerHTML = '<div class="chat" id="chat"></div>';
     drawChat();
     if (ok && opening) $('ask').focus();
@@ -387,6 +417,7 @@
     const p = (THREADS.people || []).find(x => x.who === PICKED);
     $('aModel').hidden = true;
     $('newConv').hidden = true;
+    drawDownload();
     if (!p) { $('composer').hidden = true; return; }
 
     // THE COMPOSER IS THE POINT OF THIS VIEW. Messages are CARRIED now — the agent does not

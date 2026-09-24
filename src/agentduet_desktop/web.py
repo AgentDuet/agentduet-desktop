@@ -764,7 +764,10 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             # otherwise tell which one they are talking to.
             "model": {"configured": _llm.configured(),
                       "name": _llm.current_model(),
-                      "describe": _llm.summary()},
+                      "describe": _llm.summary(),
+                      # So the Assistant tab can show a download the wizard started, which
+                      # usually outlasts setup: 4.8 GB takes longer than two screens.
+                      "pick": _pick_payload()},
             "files": {"calls": _listing(carry.recordings()),
                       "answered": _listing(carry.recordings() / carry.ANSWERED),
                       "messages": []},
