@@ -4875,7 +4875,10 @@ def test_the_machine_picks_the_model() -> None:
         eq("a card the CPU-only build cannot use changes nothing", p["model"], "gemma-4-e4b")
 
     # DEGRADING, in the order an owner would want.
-    with box(16, 25, kind="cpu", offload=False) as p:
+    # 20 GB/s, so that NOTHING clears the floor. It was 25 until E2B was measured: its real
+    # active size is smaller than the estimate was, which put it at 15.3 tok/s there — over the
+    # floor — and this case stopped exercising the path it is named for.
+    with box(16, 20, kind="cpu", offload=False) as p:
         eq("when nothing is fast enough, the quickest that fits", p["model"], "gemma-4-e2b")
         ok("and it says so", "none answers as fast" in p["why"], p["why"])
     with box(8, 68) as p:

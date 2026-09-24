@@ -764,15 +764,19 @@ for a better model is a judgement about the product; `SPEED_FLOOR_TPS` is where 
 Measured 2026-09-23 on the 16 GB M5 under ordinary use, loaded exactly as the app loads a model
 (Metal, all layers, 8k context), on a 1.6k-token call transcript plus "summarise and draft a reply":
 
-| | Qwen3 8B | Qwen3.5 9B | **Gemma 4 E4B** | Gemma 4 12B |
-|---|---|---|---|---|
-| file | 4.68 GB | 5.29 GB | 4.80 GB | 6.50 GB |
-| decode | 21.7 tok/s | 20.4 | **32.9** | 14.5 |
-| prefill | 225 tok/s | 207 | **388** | 140 |
-| read the call + write the reply | 13.8 s | 15.2 s | **8.7 s** | 21.9 s |
-| peak memory | 5.87 GB | 5.77 GB | **5.55 GB** | 7.47 GB |
-| a Vietnamese paragraph | 88 tokens | 78 | 80 | 80 |
-| swap | — | — | — | 0 → 1.9 GB |
+| | Qwen3 8B | Qwen3.5 9B | Gemma 4 E2B | **Gemma 4 E4B** | Gemma 4 12B |
+|---|---|---|---|---|---|
+| file | 4.68 GB | 5.29 GB | 3.12 GB | 4.80 GB | 6.50 GB |
+| decode | 21.7 tok/s | 20.4 | 62.9 | **32.9** | 14.5 |
+| prefill | 225 tok/s | 207 | 763 | **388** | 140 |
+| read the call + write the reply | 13.8 s | 15.2 s | 4.5 s | **8.7 s** | 21.9 s |
+| peak memory | 5.87 GB | 5.77 GB | 3.49 GB | **5.55 GB** | 7.47 GB |
+| a Vietnamese paragraph | 88 tokens | 78 | 80 | 80 | 80 |
+| swap | — | — | — | — | 0 → 1.9 GB |
+
+(E2B was timed a day later, 2026-09-24, on the same machine. It is the fastest here and not the
+16 GB pick: the pick takes the largest model that fits and clears the speed floor, and E4B does
+both — speed above the floor is not traded for a smaller model.)
 
 **So a 16 GB Mac gets Gemma 4 E4B.** A tier up is not a free upgrade there: the 12B takes two
 and a half times as long, swaps, and misses a 15 tok/s floor. Qwen3.5 9B is dense and reads all
