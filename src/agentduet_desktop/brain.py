@@ -44,7 +44,9 @@ logger = logging.getLogger("secretary.brain")
 
 OWNER = owner.name()
 OWNER_PRONOUN = owner.pronoun()
-MODEL = os.getenv("SECRETARY_MODEL", "gemini-3.1-flash")
+# NO MODULE-LEVEL MODEL. This was `os.getenv("SECRETARY_MODEL", "gemini-3.1-flash")`, captured
+# at import: it broke the rule that anything from .env is read at use time, and its default was
+# a Gemini name Google does not serve. The model is llm.current_model(), asked per call.
 
 # Says the owner's name twice rather than using a pronoun. The model-generated replies get
 # their pronoun from owner.pronoun() (configured, never inferred from a name); this constant
@@ -58,7 +60,7 @@ def client():
     Kept as a function on `brain` because `tools._which_close` and the retrieval loop use
     it as an availability check, and one indirection is cheaper than changing both.
     """
-    return llm.client(MODEL)
+    return llm.client()
 
 
 def record(asker: str, question: str, outcome: str, reason: str, answer: str,

@@ -336,7 +336,8 @@ def interview() -> str:
     # The model does the drafting, through the same tool surface it uses at runtime — so an
     # instance set up by init is indistinguishable from one the owner filled in by hand.
     from .assistant import OwnerChat    # imported late: it pulls in the model client
-    chat = OwnerChat(os.getenv("SECRETARY_MODEL", ""))
+    from . import llm
+    chat = OwnerChat(llm.current_model())
     import asyncio
     result = asyncio.run(chat.turn(
         INTERVIEW_PROMPT.format(answers=block),

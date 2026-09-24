@@ -461,7 +461,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         # log's question — provider key, credential kind, client health. /api/state still
         # carries describe() for diagnostics.
         cur["model"] = llm.summary()
-        cur["model_name"] = os.getenv("SECRETARY_MODEL", "")
+        cur["model_name"] = llm.current_model()
         # Explicit booleans. The pages used to infer "configured" from describe()'s prose, which
         # is a sentence written for a human and not a contract.
         cur["model_configured"] = llm.configured()
@@ -734,7 +734,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             # and a hosted frontier model give very different replies, and the owner cannot
             # otherwise tell which one they are talking to.
             "model": {"configured": _llm.configured(),
-                      "name": os.getenv("SECRETARY_MODEL", ""),
+                      "name": _llm.current_model(),
                       "describe": _llm.summary()},
             "files": {"calls": _listing(carry.recordings()),
                       "answered": _listing(carry.recordings() / carry.ANSWERED),
@@ -1077,13 +1077,13 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             # only symptom is a button that appears to do nothing.
             "failed": {m["id"]: models.failure(m["id"]) for m in models.listing()
                        if models.failure(m["id"])},
-            "current": os.getenv("SECRETARY_MODEL", ""),
+            "current": _llm.current_model(),
             # Which of the two branches the owner is on, so the page opens on the right one
             # rather than making them re-declare a choice they already made. EMPTY when the
             # name is not one anything serves — an upgraded install holds an Ollama tag, and
             # `provider()` routes that to gemini, which would open the page on the hosted
             # branch and hide the very list they need.
-            "provider": (_llm.provider() if _llm.recognised(os.getenv("SECRETARY_MODEL", ""))
+            "provider": (_llm.provider() if _llm.recognised(_llm.current_model())
                          else ""),
             "configured": _llm.configured(),
         })
@@ -1826,8 +1826,10 @@ async def start() -> str:
     # One model serves both surfaces. The OWNER_MODEL split was removed 2026-07-29:
     # never justified on architecture (its reason was free-tier quota management), and
     # it cost real debugging time when the two surfaces silently ran different models.
-    model = os.getenv("SECRETARY_MODEL", "gemini-3.1-flash")
-    chat = OwnerChat(model) if llm.client(model) else None
+    # THE SHARED ASSISTANT, not a private one. This built its own OwnerChat from
+    # SECRETARY_MODEL with a "gemini-3.1-flash" default — a name Google does not serve, and a
+    # second instance, which `_chat()` exists to prevent: two would overwrite each other's history.
+    chat = assistant.owner_chat()
 
     runner = web.AppRunner(make_app(chat, token))
     await runner.setup()

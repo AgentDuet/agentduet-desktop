@@ -737,10 +737,13 @@ binary in a folder"). Ordered; each is worth doing alone.
 **The local model — the machine picks it** (decided 2026-09-23; the reasoning, and what would
 reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*)
 
-- [ ] **Wire the pick into the app.** `models.pick()` is BUILT AND TESTED (2026-09-24) and
-      NOTHING CALLS IT YET — so an install still runs whatever `SECRETARY_MODEL` says. It picks
-      Gemma 4 E4B on the 16 GB M5, predicting 33.1 tok/s against 32.9 measured, and the test fakes
-      eight machines. The rule and its table are in `docs/design.md`.
+- [ ] **Wire the pick into the UI.** The BACKEND IS WIRED (2026-09-24): `llm.current_model()` is
+      the one place that decides the model in use — the pick if downloaded, else the configured
+      local model if downloaded, else the pick — and every reader goes through it. `models.pick()`
+      picks Gemma 4 E4B on the 16 GB M5 (33.1 tok/s predicted, 32.9 measured).
+      **What is NOT done:** the pages still show the old picker, so the owner can choose a hosted
+      model that the backend then ignores, and there is no Download button for the pick. That is
+      the next commit, and until it lands the UI can disagree with what actually runs.
 - [ ] **Confirm the pick after download, and step down below the floor.** Designed, not built.
       Two picks lean on unmeasured figures — the 26B's active bytes, and a single-threaded
       bandwidth probe that likely under-reads x86 — and this is what corrects them.
@@ -757,9 +760,13 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       the fastest one. Confirm with one timed generation after download; step down a tier below
       the floor. No ceiling at 24 GB or 12B — MoE (Gemma 4 26B-A4B) is what makes big machines
       worth it.
-- [ ] **Quarantine the picker AND the hosted providers** — a flag, code kept. An install on Gemini
-      or Claude falls back to the local pick on upgrade, which the release notes must say. Voice is
-      NOT in scope: it runs its own hosted realtime model and was never chosen in the overlay.
+- [ ] **Quarantine the picker AND the hosted providers — the BACKEND HALF IS DONE.**
+      `llm.CHOICE_QUARANTINED = True`: a hosted `SECRETARY_MODEL` or `SECRETARY_PROVIDER` is
+      ignored, and `client()` refuses a hosted name even when passed explicitly. Setting the flag
+      False restores the old behaviour exactly. **Left: hiding the picker and the hosted pane in the
+      pages.** An install on Gemini or Claude falls back to the local pick on upgrade, which the
+      release notes must say. Voice is NOT in scope: it runs its own hosted realtime model and was
+      never chosen in the overlay.
 - [ ] **Developer override** in Settings: a Hugging Face name, `owner/repo` or
       `owner/repo:QUANT`, through the existing HF-only `models.add_custom`.
 - [x] ~~**Never size by VRAM on the CPU wheel.**~~ **DONE 2026-09-24.** `machine.can_offload()`

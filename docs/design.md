@@ -689,6 +689,21 @@ around by typing a setting is not a quarantine.* An install configured for Gemin
 back to the local pick on upgrade, rather than keeping its hosted model. A release that ships this
 says so in its notes, because it changes what an existing tester is running.
 
+**Which model is in use is decided in ONE place, `llm.current_model()`.** Ten call sites used to
+read `SECRETARY_MODEL` each with its own fallback — two of them a Gemini name Google does not
+serve, one captured at import — so the secretary and the owner's assistant could disagree about
+what was running. Under the quarantine the answer is, in order:
+
+1. **the pick, if it is downloaded;**
+2. otherwise **the configured local model, if it is downloaded** — an install already running
+   Qwen3 8B keeps running it until the better pick is on disk, rather than being left with
+   nothing until someone clicks Download;
+3. otherwise **the pick, not yet downloaded**, so every surface offers exactly that download.
+
+A hosted name gets no client even when passed explicitly, so no caller can reach around the
+quarantine. The shared assistant resolves on every turn and rebuilds when the answer changes, so a
+finished download is picked up without a restart.
+
 ### How the pick works — fit AND speed
 
 Capacity decides whether a model fits; memory bandwidth decides how fast it answers. Both are needed.

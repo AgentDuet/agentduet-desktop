@@ -13,6 +13,7 @@ does not survive a shared GPU, and a model's file size is not its working set. T
 feeds is "this will fit comfortably / this will struggle", never a promise.
 """
 
+import functools
 import logging
 import os
 import platform
@@ -111,8 +112,13 @@ def available_ram_gb() -> float:
     return 0.0
 
 
+@functools.lru_cache(maxsize=1)
 def gpu() -> dict:
     """What accelerator is here, if any. Always answers; never raises.
+
+    CACHED, because the automatic pick asks on every model call — five times per pick, through
+    `verdict` — and on a machine with an NVIDIA card each ask was an `nvidia-smi` subprocess. The
+    hardware cannot change while the app runs.
 
     `kind` is what decides the advice, and the three cases behave differently: CUDA has its own
     VRAM and is the only one where a model can be too big for the card rather than the machine;

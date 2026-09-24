@@ -382,7 +382,7 @@ def _set_goose_provider(cfg: dict) -> list[str]:
     installer says so rather than quietly downgrading them.
     """
     from . import llm
-    ours = llm.provider(os.getenv("SECRETARY_MODEL", ""))
+    ours = llm.provider()
     mapped = GOOSE_PROVIDERS.get(ours)
     if mapped is None:
         return []
