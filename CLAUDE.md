@@ -769,8 +769,16 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       pages.** An install on Gemini or Claude falls back to the local pick on upgrade, which the
       release notes must say. Voice is NOT in scope: it runs its own hosted realtime model and was
       never chosen in the overlay.
-- [ ] **Developer override** in Settings: a Hugging Face name, `owner/repo` or
-      `owner/repo:QUANT`, through the existing HF-only `models.add_custom`.
+- [x] ~~**Developer override**~~ **DONE 2026-09-24**, in Settings -> Advanced, and looked at in a
+      browser. A Hugging Face name in llama.cpp's own form — `owner/repo` or `owner/repo:QUANT`;
+      with no quant, Q4_K_M, then the vendor's `q4_0` — resolved through the existing HF-only
+      `files()` and `add_custom()`. Saving only REGISTERS it; the Model card then offers its
+      download through the same button the pick uses, and it wins once on disk. Empty clears it.
+      **It exposed a routing bug that would have made it useless:** `provider()` looked only in
+      `CATALOGUE`, so a custom model fell through to the vendor prefixes and a repo with "qwen"
+      in its name went to DashScope, where the quarantine refused it. Any registered model is
+      local now. And the field first rendered as a bare white box — `app.css` styles
+      `input[type=text]`, which an untyped input does not match; the test now scans for that.
 - [x] ~~**Never size by VRAM on the CPU wheel.**~~ **DONE 2026-09-24.** `machine.can_offload()`
       asks the engine (`llama_supports_gpu_offload()`, cached), and both `budget_gb()` and
       `models._gpu_layers()` go through it — so an NVIDIA card on the shipped Windows build no

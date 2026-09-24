@@ -60,13 +60,15 @@ def _pick_payload() -> dict:
     """
     from . import models
     p = models.pick()
-    key = p["model"]
+    # THE OVERRIDE WINS, so the card offers exactly what a developer asked for.
+    key = llm.intended_model()
     spec = models.spec_of(key) or {}
     return {"model": key, "name": spec.get("name", key), "dl_mb": spec.get("dl_mb", 0),
             "downloaded": bool(key) and models.is_downloaded(key),
             "job": models.jobs().get(key) if key else None,
             "failed": models.failure(key) if key else "",
-            "why": p["why"]}
+            "overridden": key == llm.override_model() != "",
+            "why": "developer override" if key == llm.override_model() != "" else p["why"]}
 
 
 def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
@@ -484,6 +486,11 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         # only while it is not yet here. See llm.CHOICE_QUARANTINED.
         cur["choice_quarantined"] = llm.CHOICE_QUARANTINED
         cur["pick"] = _pick_payload()
+        # What the Advanced card's field shows: the repo and file the override resolved to.
+        from . import models
+        _o = llm.override_model()
+        _os = (models.spec_of(_o) or {}) if _o else {}
+        cur["model_override"] = f"{_os.get('repo')}:{_os.get('filename')}" if _os else ""
         # Explicit booleans. The pages used to infer "configured" from describe()'s prose, which
         # is a sentence written for a human and not a contract.
         cur["model_configured"] = llm.configured()
@@ -916,6 +923,31 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
     def models_llm_forget(name):
         from . import llm as _l
         return _l.forget_key(name)
+
+    async def api_model_override(request):
+        """Set or clear the developer override. An empty name clears it.
+
+        Setting it only REGISTERS the model: nothing downloads here. The Model card then offers
+        exactly this model's download, the same one button the automatic pick uses.
+        """
+        if not authed(request):
+            return web.json_response({"ok": False, "message": "unauthorised"}, status=401)
+        from . import models
+        body = await request.json()
+        name = (body.get("name") or "").strip()
+        if not name:
+            tools._forget_env([llm.OVERRIDE])
+            return web.json_response({"ok": True, "message": "Override removed."})
+        try:
+            repo, file = await asyncio.to_thread(models.resolve_hf, name)
+            key = await asyncio.to_thread(models.add_custom, repo, file)
+        except ValueError as exc:
+            return web.json_response({"ok": False, "message": str(exc)})
+        except RuntimeError as exc:
+            return web.json_response({"ok": False, "message": f"Hugging Face could not be read: {exc}"})
+        os.environ[llm.OVERRIDE] = key
+        tools._write_env({llm.OVERRIDE: key})
+        return web.json_response({"ok": True, "message": f"Override set: {repo} \u00b7 {file}"})
 
     async def api_model_action(request):
         """download | cancel | load | unload | delete — one verb per state change.
@@ -1774,6 +1806,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/provider/key", api_provider_key),
         web.get("/api/models/hf", api_hf),
         web.post("/api/models", api_model_action),
+        web.post("/api/model-override", api_model_override),
         web.post("/api/handover", api_handover),
         web.get("/api/install", api_install),
         web.post("/api/install", api_install),

@@ -830,7 +830,10 @@ after another model release.
 **The developer override** takes llama.cpp's own naming, `owner/repo` or `owner/repo:QUANT`
 (e.g. `unsloth/Qwen3.5-9B-GGUF:Q4_K_M`). With no quant it takes Q4_K_M, or the vendor's QAT file.
 It builds on `models.add_custom`, which only ever fetches from huggingface.co and builds the URL
-itself rather than accepting one.
+itself rather than accepting one. Saving it only registers the model; the Model card then offers
+its download, and it becomes the model in use once it is on disk. **A registered model is local
+whatever its name contains** — `provider()` checks every model we hold before it looks at vendor
+prefixes, or a repo called `…Qwen…` would be sent to DashScope and refused by the quarantine.
 
 ### Where the model list comes from
 

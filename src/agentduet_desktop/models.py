@@ -42,6 +42,7 @@ import json
 import logging
 import os
 import pathlib
+import re
 import threading
 import time
 import urllib.parse
@@ -1098,6 +1099,56 @@ def forget_custom(model: str) -> None:
     all_ = custom()
     if all_.pop(model, None) is not None:
         _custom_file().write_text(json.dumps(all_, indent=2))
+
+
+#: A split GGUF — `...-00001-of-00003.gguf`. The downloader fetches one file, and a model in parts
+#: loads only with every part beside it, so offering one part would be offering a file that
+#: cannot run.
+_SPLIT = re.compile(r"-\d{5}-of-\d{5}\.gguf$", re.I)
+
+
+def resolve_hf(name: str) -> tuple[str, str]:
+    """A Hugging Face model name, as a developer types it, resolved to (repo, file).
+
+    LLAMA.CPP'S OWN CONVENTION — `owner/repo` or `owner/repo:QUANT`, e.g.
+    `unsloth/Qwen3.5-9B-GGUF:Q4_K_M` — so a name copied from its docs or from a model card works
+    here unchanged. With no quant it takes Q4_K_M, as llama.cpp does, and failing that the vendor's
+    own 4-bit file (Google names Gemma 4's `q4_0`). Anything else has to be named.
+
+    Only ever asks huggingface.co, through `files()`. Raises ValueError with a sentence an owner
+    can act on, and RuntimeError when Hugging Face itself cannot be read.
+    """
+    repo, _, quant = (name or "").strip().partition(":")
+    repo, quant = repo.strip().strip("/"), quant.strip()
+    if not re.fullmatch(r"[A-Za-z0-9][\w.-]*/[\w.-]+", repo):
+        raise ValueError("Give a Hugging Face name like owner/repo or owner/repo:Q4_K_M.")
+    try:
+        listed = [f["file"] for f in files(repo)]
+    except RuntimeError as exc:
+        # HUGGING FACE ANSWERS 401 FOR A REPO THAT DOES NOT EXIST, as well as for a private or gated
+        # one, so as not to reveal which. Passed through, the owner read "Unauthorized" and went
+        # looking for a sign-in problem. Only a transport failure stays a RuntimeError.
+        if "401" in str(exc) or "404" in str(exc):
+            raise ValueError(f"Hugging Face has no public model called {repo}.") from exc
+        raise
+    if not listed:
+        raise ValueError(f"{repo} has no GGUF files.")
+    whole = [f for f in listed if not _SPLIT.search(f)]
+
+    def having(tag):
+        return [f for f in whole if tag.lower() in f.lower()]
+
+    if quant:
+        hit = having(quant)
+        if not hit:
+            split = [f for f in listed if quant.lower() in f.lower()]
+            raise ValueError(f"{repo}:{quant} is split into parts, which this app cannot fetch."
+                             if split else f"{repo} has no {quant} file.")
+        return repo, hit[0]
+    hit = having("q4_k_m") or having("q4_0")
+    if not hit:
+        raise ValueError(f"Name the file to use, like {repo}:Q4_K_M.")
+    return repo, hit[0]
 
 
 def add_custom(repo: str, filename: str) -> str:
