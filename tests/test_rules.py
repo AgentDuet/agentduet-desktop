@@ -5313,8 +5313,12 @@ def test_a_call_can_be_answered_in_the_app() -> None:
     onchange = hub.split("$('hereOn').onchange")[1][:1500]
     ok("switching on checks the microphone first", "await PHONE.checkMic()" in onchange)
     ok("and a failed check leaves the switch off", "if (!fine) $('hereOn').checked = !want;" in onchange)
-    check = hub.split("async function checkMic()")[1][:2500]
-    ok("an all-zero microphone counts as blocked", "peak > 0 ? {ok: true} : {ok: false, why: 'blocked'}" in check)
+    # THE WHOLE FUNCTION, not a byte window — the diagnostics grew it past one.
+    check = hub.split("async function checkMic()")[1].split("\n    connect();")[0]
+    ok("an all-zero microphone is reported as silent", "peak > 0 ? {ok: true} : {ok: false, why: 'silent'}" in check)
+    # SILENT IS NOT A PERMISSION PROBLEM — a closed MacBook lid disconnects the built-in mic — so
+    # only a refusal may send the owner to the Privacy settings.
+    ok("only a refusal links to Privacy settings", "m.why === 'blocked');" in onchange)
     ok("the check releases the microphone", "s.getTracks().forEach(tr => tr.stop());" in check)
     ok("a blocked microphone links to the Privacy settings", "Privacy_Microphone" in hub)
     ok("and the window hands that link to macOS", '"x-apple.systempreferences"' in
