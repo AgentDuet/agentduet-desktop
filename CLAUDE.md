@@ -90,6 +90,10 @@ Its own bundle id (`.dev`) keeps its permissions apart from the installed app's.
 installed app and any daemon first, because the shell ATTACHES to whatever already answers. It
 supplies `AGENTDUET_OAUTH_URL` (the public production address) because a signed-in install cannot
 connect without it and the product still ships it unset.
+**To SEE the native window** (for a check, not a browser): get its id with a CoreGraphics window
+list — `CGWindowListCopyWindowInfo`, owner name containing "AgentDuet" — then
+`screencapture -x -o -l<id> out.png`. AppleScript's window id is not the CG one and fails with
+"could not create image from window".
 
 **Don't rebuild to iterate.** `./dev.sh` restarts from source in ~3s against the same
 `$AGENTDUET_HOME`, and the pages (`web.html`, `settings.html`, `setup.html`, `sim.html`) are

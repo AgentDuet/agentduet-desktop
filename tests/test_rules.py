@@ -3904,7 +3904,8 @@ def test_the_update_check_is_quiet_and_cannot_lie() -> None:
     # made from a cache, and on a machine that has never reached it, a wrong one.
     with mock.patch.object(up, "state", return_value={"newer": False, "note": ""}):
         eq("no notice when current", up.summary(), "")
-    ok("the hub hides the row unless newer", "$('updRow').hidden = !upd.newer;"
+    # In the titlebar since 2026-09-24, when the sidebar box that held it went.
+    ok("the hub hides the notice unless newer", "$('updLink').hidden = !upd.newer;"
        in (src / "web.html").read_text())
     ok("the menu bar hides its item unless newer",
        "updateItem.isHidden = true" in (pathlib.Path(__file__).parent.parent / "macos"
