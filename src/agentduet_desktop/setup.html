@@ -404,7 +404,15 @@
   // cannot disagree about which models exist for this machine.
   fetch(`/api/models?t=${T}`).then(r => r.json()).then(d => {
     const sel = $('setupModel');
-    (d.models || []).filter(m => m.offerable).forEach(m => {
+    // UNDER THE QUARANTINE THE LIST BECOMES ONE ANSWER: this machine's pick, from the same builder
+    // Settings uses. The owner still decides WHETHER to fetch it — "Choose later" stays the
+    // default, because a multi-gigabyte download is theirs to start — but not which.
+    const pk = d.pick || {};
+    const offer = d.choice_quarantined
+      ? (pk.model ? [{id: pk.model, name: pk.name, state: pk.downloaded ? 'downloaded' : '',
+                      dl_gb: (pk.dl_mb / 1024).toFixed(1)}] : [])
+      : (d.models || []).filter(m => m.offerable);
+    offer.forEach(m => {
       const o = document.createElement('option');
       o.value = m.id;
       o.textContent = m.state === 'downloaded'
@@ -412,7 +420,9 @@
         : `${m.name} — ${m.dl_gb} GB download`;
       sel.appendChild(o);
     });
-    if (!(d.models || []).some(m => m.offerable)) {
+    // NOT UNDER THE QUARANTINE: there is no hosted provider to attach, so advising one would send
+    // the owner to a screen that no longer offers it.
+    if (!offer.length && !d.choice_quarantined) {
       $('modelHint').textContent = 'No local model fits this machine\u2019s memory. '
         + 'Attach a hosted provider in Settings instead.';
     }

@@ -51,6 +51,24 @@ HOST, PORT = "127.0.0.1", int(os.getenv("SECRETARY_WEB_PORT", "8899"))
 
 
 
+def _pick_payload() -> dict:
+    """The machine's pick, in the shape both pages need — ONE builder, so Settings and the setup
+    wizard cannot disagree about which model this machine should run.
+
+    `why` rides along for diagnostics and is NEVER rendered: it is a note about how the pick was
+    made, which is our machinery rather than an outcome the owner acted on.
+    """
+    from . import models
+    p = models.pick()
+    key = p["model"]
+    spec = models.spec_of(key) or {}
+    return {"model": key, "name": spec.get("name", key), "dl_mb": spec.get("dl_mb", 0),
+            "downloaded": bool(key) and models.is_downloaded(key),
+            "job": models.jobs().get(key) if key else None,
+            "failed": models.failure(key) if key else "",
+            "why": p["why"]}
+
+
 def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
     # Built once at startup, `chat` stayed None for the life of a FIRST RUN — no model exists
     # yet, so the setup interview could never run in the session that attached one. Everything
@@ -462,6 +480,10 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         # carries describe() for diagnostics.
         cur["model"] = llm.summary()
         cur["model_name"] = llm.current_model()
+        # THE QUARANTINE, and what the card offers instead of a picker: this machine's pick,
+        # only while it is not yet here. See llm.CHOICE_QUARANTINED.
+        cur["choice_quarantined"] = llm.CHOICE_QUARANTINED
+        cur["pick"] = _pick_payload()
         # Explicit booleans. The pages used to infer "configured" from describe()'s prose, which
         # is a sentence written for a human and not a contract.
         cur["model_configured"] = llm.configured()
@@ -1086,6 +1108,9 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             "provider": (_llm.provider() if _llm.recognised(_llm.current_model())
                          else ""),
             "configured": _llm.configured(),
+            # The setup wizard offers exactly this under the quarantine, rather than the list.
+            "choice_quarantined": _llm.CHOICE_QUARANTINED,
+            "pick": _pick_payload(),
         })
 
     async def api_ui(request):

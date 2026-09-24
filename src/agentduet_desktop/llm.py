@@ -790,6 +790,18 @@ def summary(model: str = "") -> str:
                 f"longer required. Choose a model below and it downloads itself.")
     prov = provider(m)
     impl = _IMPLS[prov]
+    if prov == "local":
+        # THE NAME AND THE TRUE STATE, for a model on this machine. A local model has no key, yet
+        # the branch below told a fresh install that "gemma-4-e4b is chosen, but has no key yet"
+        # when it was simply not downloaded — the state the automatic pick produces on every new
+        # install, so the first line a new owner read was wrong. And it showed the catalogue key.
+        from . import models
+        name = (models.spec_of(m) or {}).get("name", m)
+        if not models.is_downloaded(m):
+            return f"{name}, not downloaded"
+        if client(m) is None:
+            return f"{name} is chosen, but it would not start. See the log."
+        return f"{name}, on this machine"
     if impl.credential() is None:
         return f"{m} is chosen, but has no key yet."
     if client(m) is None:

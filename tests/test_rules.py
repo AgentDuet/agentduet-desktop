@@ -4983,6 +4983,63 @@ def test_one_place_decides_the_model_and_hosted_is_quarantined() -> None:
         machine.gpu.cache_clear()
 
 
+def test_the_pages_offer_the_pick_not_a_picker() -> None:
+    """Under the quarantine the pages show the model in use and offer the machine's pick."""
+    print("\n  -- the pages offer the pick, not a picker --")
+    import re
+    import unittest.mock as mock
+    from agentduet_desktop import llm, models, web
+
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    st = (src / "settings.html").read_text()
+    su = (src / "setup.html").read_text()
+    wb = (src / "web.py").read_text()
+
+    # ONE BUILDER FEEDS BOTH PAGES, so Settings and the wizard cannot disagree about the pick.
+    ok("the settings endpoint carries the pick", 'cur["pick"] = _pick_payload()' in wb)
+    ok("and so does the model listing the wizard reads", '"pick": _pick_payload(),' in wb)
+    with mock.patch.object(models, "pick", return_value={"model": "gemma-4-e4b", "fit": "fits",
+                                                         "why": "x", "predicted_tps": 33.0}), \
+         mock.patch.object(models, "is_downloaded", return_value=False):
+        pk = web._pick_payload()
+    eq("it names the model, its size, and whether it is here",
+       (pk["model"], pk["name"], pk["dl_mb"], pk["downloaded"]),
+       ("gemma-4-e4b", "Gemma 4 E4B", 4916, False))
+
+    # THE PICKER IS HIDDEN, NOT DELETED: one flag brings it back.
+    ok("Settings hides the picker under the quarantine", "$('openModels').hidden = q;" in st)
+    ok("the picker's markup is kept", 'id="openModels"' in st and 'id="ovlModels"' in st)
+    ok("and offers one button for the pick", 'id="getPick"' in st and 'id="pickBar"' in st)
+
+    # WHY IT WAS PICKED IS NEVER SHOWN. It is a note about our machinery, not an outcome.
+    for name, page in (("Settings", st), ("the wizard", su)):
+        ok(f"{name} never renders the pick's reason", not re.search(r"\bpk\.why\b|pick\.why", page))
+
+    # THE TYPING TRAP. refreshCurrent() also resets the form fields from the server, so polling it
+    # during a download would overwrite what the owner is typing. The download has its own poll.
+    ok("progress is followed by its own poll", "pickTimer = setTimeout(refreshPick, 1000)" in st)
+    ok("and refreshCurrent is never put on a timer",
+       not re.search(r"set(Timeout|Interval)\(\s*refreshCurrent", st))
+
+    # THE WIZARD OFFERS ONE ANSWER, and "later" stays the default — a multi-gigabyte download is
+    # the owner's to start.
+    ok("the wizard offers only the pick under the quarantine", "d.choice_quarantined" in su
+       and "(pk.model ? [{id: pk.model" in su)
+    ok("and 'Choose later' is still the first option", "Choose later in Settings" in su)
+    ok("it never advises attaching a hosted provider while hosted is quarantined",
+       "if (!offer.length && !d.choice_quarantined)" in su)
+
+    # THE STATUS LINE TELLS THE TRUTH ABOUT A LOCAL MODEL. It said "gemma-4-e4b is chosen, but has
+    # no key yet" — a local model has no key; it was not downloaded — and it showed the catalogue key.
+    with mock.patch.object(models, "is_downloaded", return_value=False):
+        eq("not downloaded says so, by name", llm.summary("gemma-4-e4b"), "Gemma 4 E4B, not downloaded")
+    with mock.patch.object(models, "is_downloaded", return_value=True), \
+         mock.patch.object(llm, "client", return_value=object()):
+        eq("on disk and running says where", llm.summary("gemma-4-e4b"), "Gemma 4 E4B, on this machine")
+    with mock.patch.object(models, "is_downloaded", return_value=False):
+        ok("and a local model is never said to lack a key", "key" not in llm.summary("qwen3-8b"))
+
+
 def test_the_content_can_be_copied_out() -> None:
     """A transcript nobody can select is a transcript nobody can use."""
     print("\n  -- content is selectable, chrome is not --")
@@ -5084,6 +5141,7 @@ def main() -> None:
     test_the_catalogue_carries_gemma_4_and_says_what_was_measured()
     test_the_machine_picks_the_model()
     test_one_place_decides_the_model_and_hosted_is_quarantined()
+    test_the_pages_offer_the_pick_not_a_picker()
     test_capabilities()
     test_capability_disclosure()
     test_policy()

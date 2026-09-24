@@ -215,6 +215,12 @@
           <label class="sw"><input type="checkbox" id="thinkOn"><span class="track"></span></label>
         </div>
         <div class="acts"><button class="btn ghost" id="openModels">Choose a model…</button></div>
+        <!-- UNDER THE QUARANTINE the card offers this machine's pick instead of a picker, and only
+             while it is not yet here. The button says what it downloads and how big; the bar
+             reports progress. Nothing says WHY it was picked — that is our machinery, not an
+             outcome. See llm.CHOICE_QUARANTINED. -->
+        <div class="acts" id="pickActs" hidden><button class="btn" id="getPick"></button></div>
+        <div id="pickBar" hidden></div>
         <div id="mModel"></div>
       </div>
 
@@ -516,6 +522,58 @@
   //: down the file is in its temporal dead zone when that runs, and throws.
   const LOADED = {};
 
+  //: The pick as last drawn, for the button to act on, and the failure last SAID — say()
+  //: scrolls its message into view, so repeating it on every poll would keep moving the page.
+  let PICK = {}, lastPickFail = '';
+
+  // THE MODEL CARD UNDER THE QUARANTINE. The picker is held back, so the card shows the model in
+  // use and, while this machine's pick is not yet here, one button to fetch it. When the pick
+  // lands the backend starts using it on its own — current_model() prefers it — so there is no
+  // second step to take.
+  function drawPick(cur){
+    const q = !!cur.choice_quarantined, pk = cur.pick || {};
+    PICK = pk;
+    $('openModels').hidden = q;
+    const need = q && !!pk.model && !pk.downloaded;
+    $('pickActs').hidden = !need;
+    $('pickBar').hidden = !(need && pk.job);
+    if (!need) { lastPickFail = ''; return; }
+    const b = $('getPick');
+    b.textContent = 'Download ' + pk.name + ' \u00b7 ' + (pk.dl_mb / 1024).toFixed(1) + ' GB';
+    // A disabled button is status enough while it runs; the bar carries the numbers.
+    b.disabled = !!pk.job;
+    if (pk.job) {
+      $('pickBar').innerHTML = '<div class="barlab"><span>' + esc(pk.name) + '</span><span>'
+        + pk.job.done_mb + ' / ' + pk.job.total_mb + ' MB \u00b7 ' + pk.job.percent + '%</span></div>'
+        + '<div class="bar"><i style="width:' + pk.job.percent + '%"></i></div>';
+    }
+    if (pk.failed && pk.failed !== lastPickFail) say('mModel', false, pk.failed);
+    lastPickFail = pk.failed || '';
+  }
+
+  // ITS OWN POLL, NOT refreshCurrent's. That one also resets the form fields from the server, so
+  // polling it every second during a download would overwrite whatever the owner is typing into
+  // their name or number.
+  let pickTimer = null;
+  async function refreshPick(){
+    clearTimeout(pickTimer);
+    try {
+      const r = await fetch('/api/setup/current?t=' + T);
+      if (!r.ok) return;
+      const cur = await r.json();
+      $('modelState').textContent = cur.model || 'unknown';
+      drawPick(cur);
+      if ((cur.pick || {}).job) pickTimer = setTimeout(refreshPick, 1000);
+    } catch (e) {}
+  }
+
+  $('getPick').onclick = async () => {
+    $('getPick').disabled = true;
+    const r = await post('/api/models', {action: 'download', name: PICK.model});
+    if (!r.ok) say('mModel', false, r.message);
+    refreshPick();
+  };
+
   async function refreshCurrent(){
     const [cr, sr] = await Promise.all([
       fetch(`/api/setup/current?t=${T}`), fetch(`/api/state?t=${T}`)]);
@@ -526,6 +584,8 @@
     LOADED.phone = $('phone').value;
     $('language').value = cur.language || '';
     $('modelState').textContent = cur.model || 'unknown';
+    drawPick(cur);
+    if ((cur.pick || {}).job) refreshPick();      // a download already running: follow it
     drawAccount(cur);
     // The row exists only for a model that can honour it — see thinking_possible. Re-read on
     // every refresh rather than at load, because attaching a different model changes the
