@@ -219,8 +219,12 @@ CATALOGUE = {
     "gemma-4-e2b": dict(
         name="Gemma 4 E2B", brand="GOOGLE", params="E2B",
         dl_mb=3194, ram_mb=4152,
-        # ESTIMATED: E4B's measured share (0.64 of its file read per token) applied to this file.
-        active_mb=2054,
+        # DERIVED FROM THE MEASUREMENT: 102.5 GB/s / 62.9 tok/s. The estimate before it — E4B's
+        # 0.64 share applied to this file — said 2,054 and predicted 51.1 tok/s: 19% slow, the
+        # safe direction, and it changed no pick. E2B reads about half its file per token.
+        active_mb=1669,
+        measured=dict(ram_mb=3574, decode_tps=62.9, prefill_tps=762.9,
+                      on="Apple M5, 16 GB, under ordinary use", date="2026-09-24"),
         repo="google/gemma-4-E2B-it-qat-q4_0-gguf",
         filename="gemma-4-E2B_q4_0-it.gguf",
         url="https://huggingface.co/google/gemma-4-E2B-it-qat-q4_0-gguf/resolve/main/gemma-4-E2B_q4_0-it.gguf",

@@ -788,8 +788,9 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       ladder — E2B, E4B, 12B, 26B-A4B, 31B, all Google's own QAT files — and Qwen3.5 9B as the
       fallback, sizes read from Hugging Face that day. Timed entries carry a `measured` record
       beside the estimate rather than overwriting it, and `resident_mb()` prefers it.
-      **What is NOT measured, stated so nobody reads it as done:** E2B (its download was running
-      at 730 KB/s), and the 26B and 31B, which cannot be run on a 16 GB Mac at all.
+      **What is NOT measured, stated so nobody reads it as done:** the 26B and 31B, which cannot be
+      run on a 16 GB Mac at all. E2B was timed the next day (62.9 tok/s); its estimated active size
+      had run 19% high — the safe direction — and changed no pick.
       **The old entries stay on purpose.** `llm.provider()` routes a name to "local" only if the
       catalogue has it, so removing Qwen3 would send `SECRETARY_MODEL=qwen3-8b` installs to a
       hosted provider before the auto-pick exists to catch them. Prune after it lands.
