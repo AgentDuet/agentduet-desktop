@@ -414,6 +414,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         guard let url = navigationAction.request.url else {
             decisionHandler(.allow); return
         }
+        // System Settings, by its own scheme — the phone's "turn the microphone on" link. The web
+        // view cannot load it, so hand exactly this scheme to macOS and nothing broader.
+        if url.scheme == "x-apple.systempreferences" {
+            NSWorkspace.shared.open(url)
+            decisionHandler(.cancel); return
+        }
         if url.scheme == "http" || url.scheme == "https" {
             let host = url.host ?? ""
             let isLocal = host == "127.0.0.1" || host == "localhost"

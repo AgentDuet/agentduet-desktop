@@ -5307,6 +5307,17 @@ def test_a_call_can_be_answered_in_the_app() -> None:
     ok("the microphone asks for echo cancellation", "echoCancellation: true" in hub)
     ok("a microphone that fails declines rather than leaving the caller ringing",
        "ws.send(JSON.stringify({type: 'decline'}));" in hub.split("$('callAnswer').onclick")[1][:900])
+    # THE MICROPHONE IS CHECKED WHEN THE SWITCH GOES ON, not over a ringing call — and a refused
+    # microphone on macOS is exact zeros, not an error, so the check must look at the samples.
+    onchange = hub.split("$('hereOn').onchange")[1][:1500]
+    ok("switching on checks the microphone first", "await PHONE.checkMic()" in onchange)
+    ok("and a failed check leaves the switch off", "if (!fine) $('hereOn').checked = !want;" in onchange)
+    check = hub.split("async function checkMic()")[1][:2500]
+    ok("an all-zero microphone counts as blocked", "peak > 0 ? {ok: true} : {ok: false, why: 'blocked'}" in check)
+    ok("the check releases the microphone", "s.getTracks().forEach(t => t.stop());" in check)
+    ok("a blocked microphone links to the Privacy settings", "Privacy_Microphone" in hub)
+    ok("and the window hands that link to macOS", '"x-apple.systempreferences"' in
+       (src.parent.parent / "macos" / "Sources" / "AgentDuetShell" / "AppDelegate.swift").read_text())
     # THE MAC NEEDS THREE THINGS, and missing any one fails silently or kills the app.
     root = src.parent.parent
     ok("the entitlement is granted", "com.apple.security.device.audio-input" in

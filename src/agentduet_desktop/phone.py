@@ -206,6 +206,12 @@ async def on_page(ws) -> None:
                 kind = (msg.json() or {}).get("type", "")
             except ValueError:
                 continue
+            if kind == "diag":
+                # The page's own account of its microphone — see startAudio() and checkMic() in
+                # web.html. Logged with or without a call, since the switch's check runs idle.
+                logger.info("phone: microphone as the page sees it: %s", {
+                    k: v for k, v in (msg.json() or {}).items() if k != "type"})
+                continue
             if not a:
                 continue
             if kind == "answer" and a["state"] == "ringing" and not a["decision"].done():
