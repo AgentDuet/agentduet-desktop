@@ -746,14 +746,17 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       **Progress has its own poll**, because `refreshCurrent()` resets the form fields and polling
       it would overwrite what the owner is typing. Nothing on either page says WHY the model was
       picked.
-- [ ] **Confirm the pick after download, and step down below the floor.** Designed, not built.
-      Two picks lean on unmeasured figures — the 26B's active bytes, and a single-threaded
-      bandwidth probe that likely under-reads x86 — and this is what corrects them.
-- [ ] **Calibrate the bandwidth probe on Windows.** Unverified there; the VM on the Linux box can
-      compare `machine.bandwidth_gbps()` with a real timed decode (`docs/bench-models.py`).
-- [ ] **Set the speed floor — a product call.** `SPEED_FLOOR_TPS = 15` demotes a CPU-only laptop
-      from E4B (~13 tok/s) to E2B (~20). Whether an owner prefers a better model or a faster one
-      is Stanley's decision, not arithmetic.
+- [ ] **Confirm the pick after download — on a Mac, mainly to step UP.** Designed, not built. The
+      bandwidth probe is a CPU copy and Apple's GPU does the inference; on the base M5 they agree,
+      but on Pro/Max/Ultra the GPU reads memory faster than one core, so the pick leans a rung
+      small (a 64 GB Max likely gets the 26B MoE, not the 31B). One timed generation on the GPU
+      after the first download gives the real speed. Unverified off a base chip.
+- [x] ~~**Calibrate the bandwidth probe on Windows.**~~ **DEFERRED 2026-09-24 by decision:** a GPU
+      is now required and the focus is the Mac. Reopens when Windows does.
+- [x] ~~**Set the speed floor.**~~ **15 tok/s for now** (Stanley, 2026-09-24), to be revisited. A
+      constant, `SPEED_FLOOR_TPS`, so moving it is one line and a release. **A usable GPU with at
+      least 8 GB is now REQUIRED**, which removes the CPU-only case that forced the question —
+      and on macOS every Apple Silicon machine already meets it.
 - [ ] **Pick the model from the machine — fit AND speed, uncapped.** Take only what
       `machine.verdict()` calls "fits"; Metal's `recommendedMaxWorkingSetSize` is the CEILING, not
       the budget — Gemma 4 12B fitted inside it on the 16 GB M5 and still swapped 1.9 GB. Speed from
