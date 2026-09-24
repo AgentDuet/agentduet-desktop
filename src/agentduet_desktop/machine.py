@@ -135,15 +135,43 @@ def gpu() -> dict:
     return {"kind": "cpu", "name": "", "vram_gb": 0.0}
 
 
+_OFFLOAD: bool | None = None
+
+
+def can_offload() -> bool:
+    """Whether THIS BUILD of the engine can put layers on a GPU — not whether a GPU exists.
+
+    THE HARDWARE AND THE BUILD ARE DIFFERENT QUESTIONS, and `gpu()` answers only the first.
+    Windows and Linux install llama-cpp-python from the `/whl/cpu` index, which cannot offload at
+    all, so an NVIDIA card there is invisible to the engine however much VRAM it has. Sizing
+    against that VRAM picks a model for a card nothing will ever use: latent while the owner
+    chose from a list, a wrong answer the moment the app chooses for them. So ask the engine.
+
+    Not a dependency: the engine is optional, it is imported only if this build carries it, and a
+    build without it simply cannot offload. Cached, because the answer is a property of the
+    installed binary and cannot change while it runs — and on a Mac the probe initialises Metal.
+    """
+    global _OFFLOAD
+    if _OFFLOAD is None:
+        try:
+            import llama_cpp
+            _OFFLOAD = bool(llama_cpp.llama_supports_gpu_offload())
+        except Exception as exc:              # no engine in this build, or one without the call
+            logger.debug("cannot ask the engine about GPU offload: %s", exc)
+            _OFFLOAD = False
+    return _OFFLOAD
+
+
 def budget_gb() -> float:
     """How much a model may reasonably use.
 
     NOT the whole machine. The owner is running a browser and their own work; a model that fits
     only when nothing else is open is a model that swaps the moment they do anything. Two thirds
-    of RAM is the conservative share, and a CUDA card is judged on its own VRAM instead.
+    of RAM is the conservative share, and a CUDA card is judged on its own VRAM instead — but only
+    when this build can actually use it (`can_offload`), which the shipped Windows build cannot.
     """
     g = gpu()
-    if g["kind"] == "cuda" and g["vram_gb"] > 0:
+    if g["kind"] == "cuda" and g["vram_gb"] > 0 and can_offload():
         return g["vram_gb"] * 0.9          # the card is doing nothing else
     ram = total_ram_gb()
     return round(ram * 0.66, 1) if ram else 0.0

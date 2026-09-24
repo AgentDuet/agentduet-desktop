@@ -700,10 +700,10 @@ Capacity decides whether a model fits; memory bandwidth decides how fast it answ
   separated the two correctly — E4B "fits", 12B "tight" — so the pick takes only "fits", and the
   Metal figure is the hard stop above that. On a CPU-only machine the budget is two thirds of RAM.
 - **Never size by VRAM on the CPU wheel.** Windows and Linux install llama-cpp-python from the
-  `/whl/cpu` index, which cannot offload. `machine.budget_gb()` and `models._gpu_layers()` still
-  read `nvidia-smi` and size an NVIDIA machine by its card — and `_gpu_layers` logs "GPU" while the
-  engine runs on the CPU. Harmless while the owner chose; wrong the moment the app chooses. Decide
-  from `llama_cpp.llama_supports_gpu_offload()`, never from whether a GPU exists.
+  `/whl/cpu` index, which cannot offload, so an NVIDIA card there is invisible to the engine. The
+  boundary: whether a GPU is USABLE is answered by `machine.can_offload()`, which asks the engine
+  itself, never by whether `nvidia-smi` finds a card — and both the budget and the layer count go
+  through it.
 - **Speed: decode ≈ bandwidth ÷ active-weight bytes.** Measured, not assumed: Qwen3 8B decodes at
   21.7 tok/s from a 4.68 GB file on the M5 — **101.6 GB/s** effective, against 99.9 GB/s from a copy
   benchmark. It held for every dense model tested (94–108 GB/s). This is why MoE models matter:
