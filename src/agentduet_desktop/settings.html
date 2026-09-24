@@ -365,6 +365,16 @@
           <div class="lbl">Walk through setup again</div>
           <button class="btn ghost" id="rerun">Run setup</button>
         </div>
+        <!-- THE DEVELOPER OVERRIDE. A Hugging Face name, in llama.cpp's own form, replaces the
+             automatic pick; empty goes back to it. Saving only REGISTERS the model — the Model
+             card then offers its download, through the same button the pick uses. -->
+        <div class="grp">
+          <label class="fl" for="mOverride">Model override</label>
+          <input type="text" id="mOverride" placeholder="owner/repo or owner/repo:Q4_K_M"
+                 autocomplete="off" spellcheck="false">
+        </div>
+        <div class="acts"><button class="btn" id="saveOverride">Save</button></div>
+        <div id="mOverrideMsg"></div>
       </div>
 
       <!-- LAST, AND IT IS A DIAGNOSTIC RATHER THAN A SETTING. Nothing here is adjustable
@@ -567,6 +577,14 @@
     } catch (e) {}
   }
 
+  $('saveOverride').onclick = async () => {
+    $('saveOverride').disabled = true;
+    const r = await post('/api/model-override', {name: $('mOverride').value.trim()});
+    say('mOverrideMsg', r.ok, r.message);
+    $('saveOverride').disabled = false;
+    refreshPick();                    // the Model card now offers the override, or the pick again
+  };
+
   $('getPick').onclick = async () => {
     $('getPick').disabled = true;
     const r = await post('/api/models', {action: 'download', name: PICK.model});
@@ -586,6 +604,7 @@
     $('modelState').textContent = cur.model || 'unknown';
     drawPick(cur);
     if ((cur.pick || {}).job) refreshPick();      // a download already running: follow it
+    $('mOverride').value = cur.model_override || '';
     drawAccount(cur);
     // The row exists only for a model that can honour it — see thinking_possible. Re-read on
     // every refresh rather than at load, because attaching a different model changes the

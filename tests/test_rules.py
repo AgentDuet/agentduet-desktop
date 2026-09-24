@@ -5040,6 +5040,79 @@ def test_the_pages_offer_the_pick_not_a_picker() -> None:
         ok("and a local model is never said to lack a key", "key" not in llm.summary("qwen3-8b"))
 
 
+def test_the_developer_override() -> None:
+    """A Hugging Face name, in llama.cpp's own form, replaces the automatic pick."""
+    print("\n  -- the developer override --")
+    import re
+    import unittest.mock as mock
+    from agentduet_desktop import llm, models
+
+    listing = [{"file": f, "mb": mb} for f, mb in (
+        ("Model-Q2_K.gguf", 3000), ("Model-Q4_K_M.gguf", 5400), ("Model-Q8_0.gguf", 9000),
+        ("Model-Q6_K-00001-of-00002.gguf", 4000), ("Model-Q6_K-00002-of-00002.gguf", 4000))]
+    with mock.patch.object(models, "files", return_value=listing):
+        eq("an explicit quant is honoured", models.resolve_hf("owner/repo:Q8_0"),
+           ("owner/repo", "Model-Q8_0.gguf"))
+        eq("no quant means Q4_K_M, as llama.cpp does", models.resolve_hf("owner/repo"),
+           ("owner/repo", "Model-Q4_K_M.gguf"))
+        for bad, says in (("owner/repo:Q9_Z", "has no Q9_Z"),
+                          ("owner/repo:Q6_K", "split into parts"),
+                          ("not a repo", "like owner/repo"),
+                          ("../etc/passwd", "like owner/repo")):
+            try:
+                models.resolve_hf(bad); got = "no error"
+            except ValueError as e:
+                got = str(e)
+            ok(f"{bad!r} is refused with a reason", says in got, got)
+    with mock.patch.object(models, "files", return_value=[{"file": "gemma-4-E2B_q4_0-it.gguf", "mb": 3194}]):
+        eq("without Q4_K_M, the vendor's own 4-bit QAT file", models.resolve_hf("google/gemma"),
+           ("google/gemma", "gemma-4-E2B_q4_0-it.gguf"))
+    # HUGGING FACE ANSWERS 401 FOR A REPO THAT DOES NOT EXIST — shown raw, the owner read
+    # "Unauthorized" and went looking for a sign-in problem.
+    with mock.patch.object(models, "files", side_effect=RuntimeError("Could not read x/y: HTTP Error 401: Unauthorized")):
+        try:
+            models.resolve_hf("x/y"); got = ""
+        except ValueError as e:
+            got = str(e)
+        ok("a missing repo is said to be missing, not unauthorised", "no public model called x/y" in got, got)
+
+    # THE ROUTING BUG IT EXPOSED. provider() looked only in CATALOGUE, so a custom model fell
+    # through to the name prefixes and a repo with "qwen" in its name went to DashScope — and the
+    # quarantine then refused it, so the override could never run a Qwen at all.
+    key = "unsloth_qwen3.5-9b-gguf_qwen3.5-9b-q4_k_m"
+    with mock.patch.object(models, "custom", return_value={key: {"name": "Qwen3.5-9B-Q4_K_M", "dl_mb": 5417}}), \
+         mock.patch.dict(llm.os.environ, {"SECRETARY_PROVIDER": "", llm.OVERRIDE: key}):
+        eq("a custom model is local, whatever its name contains", llm.provider(key), "local")
+        eq("while a hosted name is still classified as hosted", llm.provider("qwen3.6-flash"), "dashscope")
+        # THE OVERRIDE WINS over the machine's pick, and is only run once it is on disk.
+        eq("the override is what this install should run", llm.intended_model(), key)
+        with mock.patch.object(models, "is_downloaded", lambda k: k == key):
+            eq("and it runs once it is downloaded", llm.current_model(), key)
+    with mock.patch.dict(llm.os.environ, {llm.OVERRIDE: "no-such-model"}):
+        ok("an override that no longer resolves falls back to the pick", llm.override_model() == "")
+
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    wb = (src / "web.py").read_text()
+    ok("it has an endpoint", 'web.post("/api/model-override", api_model_override)' in wb)
+    ok("an empty name clears it", "tools._forget_env([llm.OVERRIDE])" in wb)
+    ok("setting it only registers — nothing downloads from that call",
+       "models.download" not in wb[wb.index("async def api_model_override"):wb.index("async def api_model_action")])
+
+    # EVERY INPUT CARRIES A TYPE. app.css styles `input[type=text]`, and an input with no type
+    # attribute does not match it even though the browser treats it as text — so the override
+    # field first rendered as a bare white browser box. Found only by looking at a screenshot.
+    # One pre-existing exception, named so it cannot outlive its field.
+    EXEMPT = {"hmodel": "in the quarantined hosted pane, hidden; not verifiable while hidden"}
+    for f in ("settings.html", "setup.html"):
+        page = (src / f).read_text()
+        untyped = [m.group(0) for m in re.finditer(r"<input\b[^>]*>", page)
+                   if not re.search(r"\btype\s*=", m.group(0))]
+        left = [u for u in untyped if not any(k in u for k in EXEMPT)]
+        ok(f"every input on {f} has a type", not left, str([u[:60] for u in left]))
+    st = (src / "settings.html").read_text()
+    ok("the exemption still names a real field", all(k in st for k in EXEMPT))
+
+
 def test_the_content_can_be_copied_out() -> None:
     """A transcript nobody can select is a transcript nobody can use."""
     print("\n  -- content is selectable, chrome is not --")
@@ -5142,6 +5215,7 @@ def main() -> None:
     test_the_machine_picks_the_model()
     test_one_place_decides_the_model_and_hosted_is_quarantined()
     test_the_pages_offer_the_pick_not_a_picker()
+    test_the_developer_override()
     test_capabilities()
     test_capability_disclosure()
     test_policy()

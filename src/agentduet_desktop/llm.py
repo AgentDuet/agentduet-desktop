@@ -84,7 +84,12 @@ def provider(model: str = "") -> str:
         return named
     name = (model or current_model()).lower()
     from . import models
-    if name in models.CATALOGUE:
+    # ANY MODEL REGISTERED HERE, curated or custom. This checked CATALOGUE only, so a custom model
+    # — one added from Hugging Face — fell through to the prefixes, and a repo with "qwen" in its
+    # name was routed to DashScope. Under the quarantine that meant client() refused it: the
+    # developer override could never run a Qwen, Gemma-named or GPT-named file. Same rule as the
+    # docstring's, applied to every model we hold rather than only the ones we curated.
+    if name in models.CATALOGUE or models.spec_of(name):
         return "local"
     for prov, prefixes in _PROVIDERS.items():
         if any(p in name for p in prefixes):
@@ -580,6 +585,29 @@ def fallback_model() -> str:
 CHOICE_QUARANTINED = True
 
 
+#: THE DEVELOPER OVERRIDE (Settings -> Advanced): the key of a model registered from a Hugging
+#: Face name. In .env like every other setting, and read at use time, never captured.
+OVERRIDE = "SECRETARY_MODEL_OVERRIDE"
+
+
+def override_model() -> str:
+    """The developer override's model key, or "" when none is set or it no longer resolves."""
+    from . import models
+    key = (os.getenv(OVERRIDE) or "").strip()
+    return key if key and models.spec_of(key) else ""
+
+
+def intended_model() -> str:
+    """The model this install SHOULD run: the developer override if set, else the machine's pick.
+
+    Not the same as the one it IS running — see current_model(), which keeps an install on the
+    model it has until this one is on disk. Both are local: the override takes only a Hugging Face
+    name, so it cannot reach around the quarantine.
+    """
+    from . import models
+    return override_model() or models.pick()["model"]
+
+
 def current_model() -> str:
     """The TEXT model in use — decided here, and nowhere else.
 
@@ -588,7 +616,8 @@ def current_model() -> str:
     running. They all ask this now.
 
     UNDER THE QUARANTINE (the product as it ships), local only, and the machine chooses:
-      1. `models.pick()`, if it is downloaded — the right model for this machine, and ready.
+      1. `intended_model()` — the developer override, else `models.pick()` — if it is
+         downloaded: the model this install should run, and ready.
       2. Otherwise the configured LOCAL model, if it is downloaded. An install already running
          Qwen3 8B keeps running it until the better pick is downloaded: switching straight to a
          model that is not on disk would leave the assistant with nothing until someone clicked
@@ -601,7 +630,7 @@ def current_model() -> str:
     if not CHOICE_QUARANTINED:
         return os.getenv("SECRETARY_MODEL") or fallback_model()
     from . import models
-    picked = models.pick()["model"]
+    picked = intended_model()              # the override if set, else the machine's pick
     if picked and models.is_downloaded(picked):
         return picked
     configured = (os.getenv("SECRETARY_MODEL") or "").strip()
