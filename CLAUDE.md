@@ -415,12 +415,15 @@ Break one of these and the secretary is a different product.
 - **`chmod 0600` is a no-op on Windows.** The model key in `$AGENTDUET_HOME/.env` is unprotected there.
 - **Python ≥3.12** — the SDK requires it.
 
-- **THE MODEL LIST IS CHECKED AGAINST HUGGING FACE, NEVER RECALLED.** The catalogue's 2026-08-27
-  refresh installed Qwen3 and Gemma 3 six months after Qwen3.5 and Gemma 4 had shipped — it was
-  written from a model's memory, and the same mistake was nearly made again on 2026-09-23. One
-  request to `https://huggingface.co/api/models?author=<org>&search=<family>` answers it. Take files
-  from the vendor where the vendor publishes them, never by download count: the most-downloaded
-  Qwen3.5 9B GGUF is an uncensored community merge.
+- **ASK HUGGING FACE WHAT IS NEWEST, NOT ONLY HOW BIG.** The catalogue's 2026-08-27 refresh read
+  every size from the HF API and got all of them right — and still installed Qwen3 and Gemma 3 six
+  months after Qwen3.5 and Gemma 4 had shipped, because the families it looked up were chosen
+  before asking. (This entry first said that refresh was "written from memory"; `models.py`'s own
+  docstring shows it was not. The memory failure was on 2026-09-23, when the same stale
+  generation was recommended before anything was checked.) Sort the search by release date:
+  `https://huggingface.co/api/models?author=<org>&search=<family>&sort=createdAt&direction=-1`.
+  Take files from the vendor where the vendor publishes them, never by download count: the
+  most-downloaded Qwen3.5 9B GGUF is an uncensored community merge.
 
 - **Assembling the native shell: hand it the `.app`, and sign AFTER assembling.** Two traps,
   each of which produces a launch failure that blames the wrong thing.
@@ -752,8 +755,17 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       `models._gpu_layers()` go through it — so an NVIDIA card on the shipped Windows build no
       longer sizes the budget or earns a "GPU" log line. The test was checked against the old
       logic: four assertions fail there.
-- [ ] **Refresh the catalogue to Gemma 4 / Qwen3.5, from Hugging Face, and measure each entry's
-      `ram_mb`.** Its last refresh (2026-08-27) was a generation behind, filled from memory.
+- [x] ~~**Refresh the catalogue to Gemma 4 / Qwen3.5.**~~ **DONE 2026-09-24.** The Gemma 4
+      ladder — E2B, E4B, 12B, 26B-A4B, 31B, all Google's own QAT files — and Qwen3.5 9B as the
+      fallback, sizes read from Hugging Face that day. Timed entries carry a `measured` record
+      beside the estimate rather than overwriting it, and `resident_mb()` prefers it.
+      **What is NOT measured, stated so nobody reads it as done:** E2B (its download was running
+      at 730 KB/s), and the 26B and 31B, which cannot be run on a 16 GB Mac at all.
+      **The old entries stay on purpose.** `llm.provider()` routes a name to "local" only if the
+      catalogue has it, so removing Qwen3 would send `SECRETARY_MODEL=qwen3-8b` installs to a
+      hosted provider before the auto-pick exists to catch them. Prune after it lands.
+      Also found: all 21 old `ram_mb` values are exactly download x 1.30. The module docstring
+      said so; three comments further down said they were measured. The comments are fixed.
 - [ ] **Confirm the lead family on QUALITY.** Gemma 4 leads on speed, measured 2026-09-23 on the
       M5: E4B read a 1.6k-token call and wrote the reply in 8.7 s, against 15.2 s for Qwen3.5 9B and
       13.8 s for today's Qwen3 8B. Quality is unmeasured — a blind comparison on our own calls can

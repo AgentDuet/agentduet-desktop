@@ -795,10 +795,12 @@ itself rather than accepting one.
 
 ### Where the model list comes from
 
-**Checked against Hugging Face, never recalled.** The catalogue was refreshed on 2026-08-27 to
-Qwen3 and Gemma 3 — six months after Qwen3.5 (Feb 2026) and Gemma 4 (Mar 2026) shipped. It was
-filled in from a model's memory, and the same mistake was nearly repeated in the conversation that
-produced this section. The HF API answers the question in one request.
+**Ask Hugging Face what is newest, not only what size.** The catalogue was refreshed on
+2026-08-27 to Qwen3 and Gemma 3 — six months after Qwen3.5 (Feb 2026) and Gemma 4 (Mar 2026)
+shipped. Every size in it was read from the HF API and was right; the families were chosen before
+asking, and were a generation behind. The same stale generation was recommended again, from
+memory, in the conversation that produced this section. Sorting the search by release date
+answers it in one request.
 
 **From the vendor where the vendor publishes it; never by download count.** Google publishes Gemma
 4's 4-bit GGUFs itself, quantisation-aware trained, Apache 2.0 and ungated — an app downloading on

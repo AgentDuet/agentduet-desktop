@@ -22,9 +22,16 @@ WHAT EACH FIGURE MEANS, because two of them look alike and are not:
           is the same arithmetic machine.py has always used for a model nobody has profiled.
           Treat it as the estimate it is.
 
-NO SPEED COLUMN. The old catalogue carried tokens/sec per model and this one does not, because
-nobody here has run these on this hardware and a number that looks measured and is not is worse
-than an absent one. It comes back when someone times them.
+SPEED IS BACK, WHERE SOMEONE TIMED IT. An entry that has been run carries `measured`: resident
+memory, decode and prefill rates, and the machine and date it was measured on — written by
+docs/bench-models.py, never by hand. Absent means NOT TIMED, not slow. A number that looks measured
+and is not is still worse than an absent one, which is why `ram_mb` stays the plain estimate beside
+it rather than being overwritten.
+
+READ WHAT IS NEWEST, NOT ONLY WHAT SIZE. The 2026-08-27 rebuild did ask Hugging Face — every size
+was right — and still installed Qwen3 and Gemma 3 six months after Qwen3.5 and Gemma 4 shipped,
+because the families it looked up were chosen before asking. Sort the search by release date
+(`sort=createdAt&direction=-1`) before choosing what to look up.
 
 THREE STATES, NOT TWO. A model is absent, or on disk, or resident in memory. `machine.py` says
 whether one COULD run here; this says which of the three it is right now. Conflating the last
@@ -200,6 +207,70 @@ CATALOGUE = {
         filename="gpt-oss-20b-Q4_K_M.gguf",
         url="https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q4_K_M.gguf",
         what="OpenAI's open-weight model. A mixture of experts, so it runs far faster than its size suggests — but the whole file still has to fit in memory."),
+    # GEMMA 4 — added 2026-09-24, the family that leads the automatic pick (docs/design.md, "Why
+    # Gemma 4"). Google publishes these 4-bit files ITSELF, quantisation-aware trained, so less is
+    # lost to compression than in a repack; Apache 2.0 and ungated, so the app can fetch one on the
+    # owner's behalf.
+    #
+    # `measured` is what docs/bench-models.py recorded on a real machine, and it never replaces
+    # `ram_mb`, which stays the derived estimate every entry carries — so a timed figure and an
+    # arithmetic one cannot be mistaken for each other. Absent means NOT TIMED, not slow.
+    "gemma-4-e2b": dict(
+        name="Gemma 4 E2B", brand="GOOGLE", params="E2B",
+        dl_mb=3194, ram_mb=4152,
+        repo="google/gemma-4-E2B-it-qat-q4_0-gguf",
+        filename="gemma-4-E2B_q4_0-it.gguf",
+        url="https://huggingface.co/google/gemma-4-E2B-it-qat-q4_0-gguf/resolve/main/gemma-4-E2B_q4_0-it.gguf",
+        what="The smallest Gemma 4, for a machine with little memory to spare."),
+    "gemma-4-e4b": dict(
+        name="Gemma 4 E4B", brand="GOOGLE", params="E4B",
+        dl_mb=4916, ram_mb=6390,
+        repo="google/gemma-4-E4B-it-qat-q4_0-gguf",
+        filename="gemma-4-E4B_q4_0-it.gguf",
+        url="https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf/resolve/main/gemma-4-E4B_q4_0-it.gguf",
+        # "Effective 4B": ~3.1 GB of this 4.8 GB file is read per token, the rest stays off the hot
+        # path — which is why it outran every dense model its size.
+        measured=dict(ram_mb=5683, decode_tps=32.9, prefill_tps=387.8, on="Apple M5, 16 GB, under ordinary use", date="2026-09-23"),
+        what="Gemma 4 for most laptops. The fastest of everything tested on a 16 GB Mac, and "
+             "it handles Vietnamese almost as cheaply as English."),
+    "gemma-4-12b": dict(
+        name="Gemma 4 12B", brand="GOOGLE", params="12B",
+        dl_mb=6652, ram_mb=8647,
+        repo="google/gemma-4-12B-it-qat-q4_0-gguf",
+        filename="gemma-4-12b-it-qat-q4_0.gguf",
+        url="https://huggingface.co/google/gemma-4-12B-it-qat-q4_0-gguf/resolve/main/gemma-4-12b-it-qat-q4_0.gguf",
+        # It FITTED the Metal budget there and still swapped — the owner's own apps are the limit.
+        measured=dict(ram_mb=7649, decode_tps=14.5, prefill_tps=140.1, swapped_mb=1901, on="Apple M5, 16 GB, under ordinary use", date="2026-09-23"),
+        what="A step up from E4B, for 24 GB and more. On a 16 GB Mac it was slower and pushed "
+             "the machine into swap."),
+    "gemma-4-26b-a4b": dict(
+        name="Gemma 4 26B", brand="GOOGLE", params="26B MoE",
+        dl_mb=13770, ram_mb=17901,
+        repo="google/gemma-4-26B-A4B-it-qat-q4_0-gguf",
+        filename="gemma-4-26B_q4_0-it.gguf",
+        url="https://huggingface.co/google/gemma-4-26B-A4B-it-qat-q4_0-gguf/resolve/main/gemma-4-26B_q4_0-it.gguf",
+        what="A mixture of experts: about 4B of it works on each word, so it should run far "
+             "faster than its size suggests — but all of it must fit in memory. Not yet timed."),
+    "gemma-4-31b": dict(
+        name="Gemma 4 31B", brand="GOOGLE", params="31B",
+        dl_mb=16833, ram_mb=21882,
+        repo="google/gemma-4-31B-it-qat-q4_0-gguf",
+        filename="gemma-4-31B_q4_0-it.gguf",
+        url="https://huggingface.co/google/gemma-4-31B-it-qat-q4_0-gguf/resolve/main/gemma-4-31B_q4_0-it.gguf",
+        what="The largest Gemma 4, for machines with plenty of memory and bandwidth. Not yet timed."),
+
+    # QWEN3.5 — the fallback family, not the lead. Dense, so it reads every weight for every word.
+    # Does NOT think by default in this build (the same 15 tokens with or without /no_think), which
+    # is why it is deliberately absent from REASONING_FAMILIES.
+    "qwen3.5-9b": dict(
+        name="Qwen3.5 9B", brand="QWEN", params="9B",
+        dl_mb=5417, ram_mb=7042,
+        repo="unsloth/Qwen3.5-9B-GGUF",
+        filename="Qwen3.5-9B-Q4_K_M.gguf",
+        url="https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf",
+        measured=dict(ram_mb=5908, decode_tps=20.4, prefill_tps=206.9, on="Apple M5, 16 GB, under ordinary use", date="2026-09-23"),
+        what="Alibaba's newer Qwen, strong across languages. On a 16 GB Mac it came in slower "
+             "than Gemma 4 E4B."),
 }
 
 
@@ -270,14 +341,28 @@ def can_download(model: str) -> tuple[bool, str]:
     return True, ""
 
 
+def resident_mb(model: str) -> int:
+    """What this model occupies once loaded: MEASURED where it has been timed, derived otherwise.
+
+    Two figures, and this picks the true one. `measured["ram_mb"]` is what docs/bench-models.py
+    saw on a real machine; `ram_mb` is the download size x WORKING_SET that every entry carries.
+    The measured figure wins because it is the real one — and the estimate runs high: Gemma 4 E4B
+    measured 5,683 MB against an estimated 6,390.
+    """
+    spec = spec_of(model) or {}
+    return int((spec.get("measured") or {}).get("ram_mb") or spec.get("ram_mb") or 0)
+
+
 def can_run(model: str) -> tuple[str, str]:
     """(fits|tight|no|unknown, why) — the RESIDENT size against this machine, via machine.py.
-    The catalogue's ram_mb is measured, so it is used directly rather than re-derived from the
-    download size the way an unknown Ollama name has to be."""
+
+    Measured where the entry has been timed, the derived estimate otherwise (`resident_mb`). This
+    said the catalogue's ram_mb WAS measured, while the module docstring said — correctly — that
+    every one of them is download x 1.3. Twenty-one entries, all exactly 1.30."""
     spec = spec_of(model)
     if not spec:
         return "unknown", ""
-    return machine.verdict(spec["ram_mb"] / 1024 / machine.WORKING_SET)
+    return machine.verdict(resident_mb(model) / 1024 / machine.WORKING_SET)
 
 
 def best_of(brand: str) -> str:
@@ -708,7 +793,7 @@ def _gpu_layers(model: str) -> tuple[int, str]:
     if kind == "apple":
         return -1, "GPU (Metal, unified memory)"
     if kind == "cuda":
-        need_gb = (spec_of(model) or {}).get("ram_mb", 0) / 1024
+        need_gb = resident_mb(model) / 1024
         vram = float(g.get("vram_gb", 0) or 0)
         if vram >= need_gb * 1.15:
             return -1, f"GPU ({vram:.1f} GB VRAM)"
@@ -819,8 +904,9 @@ def listing() -> list[dict]:
 # THE CURATED LIST IS ELEVEN MODELS AND IT IS ALREADY BEHIND — Qwen2.5 while Qwen3 ships, Gemma 2
 # while Gemma 3 ships. Adding one is a code change and a release, so an owner on a build from
 # last month cannot reach a model from this month. Curation still earns its place: every entry
-# carries a MEASURED resident size and speed, which is what the fit pill and the recommendation
-# are computed from. So both — a short list we stand behind, and a way past it.
+# carries a REAL download size read from Hugging Face, and the ones someone has timed carry what
+# they measured (see the module docstring for which figure is which). So both — a short list we
+# stand behind, and a way past it.
 #
 # ONLY huggingface.co, and the URL is BUILT HERE from a repo and a filename rather than accepted
 # from the page. A downloader that takes a URL from its caller is a request-forgery tool with a
@@ -936,8 +1022,8 @@ def add_custom(repo: str, filename: str) -> str:
     _remember_custom(key, {
         "name": f.replace(".gguf", ""), "brand": r.split("/")[0].upper()[:9],
         "params": "", "dl_mb": mb,
-        # ESTIMATED, and said to be. A curated entry's ram_mb is measured; this is the same
-        # arithmetic machine.py uses for anything it has not been told about.
+        # ESTIMATED, and said to be — the same download x WORKING_SET a curated entry carries
+        # until someone has timed it.
         "ram_mb": int(mb * machine.WORKING_SET), "estimated": True,
         "speed": "", "repo": r, "filename": f,
         "url": f"{HF_FILES}/{r}/resolve/main/{urllib.parse.quote(f)}",

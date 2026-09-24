@@ -4772,6 +4772,63 @@ def test_a_draft_goes_to_who_it_was_written_for() -> None:
         ok("and says why rather than picking one", "Two people" in (out or ""))
 
 
+def test_the_catalogue_carries_gemma_4_and_says_what_was_measured() -> None:
+    """The 2026-09-24 refresh, and the difference between a timed figure and an estimate."""
+    print("\n  -- the catalogue: Gemma 4, and measured versus derived --")
+    import unittest.mock as mock
+    from agentduet_desktop import llm, machine, models
+
+    ladder = ["gemma-4-e2b", "gemma-4-e4b", "gemma-4-12b", "gemma-4-26b-a4b", "gemma-4-31b"]
+    for key in ladder + ["qwen3.5-9b"]:
+        e = models.CATALOGUE.get(key) or {}
+        ok(f"{key} is in the catalogue", bool(e))
+        ok(f"and its URL is built from its repo and file on huggingface.co",
+           e.get("url") == f"https://huggingface.co/{e.get('repo')}/resolve/main/{e.get('filename')}")
+    # FROM THE VENDOR. Google publishes Gemma 4's files itself; a repack would lose the QAT
+    # training and put a third party between the owner and the weights.
+    ok("every Gemma 4 file comes from Google's own repos",
+       all(models.CATALOGUE[k]["repo"].startswith("google/") for k in ladder))
+
+    # TWO FIGURES, NEVER CONFUSED. ram_mb is the estimate on every entry — all 21 old ones were
+    # exactly download x 1.30 while three comments called them measured — and `measured` is what
+    # bench-models.py actually saw. A timed entry must not overwrite its estimate.
+    ok("every ram_mb is still the derived estimate",
+       all(e["ram_mb"] == int(e["dl_mb"] * machine.WORKING_SET) for e in models.CATALOGUE.values()))
+    timed = {k: e["measured"] for k, e in models.CATALOGUE.items() if "measured" in e}
+    ok("the three timed entries carry a measurement",
+       {"gemma-4-e4b", "gemma-4-12b", "qwen3.5-9b"} <= set(timed), str(sorted(timed)))
+    for k, m in timed.items():
+        ok(f"{k}'s measurement says what, on which machine, and when",
+           {"ram_mb", "decode_tps", "prefill_tps", "on", "date"} <= set(m), str(sorted(m)))
+    ok("not-timed means no measurement, not a guessed one",
+       all("measured" not in models.CATALOGUE[k] for k in ("gemma-4-26b-a4b", "gemma-4-31b")))
+
+    # THE MEASURED FIGURE IS THE ONE THAT DECIDES FIT.
+    eq("resident_mb prefers the measurement", models.resident_mb("gemma-4-e4b"), 5683)
+    eq("and falls back to the estimate", models.resident_mb("gemma-4-31b"),
+       models.CATALOGUE["gemma-4-31b"]["ram_mb"])
+    seen = []
+    with mock.patch.object(machine, "verdict", lambda gb: seen.append(gb) or ("fits", "")):
+        models.can_run("gemma-4-e4b")
+    ok("can_run sizes a timed model by what it measured",
+       seen and abs(seen[0] - 5683 / 1024 / machine.WORKING_SET) < 1e-6, str(seen))
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "models.py").read_text()
+    ok("no comment still calls the derived figure measured",
+       "ram_mb is measured" not in src and "MEASURED resident size" not in src)
+
+    # QWEN3.5 DOES NOT THINK BY DEFAULT — measured, 15 tokens with or without /no_think — so it is
+    # deliberately outside REASONING_FAMILIES, while Qwen3 still gets the switch.
+    ok("Qwen3.5 is not sent /no_think", not models.thinks("qwen3.5-9b"))
+    ok("Qwen3 still is", models.thinks("qwen3-8b"))
+
+    # THE MIGRATION GUARD. llm.provider routes a name to "local" only if the catalogue has it, so
+    # removing an old entry would silently send an install configured for it to a hosted vendor —
+    # before the automatic pick exists to catch it. The old entries stay until then.
+    with mock.patch.dict(llm.os.environ, {"SECRETARY_PROVIDER": ""}):
+        for key in ("qwen3-8b", "gemma-3-12b", "gemma-4-e4b"):
+            eq(f"a {key} install still runs locally", llm.provider(key), "local")
+
+
 def test_the_content_can_be_copied_out() -> None:
     """A transcript nobody can select is a transcript nobody can use."""
     print("\n  -- content is selectable, chrome is not --")
@@ -4870,6 +4927,7 @@ def main() -> None:
     test_signing_survives_apples_timestamp_service()
     test_assets_are_utf8_whatever_the_machine_thinks()
     test_a_draft_goes_to_who_it_was_written_for()
+    test_the_catalogue_carries_gemma_4_and_says_what_was_measured()
     test_capabilities()
     test_capability_disclosure()
     test_policy()
