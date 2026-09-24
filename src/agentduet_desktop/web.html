@@ -37,20 +37,18 @@
   .who .m{font-size:10px;color:var(--faint);}
   .who-empty{font-size:.75rem;color:var(--faint);padding:.5rem .2rem;}
 
-  .store{padding:.625rem;border-radius:.5rem;background:var(--slate900);
-    border:1px solid rgba(255,255,255,.05);font-size:11px;display:flex;flex-direction:column;
-    gap:.25rem;flex-shrink:0;}
-  .store .r{display:flex;justify-content:space-between;align-items:center;color:var(--muted);}
-  .store a{color:var(--blue400);font-size:10px;text-decoration:none;}
-  .store a:hover{text-decoration:underline;}
-  /* One row, one gap — the same rhythm as the channel line above it. Its own top border
-     because it is a different subject from where the recordings go, and it appears and
-     disappears, so without one the block changes shape with nothing to explain the seam. */
-  /* THE IN-APP PHONE's switch. Same row as the channel line; the switch is app.css's, shrunk to
-     the size of this card's 11px text. */
-  .store .sw .track{width:1.75rem;height:1rem;}
-  .store .sw .track::after{width:.75rem;height:.75rem;}
-  .store .sw input:checked + .track::after{transform:translateX(.75rem);}
+  /* THE TITLEBAR'S RIGHT-HAND GROUP: the in-app phone's switch beside Settings, and the two
+     things that appear only when they have something to say — a microphone problem, and a
+     newer version. The sidebar box that held them (and a channel line the header pill already
+     showed) is gone, so the left column is only the people. */
+  .tright{display:flex;align-items:center;gap:.5rem;min-width:0;}
+  .tright .tbtn.here{gap:.5rem;cursor:pointer;}
+  .tright .sw .track{width:1.75rem;height:1rem;}
+  .tright .sw .track::after{width:.75rem;height:.75rem;}
+  .tright .sw input:checked + .track::after{transform:translateX(.75rem);}
+  .tright .hmsg{font-size:11px;color:#fca5a5;white-space:nowrap;}
+  .tright a.link2{font-size:11px;color:var(--blue400);text-decoration:none;white-space:nowrap;}
+  .tright a.link2:hover{text-decoration:underline;}
   /* A CALL, above everything in the main column: ringing, or live. One bar for both, because
      they are one call in two states and the owner's eye should not have to move. */
   .callbar{display:flex;align-items:center;gap:.75rem;padding:.7rem 1.5rem;flex-shrink:0;
@@ -64,10 +62,6 @@
   .callbar .btn{padding:.4rem .9rem;}
   .callbar .btn.end{background:#dc2626;}
   .callbar .cerr{font-size:11px;color:#fca5a5;}
-  .store .hmsg{color:#fca5a5;display:block;line-height:1.45;}
-  .store .upd{margin-top:.375rem;padding-top:.375rem;border-top:1px solid var(--slate700);}
-  .store .path{font-family:var(--mono);color:#cbd5e1;font-size:10px;overflow:hidden;
-    text-overflow:ellipsis;white-space:nowrap;}
 
   main{flex:1;min-width:0;background:var(--bg);display:flex;flex-direction:column;
     overflow:hidden;}
@@ -247,8 +241,14 @@
       <span class="dot"></span><span class="l">Power Mobile Line:</span>
       <span class="v" id="lineNum">—</span>
     </div>
-    <a class="tbtn on" id="toSettings" href="#">
-      <span class="material-symbols-rounded">settings</span><span>Settings</span></a>
+    <div class="tright">
+      <span class="hmsg" id="hereMsg" hidden></span>
+      <a class="link2" id="updLink" target="_blank" rel="noopener" hidden>—</a>
+      <label class="tbtn on here" id="hereRow" hidden><span>Answer calls here</span>
+        <span class="sw"><input type="checkbox" id="hereOn"><span class="track"></span></span></label>
+      <a class="tbtn on" id="toSettings" href="#">
+        <span class="material-symbols-rounded">settings</span><span>Settings</span></a>
+    </div>
   </div>
 
   <div class="app">
@@ -262,13 +262,6 @@
       </div>
       <div class="navlab">People</div>
       <div class="who-list" id="whoList"></div>
-      <div class="store">
-        <div class="r"><span id="chanState">—</span><a href="#" id="toSettings2">Settings</a></div>
-        <label class="r" id="hereRow" hidden><span>Answer calls here</span>
-          <span class="sw"><input type="checkbox" id="hereOn"><span class="track"></span></span></label>
-        <div class="r hmsg" id="hereMsg" hidden></div>
-        <div class="r upd" id="updRow" hidden><a id="updLink" target="_blank" rel="noopener">—</a></div>
-      </div>
     </aside>
 
     <main>
@@ -353,7 +346,6 @@
 
   const toSettings = e => { e.preventDefault(); location.href = '/settings?t=' + T; };
   $('toSettings').onclick = toSettings;
-  $('toSettings2').onclick = toSettings;
 
   //: Not a person — nobody called from it — so it is pinned above the list rather than
   //: sorted into it, and cannot be pushed down by whoever called most recently.
@@ -937,12 +929,11 @@
     const live = ['live', 'connecting', 'retrying'].indexOf(D.channel) >= 0;
     $('ovPill').className = 'pill' + (live ? '' : ' off');
     $('ovPill').innerHTML = '<span class="dot"></span>' + (live ? 'Listening' : 'Not connected');
-    $('chanState').textContent = live ? 'Recording calls' : 'Not connected';
 
     // A NEWER BUILD, IF THERE IS ONE. Absent unless there is: an "up to date" line would be a
     // claim, and on a machine that has never reached GitHub it would be a wrong one.
     const upd = D.update || {};
-    $('updRow').hidden = !upd.newer;
+    $('updLink').hidden = !upd.newer;
     if (upd.newer) {
       $('updLink').textContent = upd.note || ('Version ' + (upd.version || '') + ' is available');
       $('updLink').href = upd.url || '#';
@@ -994,7 +985,7 @@
   const MIC_HELP = 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone';
   function hereSay(msg, link){
     $('hereMsg').hidden = !msg;
-    $('hereMsg').innerHTML = msg ? esc(msg) + (link ? ` <a href="${MIC_HELP}">Open Settings</a>` : '') : '';
+    $('hereMsg').innerHTML = msg ? esc(msg) + (link ? ` <a class="link2" href="${MIC_HELP}">Open Settings</a>` : '') : '';
   }
   $('hereOn').onchange = async () => {
     HERE_SAVING = true;
