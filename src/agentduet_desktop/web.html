@@ -64,6 +64,7 @@
   .callbar .btn{padding:.4rem .9rem;}
   .callbar .btn.end{background:#dc2626;}
   .callbar .cerr{font-size:11px;color:#fca5a5;}
+  .store .hmsg{color:#fca5a5;display:block;line-height:1.45;}
   .store .upd{margin-top:.375rem;padding-top:.375rem;border-top:1px solid var(--slate700);}
   .store .path{font-family:var(--mono);color:#cbd5e1;font-size:10px;overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap;}
@@ -265,6 +266,7 @@
         <div class="r"><span id="chanState">—</span><a href="#" id="toSettings2">Settings</a></div>
         <label class="r" id="hereRow" hidden><span>Answer calls here</span>
           <span class="sw"><input type="checkbox" id="hereOn"><span class="track"></span></span></label>
+        <div class="r hmsg" id="hereMsg" hidden></div>
         <div class="r upd" id="updRow" hidden><a id="updLink" target="_blank" rel="noopener">—</a></div>
       </div>
     </aside>
@@ -983,12 +985,37 @@
   // The microphone is the browser's, with echoCancellation on: that is the whole reason this is
   // done in the page rather than natively, since it gives echo cancellation on every platform.
   let HERE_SAVING = false;
+  // CHECK THE MICROPHONE WHEN IT IS SWITCHED ON, not when a call rings. Two reasons: macOS
+  // asks for permission the first time, and that prompt belongs to the moment the owner opted
+  // in rather than over a ringing call; and a refused microphone is NOT an error on macOS — it
+  // delivers exact digital zeros, which is how the first real call recorded the owner's side as
+  // 14.8 s of silence with nothing to say why. So the check listens briefly and looks for any
+  // non-zero sample. Speakers have no permission to check; output is not gated by macOS.
+  const MIC_HELP = 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone';
+  function hereSay(msg, link){
+    $('hereMsg').hidden = !msg;
+    $('hereMsg').innerHTML = msg ? esc(msg) + (link ? ` <a href="${MIC_HELP}">Open Settings</a>` : '') : '';
+  }
   $('hereOn').onchange = async () => {
     HERE_SAVING = true;
     const want = $('hereOn').checked;
-    const r = await post('/api/setup/setting', {field: 'answer_here', value: want ? 'yes' : 'no'})
-      .catch(() => ({ok: false}));
-    if (!r.ok) $('hereOn').checked = !want;
+    $('hereOn').disabled = true;
+    hereSay('');
+    let fine = true;
+    if (want) {
+      const m = await PHONE.checkMic();
+      if (!m.ok) {
+        fine = false;
+        hereSay(m.why === 'none' ? 'No microphone found.' : 'Microphone access is off.', m.why !== 'none');
+      }
+    }
+    if (fine) {
+      const r = await post('/api/setup/setting', {field: 'answer_here', value: want ? 'yes' : 'no'})
+        .catch(() => ({ok: false}));
+      fine = !!r.ok;
+    }
+    if (!fine) $('hereOn').checked = !want;
+    $('hereOn').disabled = false;
     HERE_SAVING = false;
   };
 
@@ -1069,6 +1096,21 @@
       }
       stream = await navigator.mediaDevices.getUserMedia({audio: {
         echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1}});
+      // WHAT THE MICROPHONE REALLY GAVE, reported once to the daemon log. The first real call
+      // recorded the owner's side as exact digital zeros — what macOS delivers to an app it has
+      // not granted the microphone — and the page was the only place that could tell that from
+      // our own capture dropping it. Peak is of the RAW input, before mute or resampling.
+      const track = stream.getAudioTracks()[0];
+      let peak = 0, seen = 0;
+      const report = setTimeout(() => {
+        if (!ws || ws.readyState !== 1) return;
+        const s = (track && track.getSettings) ? track.getSettings() : {};
+        ws.send(JSON.stringify({type: 'diag', label: track ? track.label : '',
+          muted: track ? track.muted : null, state: track ? track.readyState : '',
+          device_rate: s.sampleRate || null, ctx_rate: c.sampleRate, ctx_state: c.state,
+          frames: seen, peak: Math.round(peak * 32767)}));
+      }, 2000);
+      stopAudio.report = report;
       src = c.createMediaStreamSource(stream);
       cap = new AudioWorkletNode(c, 'cap');
       play = new AudioWorkletNode(c, 'play', {outputChannelCount: [2]});
@@ -1076,6 +1118,8 @@
       // 20 ms frames on the wire: small enough for latency, large enough not to flood.
       const frame = Math.round(c.sampleRate * 0.02);
       cap.port.onmessage = e => {
+        seen += e.data.length;
+        for (let i = 0; i < e.data.length; i++) { const v = Math.abs(e.data[i]); if (v > peak) peak = v; }
         if (!ws || ws.readyState !== 1) return;
         pend.push(e.data); pendN += e.data.length;
         if (pendN < frame) return;
@@ -1094,6 +1138,7 @@
     }
 
     function stopAudio(){
+      clearTimeout(stopAudio.report);
       try { src && src.disconnect(); cap && cap.disconnect(); play && play.disconnect(); } catch (e) {}
       if (stream) stream.getTracks().forEach(t => t.stop());
       stream = src = cap = play = null; pend = []; pendN = 0;
@@ -1156,8 +1201,45 @@
     $('callHang').onclick = () => ws && ws.send(JSON.stringify({type: 'hangup'}));
     $('callMute').onclick = () => { muted = !muted; draw(); };
 
+    // Open the microphone, listen ~1 s, release it. {ok} or {ok: false, why: 'blocked'|'none'}.
+    // 'blocked' also covers the silent refusal: every sample exactly zero.
+    async function checkMic(){
+      let s;
+      try {
+        s = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: true}});
+      } catch (e) {
+        return {ok: false, why: (e && e.name === 'NotFoundError') ? 'none' : 'blocked'};
+      }
+      const c = audio();
+      let peak = 0;
+      try {
+        if (c) {
+          const n = c.createMediaStreamSource(s), an = c.createAnalyser(), g = c.createGain();
+          an.fftSize = 2048; g.gain.value = 0;
+          // Wired to the output through a muted gain: WebKit does not run a node that leads
+          // nowhere, and an analyser that never runs reads zeros — the very thing checked for.
+          n.connect(an).connect(g).connect(c.destination);
+          const buf = new Float32Array(an.fftSize);
+          for (let i = 0; i < 10; i++) {
+            await new Promise(r => setTimeout(r, 100));
+            an.getFloatTimeDomainData(buf);
+            for (const v of buf) if (Math.abs(v) > peak) peak = Math.abs(v);
+          }
+          n.disconnect(); an.disconnect(); g.disconnect();
+        }
+      } finally {
+        s.getTracks().forEach(t => t.stop());
+      }
+      if (ws && ws.readyState === 1)
+        ws.send(JSON.stringify({type: 'diag', check: true, peak: Math.round(peak * 32767),
+          ctx_state: c ? c.state : 'none'}));
+      // No context to measure with is not evidence of a blocked microphone: permission was granted.
+      if (!c || c.state !== 'running') return {ok: true};
+      return peak > 0 ? {ok: true} : {ok: false, why: 'blocked'};
+    }
+
     connect();
-    return {state: () => st};
+    return {state: () => st, checkMic};
   })();
 
   async function refresh(){
