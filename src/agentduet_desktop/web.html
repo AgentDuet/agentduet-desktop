@@ -1197,7 +1197,10 @@
     $('callHang').onclick = () => ws && ws.send(JSON.stringify({type: 'hangup'}));
     $('callMute').onclick = () => { muted = !muted; draw(); };
 
-    // Loudest sample the microphone gives an AudioContext over ~1 s.
+    // Loudest sample the microphone gives an AudioContext, listening UP TO 3 s and stopping at the
+    // first sound. Not a fixed second: a freshly opened microphone delivers exact zeros while it
+    // warms up — measured 2026-09-24 with the lid open, 0 over the first second and 309 over the
+    // next — so a one-second check fails a working microphone about half the time.
     async function peakOf(c, stream){
       const n = c.createMediaStreamSource(stream), an = c.createAnalyser(), g = c.createGain();
       an.fftSize = 2048; g.gain.value = 0;
@@ -1206,7 +1209,7 @@
       n.connect(an).connect(g).connect(c.destination);
       const buf = new Float32Array(an.fftSize);
       let peak = 0;
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 30 && !peak; i++) {
         await new Promise(r => setTimeout(r, 100));
         an.getFloatTimeDomainData(buf);
         for (const v of buf) if (Math.abs(v) > peak) peak = Math.abs(v);
