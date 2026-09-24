@@ -13,9 +13,9 @@
 # (Cmd-R in the window), with no rebuild. A Python change needs this script again (~20s, most of
 # it the Swift build, which is incremental after the first).
 #
-# SIGNED AD HOC, WITH THE HARDENED RUNTIME AND THE REAL ENTITLEMENTS, on purpose: the runtime is
-# what refuses a microphone without `device.audio-input`, so signing without it would test a
-# looser app than the one we ship.
+# SIGNED WITH THE HARDENED RUNTIME AND THE REAL ENTITLEMENTS, on purpose: the runtime is what
+# refuses a microphone without `device.audio-input`, so signing without it would test a looser
+# app than the one we ship. Developer ID when the Mac has it, ad hoc otherwise — see below.
 #
 # ITS OWN BUNDLE ID (`.dev`), so macOS keeps its microphone grant and login item apart from the
 # installed app's. An ad-hoc signature changes every build, so macOS may ask for the microphone
@@ -70,8 +70,22 @@ PLIST="$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleName AgentDuet Dev" "$PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName AgentDuet Dev" "$PLIST"
 
-codesign --force --deep --options runtime --entitlements packaging/entitlements.plist \
-  --sign - "$APP" 2>&1 | grep -v "replacing existing signature" || true
+# WITH THE DEVELOPER ID WHEN THIS MAC HAS IT, ad hoc otherwise. Two reasons it matters here and
+# not only for release: macOS ties an ad-hoc app's microphone grant to that exact build, so every
+# rebuild asks again; and WebKit captures in a helper process that must prove whose app it is
+# working for, which an ad-hoc identity may not satisfy. The keychain is the one sign-macos.sh
+# builds; no timestamp, since nothing here is notarized.
+KEYCHAIN="$HOME/Library/Keychains/agentduet-signing.keychain-db"
+IDENTITY=""
+if [ -f "$KEYCHAIN" ] && [ -f "$HOME/.apple-signing/keychain-pw" ]; then
+  security unlock-keychain -p "$(cat "$HOME/.apple-signing/keychain-pw")" "$KEYCHAIN"
+  IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" \
+             | awk '/Developer ID Application/ {print $2; exit}')
+fi
+codesign --force --deep --options runtime --timestamp=none \
+  --entitlements packaging/entitlements.plist --sign "${IDENTITY:--}" \
+  ${IDENTITY:+--keychain "$KEYCHAIN"} "$APP" 2>&1 | grep -v "replacing existing signature" || true
+if [ -n "$IDENTITY" ]; then echo "  signed: Developer ID"; else echo "  signed: ad hoc"; fi
 
 open "$APP"
 echo "  AgentDuet Dev is up — the native window, daemon from source"

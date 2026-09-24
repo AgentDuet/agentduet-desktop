@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import ServiceManagement
 
 // Top-level code IS the entry point of a SwiftPM executable target, so there is no @main here.
@@ -24,6 +25,36 @@ import ServiceManagement
 // the setting existed therefore showed "off" beside a menu bar saying "on". Only the bundle can
 // ask the question, so the bundle answers it and the setting becomes the fallback for platforms
 // that have no bundle at all.
+// THE MICROPHONE, WITHOUT WEBKIT. A diagnostic: the in-app phone's page got a live, unmuted track
+// that carried exact zeros, with no orange dot — so macOS never opened the microphone for it. This
+// opens it natively, from this bundle, so its permission is the one being tested, and reports
+// the permission state and the loudest sample over two seconds. Run it as the app, so macOS
+// attributes it to the bundle rather than to a terminal:
+//     open -n -W "AgentDuet Dev.app" --args --mic-probe /path/to/result.txt
+if let i = CommandLine.arguments.firstIndex(of: "--mic-probe") {
+    final class Peak: @unchecked Sendable { var value: Float = 0 }
+    let out = i + 1 < CommandLine.arguments.count ? CommandLine.arguments[i + 1] : "/dev/stdout"
+    let asked = DispatchSemaphore(value: 0)
+    AVCaptureDevice.requestAccess(for: .audio) { _ in asked.signal() }
+    asked.wait()
+    let auth = AVCaptureDevice.authorizationStatus(for: .audio).rawValue   // 3 = authorized
+    let engine = AVAudioEngine()
+    let input = engine.inputNode
+    let format = input.outputFormat(forBus: 0)
+    let peak = Peak()
+    input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+        guard let samples = buffer.floatChannelData?[0] else { return }
+        for k in 0..<Int(buffer.frameLength) { peak.value = max(peak.value, abs(samples[k])) }
+    }
+    var failure = ""
+    do { try engine.start() } catch { failure = "\(error)" }
+    Thread.sleep(forTimeInterval: 2.0)
+    engine.stop()
+    let line = "auth=\(auth) rate=\(format.sampleRate) peak=\(Int(peak.value * 32767)) error=\(failure)\n"
+    try? line.write(toFile: out, atomically: true, encoding: .utf8)
+    exit(0)
+}
+
 if CommandLine.arguments.contains("--login-item-status") {
     switch SMAppService.mainApp.status {
     case .enabled:          print("enabled")
