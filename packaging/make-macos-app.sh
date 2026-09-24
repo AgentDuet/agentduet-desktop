@@ -16,7 +16,10 @@ DAEMON_BIN="${2:?pyinstaller binary}"
 OUT_DIR="${3:-dist-bin}"
 
 APP="$OUT_DIR/AgentDuet Desktop.app"
-VERSION="$(grep -m1 '^version' "$(dirname "$0")/../pyproject.toml" | cut -d'"' -f2)"
+# FROM THE PACKAGE, not pyproject.toml. pyproject's `version` is `{attr = "agentduet_desktop.__version__"}`
+# — a pointer, not a number — so reading it there stamped every bundle with the literal text
+# `agentduet_desktop.__version__`, in Finder's Get Info and in the window's user agent.
+VERSION="$(grep -m1 '^__version__' "$(dirname "$0")/../src/agentduet_desktop/__init__.py" | cut -d'"' -f2)"
 VERSION="${VERSION:-0.1.0}"
 
 # REFUSE TO EAT YOUR OWN INPUT. This removes $APP before writing it, and since macOS went
