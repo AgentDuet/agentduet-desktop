@@ -28,7 +28,9 @@ logger = logging.getLogger("secretary.recall")
 #: Turns folded in one pass. More wait for the next, requested straight away.
 TURNS_PER_FOLD = 10
 
-PROMPT = """You keep a short memory for {owner}'s assistant, so it remembers what matters from
+PROMPT = """Today is {today}.
+
+You keep a short memory for {owner}'s assistant, so it remembers what matters from
 earlier conversations with {owner}.
 
 Update the memory with the new exchanges below.
@@ -42,8 +44,8 @@ Update the memory with the new exchanges below.
 - Use only the memory and the exchanges. Do not guess.
 - At most {words} words, as short plain lines.
 
-Reply with the memory only. If there is nothing worth keeping, reply with the current memory
-unchanged.
+Reply with the memory only, and never repeat these rules. If there is nothing worth keeping,
+reply with the current memory unchanged — or, if it is empty, with exactly: (empty)
 
 CURRENT MEMORY (as of {asof}):
 {current}
@@ -94,7 +96,8 @@ def fold() -> bool:
     new = "\n\n".join(f"{t.get('at', '')}\n{who}: {t['q']}\nAssistant: {t['a']}" for t in batch)
     from . import budget
     words = budget.split()["memory_words"]
-    prompt = PROMPT.format(owner=who, words=words, asof=rec.get("updated", "never"),
+    prompt = PROMPT.format(today=datetime.now().strftime("%A %d %B %Y"), owner=who, words=words,
+                           asof=rec.get("updated", "never"),
                            current=rec.get("summary") or "(empty)", new=new)
     summary = llm.client().complete(prompt).strip()
     rec["through"] = batch[-1].get("at", "")

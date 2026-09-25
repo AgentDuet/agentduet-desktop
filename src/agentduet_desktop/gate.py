@@ -73,6 +73,24 @@ _cv = threading.Condition()
 _waiting: list[Ticket] = []
 _holder: Ticket | None = None
 _seq = itertools.count()
+#: Owner turns in progress. A turn calls the model several times (a lookup, then the answer),
+#: and a background job used to slip into the gap between two of those calls and make the rest
+#: of the answer wait for its prompt to be read. So the whole turn counts as busy.
+_turns = 0
+
+
+@contextlib.contextmanager
+def turn():
+    """Hold background jobs off for the whole of an owner turn, not only its model calls."""
+    global _turns
+    with _cv:
+        _turns += 1
+    try:
+        yield
+    finally:
+        with _cv:
+            _turns -= 1
+            _cv.notify_all()
 
 
 def _call_on() -> bool:
@@ -99,7 +117,7 @@ def acquire(prio: int) -> Ticket:
             _holder.cancel.set()
         while True:
             if (_holder is None and _waiting[0] is t
-                    and not (prio != QUESTION and _call_on())):
+                    and not (prio != QUESTION and (_turns or _call_on()))):
                 heapq.heappop(_waiting)
                 _holder = t
                 return t

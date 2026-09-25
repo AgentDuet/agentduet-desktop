@@ -919,6 +919,32 @@ class OwnerChat:
 
     async def turn(self, message: str, viewing: str = "", label: str = "",
                    via: str = "") -> dict:
+        """One owner turn, then the background work it leaves (see `_after_turn`)."""
+        from . import gate
+        try:
+            with gate.turn():
+                return await self._turn(message, viewing, label, via)
+        finally:
+            self._after_turn(viewing)
+
+    def _after_turn(self, viewing: str) -> None:
+        """Fold the memory and warm the next prompt; update the brief of the person on screen.
+
+        ON EVERY EXIT, which is why it is here and not at the end of `_turn`: `_turn` returns
+        from several places, and these hooks sat after only one of them, so an ordinary turn
+        — a lookup, then an answer — never folded, warmed or updated anything. Each job checks
+        its own watermark, so running after a turn that changed nothing costs nothing.
+        """
+        try:
+            from . import brief as _brief, recall
+            recall.request(then=self._prewarm)
+            if viewing:
+                _brief.request(viewing)
+        except Exception as exc:
+            logger.warning("after-turn jobs not queued: %s: %s", type(exc).__name__, exc)
+
+    async def _turn(self, message: str, viewing: str = "", label: str = "",
+                    via: str = "") -> dict:
         """One owner turn. `label` is what gets REMEMBERED in place of `message`.
 
         Setup drives this with a 3 KB instruction block. Recording that verbatim put the whole
@@ -1183,11 +1209,6 @@ class OwnerChat:
                      "this, or the conversation has grown repetitive.")
         remember(history + [f"ASSISTANT: {final}"])
         self._record(shown_as, final, used, full=message, draft=draft_intent(message), via=via)
-        from . import recall
-        recall.request(then=self._prewarm)
-        if viewing:
-            from . import brief as _brief
-            _brief.request(viewing)
         return {"reply": final, "tools": used, "proposals": _proposals(),
                 "draft": draft_intent(message) and bool(final)}
 

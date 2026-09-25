@@ -932,6 +932,8 @@ tokens — on every question. Rules, all in the prompt:
   rewriting from everything wears facts away, and a small model compounds its own mistakes.
 - **Shaped by the prompt only.** Nobody edits a brief by hand (Stanley: a poor experience); what
   the assistant writes is governed by what it is told.
+- **Told today's date**, and to work out "tomorrow" or "Friday" from the date of the call it was
+  said in. Without it the model invented one: "1 PM on Tuesday, 2026-09-26" — a Saturday.
 - **Marked as a caller's words** (`tools.untrusted`) wherever it enters a prompt, like the
   transcripts it came from. A call with nothing said only moves the watermark.
 Measured on real calls: seven calls of one person folded in two updates, 6.0 s.
