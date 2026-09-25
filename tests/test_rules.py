@@ -5734,8 +5734,9 @@ def test_model_gate() -> None:
     src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
     a = (src / "assistant.py").read_text()
     ok("the prompt puts the changing context after the earlier conversation",
-       'text = (self.system + "\\n\\n" + "\\n".join(past)' in a)
-    ok("and warms the next prompt after each turn", "self._prewarm()" in a)
+       'text = (self._head() + "\\n\\n" + "\\n".join(past)' in a)
+    ok("and after each turn folds the memory, then warms the next prompt",
+       "recall.request(then=self._prewarm)" in a)
     ok("the suggestion worker runs behind questions",
        "with gate.priority(gate.SUGGEST):" in (src / "suggest.py").read_text())
 
@@ -5799,6 +5800,39 @@ def test_jobs_and_briefs() -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_assistant_memory() -> None:
+    """The assistant's memory folds only its own chat, only what is new, and leads every prompt."""
+    print("\n  -- the assistant's memory: its own chat, folded when new --")
+    import unittest.mock as _m
+    from agentduet_desktop import recall, llm, paths as _p
+    from agentduet_desktop.assistant import OwnerChat
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    try:
+        store = tmp / "owner_chat.json"
+        turns = [{"q": "Always call me Stan.", "a": "Noted.", "at": "2026-09-25T09:00:00"},
+                 {"q": "What is pending?", "a": "", "at": "2026-09-25T09:01:00", "pending": True}]
+        store.write_text(json.dumps(turns))
+        asked = []
+        class Fake:
+            def complete(self, prompt):
+                asked.append(prompt); return "Calls himself Stan."
+        with _m.patch.object(_p, "RUN", tmp), _m.patch.object(OwnerChat, "STORE", store), \
+             _m.patch.object(llm, "configured", lambda: True), \
+             _m.patch.object(llm, "client", lambda *a, **k: Fake()):
+            ok("a new exchange is folded in", recall.fold())
+            ok("only the owner's words and the answers go in",
+               "Always call me Stan." in asked[-1] and "What is pending?" not in asked[-1])
+            ok("and the prompt says newer wins", "the NEWER one wins" in asked[-1])
+            ok("nothing new: the model is not asked", not recall.fold())
+            eq("so it was asked once", len(asked), 1)
+            ok("the memory is what the next prompt carries",
+               "Calls himself Stan." in recall.for_prompt())
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "recall.py").read_text()
+    ok("it never reads call text", "read_call" not in src and "transcript" not in src.split('"""', 2)[2])
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -5810,6 +5844,7 @@ def main() -> None:
     test_idle_break()
     test_model_gate()
     test_jobs_and_briefs()
+    test_assistant_memory()
     test_release_ships_the_native_shell()
     test_apple_stt_engine()
     test_local_models_do_not_monologue()

@@ -856,9 +856,15 @@ class OwnerChat:
             f"THEY ASKED: {message}\n\n"
             f"THE LOOKUP RETURNED:\n" + "\n\n".join(results[-3:]) + "\n\nANSWER:")
 
+    def _head(self) -> str:
+        """Instructions, then the assistant's memory of earlier conversations (see `recall`)."""
+        from . import recall
+        mem = recall.for_prompt()
+        return self.system + ("\n\n" + mem if mem else "")
+
     def _stable(self) -> str:
         """The start every prompt shares until the history changes: what `_prewarm` reads."""
-        return self.system + "\n\n" + "\n".join(self.history)
+        return self._head() + "\n\n" + "\n".join(self.history)
 
     async def _ask(self, history: list[str], context: str = "") -> str:
         # STABLE FIRST, CHANGING LAST (2026-09-25). The engine re-reads a prompt only from its
@@ -870,15 +876,20 @@ class OwnerChat:
         # Context is never stored in history: it is regenerated per turn from live state.
         start = getattr(self, "_turn_start", len(history))
         past, now = history[:start], history[start:]
-        text = (self.system + "\n\n" + "\n".join(past)
+        text = (self._head() + "\n\n" + "\n".join(past)
                 + ("\n\n" + context if context else "") + "\n\n" + "\n".join(now))
         return await asyncio.to_thread(self.client.complete, text)
 
     def _prewarm(self) -> None:
-        """After a turn, read the next prompt's start while the owner is reading the answer."""
+        """Read the next prompt's start now, so the next question only reads its own tail.
+
+        Runs from the background job that folds the memory (`recall.request`), AFTER the fold:
+        the memory is near the top of every prompt, so warming before it changed would be
+        warming a prompt that no longer exists.
+        """
         warm = getattr(self.client, "prewarm", None)
         if warm:
-            asyncio.get_running_loop().run_in_executor(None, warm, self._stable())
+            warm(self._stable())
 
     # A completed action claimed in prose. The assistant answered "I have updated the
     # knowledge base to reflect that you are closed next Monday" having called no tool at all —
@@ -1163,7 +1174,8 @@ class OwnerChat:
                      "this, or the conversation has grown repetitive.")
         remember(history + [f"ASSISTANT: {final}"])
         self._record(shown_as, final, used, full=message, draft=draft_intent(message), via=via)
-        self._prewarm()
+        from . import recall
+        recall.request(then=self._prewarm)
         if viewing:
             from . import brief as _brief
             _brief.request(viewing)
