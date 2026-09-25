@@ -263,7 +263,8 @@ def recordings_set() -> str:
 
 
 def recordings_dir() -> pathlib.Path:
-    """Where call audio and transcripts are written. Default `$AGENTDUET_HOME/run/recordings`.
+    """Where call audio and transcripts are written. Default `$AGENTDUET_HOME/run/recordings`,
+    or `~/Documents/AgentDuet` on a Mac that granted it in setup — see `macperms`.
 
     READ AT USE TIME, NEVER IMPORTED AS A CONSTANT. `carry.RECORDINGS` used to be a module-level
     path, so every reader froze it at import — which is why the page could only ever SHOW the
@@ -277,7 +278,8 @@ def recordings_dir() -> pathlib.Path:
     default = paths.RUN / "recordings"
     raw = _first_line(_strip_guidance(_sections().get("Recordings", ""))).strip()
     if not raw:
-        return default
+        from . import macperms
+        return macperms.recordings_default(default) or default
     try:
         chosen = pathlib.Path(raw).expanduser()
         if not chosen.is_absolute():

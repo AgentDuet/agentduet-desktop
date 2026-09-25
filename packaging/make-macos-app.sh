@@ -156,6 +156,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <!-- THE IN-APP PHONE answers a call through the page's microphone. Without this string
        macOS KILLS the app the first time anything asks for the microphone. -->
   <key>NSMicrophoneUsageDescription</key><string>AgentDuet uses the microphone when you answer a call in the app.</string>
+  <!-- RECORDINGS AND TRANSCRIPTS live in ~/Documents/AgentDuet, which macOS protects. Setup
+       asks for it on its Permissions step; this is the reason macOS shows in its prompt. -->
+  <key>NSDocumentsFolderUsageDescription</key><string>AgentDuet keeps your call recordings and transcripts in Documents › AgentDuet.</string>
   <!-- The window loads http://127.0.0.1. Loopback is the ONE exemption ATS grants by name;
        without this key a debug build can still be refused, and NSAllowsArbitraryLoads would
        buy the same thing by switching the policy off everywhere. -->

@@ -100,6 +100,10 @@
   .quit{position:absolute;bottom:0;left:0;right:0;text-align:center;font-size:11px;
     color:var(--faint);background:var(--bg);padding:.5rem 0 .6rem;}
   .quit a{color:var(--faint);}
+  /* permissions: one row per permission, the reason under its name, the action on the right */
+  .perm{display:flex;align-items:center;justify-content:space-between;gap:1rem;width:100%;}
+  .perm .acts{display:flex;align-items:center;gap:.5rem;flex:0 0 auto;}
+  .go:disabled{opacity:.5;cursor:default;}
 </style>
 </head>
 <body>
@@ -162,6 +166,36 @@
     </div>
     <button class="altway" id="skipSso">Set up without signing in</button>
     <p class="foot">B3Networks Power Mobile AI Protocol • v1.0</p>
+  </div>
+
+  <!-- VIEW 1b — permissions, macOS only (Stanley, 2026-09-25). One row per permission, with
+       why it is needed. The Documents folder is REQUIRED — recordings and transcripts are kept
+       there — so Continue waits for it. The microphone is only for answering calls in the app,
+       which is off by default, so it can be skipped; the "Answer calls here" switch asks again.
+       macOS asks ONCE: after a refusal only System Settings can change it, so a refused row
+       offers that, and the page notices when it is turned on there. -->
+  <div class="view" id="v-perms">
+    <div class="panel">
+      <div class="ptop">
+        <div class="tile"><span class="material-symbols-rounded">folder</span></div>
+        <div>
+          <h2>Permissions</h2>
+          <p>What AgentDuet needs on this Mac.</p>
+        </div>
+      </div>
+      <div class="perm">
+        <div class="lbl">Documents folder
+          <span class="sublbl">Your call recordings and transcripts are kept in Documents › AgentDuet. Required.</span></div>
+        <div class="acts" id="docActs"></div>
+      </div>
+      <div class="perm">
+        <div class="lbl">Microphone
+          <span class="sublbl">To answer calls in this window. You can skip this.</span></div>
+        <div class="acts" id="micActs"></div>
+      </div>
+      <button class="go" id="permsDone" disabled><span>Continue</span>
+        <span class="material-symbols-rounded">arrow_forward</span></button>
+    </div>
   </div>
 
   <!-- VIEW 2 — quick setup -->
@@ -264,7 +298,12 @@
     }
   }
   function show(v){
-    ['login', 'setup'].forEach(k => $('v-' + k).classList.toggle('on', k === v));
+    // PERMISSIONS COME FIRST, on a Mac that has not granted the Documents folder yet. Every way
+    // past sign-in asks for 'setup', so the detour lives here rather than at each call site.
+    if (v === 'setup' && PERMS.applies && !PERMS.passed
+        && !(PERMS.documents === 'granted' && PERMS.mic === 'granted')) v = 'perms';
+    ['login', 'perms', 'setup'].forEach(k => $('v-' + k).classList.toggle('on', k === v));
+    if (v === 'perms') drawPerms();
     startPick();
     startSpeech();
   }
@@ -385,6 +424,75 @@
     // never, and is exactly why the card that used to sit below could show nothing real.
     if (d.line) { $('lineNum').textContent = d.line; $('lineBadge').classList.add('on'); }
   }).catch(() => {});
+
+  // ---- permissions ----------------------------------------------------------------------
+  let PERMS = {applies: false, passed: false, documents: '', mic: ''};
+  fetch(`/api/permissions?t=${T}`).then(r => r.json()).then(d => {
+    PERMS.applies = !!d.applies;
+    PERMS.documents = d.documents || '';
+  }).catch(() => {});
+  // The microphone's state WITHOUT asking: the Permissions API reports a grant already made.
+  // Anything else shows Allow, which asks — and answers at once if macOS already decided.
+  try {
+    navigator.permissions.query({name: 'microphone'})
+      .then(p => { if (p.state === 'granted') PERMS.mic = 'granted'; drawPerms(); })
+      .catch(() => {});
+  } catch (e) {}
+
+  const GRANTED = '<span class="pill"><span class="dot"></span>Allowed</span>';
+  function drawPerms(){
+    const doc = PERMS.documents, mic = PERMS.mic;
+    $('docActs').innerHTML = doc === 'granted' ? GRANTED
+      : doc === 'asking' ? '<span class="lbl3">Waiting for your answer…</span>'
+      : doc === 'denied' ? '<button class="btn ghost" data-open="privacy">Open System Settings</button>'
+      : '<button class="btn" id="askDoc">Allow</button>';
+    $('micActs').innerHTML = mic === 'granted' ? GRANTED
+      : mic === 'denied' ? '<button class="btn ghost" data-open="privacy-mic">Open System Settings</button>'
+      : '<button class="btn" id="askMic">Allow</button>';
+    $('permsDone').disabled = doc !== 'granted';
+    if ($('askDoc')) $('askDoc').onclick = async () => {
+      PERMS.documents = 'asking'; drawPerms();
+      await post('/api/permissions', {action: 'documents'});
+      watchPerms();
+    };
+    if ($('askMic')) $('askMic').onclick = askMic;
+    document.querySelectorAll('#v-perms [data-open]').forEach(b => b.onclick = async () => {
+      await post('/api/permissions', {action: b.dataset.open});
+      watchPerms();
+    });
+    if (doc === 'asking' || doc === 'denied' || mic === 'denied') watchPerms();
+  }
+  async function askMic(){
+    try {
+      const st = await navigator.mediaDevices.getUserMedia({audio: true});
+      st.getTracks().forEach(t => t.stop());
+      PERMS.mic = 'granted';
+    } catch (e) {
+      PERMS.mic = (e && e.name === 'NotFoundError') ? '' : 'denied';
+    }
+    drawPerms();
+  }
+  // WHILE AN ANSWER IS OUTSTANDING, look every second: the macOS prompt, or a switch flipped in
+  // System Settings. Checking is safe once the owner has decided — it can no longer prompt.
+  let permTimer = null;
+  function watchPerms(){
+    if (permTimer) return;
+    permTimer = setInterval(async () => {
+      const d = await fetch(`/api/permissions?t=${T}`).then(r => r.json()).catch(() => ({}));
+      if (d.documents) PERMS.documents = d.documents;
+      if (PERMS.mic === 'denied') {
+        try {
+          const p = await navigator.permissions.query({name: 'microphone'});
+          if (p.state === 'granted') PERMS.mic = 'granted';
+        } catch (e) {}
+      }
+      const open = PERMS.documents === 'asking' || PERMS.documents === 'denied'
+                   || PERMS.mic === 'denied';
+      if (!open) { clearInterval(permTimer); permTimer = null; }
+      drawPerms();
+    }, 1000);
+  }
+  $('permsDone').onclick = () => { PERMS.passed = true; show('setup'); };
 
   // THE MACHINE'S PICK, from the same builder Settings uses, so the two pages cannot name
   // different models.
