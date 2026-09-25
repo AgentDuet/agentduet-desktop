@@ -95,6 +95,12 @@ def _transcript(row: dict) -> str | None:
     if row.get("note") in ("missed", "missed in the app"):
         return ""
     folder, names = carry.call_audio(row.get("recordings", []), row.get("call_id", ""))
+    # NO AUDIO AT ALL is nothing said, not "still coming". The index is written when a call ends,
+    # with its legs already on disk, so a row with no files will never have a transcript — and
+    # waiting a day on one blocked every later call of that person behind it. (Found on a call
+    # that rang out before calls were labelled "missed".)
+    if not names:
+        return ""
     for n in names:
         t = (folder / n).with_suffix(".txt")
         if t.is_file():
