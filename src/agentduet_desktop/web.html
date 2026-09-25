@@ -505,7 +505,10 @@
         ${it.call.norecording ? '<div class="none">No recording.</div>'
           : it.call.silent ? '<div class="none">No audio.</div>'
           : (it.call.transcript ? `<div class="text">${esc(it.call.transcript)}</div>`
-                                : '<div class="none">Transcript pending.</div>')}
+             // ONE CARD PER CALL. Until the kept transcript lands, the live captions of this call
+             // stand in for it here, rather than a separate "Call ended" card beside a pending one.
+             : liveCaps(it.call.call_id) ? `<div class="caps">${liveCaps(it.call.call_id)}</div>`
+             : '<div class="none">Transcript pending.</div>')}
         ${suggestHtml(it.call.suggest)}
       </div></div>` : `<div class="rw">${msgHtml(it.msg)}${suggestHtml(it.msg.suggest)}</div>`);
     if (!html.length) html.push('<div class="rw"><div class="none">Nothing yet.</div></div>');
@@ -520,6 +523,7 @@
       ? ['c', it.call.at, it.call.mode, it.call.files, it.call.bytes,
          it.call.norecording ? 1 : 0, it.call.silent ? 1 : 0,
          (it.call.transcript || '').length,
+         ((LIVE.calls[it.call.call_id] || {}).captions || []).length,
          (it.call.suggest || {}).key || ''].join('\u0000')
       : ['m', it.msg.at, it.msg.them, it.msg.us, it.msg.by, it.msg.network,
          it.msg.held ? 1 : 0,
@@ -557,6 +561,15 @@
     drawWho(false);
   }
 
+  //: The balloons for one call's captions, or '' when there are none.
+  function liveCaps(id){
+    const c = LIVE.calls[id];
+    if (!c || !c.captions.length) return '';
+    return c.captions.slice().sort((a, b) => a.at - b.at).map(x => x.leg === 'callee'
+      ? `<div class="turn me"><div class="bub">${esc(x.text)}</div></div>`
+      : `<div class="turn it"><div class="bub">${esc(x.text)}</div></div>`).join('');
+  }
+
   function drawLive(){
     const host0 = $('thread').querySelector('#threadItems');
     if (!host0 || PICKED === ASSISTANT) return;
@@ -567,11 +580,11 @@
     Object.entries(LIVE.calls).forEach(([id, c]) => {
       if (c.ended && hist.some(h => h.call_id === id && h.transcript)) delete LIVE.calls[id];
     });
-    const mine = Object.entries(LIVE.calls).filter(([, c]) => c.who === PICKED);
-    host.innerHTML = mine.map(([, c]) => {
-      const caps = c.captions.slice().sort((a, b) => a.at - b.at).map(x => x.leg === 'callee'
-        ? `<div class="turn me"><div class="bub">${esc(x.text)}</div></div>`
-        : `<div class="turn it"><div class="bub">${esc(x.text)}</div></div>`).join('');
+    // A CALL ALREADY IN THE HISTORY is shown there (see drawThread), not here as well.
+    const mine = Object.entries(LIVE.calls)
+      .filter(([id, c]) => c.who === PICKED && !hist.some(h => h.call_id === id));
+    host.innerHTML = mine.map(([id, c]) => {
+      const caps = liveCaps(id);
       const since = when(new Date(c.started * 1000).toISOString());
       return `<div class="rw"><div class="call${c.ended ? '' : ' live'}">
         <div class="top"><span class="when">${c.ended ? 'Call ended' : 'On a call'} · ${esc(since)}</span></div>

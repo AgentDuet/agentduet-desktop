@@ -607,6 +607,11 @@ derived from no longer exists, it is the only place that says so.
       piece's start IS its timestamp — the merge is unchanged. Qwen's own aligner covers 11
       languages and none of vi/ms/th/id/hi, which is why not.
       **Language is DETECTED per piece, never pinned** — pinning is what made Whisper translate.
+      **Forcing Qwen's language was measured and is NOT used, by Stanley's call (2026-09-25):**
+      appending `language English<asr_text>` to the prompt fixed the owner's own mic English
+      (detected as Cantonese, "我set我set抄件") and translated nobody — a Vietnamese caller stayed
+      Vietnamese, the EN/MS/ZH clip stayed in all three. He chose not to chase it: gibberish on the
+      owner's side is put down to the Mac's microphone. Reopen with that measurement, not a new one.
       A piece under `PIECE_SURE` (3 s) may not introduce a language no longer piece confirms:
       measured, a "Hi" came back Cantonese, an "uh" Chinese, a 2.7 s "okay" Thai.
       Whisper stays as a tier, not deleted; an explicit Whisper name in `## Transcription` keeps it.

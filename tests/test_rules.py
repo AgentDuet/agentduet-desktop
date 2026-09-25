@@ -4553,6 +4553,8 @@ def test_a_poll_notices_everything_it_renders() -> None:
         "at": "the call's timestamp, written once with the row and never updated",
         "mode": "carried/answered, decided before the row exists",
         "bytes": "changes only when the merge lands, and `files` changes with it",
+        "call_id": "the call's id, written once with the row; the live captions it keys are "
+                   "counted in the row's reconcile key, and change the card through that",
     }
 
     used = set(_re.findall(r"it\.call\.([a-zA-Z_]\w*)", _body("function drawThread(")))
@@ -5439,6 +5441,27 @@ def test_live_captions_while_a_call_is_on() -> None:
     ok("the preview is dropped once the real transcript arrives",
        "c.ended && hist.some(h => h.call_id === id && h.transcript)" in hub)
     ok("the speech model is shared under one lock", "with _qwen_lock:" in (src / "transcribe.py").read_text())
+    ok("a finished call's captions stand in for its pending transcript, in one card",
+       "liveCaps(it.call.call_id) ? `<div class=\"caps\">" in hub)
+    ok("and that card rebuilds as captions arrive",
+       "((LIVE.calls[it.call.call_id] || {}).captions || []).length" in hub)
+    ok("captions are keyed by the id the call index uses",
+       "_live_start(str(call.id)" not in carry_src and carry_src.count("_live_start(str(call_id)") == 2)
+    ok("the speech model is loaded when a call starts, not on its first sentence",
+       "run_in_executor(None, _warm, transcribe)" in (src / "live.py").read_text())
+
+    # HANG-UP IS CHECKED: the SDK returns a refusal instead of raising, and the first real hang-up
+    # left the caller connected with nothing logged. A refused disconnect falls back to close.
+    from agentduet_desktop import phone
+    class _R:
+        def __init__(self, good): self.good, self.error_code, self.error_message = good, "X", "no"
+        def __bool__(self): return self.good
+    tried = []
+    class _Call:
+        async def disconnect(self): tried.append("disconnect"); return _R(False)
+        async def close(self): tried.append("close"); return _R(True)
+    _aio.run(phone._hang_up(_Call(), "cH"))
+    eq("a refused disconnect is followed by close", tried, ["disconnect", "close"])
     try:
         import numpy as np
     except ImportError:
