@@ -180,7 +180,7 @@ def _transcribe(pcm: bytes) -> tuple[str, str]:
     a = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
     want = int(len(a) * 16_000 / RATE)
     a16 = np.interp(np.linspace(0, len(a) - 1, want), np.arange(len(a)), a).astype(np.float32)
-    return transcribe.qwen_piece(a16)
+    return transcribe.qwen_piece(a16, transcribe.qwen_context())
 
 
 async def worker() -> None:

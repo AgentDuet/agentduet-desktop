@@ -603,10 +603,18 @@ derived from no longer exists, it is the only place that says so.
       2.4 GB for model + audio encoder — via `_AudioHandler`, which fixes two refusals in
       llama-cpp-python's `MTMDChatHandler` (it demands VISION; it hands Qwen's template a list
       where a string is expected). `libmtmd.dylib` is already in the bundle.
-      **No timings from the model**, so `_qwen` cuts each leg at its pauses (`_pieces`) and a
-      piece's start IS its timestamp — the merge is unchanged. Qwen's own aligner covers 11
+      **No timings from the model**, so each leg is cut and a piece's start IS its timestamp — the
+      merge is unchanged. **Cut by TURN, not by pause** (2026-09-25, `_turns`): the saved transcript
+      cuts one leg only where the OTHER leg spoke, because a three-second piece lost "seven" from
+      "dinner, seven thirty PM" and the whole turn kept it. Live captions still cut per pause —
+      the other side's audio does not exist yet when they are made. Qwen's own aligner covers 11
       languages and none of vi/ms/th/id/hi, which is why not.
       **Language is DETECTED per piece, never pinned** — pinning is what made Whisper translate.
+      **A LIKELY LANGUAGE IS GIVEN AS CONTEXT** (`qwen_context`, Stanley's wording, 2026-09-25):
+      "most likely <## Language>, but other languages are possible and speakers may mix". Qwen
+      takes free text as a system message. Measured on four real recordings: both mic-English
+      misreads fixed, the EN/MS/ZH clip unchanged, the Vietnamese caller kept in Vietnamese, and
+      an invented line there replaced by what was said. It LEANS; it does not force.
       **Forcing Qwen's language was measured and is NOT used, by Stanley's call (2026-09-25):**
       appending `language English<asr_text>` to the prompt fixed the owner's own mic English
       (detected as Cantonese, "我set我set抄件") and translated nobody — a Vietnamese caller stayed

@@ -5398,8 +5398,34 @@ def test_qwen3_asr_is_the_speech_engine() -> None:
     # the base package — numpy arrives with the speech and model extras, which the app ships.
     src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
     body = (src / "transcribe.py").read_text().split("def _qwen(path")[1].split("\ndef ")[0]
-    ok("the language setting is not passed to Qwen", "owner.language" not in body
-       and "_configured_language" not in body)
+    # A LIKELY LANGUAGE AS CONTEXT, never a forced one: Stanley's wording, measured before it went
+    # in — it corrected the owner's mic English and kept every other language intact.
+    ok("Qwen is given the context sentence", "qwen_piece(a[s:e], context)" in body
+       and "context = qwen_context()" in body)
+    ok("and the live captions get the same context",
+       "qwen_piece(a16, transcribe.qwen_context())" in (src / "live.py").read_text())
+    # Forcing works by extending the prompt with `language X<asr_text>`, which needs the handler's
+    # template post-processing overridden. It is not, so there is nothing that can force.
+    ok("the language is never forced",
+       "_postprocess_template_text" not in (src / "transcribe.py").read_text())
+    with mock.patch.dict(os.environ, {"SECRETARY_STT_LANGUAGE": "vi"}):
+        ok("the setting names the likely language", "most likely Vietnamese" in t.qwen_context())
+    with mock.patch.dict(os.environ, {"SECRETARY_STT_LANGUAGE": "ta"}):
+        eq("a language Qwen lacks gets no context at all", t.qwen_context(), "")
+    with mock.patch.dict(os.environ, {"SECRETARY_STT_LANGUAGE": "en"}):
+        ok("and the other languages are left open", "other languages are possible and speakers "
+           "may mix languages" in t.qwen_context(), t.qwen_context())
+    ok("the saved transcript is cut by turn when the other leg is there",
+       "chunks = _pieces(a) if other is None else _turns(_pieces(a), other)" in body)
+
+    # TURNS: a pause alone does not cut; the other party speaking in it does; PIECE_MAX still caps.
+    r = 16_000
+    own = [(0, 2 * r), (3 * r, 5 * r), (9 * r, 10 * r)]
+    eq("no one else spoke: one turn", t._turns(own, []), [(0, 10 * r)])
+    eq("the other party spoke in a gap: cut there", t._turns(own, [(6.0, 8.0)]),
+       [(0, 5 * r), (9 * r, 10 * r)])
+    long = [(i * 4 * r, (i * 4 + 3) * r) for i in range(10)]
+    ok("a turn never exceeds PIECE_MAX", all((e - s0) / r <= t.PIECE_MAX for s0, e in t._turns(long, [])))
     ok("the download lives in models, so transcribe makes no network call",
        "models.fetch_file" in (src / "transcribe.py").read_text())
     try:
