@@ -221,7 +221,9 @@
   .composer .crow{display:flex;gap:.6rem;align-items:flex-end;}
   /* The model arriving. Same bar as Settings' Model card, so one download looks the same on
      both pages. */
-  .dl{display:flex;flex-direction:column;gap:.3rem;}
+  /* One group per download: label and bar close together, the next download further off. */
+  .dl{display:flex;flex-direction:column;gap:.6rem;}
+  .dl .one{display:flex;flex-direction:column;gap:.3rem;}
   .dl .barlab{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;
     color:var(--faint);font-variant-numeric:tabular-nums;}
   .dl .bar{height:.35rem;border-radius:999px;background:var(--slate700);overflow:hidden;}
@@ -360,7 +362,7 @@
   //: Not a person — nobody called from it — so it is pinned above the list rather than
   //: sorted into it, and cannot be pushed down by whoever called most recently.
   const ASSISTANT = '__assistant__';
-  let THREADS = {people: []}, PICKED = ASSISTANT, LAST_PERSON = '', MODEL = {};
+  let THREADS = {people: []}, PICKED = ASSISTANT, LAST_PERSON = '', MODEL = {}, STT_DL = {};
 
   // ---- people and their calls ---------------------------------------------------------
   // Calls AND messages now, so the line cannot just say "n calls" — someone who only ever
@@ -432,13 +434,21 @@
   // Only in the Assistant tab — it is the one place the model is used — and only while a
   // download is running. Idempotent element writes, so the 5s poll moves nothing else.
   function drawDownload(){
-    const pk = MODEL.pick || {}, job = pk.job;
-    const show = PICKED === ASSISTANT && !!job && !pk.downloaded;
+    const pk = MODEL.pick || {}, job = pk.job, sp = STT_DL || {};
+    // BOTH DOWNLOADS a first install starts: the AI model, and the speech model. Each is shown
+    // only while it is still arriving.
+    const bars = [];
+    if (job && !pk.downloaded) bars.push([pk.name, job.done_mb, job.total_mb]);
+    if (sp.running && !sp.cached) bars.push([sp.name, sp.got_mb || 0, sp.mb || 0]);
+    const show = PICKED === ASSISTANT && bars.length > 0;
     $('aDl').hidden = !show;
     if (!show) return;
-    $('aDl').innerHTML = '<div class="barlab"><span>' + esc(pk.name) + '</span><span>'
-      + job.done_mb + ' / ' + job.total_mb + ' MB \u00b7 ' + job.percent + '%</span></div>'
-      + '<div class="bar"><i style="width:' + job.percent + '%"></i></div>';
+    $('aDl').innerHTML = bars.map(([name, got, total]) => {
+      const pct = total ? Math.min(100, Math.round(got * 100 / total)) : 0;
+      return '<div class="one"><div class="barlab"><span>' + esc(name) + '</span><span>' + got + ' / '
+        + total + ' MB \u00b7 ' + pct + '%</span></div><div class="bar"><i style="width:' + pct
+        + '%"></i></div></div>';
+    }).join('');
   }
 
   // `opening` MEANS A PERSON ASKED FOR THIS VIEW — a click, or the first paint. Focus follows
@@ -1036,6 +1046,7 @@
     // WHICH MODEL IS ANSWERING, in the pane that is answering. Without it the owner cannot
     // tell a local 135M model from a hosted one, and the two give very different replies.
     MODEL = D.model || {};
+    STT_DL = D.stt || {};
     $('aModel').textContent = MODEL.name || 'no model';
     $('aModel').title = MODEL.describe || '';
     // The gate is applied where the composer is drawn, not here — it belongs to the ASSISTANT

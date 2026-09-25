@@ -645,13 +645,19 @@ def test_answered_call_recording() -> None:
     # be kept in step with the engine, which is exactly how it came to say Whisper for months.
     ok("the hardcoded sentence is gone",
        "Transcription engine: <b>Whisper</b>" not in stt_page)
-    ok("and the selection comes from what is running", "t.in_use ? ' selected'" in stt_page
-       or "t.model === want" in stt_page)
-    ok("the engine is chosen from a dropdown", 'id="sttEngine"' in stt_page)
-    ok("which is headed as such", "Transcription engine</label>" in stt_page)
-    ok("choosing an absent model fetches it too", "!row.downloaded && !row.builtin" in stt_page)
-    ok("and the built-in is not an inert row in the download list",
-       "filter(t => !t.builtin)" in stt_page)
+    # THE SPEECH MODEL IS A FACT, NOT A CHOICE (2026-09-25). The engine dropdown and the list of
+    # five models to download and delete went; About names the model in use and offers its
+    # download while it is missing, and a developer names another in the Advanced dialog.
+    ok("there is no engine dropdown any more", 'id="sttEngine"' not in stt_page)
+    ok("and no list of models to pick from", 'id="sttTiers"' not in stt_page)
+    about_at = stt_page.index("<h2>About</h2>")
+    ok("About names the speech model", stt_page.index('id="sttState"') > about_at)
+    ok("and offers its download while it is missing",
+       stt_page.index('id="getStt"') > about_at and "$('sttActs').hidden = d.cached" in stt_page)
+    ok("the override is a text field in the developer dialog",
+       stt_page.index('id="sttOverride"') > stt_page.index('id="ovlDev"'))
+    ok("and it is checked by name on the server",
+       'Unknown speech model' in web_src_e and '"/api/stt-override"' in web_src_e)
 
     # DOWNLOADED MEANS COMPLETE, not "a directory exists". The hub cache creates the directory
     # the instant a fetch STARTS, so the row claimed a 1.5 GB model was ready when 66 MB of it
@@ -1304,20 +1310,36 @@ def test_setup_mode() -> None:
     ok("the hub is served the pick's download", '"pick": _pick_payload()' in (src / "web.py").read_text())
     ok("the Assistant tab has a progress bar", 'id="aDl"' in hub and "function drawDownload" in hub)
     ok("shown only in the Assistant tab, while downloading",
-       "PICKED === ASSISTANT && !!job && !pk.downloaded" in hub)
+       "const show = PICKED === ASSISTANT && bars.length > 0;" in hub
+       and "if (job && !pk.downloaded) bars.push(" in hub)
+    # BOTH FIRST-INSTALL DOWNLOADS, named in the wizard and followed in the hub (2026-09-25): the
+    # speech model is 2.4 GB and used to arrive silently on the first call.
+    ok("the hub shows the speech model arriving too", "if (sp.running && !sp.cached) bars.push(" in hub)
+    ok("and is served its progress", '"got_mb": transcribe.size_on_disk(transcribe.local_model())'
+       in (src / "web.py").read_text())
+    ok("the wizard names the speech model", 'id="setupStt"' in setup_page)
+    ok("and starts it with the step, as it does the AI model",
+       "startPick();\n    startSpeech();" in setup_page)
+    ok("the wizard shows both downloads' progress", 'id="modelDl"' in setup_page and 'id="sttDl"' in setup_page)
+    ok("and says they run in the background", "Both download in the background" in setup_page)
     ok("and the composer no longer says to attach a model", "Attach a model in Settings" not in hub)
     # THE FOLDER CHOOSER EXISTS, and the wizard's Browse button claimed for ten days that it
     # did not — telling the owner to set AGENTDUET_HOME, which is not even the right variable
     # (this is `## Recordings`, not the instance directory). A stub that outlived the feature it
     # stood in for, on the first screen a new owner sees.
-    ok("the wizard's Browse opens the real chooser", "/api/pick-folder" in setup_page)
+    # NO FOLDER QUESTION IN THE WIZARD since 2026-09-25 (Stanley): recordings go to the default,
+    # and Settings is where it changes — so the chooser must still be there.
+    ok("the wizard asks no folder question", 'id="doBrowse"' not in setup_page
+       and "Data Storage Folder" not in setup_page)
+    ok("and Settings still has the folder chooser",
+       "/api/pick-folder" in (src / "settings.html").read_text())
     # The SENTENCE, not the variable name: the comment explaining this fix mentions
     # AGENTDUET_HOME on purpose, and an assertion that forbids the string anywhere fails on its
     # own documentation.
     ok("and no longer claims the feature is missing",
        "Choosing the folder is not built yet" not in setup_page)
     ok("a cancelled dialog is not reported as a failure",
-       "d.ok && !d.changed" in setup_page)
+       "d.ok && !d.changed" in (src / "settings.html").read_text())
     # A DEAD DAEMON MUST NOT LOOK LIKE A DEAD BUTTON. fetch REJECTS when the process behind the
     # page is gone, and the rejection propagated out of every click handler: no message, no
     # movement, the button left disabled. Reported as "Complete Setup does nothing" — from a
@@ -1581,16 +1603,17 @@ def test_setup_mode() -> None:
 
     # ---- THE THINKING SWITCH BELONGS TO THE MODEL ------------------------------------------
     #
-    # It lived in "Record and Transcribe Calls" — a card about audio, beside the recording
-    # folder, governing something neither recording nor transcription does. Moved 2026-09-08.
+    # It lived in "Record and Transcribe Calls" — a card about audio, governing something neither
+    # recording nor transcription does. Moved to the Model card 2026-09-08; when that card went
+    # (2026-09-25, the model became a fact in About) it moved beside the model override, in the
+    # developer dialog.
     think_at = settings_page.index('id="thinkRow"')
-    card_at = settings_page.rindex('<div class="card">', 0, think_at)
-    ok("the thinking switch sits in the Model card",
-       "<h2>Model</h2>" in settings_page[card_at:think_at])
-    ok("only the Model heading is in that card",
-       settings_page[card_at:think_at].count("<h2>") == 1)
-    ok("and the row is above the recording card, not inside it",
-       think_at < settings_page.index("<h2>Record and Transcribe"))
+    ok("the thinking switch sits beside the model override",
+       settings_page.index('id="mOverride"') < think_at)
+    ok("inside the developer dialog", settings_page.index('id="ovlDev"') < think_at)
+    ok("and there is no Model card left", "<h2>Model</h2>" not in settings_page)
+    about_at = settings_page.index("<h2>About</h2>")
+    ok("About names the AI model", settings_page.index('id="modelState"') > about_at)
     ok("it is called Enable Thinking Mode", "Enable Thinking Mode" in settings_page)
     ok("the old wording is gone", "Let the model think first" not in settings_page)
     # IT FOLLOWS THE SELECTED MODEL. The server answers per current model; the page has to ASK
@@ -1663,7 +1686,8 @@ def test_setup_mode() -> None:
         ok(f"the console can set `{field}`", f'"{field}"' in init_src)
         ok(f"and so can the settings page",
            f"'{field}'" in settings_page or f'"{field}"' in settings_page
-           or f'id="{field}"' in settings_page)
+           or f'id="{field}"' in settings_page
+           or (field == "transcription" and "'/api/stt-override'" in settings_page))
 
     # The interview drives the MODEL. The owner this console path serves is the one carrying
     # calls with no key, so offering it unconditionally meant it failed at the first question —
@@ -4097,10 +4121,7 @@ def test_apple_is_quarantined_but_not_deleted() -> None:
     # the model list again, with the same rows. Stanley read it as a duplicate because it is one.
     st = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
           / "settings.html").read_text()
-    ok("the engine dropdown hides when there is only one engine",
-       "if ($('engGrp')) $('engGrp').hidden = !engines;" in st)
-    ok("and it keys on a built-in row, not on a platform check",
-       "(d.tiers || []).some(t => t.builtin)" in st)
+    ok("and the engine dropdown is gone entirely (2026-09-25)", 'id="sttEngine"' not in st)
 
     # A Mac owner seeing Whisper with no reason would go looking in settings.md, where the
     # answer is not.
@@ -4702,7 +4723,7 @@ def test_assets_are_utf8_whatever_the_machine_thinks() -> None:
         except UnicodeDecodeError:
             offenders.append(f.name)
     ok("and some assets genuinely break under cp1252, so this test can fail",
-       {"web.html", "settings.html", "sim.html"} <= set(offenders), str(offenders))
+       {"web.html", "sim.html"} <= set(offenders), str(offenders))
 
     # EVERY asset must be valid UTF-8 — a page saved in another encoding would now serve mojibake
     # instead of raising, which is the harder failure to notice.
