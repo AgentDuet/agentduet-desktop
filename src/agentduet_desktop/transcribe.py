@@ -922,8 +922,39 @@ def _qwen_parse(raw: str) -> tuple[str, str]:
 _qwen_lock = threading.Lock()
 
 
-def qwen_piece(a) -> tuple[str, str]:
-    """Transcribe ONE piece of mono float32 16 kHz audio. Returns (language, text)."""
+#: Qwen's names for the codes `## Language` holds. A code not here (Tamil is on our list and not
+#: on Qwen's) gets no context rather than a guessed name.
+QWEN_LANGS = {"en": "English", "zh": "Chinese", "yue": "Cantonese", "vi": "Vietnamese",
+              "ms": "Malay", "th": "Thai", "id": "Indonesian", "hi": "Hindi", "ja": "Japanese",
+              "ko": "Korean", "fil": "Filipino", "tl": "Filipino"}
+
+
+def qwen_context() -> str:
+    """The context sentence Qwen is given, or "" when no language is set. Read at use time.
+
+    CONTEXT, NOT A FORCED LANGUAGE — Stanley's wording, 2026-09-25, and measured before it went in.
+    Qwen takes free text as a system message ("context / hotwords" in its model card). Told that
+    English is most likely but others are possible and mixed, it read the owner's mic English
+    correctly where detection alone had written Cantonese ("last last chat again"), turned a
+    caller's "好，OK，拜拜" into "Okay. Bye. Bye.", left an English/Malay/Mandarin clip exactly as it
+    was, kept a Vietnamese caller in Vietnamese, and replaced a line it had invented there
+    ("Xin chào anh Nguyễn Nam Bích") with what was said. Forcing the language was measured too
+    and deliberately not used.
+    """
+    from . import owner
+    code = (os.getenv("SECRETARY_STT_LANGUAGE") or owner.language() or "").strip().lower()
+    name = QWEN_LANGS.get(code.split("-")[0], "")
+    if not name:
+        return ""
+    return (f"This is a phone call. The language is most likely {name}, but other languages "
+            f"are possible and speakers may mix languages.")
+
+
+def qwen_piece(a, context: str = "") -> tuple[str, str]:
+    """Transcribe ONE piece of mono float32 16 kHz audio. Returns (language, text).
+
+    `context` goes to the model as a system message — see `qwen_context`.
+    """
     import base64
     import io
     import numpy as np
@@ -934,24 +965,74 @@ def qwen_piece(a) -> tuple[str, str]:
         w.setframerate(16_000)
         w.writeframes((np.clip(a, -1, 1) * 32767).astype(np.int16).tobytes())
     url = "data:audio/wav;base64," + base64.b64encode(buf.getvalue()).decode()
+    messages = ([{"role": "system", "content": context}] if context else []) + [
+        {"role": "user", "content": [{"type": "image_url", "image_url": {"url": url}}]}]
     with _qwen_lock:
-        r = _qwen_model().create_chat_completion(
-            messages=[{"role": "user", "content": [{"type": "image_url", "image_url": {"url": url}}]}],
-            max_tokens=1024, temperature=0)
+        r = _qwen_model().create_chat_completion(messages=messages, max_tokens=1024, temperature=0)
     return _qwen_parse(r["choices"][0]["message"]["content"])
+
+
+def _other_speech(path: pathlib.Path) -> list[tuple[float, float]] | None:
+    """When the OTHER party spoke, in seconds on THIS leg's clock — or None if unknowable.
+
+    The two legs of a call are separate files that start at different moments; each `.start`
+    sidecar says when its first frame arrived, so the other leg's pieces are shifted by the
+    difference. Missing sibling or sidecar -> None, and the caller falls back to cutting at every
+    pause, which is what this replaced and is always safe.
+    """
+    name = path.name
+    for mine, theirs in (("-caller.wav", "-callee.wav"), ("-callee.wav", "-caller.wav")):
+        if name.endswith(mine):
+            other = path.with_name(name[: -len(mine)] + theirs)
+            break
+    else:
+        return None
+    if not other.is_file() or other.stat().st_size <= EMPTY_WAV_BYTES:
+        return []                            # nobody else spoke: nothing to cut at
+    mine_at, theirs_at = _leg_start(path), _leg_start(other)
+    if mine_at is None or theirs_at is None:
+        return None
+    offset = theirs_at - mine_at
+    b = _audio16k(other)
+    return [(s / 16_000 + offset, e / 16_000 + offset) for s, e in _pieces(b)]
+
+
+def _turns(own: list[tuple[int, int]], other: list[tuple[float, float]],
+           rate: int = 16_000) -> list[tuple[int, int]]:
+    """Group this leg's pieces into TURNS: a new turn only where the other party spoke between them.
+
+    WHY. Cutting at every pause split the owner's own sentences apart with nobody else speaking,
+    and a three-second piece has too little context: "dinner, seven thirty PM" came back as
+    "dinners and thirty p.m." when cut, and right when whole. The only cuts that matter for
+    speaking order are where the conversation changes hands, so those are the only ones kept —
+    plus PIECE_MAX, which still bounds one piece of audio.
+    """
+    turns: list[tuple[int, int]] = []
+    for s, e in own:
+        if turns:
+            ts, te = turns[-1]
+            spoke = any(o0 < s / rate and o1 > te / rate for o0, o1 in other)
+            if not spoke and (e - ts) / rate <= PIECE_MAX:
+                turns[-1] = (ts, e)
+                continue
+        turns.append((s, e))
+    return turns
 
 
 def _qwen(path: pathlib.Path) -> str:
     """Qwen3-ASR, one piece of speech at a time, with the language detected per piece.
 
-    `## Language` is NOT passed: detection is the point. A pinned language is what made Whisper
-    translate a Vietnamese caller into English, and a call that switches language needs each piece
-    judged on its own.
+    CUT BY TURN, not by pause, when the other leg is on disk (`_turns`), and given `qwen_context`
+    — a likely language, never a forced one. Forcing is what made Whisper translate; this only
+    leans, and measured, it corrected misreads without flattening anyone's other language.
     """
     a = _audio16k(path)
+    context = qwen_context()
+    other = _other_speech(path)
+    chunks = _pieces(a) if other is None else _turns(_pieces(a), other)
     heard = []
-    for s, e in _pieces(a):
-        lang, said = qwen_piece(a[s:e])
+    for s, e in chunks:
+        lang, said = qwen_piece(a[s:e], context)
         if said:
             heard.append((s / 16_000, e / 16_000, lang, said))
     # A SHORT PIECE DOES NOT GET TO INTRODUCE A LANGUAGE. A second of sound is too little to tell
