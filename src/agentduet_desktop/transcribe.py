@@ -1061,6 +1061,30 @@ def drain_once() -> int:
     return done
 
 
+#: Set when a call ends, so the queue is drained NOW rather than at the next poll. The poll stays
+#: as the fallback — it is what picks up legs a previous run left, and anything a wake misses.
+_wake: "asyncio.Event | None" = None
+
+
+def wake() -> None:
+    """A call just ended: transcribe it now. Called on the daemon's loop, by `carry`.
+
+    WHY. A suggestion to add an appointment reached the hub 50 s after hang-up on the first real
+    call, and almost none of that was work: this queue waited up to POLL_SECONDS to notice the
+    legs, then the suggestion pass waited up to its own. Both are woken now, in that order.
+    """
+    if _wake is not None:
+        _wake.set()
+
+
+async def _nap(secs: float) -> None:
+    try:
+        await asyncio.wait_for(_wake.wait(), secs)
+    except asyncio.TimeoutError:
+        pass
+    _wake.clear()
+
+
 async def worker() -> None:
     """Drain the queue forever, one file at a time, off the event loop.
 
@@ -1068,8 +1092,10 @@ async def worker() -> None:
     the memory for no gain on a CPU that is already the bottleneck — and nothing is waiting on
     the result anyway.
     """
+    global _wake
+    _wake = asyncio.Event()
     while True:
-        await asyncio.sleep(POLL_SECONDS)
+        await _nap(POLL_SECONDS)
         try:
             await asyncio.to_thread(drain_once)
         except Exception as exc:            # a worker that dies takes the queue with it
@@ -1078,9 +1104,15 @@ async def worker() -> None:
         # poll from transcribing, and a transcription failure must not stop a call whose legs
         # are already settled from being merged. They are separate jobs on one queue.
         try:
-            await asyncio.to_thread(merge_once)
+            merged = await asyncio.to_thread(merge_once)
         except Exception as exc:
             logger.error("the merge step hit %s: %s", type(exc).__name__, exc)
+            merged = 0
+        # A NEW TRANSCRIPT IS SOMETHING TO JUDGE: hand it to the suggestion pass straight away,
+        # rather than letting it wait out its own poll.
+        if merged:
+            from . import suggest
+            suggest.wake()
 
 
 # ---- what is on disk -------------------------------------------------------------------
