@@ -160,13 +160,34 @@ async def bridge(call, done: asyncio.Event, far_rec: _QueueParty, near_rec: _Que
             t.cancel()
         await asyncio.gather(*pumps, *ended, return_exceptions=True)
         if hangup.is_set() and not done.is_set():
-            # OUR SIDE ended it. disconnect() ends the call for the caller too; close() would
-            # only take the agent out, and here the agent IS the owner's side of the call.
-            try:
-                await call.disconnect()
-            except Exception as exc:
-                logger.warning("call %s: hang up failed (%s: %s)", a["call_id"],
-                               type(exc).__name__, exc)
+            await _hang_up(call, a["call_id"])
+
+
+async def _hang_up(call, call_id: str) -> None:
+    """End the call for the caller too, and SAY if the platform refused.
+
+    THE RESULT IS CHECKED, because the SDK RETURNS operational failures rather than raising them.
+    The first version awaited `disconnect()` and moved on, so when it came back falsy the app
+    closed its recording and showed the call as over while the caller's phone stayed connected —
+    found on the first real hang-up, 2026-09-25, with nothing in the log to say why.
+
+    disconnect() is the verb that ends the call for everyone. If it is refused, close() — the agent
+    leaving — is tried next: on a call the owner answered here the agent IS the owner's side, so
+    leaving should drop the leg too. Both results are logged with the platform's reason.
+    """
+    for verb in ("disconnect", "close"):
+        try:
+            r = await getattr(call, verb)()
+        except Exception as exc:
+            logger.warning("call %s: %s raised (%s: %s)", call_id, verb, type(exc).__name__, exc)
+            continue
+        if r:
+            logger.info("call %s: hung up from the app (%s)", call_id, verb)
+            return
+        logger.warning("call %s: %s was refused: %s (%s)", call_id, verb,
+                       getattr(r, "error_message", "?"), getattr(r, "error_code", "?"))
+    logger.error("call %s: could not hang up from the app — the caller may still be connected",
+                 call_id)
 
 
 async def finish() -> None:

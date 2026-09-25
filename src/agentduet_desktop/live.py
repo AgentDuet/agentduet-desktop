@@ -62,10 +62,26 @@ async def _push(obj: dict) -> None:
 
 
 async def start(call_id: str, who: str) -> None:
-    """A call is on. Pages mark the person as live."""
+    """A call is on. Pages mark the person as live, and the speech model is loaded now.
+
+    LOADED AT THE START OF THE CALL, not on the first piece. It is not kept resident between
+    calls, and loading it on demand held the first caption of the first real call eight seconds.
+    """
     _calls[call_id] = {"who": who, "started": time.time(), "captions": []}
+    if enabled():
+        from . import transcribe
+        asyncio.get_running_loop().run_in_executor(None, _warm, transcribe)
     await _push({"type": "live_start", "call": call_id, "who": who,
                  "started": _calls[call_id]["started"]})
+
+
+def _warm(transcribe) -> None:
+    try:
+        with transcribe._qwen_lock:
+            transcribe._qwen_model()
+    except Exception as exc:
+        logger.warning("live captions: could not load the speech model (%s: %s)",
+                       type(exc).__name__, exc)
 
 
 async def end(call_id: str) -> None:

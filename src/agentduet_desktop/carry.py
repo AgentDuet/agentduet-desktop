@@ -415,7 +415,9 @@ async def handle(sm, noti) -> None:
     far, near = (call.callee, call.caller) if outgoing else (call.caller, call.callee)
     # ONE STAMP FOR THE CALL, so both legs share a stem and the merge can find the pair.
     stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-    captions = await _live_start(str(call.id), other)
+    # THE INDEX'S call id, not `call.id`: the hub matches a finished call's live captions to its
+    # history row by this, and the row is written with the notification's id.
+    captions = await _live_start(str(call_id), other)
     # `recorders`, not `legs` — that name is now the folder they are written to, and a local
     # shadowing it here is a trap for whoever next needs the folder in this function.
     recorders = [asyncio.create_task(_record_leg(far, stamp, str(call.id), "caller",
@@ -497,7 +499,7 @@ async def handle(sm, noti) -> None:
         for t in recorders:
             t.cancel()
         await asyncio.gather(*recorders, return_exceptions=True)
-        await _live_end(str(call.id))
+        await _live_end(str(call_id))
         # WRITE THE INDEX LAST, once the files are closed and their sizes are final. Recording
         # filenames carry a CALL ID, not a person, so without this row there is no way back from
         # a .wav to whoever was on it — which is the whole basis of a per-person view. The
@@ -559,7 +561,7 @@ async def _answer_here(call, call_id: str, other: str, done: asyncio.Event) -> N
     from . import calls as _calls
     stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
     far_rec, near_rec = phone._QueueParty(), phone._QueueParty()
-    captions = await _live_start(str(call.id), other)
+    captions = await _live_start(str(call_id), other)
     recorders = [asyncio.create_task(_record_leg(far_rec, stamp, str(call.id), "caller",
                                                  captions and captions[0])),
                  asyncio.create_task(_record_leg(near_rec, stamp, str(call.id), "callee",
@@ -579,7 +581,7 @@ async def _answer_here(call, call_id: str, other: str, done: asyncio.Event) -> N
         for t in recorders:
             t.cancel()
         await asyncio.gather(*recorders, return_exceptions=True)
-        await _live_end(str(call.id))
+        await _live_end(str(call_id))
         _calls.record(call_id, other, "carried", note="answered in the app", recordings=sorted(
             str(p.name) for p in legs().glob(f"*{call_id}*.wav")))
 
