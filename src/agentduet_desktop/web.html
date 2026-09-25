@@ -1000,7 +1000,9 @@
       $('who').innerHTML = D.name ? esc(D.name) : setLink('name');
       $('av').textContent = (D.name || '').split(/\s+/).map(w => w[0] || '')
         .join('').slice(0, 2).toUpperCase() || '–';
-      $('phone').innerHTML = D.phone ? esc(D.phone) : setLink('number');
+      // A NUMBER OR NOTHING (Stanley, 2026-09-25): the owner's own number when set, else the
+      // line learned from calls. No "Set your number" link — an empty line says enough.
+      $('phone').textContent = D.phone || D.line || '';
     // THE LINE, not the owner's own mobile — see the panel endpoint. `$('phone')` above is
     // legitimately theirs; this badge is the number callers reach, learned from a real call.
     if (D.line) { $('lineNum').textContent = D.line; $('lineBadge').classList.add('on'); }
