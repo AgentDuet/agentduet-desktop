@@ -5597,6 +5597,50 @@ def test_live_captions_while_a_call_is_on() -> None:
     eq("and the call is gone from the snapshot once it ends", live.snapshot()["calls"], [])
 
 
+def test_documents_permission() -> None:
+    """Recordings move to ~/Documents/AgentDuet only on a Mac that asked and was granted."""
+    print("\n  -- the Documents folder: asked for, kept out of iCloud --")
+    import unittest.mock as _m
+    from agentduet_desktop import macperms, paths as _p
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    try:
+        home, run = tmp / "home", tmp / "run"
+        (home / "Documents").mkdir(parents=True)
+        legacy = run / "recordings"
+        with _m.patch.object(pathlib.Path, "home", return_value=home), \
+             _m.patch.object(_p, "RUN", run), \
+             _m.patch.object(macperms, "applies", return_value=True):
+            macperms._marked.clear()
+            # NEVER TOUCHED UNASKED: the first access is the one macOS prompts for.
+            eq("not asked yet", macperms.documents_state(), "not-asked")
+            ok("and nothing was created", not (home / "Documents" / "AgentDuet").exists())
+            ok("an install that never asked keeps its folder",
+               macperms.recordings_default(legacy) is None)
+            macperms._write("documents", "granted")
+            eq("granted, a new install records in Documents",
+               macperms.recordings_default(legacy), home / "Documents" / "AgentDuet")
+            legacy.mkdir(parents=True)
+            (legacy / "old.wav").write_bytes(b"")
+            ok("but an install with recordings already keeps them together",
+               macperms.recordings_default(legacy) is None)
+        if sys.platform == "darwin":
+            f = tmp / "marked"
+            f.mkdir()
+            ok("the iCloud mark is set", macperms.mark_local(f))
+            out = __import__("subprocess").run(["xattr", "-p", macperms.IGNORE_XATTR, str(f)],
+                                               capture_output=True, text=True).stdout.strip()
+            eq("and reads back", out, "1")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    setup = (src / "setup.html").read_text(encoding="utf-8")
+    ok("setup has a Permissions step", 'id="v-perms"' in setup)
+    ok("Continue waits for the Documents folder only",
+       "$('permsDone').disabled = doc !== 'granted';" in setup)
+    plist = (pathlib.Path(__file__).parent.parent / "packaging" / "make-macos-app.sh").read_text()
+    ok("macOS is told why", "NSDocumentsFolderUsageDescription" in plist)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -5604,6 +5648,7 @@ def main() -> None:
     test_native_titlebar()
     test_uninstall_tiers()
     test_gpu_offload()
+    test_documents_permission()
     test_release_ships_the_native_shell()
     test_apple_stt_engine()
     test_local_models_do_not_monologue()

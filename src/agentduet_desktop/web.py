@@ -334,6 +334,34 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                             # the old one, which is exactly what happened on 2026-09-18.
                             headers={"Cache-Control": "no-cache"})
 
+    async def api_permissions(request):
+        """The macOS permissions setup asks for. GET reports; POST acts, with a fixed verb.
+
+        `documents` asks for the Documents folder in the background — the macOS prompt blocks the
+        call that triggers it, so the page polls GET for the answer. `privacy` opens System
+        Settings at Files and Folders, for an owner who refused and changed their mind: macOS
+        asks only once, and after a refusal that pane is the only way back.
+
+        The MICROPHONE is not here: the page asks for it itself, through the same `getUserMedia`
+        the in-app phone uses, so the grant it gets is the one that phone will need.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import macperms
+        if request.method == "POST":
+            act = ((await request.json()) or {}).get("action", "")
+            if act == "documents":
+                macperms.request_documents()
+            elif act in macperms.PRIVACY:
+                macperms.open_privacy_settings(act)
+            else:
+                return web.json_response({"ok": False, "message": "Unknown action."})
+            return web.json_response({"ok": True})
+        return web.json_response({
+            "applies": macperms.applies(),
+            "documents": await asyncio.to_thread(macperms.documents_state),
+            "folder": str(macperms.documents_folder())})
+
     async def api_setup_login_item(request):
         """Record whether this machine should start the app at login, and make it so.
 
@@ -1867,6 +1895,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/models", api_model_action),
         web.post("/api/model-override", api_model_override),
         web.post("/api/stt-override", api_stt_override),
+        web.get("/api/permissions", api_permissions),
+        web.post("/api/permissions", api_permissions),
         web.post("/api/handover", api_handover),
         web.get("/api/install", api_install),
         web.post("/api/install", api_install),
