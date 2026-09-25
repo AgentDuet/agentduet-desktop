@@ -35,8 +35,6 @@ from . import gate, jobs, paths
 
 logger = logging.getLogger("secretary.brief")
 
-#: The size the prompt asks for. It is the person's share of the assistant's context budget.
-WORDS = 150
 #: Calls folded in one update. More wait for the next one, which is requested straight away.
 CALLS_PER_UPDATE = 3
 #: Characters of one transcript given to an update.
@@ -164,7 +162,8 @@ def update(who: str) -> bool:
     items += [(at, f"{at} — {owner.name() or 'the owner'} asked the assistant: {q}\n"
                    f"The assistant answered: {a}") for at, q, a in chat]
     items.sort()
-    prompt = PROMPT.format(owner=owner.name() or "the owner", words=WORDS,
+    from . import budget
+    prompt = PROMPT.format(owner=owner.name() or "the owner", words=budget.split()["person_words"],
                            asof=rec.get("updated", "never"),
                            current=rec.get("summary") or "(none yet)",
                            new="\n\n".join(x for _, x in items))

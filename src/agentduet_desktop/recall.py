@@ -25,8 +25,6 @@ from . import gate, jobs, paths
 
 logger = logging.getLogger("secretary.recall")
 
-#: The size the prompt asks for — the assistant summary's share of the context budget.
-WORDS = 200
 #: Turns folded in one pass. More wait for the next, requested straight away.
 TURNS_PER_FOLD = 10
 
@@ -94,7 +92,9 @@ def fold() -> bool:
     batch, more = turns[:TURNS_PER_FOLD], len(turns) > TURNS_PER_FOLD
     who = owner.name() or "the owner"
     new = "\n\n".join(f"{t.get('at', '')}\n{who}: {t['q']}\nAssistant: {t['a']}" for t in batch)
-    prompt = PROMPT.format(owner=who, words=WORDS, asof=rec.get("updated", "never"),
+    from . import budget
+    words = budget.split()["memory_words"]
+    prompt = PROMPT.format(owner=who, words=words, asof=rec.get("updated", "never"),
                            current=rec.get("summary") or "(empty)", new=new)
     summary = llm.client().complete(prompt).strip()
     rec["through"] = batch[-1].get("at", "")

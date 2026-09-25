@@ -615,6 +615,14 @@ class OwnerChat:
     #: rode along in every later prompt at full length. On a local model, prompt length is
     #: waiting time, so the budget is in words and the newest lines win.
     HISTORY_WORDS = 1000
+
+    @property
+    def history_words(self) -> int:
+        """HISTORY_WORDS until this machine is measured; then its share of `budget.split()`."""
+        from . import budget, speed
+        if not speed.of(self.model):
+            return self.HISTORY_WORDS
+        return budget.split(len(self.system.split()))["chat_words"]
     #: A GAP THIS LONG STARTS A NEW CONVERSATION BY ITSELF (Stanley, 2026-09-25). It replaces the
     #: "New conversation" button: coming back after an hour is almost always a new subject, and
     #: the owner should not have to tell the assistant so. The record is kept, as with the button.
@@ -714,9 +722,10 @@ class OwnerChat:
         nothing is dropped until a limit is passed, and then it drops to 60% of it: the start
         stays stable for several turns between drops.
         """
-        if len(lines) <= self.KEEP and sum(len(x.split()) for x in lines) <= self.HISTORY_WORDS:
+        limit = getattr(self, "history_words", self.HISTORY_WORDS)
+        if len(lines) <= self.KEEP and sum(len(x.split()) for x in lines) <= limit:
             return list(lines)
-        cap_lines, cap_words = int(self.KEEP * 0.6), int(self.HISTORY_WORDS * 0.6)
+        cap_lines, cap_words = int(self.KEEP * 0.6), int(limit * 0.6)
         kept, words = [], 0
         for line in reversed(lines[-cap_lines:]):
             n = len(line.split())
