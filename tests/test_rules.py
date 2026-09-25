@@ -5833,6 +5833,28 @@ def test_assistant_memory() -> None:
     ok("it never reads call text", "read_call" not in src and "transcript" not in src.split('"""', 2)[2])
 
 
+def test_budget_split() -> None:
+    """The prompt budget follows this machine's measured reading speed."""
+    print("\n  -- the context budget comes from the machine --")
+    import unittest.mock as _m
+    from agentduet_desktop import budget
+    def at(tps):
+        with _m.patch.object(budget, "_read_tps", lambda: tps):
+            return budget.split(1159)
+    m5 = at(390)
+    eq("the M5's total is a 10 s cold read", m5["total"], 3900)
+    ok("most of what is left goes to recent chat",
+       m5["chat_words"] > m5["person_words"] > m5["memory_words"])
+    ok("and with nobody on screen, the person's share goes to the chat too",
+       m5["chat_words_alone"] > m5["chat_words"])
+    slow, fast = at(150), at(2000)
+    ok("a slower Mac gets less", slow["chat_words"] < m5["chat_words"])
+    ok("but never too little to hold a conversation",
+       slow["chat_words"] + slow["person_words"] + slow["memory_words"]
+       >= int(budget.MIN_REST_TOKENS / budget.TOKENS_PER_WORD) - 3)
+    ok("and a fast one never more than the engine's window", fast["total"] <= budget.MAX_TOTAL_TOKENS)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -5845,6 +5867,7 @@ def main() -> None:
     test_model_gate()
     test_jobs_and_briefs()
     test_assistant_memory()
+    test_budget_split()
     test_release_ships_the_native_shell()
     test_apple_stt_engine()
     test_local_models_do_not_monologue()

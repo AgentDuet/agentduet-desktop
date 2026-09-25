@@ -894,8 +894,10 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       ~3,000-token start: warm question 0.71 s; after a suggestion 1.24 s; mid-suggestion 1.08 s;
       cold 12.5 s. **The person brief is built too** (`brief.py` on `jobs.py`: one pending job
       per subject, watermarks, newer wins, owner outranks caller). **And the assistant
-      memory** (`recall.py`, from the assistant chat only, folded after every turn). **Not
-      built yet:** budgets from a timed run after download. The fixed instructions
+      memory** (`recall.py`, from the assistant chat only, folded after every turn). **And budgets
+      from the machine** (`speed.py` times a cold read and a write on first load — 390 and 35.6
+      tokens/s here — and `budget.py` splits a 10 s cold read across instructions, memory, brief
+      and chat). The pick does not use the measurement yet (see "Confirm the pick" above). The fixed instructions
       are 1,677 tokens (4.3 s cold) and worth trimming. Design: `docs/design.md`, *The
       assistant's context*.
 - [ ] **Confirm the lead family on QUALITY.** Gemma 4 leads on speed, measured 2026-09-23 on the

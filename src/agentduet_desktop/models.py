@@ -947,6 +947,9 @@ def load(model: str, context: int = 8192):
         _engine_model = model
         spec = spec_of(model) or {}
         logger.info("loaded %s (~%d MB resident, %s)", model, spec.get("ram_mb", 0), where)
+        # THE FIRST LOAD ON THIS MACHINE is when its speed gets measured — see `speed`.
+        from . import speed
+        speed.request(model)
         return _engine, f"Loaded {spec.get('name', model)}."
     except Exception as exc:
         _engine, _engine_model = None, ""

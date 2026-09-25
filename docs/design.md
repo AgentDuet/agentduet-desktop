@@ -949,13 +949,16 @@ which is why the order is now spelled out.
 **An hour of quiet starts a new conversation** (`OwnerChat.IDLE_BREAK_SECONDS`). It replaced the
 "New conversation" button: coming back after an hour is almost always a new subject.
 
-**Budgets from the machine** — not built yet. The 1,000-word history cap (`HISTORY_WORDS`) is a
-placeholder. The plan: measure reading and writing speed in the timed run after the model
-downloads; the total prompt budget is a cold-read ceiling times that reading speed (10 s × 390
-tokens/s ≈ 3,900 tokens on the M5, half on a Mac with half the GPU). Split: the instructions
-(fixed per day, 1,677 tokens today — worth trimming), a reserve for the inbox, the question and
-the answer, capped shares for the two summaries (~15% assistant, ~25% person, the person's
-share going to the chat when no person is involved), and the rest to recent chat, word for word.
+**Budgets from the machine** — `speed.py` and `budget.py`, built. The first time a model loads
+on a machine, a background job times a cold 1,000-token read and a 32-token write (the M5: 390
+and 35.6 tokens/s, 4.3 s including the load). The total is a 10 s cold read at that speed —
+3,900 tokens on the M5, capped at the engine's window less room for the answer. Off the top: the
+instructions (1,677 tokens today) and a 300-token reserve for the inbox, the question and the
+answer. Of the rest: 15% the assistant memory, 25% the person brief — the sizes their prompts
+ask for — and recent chat gets the remainder (with nobody on screen, the person's share too).
+On the M5 that is ~200, ~330 and ~800 words. A floor of 900 tokens keeps a slow machine able to
+hold a conversation at all; below ~300 tokens/s the instructions are most of the budget, which
+is the argument for trimming them. Until a machine is measured, 250 tokens/s stands in.
 
 **What would reverse this:** a model or engine without prefix reuse, which would make size the
 cost again and favour a hard small budget over ordering; or summaries that measurably lose facts
