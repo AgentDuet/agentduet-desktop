@@ -5097,7 +5097,7 @@ def test_the_pages_offer_the_pick_not_a_picker() -> None:
         eq("not downloaded says so, by name", llm.summary("gemma-4-e4b"), "Gemma 4 E4B, not downloaded")
     with mock.patch.object(models, "is_downloaded", return_value=True), \
          mock.patch.object(llm, "client", return_value=object()):
-        eq("on disk and running says where", llm.summary("gemma-4-e4b"), "Gemma 4 E4B, on this machine")
+        eq("on disk and running says where", llm.summary("gemma-4-e4b"), "Gemma 4 E4B")
     with mock.patch.object(models, "is_downloaded", return_value=False):
         ok("and a local model is never said to lack a key", "key" not in llm.summary("qwen3-8b"))
 

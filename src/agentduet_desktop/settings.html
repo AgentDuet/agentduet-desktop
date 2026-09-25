@@ -213,7 +213,6 @@
         <div id="mRec"></div>
         <div class="grp"><label class="fl">Language of your calls</label>
           <select id="language">
-            <option value="">guess it (not recommended)</option>
             <option value="en">English</option>
             <option value="vi">Vietnamese</option>
             <option value="zh">Chinese</option>
@@ -223,18 +222,6 @@
         <div class="acts">
           <span class="spin" id="spQuality"></span></div>
         <div id="mLang"></div>
-      </div>
-
-      <div class="card">
-        <div class="head">
-          <div class="tile"><span class="material-symbols-rounded">chat_bubble</span></div>
-          <div><h2>Record Messages</h2></div>
-        </div>
-        <div class="row">
-          <div class="lbl">Save SMS beside your calls</div>
-          <label class="sw"><input type="checkbox" id="recMsgs" disabled><span class="track"></span></label>
-        </div>
-        <div class="state">Not built yet.</div>
       </div>
 
       <div class="card" id="installCard" hidden>
@@ -653,7 +640,7 @@
     const row = (d.tiers || []).find(t => t.model === d.model) || {};
     const name = row.name || d.model;
     const fetching = !!d.running;
-    $('sttState').textContent = name + (d.cached ? ', on this machine' : ', not downloaded');
+    $('sttState').textContent = d.cached ? name : name + ', not downloaded';
     $('sttActs').hidden = d.cached || fetching;
     $('getStt').textContent = `Download ${name} · ${(d.mb / 1024).toFixed(1)} GB`;
     $('getStt').disabled = false;
