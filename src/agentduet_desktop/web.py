@@ -773,7 +773,13 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             "ane": dict(zip(("supported", "why"), transcribe.ane_support())),
             "stt": {"engine": transcribe.engine(), "model": transcribe.local_model(),
                     "quality": _own.transcription_quality() or "balanced",
-                    "cached": transcribe.is_cached()},
+                    "cached": transcribe.is_cached(),
+                    # THE DOWNLOAD, so the hub can show it after setup has finished: the speech
+                    # model is 2.4 GB and usually still arriving when the owner reaches the hub.
+                    "name": transcribe.display_name(transcribe.local_model()),
+                    "mb": transcribe.MODEL_MB.get(transcribe.local_model(), 0),
+                    "got_mb": transcribe.size_on_disk(transcribe.local_model()),
+                    "running": _stt["running"], "error": _stt["error"]},
             # `name` so the assistant pane can say WHICH model is answering — a local 135M
             # and a hosted frontier model give very different replies, and the owner cannot
             # otherwise tell which one they are talking to.
@@ -978,6 +984,28 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         os.environ[llm.OVERRIDE] = key
         tools._write_env({llm.OVERRIDE: key})
         return web.json_response({"ok": True, "message": f"Override set: {repo} \u00b7 {file}"})
+
+    async def api_stt_override(request):
+        """Set or clear the speech-model override, by name. An empty name clears it.
+
+        CHECKED ON THE WAY IN. `transcribe.local_model()` quietly falls back to the default on a
+        name it does not know — right for a call that must still be transcribed, wrong for a
+        developer who typed `large-v3-trubo` and would otherwise believe it took. So the name is
+        refused here, and a legacy tier adjective (`fast`, `accurate`…) is still accepted.
+        """
+        if not authed(request):
+            return web.json_response({"ok": False, "message": "unauthorised"}, status=401)
+        from . import transcribe
+        body = await request.json()
+        name = (body.get("name") or "").strip().lower()
+        known = transcribe._known_models() | {transcribe.QWEN} | set(transcribe.QUALITY)
+        if name and name not in known:
+            return web.json_response({"ok": False, "message": f"Unknown speech model: {name}"})
+        tools.set_setting("transcription", name)
+        if not name:
+            return web.json_response({"ok": True, "message": "Override removed."})
+        return web.json_response({"ok": True, "message": "Override set: "
+                                  + transcribe.display_name(transcribe.local_model())})
 
     async def api_model_action(request):
         """download | cancel | load | unload | delete — one verb per state change.
@@ -1838,6 +1866,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.get("/api/models/hf", api_hf),
         web.post("/api/models", api_model_action),
         web.post("/api/model-override", api_model_override),
+        web.post("/api/stt-override", api_stt_override),
         web.post("/api/handover", api_handover),
         web.get("/api/install", api_install),
         web.post("/api/install", api_install),

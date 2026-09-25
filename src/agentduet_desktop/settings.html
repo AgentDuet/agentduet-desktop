@@ -140,37 +140,6 @@
 
       <div class="card">
         <div class="head">
-          <div class="tile"><span class="material-symbols-rounded">smart_toy</span></div>
-          <div><h2>Model</h2></div>
-        </div>
-        <div class="state" id="modelState">…</div>
-        <!-- IT BELONGS TO THE MODEL, and it used to sit in "Record and Transcribe Calls" — a
-             card about audio, next to the recording folder, governing something neither
-             recording nor transcription does. The setting only means anything for the model in
-             use, so it lives with it.
-
-             HIDDEN, NOT DISABLED, when that model cannot reason. Gemini has no dial and Claude
-             reasons adaptively already, so a switch there would promise a change it cannot
-             make — and a switch that does nothing is worse than no switch, because the reason
-             is not visible from the row. It follows the SELECTED model: switch from Qwen3 to
-             Gemini and the row goes away on the next poll. -->
-        <div class="row" id="thinkRow" hidden>
-          <div class="lbl">Enable Thinking Mode
-            <span class="sublbl" id="thinkWhy"></span></div>
-          <label class="sw"><input type="checkbox" id="thinkOn"><span class="track"></span></label>
-        </div>
-        <!-- THE MACHINE'S PICK, and only while it is not yet here. The button says what it
-             downloads and how big; the bar reports progress. There is no picker: the model is
-             chosen from the machine (models.pick), and a developer overrides it by name in the
-             "Advanced (For developer)" dialog at the foot of the page. Nothing says WHY it was
-             picked — that is our machinery, not an outcome. -->
-        <div class="acts" id="pickActs" hidden><button class="btn" id="getPick"></button></div>
-        <div id="pickBar" hidden></div>
-        <div id="mModel"></div>
-      </div>
-
-      <div class="card">
-        <div class="head">
           <div class="tile"><span class="material-symbols-rounded">dialpad</span></div>
           <div style="flex:1"><h2>AgentDuet Account</h2></div>
           <span class="pill off" id="connPill"><span class="dot"></span>…</span>
@@ -242,13 +211,6 @@
           </div>
         </div>
         <div id="mRec"></div>
-          <!-- THE ENGINE IS A CHOICE, so it is a control rather than a sentence. It read
-               "Transcription engine: Whisper" — hardcoded, and wrong on every Mac using
-               Apple's — and the only way to change it was a "Use this" button in the list
-               below, which also downloads and deletes. Selecting and managing what is on
-               disk are two jobs; this does the first. -->
-          <div class="grp" id="engGrp"><label class="fl">Transcription engine</label>
-            <select id="sttEngine"></select></div>
         <div class="grp"><label class="fl">Language of your calls</label>
           <select id="language">
             <option value="">guess it (not recommended)</option>
@@ -258,15 +220,9 @@
             <option value="ms">Malay</option>
             <option value="th">Thai</option>
           </select></div>
-        <div class="grp">
-            <label class="fl">Speech models on this machine</label>
-          <div id="sttTiers"></div>
-        </div>
         <div class="acts">
-          <span class="spin" id="spQuality"></span>
-          <span class="spin" id="spStt"></span></div>
-        <div id="mStt"></div>
-      
+          <span class="spin" id="spQuality"></span></div>
+        <div id="mLang"></div>
       </div>
 
       <div class="card">
@@ -326,6 +282,24 @@
           <div class="lbl">Version</div>
           <div class="lbl3" id="abVer">…</div>
         </div>
+        <!-- THE TWO MODELS, AS FACTS (Stanley, 2026-09-25): which ones this machine runs and
+             whether they are here — not a choice. The machine picks the AI model and Qwen3-ASR is
+             the speech engine; a developer overrides either by name in the dialog at the foot of
+             the page. Each offers its download, with progress, only while it is not yet here. -->
+        <div class="row">
+          <div class="lbl">AI model</div>
+          <div class="lbl3" id="modelState">…</div>
+        </div>
+        <div class="acts" id="pickActs" hidden><button class="btn" id="getPick"></button></div>
+        <div id="pickBar" hidden></div>
+        <div id="mModel"></div>
+        <div class="row">
+          <div class="lbl">Speech model</div>
+          <div class="lbl3" id="sttState">…</div>
+        </div>
+        <div class="acts" id="sttActs" hidden><button class="btn" id="getStt"></button></div>
+        <div id="sttBar" hidden></div>
+        <div id="mStt"></div>
         <div class="row">
           <div class="lbl">Backend</div>
           <div class="lbl3" id="abBackend">…</div>
@@ -364,12 +338,29 @@
            automatic pick; empty goes back to it. Saving only REGISTERS the model — the Model
            card then offers its download, through the same button the pick uses. -->
       <div class="grp">
-        <label class="fl" for="mOverride">Model</label>
+        <label class="fl" for="mOverride">AI model</label>
         <input type="text" id="mOverride" placeholder="owner/repo or owner/repo:Q4_K_M"
                autocomplete="off" spellcheck="false">
       </div>
       <div class="acts"><button class="btn" id="saveOverride">Save</button></div>
       <div id="mOverrideMsg"></div>
+      <!-- THE SPEECH MODEL OVERRIDE, by name: `qwen3-asr-1.7b` (the default) or a Whisper model
+           (`small`, `medium`, `large-v3-turbo`, `large-v3`). Empty goes back to the default. The
+           name is checked on the way in, so a typo is refused rather than silently ignored. -->
+      <div class="grp">
+        <label class="fl" for="sttOverride">Speech model</label>
+        <input type="text" id="sttOverride" placeholder="qwen3-asr-1.7b, large-v3-turbo…"
+               autocomplete="off" spellcheck="false">
+      </div>
+      <div class="acts"><button class="btn" id="saveSttOverride">Save</button></div>
+      <div id="sttOverrideMsg"></div>
+      <!-- THINKING MODE, moved here with the Model card. HIDDEN, NOT DISABLED, when the model in
+           use cannot reason: a switch that does nothing is worse than none. -->
+      <div class="row" id="thinkRow" hidden>
+        <div class="lbl">Enable Thinking Mode
+          <span class="sublbl" id="thinkWhy"></span></div>
+        <label class="sw"><input type="checkbox" id="thinkOn"><span class="track"></span></label>
+      </div>
     </div>
   </div>
 </div>
@@ -519,6 +510,7 @@
     drawPick(cur);
     if ((cur.pick || {}).job) refreshPick();      // a download already running: follow it
     $('mOverride').value = cur.model_override || '';
+    $('sttOverride').value = cur.transcription || '';
     drawAccount(cur);
     // The row exists only for a model that can honour it — see thinking_possible. Re-read on
     // every refresh rather than at load, because attaching a different model changes the
@@ -652,146 +644,51 @@
   };
 
   // ---- speech recognition ------------------------------------------------------------------
-  let sttPoll = null;
-  //: The tiers as the server last described them, so the engine dropdown's change
-  //: handler can tell whether the chosen model still needs fetching. DECLARED BEFORE
-  //: sttRender, which assigns it: a `let` further down the file is in its temporal
-  //: dead zone when that runs, and throws. Second time today.
-  let LAST_TIERS = [];
-
+  // THE SPEECH MODEL, AS A FACT IN ABOUT (Stanley, 2026-09-25). It was a list of five models to
+  // pick from and delete; the product runs Qwen3-ASR, and a developer who wants another names
+  // it in the Advanced dialog. So this reports which model and whether it is here, and offers
+  // its download — with the house-style bar — only while it is not.
   function sttRender(d){
-      LAST_TIERS = d.tiers || [];
     if (!d || d.error === 'unauthorised') return;
-    // WHICH ENGINE, AND WHERE IT RUNS — the two facts that decide whether call audio leaves
-    // this machine. It was a sentence explaining the situation, which reads as prose and buries
-    // both. Neither engine is an LLM: faster-whisper locally, qwen3-asr-flash hosted, which is
-    // a dedicated ASR task and refuses a text part.
-    // "this machine" was on every line and is now the only possibility — a constant repeated
-    // is noise. "ready" went with it: the list below says which models are on disk, which is
-    // the question "ready" was standing in for.
-    // Just the engine. WHICH model is the row marked "in use" below — naming it here too put
-    // the same fact in two places, and they were free to disagree.
-    // THE ENGINE, AS A CHOICE. One option per tier, Apple included, with the running one
-    // selected — so the control states the answer that used to be a hardcoded sentence.
-    const eng = $('sttEngine');
-    const want = ((d.tiers || []).find(t => t.in_use) || {}).model || '';
-    const sig = (d.tiers || []).map(t => t.model + (t.downloaded ? '+' : '')).join(',')
-      + '|' + want + '|' + d.installed;
-    if (eng && sig !== eng.dataset.sig) {
-      eng.dataset.sig = sig;
-      eng.innerHTML = (d.tiers || []).map(t =>
-        `<option value="${esc(t.model)}"${t.model === want ? ' selected' : ''}>`
-        + esc(t.name) + (t.builtin ? ' — built in'
-                                   : t.downloaded ? ' — on this machine'
-                                   : ` — ${(t.mb / 1024).toFixed(1)} GB to download`)
-        + '</option>').join('');
-      eng.disabled = !d.installed && !(d.tiers || []).some(t => t.builtin);
+    const row = (d.tiers || []).find(t => t.model === d.model) || {};
+    const name = row.name || d.model;
+    const fetching = !!d.running;
+    $('sttState').textContent = name + (d.cached ? ', on this machine' : ', not downloaded');
+    $('sttActs').hidden = d.cached || fetching;
+    $('getStt').textContent = `Download ${name} · ${(d.mb / 1024).toFixed(1)} GB`;
+    $('getStt').disabled = false;
+    $('sttBar').hidden = !fetching;
+    if (fetching) {
+      const got = row.got_mb || 0, pct = Math.min(99, Math.round(got * 100 / (d.mb || 1)));
+      $('sttBar').innerHTML = '<div class="barlab"><span>' + esc(name) + '</span><span>'
+        + `${got} / ${d.mb} MB · ${pct}%` + '</span></div>'
+        + `<div class="bar"><i style="width:${pct}%"></i></div>`;
+      setTimeout(sttCheck, 1500);
     }
-    // HIDDEN WHILE THERE IS ONLY ONE ENGINE, because then it is not a choice — it is the model
-    // list above, again, with the same rows. It reads as a duplicate because it IS one:
-    // the options are one per TIER, which doubles as an engine picker only while a
-    // non-Whisper row (Apple, `builtin`) is in the list. With Apple held back every option is
-    // a Whisper model, so the control asks a question whose answer is already below it.
-    // Stanley spotted it on 2026-09-09, the same day the quarantine removed the second engine.
-    const engines = (d.tiers || []).some(t => t.builtin);
-    if ($('engGrp')) $('engGrp').hidden = !engines;
-
-    const busy = !!d.running;
-    const sttSig = JSON.stringify([(d.tiers || []).map(t => [t.model, t.downloaded, t.in_use]),
-                                   d.downloading, d.installed]);
-    if (sttSig === lastSttSig) {
-      const row = (d.tiers || []).find(t => t.model === d.downloading);
-      if (row) {
-        const pct = Math.min(99, Math.round(row.got_mb * 100 / (row.mb || 1)));
-        const bar = $('sttTiers').querySelector('.bar i');
-        const lab = $('sttTiers').querySelector('.barlab span:last-child');
-        if (bar) bar.style.width = pct + '%';
-        if (lab) lab.textContent = `${row.got_mb} / ${row.mb} MB · ${pct}%`;
-      }
-      if (busy) setTimeout(sttCheck, 1500);
-      return;
-    }
-    lastSttSig = sttSig;
-
-      // WHISPER ONLY. Apple's engine is part of macOS — nothing to download, nothing to
-      // delete — so it lives in the dropdown above and would be an inert row here.
-      $('sttTiers').innerHTML = (d.tiers || []).filter(t => !t.builtin).map(t => {
-      const fetching = busy && d.downloading === t.model;
-      const pct = Math.min(99, Math.round(t.got_mb * 100 / (t.mb || 1)));
-      // A ROW MID-DOWNLOAD SAYS SO. It used to flip to "downloaded" the moment the directory
-      // appeared, so a 1.5 GB fetch looked instant and offered Delete on weights still coming
-      // down. Approximate — bytes on disk against the published size — and honest, which the
-      // previous state was not.
-      const act = fetching
-        ? `<div style="flex:1">
-             <div class="barlab"><span>Downloading…</span>
-               <span>${t.got_mb} / ${t.mb} MB · ${pct}%</span></div>
-             <div class="bar"><i style="width:${pct}%"></i></div>
-           </div>`
-        : t.in_use && t.downloaded ? '<span class="inuse">in use</span>'
-        : t.downloaded
-            ? `<button class="act" data-del="${esc(t.model)}">Delete</button>`
-          : `<button class="act get" data-tier="${esc(t.model)}" ${busy ? 'disabled' : ''}>Download</button>`;
-      return `
-      <div class="mrow ${t.in_use ? 'on' : ''}">
-        <span class="nm">${t.in_use ? '● ' : ''}${esc(t.name)}</span>
-        <span class="sz">${t.builtin ? 'built in' : (t.mb / 1024).toFixed(1) + ' GB'}</span>
-        ${act}
-      </div>`;
-    }).join('');
-    // Keep the bar moving. Nothing else on this card polls.
-    if (busy) setTimeout(sttCheck, 1500);
-    $('sttTiers').querySelectorAll('[data-tier]').forEach(el => {
-      el.onclick = async () => {
-        await saveStt('transcription', el.dataset.tier);
-        // Not downloaded yet? Saving the tier only chooses it; fetch it now rather than
-        // leaving the first call of the day to wait for a 3 GB download.
-        if (el.classList.contains('get')) {
-          $('spStt').textContent = 'downloading…';
-          await post('/api/setup/stt', {});
-          sttCheck();
-        }
-      };
-    });
-    $('sttTiers').querySelectorAll('[data-del]').forEach(el => {
-      el.onclick = async () => {
-        const row = LAST_TIERS.find(t => t.model === el.dataset.del);
-        if (!confirm(`Delete ${row ? row.name : el.dataset.del}? It can be downloaded again.`)) return;
-        const r = await post('/api/stt-model', {model: el.dataset.del});
-        say('mStt', r.ok, r.message);
-        sttCheck();
-      };
-    });
-    $('spStt').textContent = d.running ? 'downloading…' : '';
-    if (d.running && !sttPoll) sttPoll = setInterval(sttCheck, 3000);
-    if (!d.running && sttPoll) { clearInterval(sttPoll); sttPoll = null; }
+    if (d.error && d.error !== lastSttErr) say('mStt', false, d.error);
+    lastSttErr = d.error;
   }
+  let lastSttErr = '';
   function sttCheck(){
     fetch(`/api/setup/stt?t=${T}`).then(r => r.json()).then(sttRender).catch(() => {});
   }
-  // THEY SAVE THEMSELVES. This card had TWO buttons both saying "Save" — one for the folder
-  // beside its field, one at the bottom for these two selects — and nothing said which was
-  // which. A select that applies on change is the same shape as the toggle above it, and
-  // leaves exactly one Save in the card, next to the only field that needs one.
-  const saveStt = async (field, value) => {
-    $('spQuality').textContent = 'saving…';
-    const d = await post('/api/setup/setting', {field, value});
-    $('spQuality').textContent = '';
-    say('mStt', d.ok, d.message);
-    sttCheck();                       // the tier decides WHICH model, so the state line changes
+  $('getStt').onclick = async () => {
+    $('getStt').disabled = true;
+    const r = await post('/api/setup/stt', {});
+    if (!r.ok) say('mStt', false, r.message);
+    sttCheck();
   };
-  $('language').onchange = () => saveStt('language', $('language').value);
-  // CHOOSING AN ENGINE. Choosing an absent Whisper model also FETCHES it — otherwise the
-  // choice would take effect on the first call of the day and make it wait for a 3 GB
-  // download. Apple is built into macOS, so it needs nothing.
-  $('sttEngine').onchange = async () => {
-    const want = $('sttEngine').value;
-    await saveStt('transcription', want);
-    const row = LAST_TIERS.find(t => t.model === want);
-    if (row && !row.downloaded && !row.builtin) {
-      $('spStt').textContent = 'downloading…';
-      await post('/api/setup/stt', {});
-    }
+  // THE LANGUAGE SAVES ITSELF on change, like the toggle above it.
+  $('language').onchange = async () => {
+    $('spQuality').textContent = 'saving…';
+    const d = await post('/api/setup/setting', {field: 'language', value: $('language').value});
+    $('spQuality').textContent = '';
+    say('mLang', d.ok, d.message);
+  };
+  // THE OVERRIDE, in the Advanced dialog. Checked by name on the server, so a typo is refused.
+  $('saveSttOverride').onclick = async () => {
+    const r = await post('/api/stt-override', {name: $('sttOverride').value.trim()});
+    say('sttOverrideMsg', r.ok, r.message);
     sttCheck();
   };
   sttCheck();
@@ -960,7 +857,6 @@
     say('mRec', d.ok, d.message);
   };
   //: The speech list's last-drawn signature — it skips a redraw when nothing it shows changed.
-  let lastSttSig = '';
 
   // ---- Advanced (For developer) ----------------------------------------------------------
   const dev = $('ovlDev');

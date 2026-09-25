@@ -52,11 +52,17 @@
     padding-bottom:1rem;}
   .ptop .tile{background:rgba(37,99,235,.2);border:1px solid rgba(59,130,246,.3);}
   .field{display:flex;flex-direction:column;gap:.5rem;}
+  /* A download under its field: the same bar the hub and Settings draw. */
+  .dl{display:flex;flex-direction:column;gap:.3rem;}
+  .dl .barlab{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;
+    color:var(--faint);font-variant-numeric:tabular-nums;}
+  .dl .bar{height:.35rem;border-radius:999px;background:var(--slate700);overflow:hidden;}
+  .dl .bar i{display:block;height:100%;background:var(--accent);transition:width .3s;}
+  .dlnote{font-size:11px;color:var(--faint);margin:0;}
   /* `.sw` is app.css's — the same switch every settings row uses, so a boolean looks like a
      boolean in both places. Only the ROW is local, because `.card .row` is scoped to a card
      and this page has none. */
   .togrow{display:flex;align-items:center;justify-content:space-between;gap:1rem;width:100%;}
-  .frow{display:flex;gap:.5rem;}
   /* A LINK, NOT A BUTTON. Boxing these was the second wrong answer: three bordered boxes under
      three bordered sign-in buttons read as six competing choices, and it looked heavy. Faint
      grey small print was the first wrong answer — invisible on a projector. Blue and a size up
@@ -70,7 +76,7 @@
     font-size:.9375rem;font-weight:600;color:var(--blue400);cursor:pointer;
     text-decoration:underline;text-underline-offset:.2em;}
   .altway:hover{color:var(--blue300);}
-  /* The manual pair. Same field styling as the folder row on the next screen — it is the same
+  /* The manual pair. Same field styling as the model rows on the next screen — it is the same
      kind of question, and inventing a second look for it would read as a different product. */
   .manual{width:100%;max-width:20rem;display:flex;flex-direction:column;gap:.75rem;
     padding-top:.75rem;text-align:left;}
@@ -81,12 +87,6 @@
     color:#fff;border:1px solid var(--line);font-family:var(--mono);font-size:.7rem;
     letter-spacing:-.01em;}
   .manual label{font-size:11px;color:var(--faint);}
-  .frow input{flex:1;}
-  .browse{padding:.5rem .75rem;background:var(--slate800);color:#fff;border-radius:.5rem;
-    font:inherit;font-size:.75rem;font-weight:500;border:1px solid rgba(255,255,255,.1);
-    display:flex;align-items:center;gap:.25rem;flex-shrink:0;cursor:pointer;}
-  .browse:hover{background:var(--slate700);}
-  .browse .material-symbols-rounded{font-size:.875rem;}
   .go{width:100%;padding:.75rem;background:var(--accent);color:#fff;font:inherit;font-size:.75rem;
     font-weight:600;border:0;border-radius:.75rem;cursor:pointer;display:flex;align-items:center;
     justify-content:center;gap:.5rem;box-shadow:0 10px 15px -3px rgba(0,0,0,.3);}
@@ -168,30 +168,32 @@
   <div class="view" id="v-setup">
     <div class="panel">
       <div class="ptop">
-        <div class="tile"><span class="material-symbols-rounded">folder_open</span></div>
+        <div class="tile"><span class="material-symbols-rounded">download</span></div>
         <div>
           <h2>Quick Application Setup</h2>
-          <p>Select where recordings &amp; logs will be stored.</p>
+          <p>The models AgentDuet runs on this Mac.</p>
         </div>
       </div>
 
-      <div class="field">
-        <label>Data Storage Folder</label>
-        <div class="frow">
-          <input type="text" id="folder" readonly>
-          <button class="browse" id="doBrowse">
-            <span class="material-symbols-rounded">folder</span> Browse</button>
-        </div>
-      </div>
+      <!-- NO FOLDER QUESTION, from 2026-09-25 (Stanley): recordings go to the default folder,
+           and Settings still changes it. One fewer choice on the first screen. -->
 
-      <!-- STATED, NOT ASKED. The model is chosen from the machine (models.pick), so the wizard
-           names it and fetches it; there is nothing here to change. A developer overrides it in
-           Settings -> Advanced (For developer). The download starts at Finish, outlives this
-           page, and the model is used as soon as it lands. Hidden when nothing fits. -->
+      <!-- THE TWO DOWNLOADS, NAMED AND STARTED HERE (Stanley, 2026-09-25). A first install needs
+           the AI model (4.8 GB) and the speech model (2.4 GB), and the speech one used to arrive
+           silently on the first call. Both are stated, not asked — the machine picks the AI model,
+           the speech model is the default engine — both start the moment this step is on screen,
+           and Finish does not wait for either: they run in the daemon and the hub shows them. -->
       <div class="field" id="modelField" hidden>
         <label for="setupModel">AI model</label>
         <input type="text" id="setupModel" readonly>
+        <div class="dl" id="modelDl" hidden></div>
       </div>
+      <div class="field" id="sttField" hidden>
+        <label for="setupStt">Speech model</label>
+        <input type="text" id="setupStt" readonly>
+        <div class="dl" id="sttDl" hidden></div>
+      </div>
+      <p class="dlnote" id="dlNote" hidden>Both download in the background. You can finish setup now.</p>
 
 
       <!-- TICKED, AND ASKED. A phone answering service that is not running answers nothing and
@@ -264,6 +266,7 @@
   function show(v){
     ['login', 'setup'].forEach(k => $('v-' + k).classList.toggle('on', k === v));
     startPick();
+    startSpeech();
   }
 
   // Everything sign-on will supply — connector, name, number — is configured in Settings,
@@ -365,7 +368,6 @@
       $('doCancel').parentElement.hidden = true;
       $('backRow').hidden = false;
     }
-    $('folder').value = d.carried_dir || '';
     // Prefill from the files an operator left in their home directory, so a reset instance is
     // one click. The uuid is filled in; the key is not sent here at all — the endpoint reads
     // `~/.agentduet` when the field is blank, so the secret never reaches the page.
@@ -397,7 +399,7 @@
   }).catch(() => {});
 
   // THE DOWNLOAD STARTS WHEN THIS STEP IS ON SCREEN, not at Finish — 4.8 GB is minutes, and the
-  // owner is still choosing a folder. Two triggers because either can arrive first: the step
+  // owner is still on this screen. Two triggers because either can arrive first: the step
   // being shown, and the pick being fetched. It runs in the daemon, not the page, so leaving
   // setup does not stop it, and the hub's Assistant tab shows its progress. A refusal (no
   // network, no room) is not the owner's problem to solve here: Finish tries once more, and
@@ -408,31 +410,55 @@
     STARTED = true;
     const r = await post('/api/models', {action: 'download', name: PICK.model});
     if (!r.ok) STARTED = false;
+    follow();
   }
 
-  // THE CHOOSER HAS EXISTED SINCE 2026-08-27 and this button said it did not, telling the
-  // owner to set AGENTDUET_HOME — which is not even the right variable: this is the RECORDINGS
-  // folder, `## Recordings`, not the instance directory. A stub outliving the thing it stood in
-  // for, on the one screen a new owner sees.
-  //
-  // The same endpoint the settings page uses, so there is one implementation of "ask the
-  // desktop for a folder" and one place it can go wrong.
-  $('doBrowse').onclick = async () => {
-    // No "a window just opened" line. The window is on screen; saying so narrates what the
-    // owner can already see, and the disabled button is the only status this needs.
-    $('doBrowse').disabled = true;
-    const d = await post('/api/pick-folder', {});
-    $('doBrowse').disabled = false;
-    // A CANCELLED DIALOG IS NOT A FAILURE. Someone closing a chooser has not done anything
-    // wrong, and reporting it in red is how a screen teaches people to distrust its messages.
-    if (d.ok && !d.changed) { $('mDone').innerHTML = ''; return; }
-    say('mDone', d.ok, d.message);
-    if (!d.ok) return;
-    // Show what was chosen, read back from the instance rather than from the reply, so the
-    // field states what is actually stored.
-    const cur = await fetch(`/api/setup/current?t=${T}`).then(r => r.json()).catch(() => ({}));
-    if (cur.carried_dir) $('folder').value = cur.carried_dir;
-  };
+  // THE SPEECH MODEL, the same way: named from the engine's own answer, started with the step.
+  let STT = {}, STT_STARTED = false;
+  fetch(`/api/setup/stt?t=${T}`).then(r => r.json()).then(d => {
+    const row = (d.tiers || []).find(t => t.model === d.model) || {};
+    STT = {model: d.model, name: row.name || d.engine_name, mb: d.mb, cached: d.cached,
+           running: d.running};
+    if (!d.installed || !STT.model) return;
+    $('setupStt').value = STT.cached ? STT.name : `${STT.name} \u00b7 ${(STT.mb / 1024).toFixed(1)} GB`;
+    $('sttField').hidden = false;
+    startSpeech();
+  }).catch(() => {});
+
+  async function startSpeech(){
+    if (STT_STARTED || !STT.model || STT.cached || STT.running) return;
+    if (!$('v-setup').classList.contains('on')) return;
+    STT_STARTED = true;
+    const r = await post('/api/setup/stt', {});
+    if (!r.ok) STT_STARTED = false;
+    follow();
+  }
+
+  // PROGRESS, once a second while this step is up. Reads the same two endpoints Settings does,
+  // so the wizard and Settings cannot disagree about how far a download has got.
+  function bar(el, got, total){
+    const pct = total ? Math.min(100, Math.round(got * 100 / total)) : 0;
+    el.hidden = false;
+    el.innerHTML = '<div class="barlab"><span></span><span>' + got + ' / ' + total + ' MB \u00b7 '
+      + pct + '%</span></div><div class="bar"><i style="width:' + pct + '%"></i></div>';
+  }
+  let following = null;
+  function follow(){
+    if (following) return;
+    following = setInterval(async () => {
+      if (!$('v-setup').classList.contains('on')) return;
+      const [m, t] = await Promise.all([
+        fetch(`/api/models?t=${T}`).then(r => r.json()).catch(() => ({})),
+        fetch(`/api/setup/stt?t=${T}`).then(r => r.json()).catch(() => ({}))]);
+      const pk = m.pick || {}, job = pk.job;
+      if (job && !pk.downloaded) bar($('modelDl'), job.done_mb, job.total_mb);
+      else { $('modelDl').hidden = true; if (pk.downloaded) $('setupModel').value = pk.name; }
+      const row = (t.tiers || []).find(x => x.model === t.model) || {};
+      if (t.running && !t.cached) bar($('sttDl'), row.got_mb || 0, t.mb || row.mb || 0);
+      else { $('sttDl').hidden = true; if (t.cached) $('setupStt').value = row.name || STT.name; }
+      $('dlNote').hidden = !((job && !pk.downloaded) || (t.running && !t.cached));
+    }, 1000);
+  }
 
   $('doDone').onclick = async () => {
     // A RE-RUN JUST GOES BACK. Handover promotes the installed copy and stands this one down,
@@ -443,6 +469,7 @@
     // Normally already running. If the first attempt was refused, one more try — and a refusal
     // still does not stop setup.
     await startPick();
+    await startSpeech();
     // BEFORE HANDOVER, because handover stands this process down and promotes the installed
     // copy — anything posted after it is a request to a daemon that is going away.
     await post('/api/setup/login-item', {want: $('atLogin').checked});

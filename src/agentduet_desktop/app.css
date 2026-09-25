@@ -163,6 +163,10 @@ h2{font-size:1rem;font-weight:700;color:var(--ink);}
      apart while the model rows they sit above were 6px apart. One card, two rhythms. A heading
      and the box explaining it ("Folder", then "Saved to …") read as unrelated at that distance. */
   display:flex;flex-direction:column;gap:.4rem;}
+/* AN EMPTY MESSAGE SLOT TAKES NO GAP. Each card keeps a div for what its buttons report, empty
+   until they do — and in a flex column an empty child still earns a gap, so a row followed by
+   one sat .4rem further from the next than its neighbours. Found in About, 2026-09-25. */
+.card > div:empty{display:none;}
 /* A MINIMUM, not a fixed height — a row that wraps must still grow. Without it the rows in
    one card ranged from 20px, where the only control was a switch, to 42px where two buttons
    sat, and the card read as unevenly spaced rather than as a list. The value is the height

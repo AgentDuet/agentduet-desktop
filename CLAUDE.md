@@ -860,7 +860,7 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       Settings (moved there 2026-09-24), and looked at in a
       browser. A Hugging Face name in llama.cpp's own form — `owner/repo` or `owner/repo:QUANT`;
       with no quant, Q4_K_M, then the vendor's `q4_0` — resolved through the existing HF-only
-      `files()` and `add_custom()`. Saving only REGISTERS it; the Model card then offers its
+      `files()` and `add_custom()`. Saving only REGISTERS it; About then offers its
       download through the same button the pick uses, and it wins once on disk. Empty clears it.
       **It exposed a routing bug that would have made it useless:** `provider()` looked only in
       `CATALOGUE`, so a custom model fell through to the vendor prefixes and a repo with "qwen"
