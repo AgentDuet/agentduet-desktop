@@ -847,6 +847,13 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                     # is the state a carried call is in whenever the platform hands us no audio,
                     # so it would have said "pending" for ever.
                     "norecording": not names,
+                    # NOBODY PICKED UP, said as that rather than as a missing file. Recorded
+                    # explicitly since 2026-09-25 ("missed"); for rows before that, a CARRIED call
+                    # with no audio from either side is the same fact structurally — carried calls
+                    # are always recorded, so empty legs mean no one was ever connected.
+                    "missed": (r.get("note", "").startswith("missed")
+                               or (not names and r.get("mode") == "carried")),
+                    "outgoing": bool(r.get("outgoing")),
                 })
             people.append({"who": who, "calls": items, "messages": [],
                            "last": items[0]["at"] if items else ""})

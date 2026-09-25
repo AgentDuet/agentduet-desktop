@@ -4584,6 +4584,7 @@ def test_a_poll_notices_everything_it_renders() -> None:
         "at": "the call's timestamp, written once with the row and never updated",
         "mode": "carried/answered, decided before the row exists",
         "bytes": "changes only when the merge lands, and `files` changes with it",
+        "outgoing": "which way the call went, decided before the row exists",
         "call_id": "the call's id, written once with the row; the live captions it keys are "
                    "counted in the row's reconcile key, and change the card through that",
     }
@@ -5519,6 +5520,16 @@ def test_live_captions_while_a_call_is_on() -> None:
         async def close(self): tried.append("close"); return _R(True)
     _aio.run(phone._hang_up(_Call(), "cH"))
     eq("a refused disconnect is followed by close", tried, ["disconnect", "close"])
+
+    # A CALL NOBODY PICKED UP says so, rather than "No recording.": explicitly when the platform
+    # reports it unanswered, and structurally for a carried call with no audio on either side.
+    web_src = (src / "web.py").read_text()
+    ok("an unanswered call is noted as missed in the index",
+       'outcome = "missed"' in carry_src and "note=outcome" in carry_src)
+    ok("and a carried call with no audio at all counts as missed",
+       'or (not names and r.get("mode") == "carried")' in web_src)
+    ok("the hub says Missed call, or No answer for one the owner placed",
+       "it.call.outgoing ? 'No answer.' : 'Missed call.'" in hub)
     try:
         import numpy as np
     except ImportError:

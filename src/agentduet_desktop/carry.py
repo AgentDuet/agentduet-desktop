@@ -361,6 +361,9 @@ async def handle(sm, noti) -> None:
 
     done = asyncio.Event()
     taken = time.time()
+    #: What the index says about how the call went, beside the audio. "missed" when the platform
+    #: reports nobody answered — the hub says "Missed call", not "No recording".
+    outcome = ""
 
     @call.on_hangup
     def _(_evt) -> None:
@@ -445,6 +448,7 @@ async def handle(sm, noti) -> None:
             # NOBODY PICKED UP. An ordinary outcome, not an error — logged at info so a quiet
             # office does not read as a broken install. Nothing is live, so stop here.
             logger.info("call %s %s: the destination did not answer", call_id, who)
+            outcome = "missed"
             return
         if not result:
             # A FAILED COMMAND IS NOT PROOF THE CALL IS DEAD, and treating it that way threw
@@ -515,7 +519,7 @@ async def handle(sm, noti) -> None:
         # named no files at all — and the hub reads that as "No recording." on a call whose
         # audio is sitting on disk. Caught before the first live call, by adding the
         # empty-leg cleanup and asking what the index would then have to work with.
-        _calls.record(call_id, other, "carried", outgoing=outgoing, recordings=sorted(
+        _calls.record(call_id, other, "carried", outgoing=outgoing, note=outcome, recordings=sorted(
             str(p.name) for p in legs().glob(f"*{call_id}*.wav")))
         # TRANSCRIBE IT NOW, not at the next poll: the legs are closed and on disk.
         from . import transcribe

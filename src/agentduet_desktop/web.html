@@ -502,7 +502,9 @@
           <span class="when">${esc(when(it.call.at))}</span>
           <span class="meta">${esc(it.call.mode)}${it.call.files ? ' · ' + it.call.files + ' file' + (it.call.files === 1 ? '' : 's') : ''}${it.call.bytes ? ' · ' + kb(it.call.bytes) : ''}</span>
         </div>
-        ${it.call.norecording ? '<div class="none">No recording.</div>'
+        ${it.call.norecording && it.call.missed
+            ? `<div class="none">${it.call.outgoing ? 'No answer.' : 'Missed call.'}</div>`
+          : it.call.norecording ? '<div class="none">No recording.</div>'
           : it.call.silent ? '<div class="none">No audio.</div>'
           : (it.call.transcript ? `<div class="text">${esc(it.call.transcript)}</div>`
              // ONE CARD PER CALL. Until the kept transcript lands, the live captions of this call
@@ -521,7 +523,7 @@
     // its `key`, which is a digest of the judged text, so it also changes when the text does.
     reconcile(host, items.map(it => it.call
       ? ['c', it.call.at, it.call.mode, it.call.files, it.call.bytes,
-         it.call.norecording ? 1 : 0, it.call.silent ? 1 : 0,
+         it.call.norecording ? 1 : 0, it.call.missed ? 1 : 0, it.call.silent ? 1 : 0,
          (it.call.transcript || '').length,
          ((LIVE.calls[it.call.call_id] || {}).captions || []).length,
          (it.call.suggest || {}).key || ''].join('\u0000')
@@ -1412,7 +1414,7 @@
   // string, so it stays cheap. `files` moves too when the merge replaces two legs with one
   // stereo file, and the two "there is nothing to show" states can flip on their own.
   function callSig(c){
-    return `${c.files}:${(c.transcript || '').length}:${c.norecording ? 'n' : ''}${
+    return `${c.files}:${(c.transcript || '').length}:${c.norecording ? 'n' : ''}${c.missed ? 'm' : ''}${
       c.silent ? 's' : ''}:${(c.suggest || {}).key || ''}`;
   }
   function threadSig(){
