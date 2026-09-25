@@ -5819,6 +5819,9 @@ def test_jobs_and_briefs() -> None:
             ok("a missed call only moves the watermark", not brief.update("+6511112222"))
             eq("without asking the model", len(asked), 1)
             eq("and the sweep then finds nothing to do", brief.sweep(), 0)
+        with _m.patch("agentduet_desktop.carry.call_audio", lambda names, cid: (tmp, [])):
+            eq("a call with no audio at all is nothing said, not still coming",
+               brief._transcript({"call_id": "x", "recordings": [], "at": "2026-09-25T10:00:00"}), "")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
