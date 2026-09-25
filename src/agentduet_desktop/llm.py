@@ -830,7 +830,9 @@ def summary(model: str = "") -> str:
             return f"{name}, not downloaded"
         if client(m) is None:
             return f"{name} is chosen, but it would not start. See the log."
-        return f"{name}, on this machine"
+        # JUST THE NAME once it is here (Stanley, 2026-09-25): every model is local now, so
+        # "on this machine" said nothing the page did not.
+        return name
     if impl.credential() is None:
         return f"{m} is chosen, but has no key yet."
     if client(m) is None:
