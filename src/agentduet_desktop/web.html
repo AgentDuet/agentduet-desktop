@@ -35,6 +35,11 @@
   .who.on{border-color:rgba(59,130,246,.4);background:rgba(37,99,235,.15);}
   .who .n{font-family:var(--mono);font-size:.78rem;color:var(--ink2);}
   .who .m{font-size:10px;color:var(--faint);}
+  /* NEW SINCE LAST LOOKED: a count on the row until the owner opens that person. */
+  .who .top{display:flex;align-items:center;justify-content:space-between;gap:.5rem;}
+  .who .badge{min-width:1.1rem;height:1.1rem;padding:0 .3rem;border-radius:999px;
+    background:var(--accent);color:#fff;font-size:10px;font-weight:600;display:inline-flex;
+    align-items:center;justify-content:center;font-variant-numeric:tabular-nums;}
   .who-empty{font-size:.75rem;color:var(--faint);padding:.5rem .2rem;}
 
   /* THE TITLEBAR'S RIGHT-HAND GROUP: the in-app phone's switch beside Settings, and the two
@@ -388,7 +393,8 @@
         <span class="n">Personal Assistant</span></div>`
       + (list.length ? list.map(p => `
       <div class="who ${p.who === PICKED ? 'on' : ''}" data-who="${esc(p.who)}">
-        <span class="n">${esc(p.display || p.who)}</span>
+        <span class="top"><span class="n">${esc(p.display || p.who)}</span>${
+          p.unread && p.who !== PICKED ? `<span class="badge">${p.unread > 99 ? '99+' : p.unread}</span>` : ''}</span>
         <span class="m">${liveOn(p.who) ? '<span class="livemark">On a call</span>'
                                          : countLabel(p) + ' · ' + esc(when(p.last))}</span>
       </div>`).join('')
@@ -474,6 +480,7 @@
 
     $('tTitle').textContent = p.display || p.who;
     const msgs = p.messages || [], calls = p.calls || [];
+    markSeen(p);
     const bits = [];
     if (calls.length) bits.push(`${calls.length} call${calls.length === 1 ? '' : 's'}`);
     if (msgs.length) bits.push(`${msgs.length} message${msgs.length === 1 ? '' : 's'}`);
@@ -1408,9 +1415,17 @@
     return `${c.files}:${(c.transcript || '').length}:${c.norecording ? 'n' : ''}${c.missed ? 'm' : ''}${
       c.silent ? 's' : ''}:${(c.suggest || {}).key || ''}`;
   }
+  // ON SCREEN IS SEEN. Up to the newest item this page has, so something that arrives after
+  // the last fetch still counts as new.
+  function markSeen(p){
+    if (!p.unread) return;
+    const newest = [...(p.calls || []), ...(p.messages || [])].map(x => x.at || '').sort().pop();
+    p.unread = 0;
+    post('/api/seen', {who: p.who, at: newest || ''});
+  }
   function threadSig(){
     return (THREADS.people || [])
-      .map(p => `${p.who}:${p.last}:${(p.messages || []).length}:${
+      .map(p => `${p.who}:${p.last}:${p.unread || 0}:${(p.messages || []).length}:${
         (p.calls || []).map(callSig).join(',')}:${
         (p.messages || []).map(m => (m.suggest || {}).key || '').join(',')}`)
       .join('|');

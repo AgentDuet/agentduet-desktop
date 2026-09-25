@@ -981,8 +981,62 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             p["messages"].sort(key=lambda m: m["at"])
             latest = [p["last"]] + [m["at"] for m in p["messages"]]
             p["last"] = max([x for x in latest if x] or [""])
+        _mark_unread(people)
         people.sort(key=lambda p: p["last"], reverse=True)
         return web.json_response({"people": people, "folder": str(folder)})
+
+    #: WHAT THE OWNER HAS SEEN, per person: the newest item's time when they last opened that
+    #: person's history. Kept by the daemon, not the page, so the badge survives a restart and
+    #: reads the same in the window and in a browser.
+    SEEN = paths.RUN / "seen.json"
+
+    def _incoming(p: dict) -> list[str]:
+        """The items that can be NEW to the owner: calls in, and messages from the person.
+        A call the owner placed, or a reply they sent, is not news to them."""
+        return ([c["at"] for c in p["calls"] if not c.get("outgoing") and c.get("at")]
+                + [m["at"] for m in p["messages"] if m.get("them") and m.get("at")])
+
+    def _mark_unread(people: list[dict]) -> None:
+        """Set `unread` on each person: incoming items newer than what the owner last saw.
+
+        THE FIRST TIME, everyone starts as seen — otherwise every existing conversation would
+        light up at once the day this shipped. After that a new person has no mark, so their
+        first call counts.
+        """
+        try:
+            seen = json.loads(SEEN.read_text())
+        except (OSError, ValueError):
+            seen = None
+        if seen is None:
+            seen = {p["who"]: max(_incoming(p) or [""]) for p in people}
+            try:
+                SEEN.parent.mkdir(parents=True, exist_ok=True)
+                SEEN.write_text(json.dumps(seen))
+            except OSError:
+                pass
+        for p in people:
+            mark = seen.get(p["who"], "")
+            p["unread"] = sum(1 for at in _incoming(p) if at > mark)
+
+    async def api_seen(request):
+        """The owner opened this person's history: everything in it up to now is seen."""
+        if not authed(request):
+            return web.json_response({"ok": False, "message": "unauthorised"}, status=401)
+        body = (await request.json()) or {}
+        # UP TO WHAT WAS ON SCREEN, sent by the page — not "now", which would also mark an item
+        # that arrived between the page's last fetch and this request.
+        who, at = (body.get("who") or "").strip(), str(body.get("at") or "")
+        if not who:
+            return web.json_response({"ok": False, "message": "No person."})
+        try:
+            seen = json.loads(SEEN.read_text())
+        except (OSError, ValueError):
+            seen = {}
+        if at > seen.get(who, ""):
+            seen[who] = at
+            SEEN.parent.mkdir(parents=True, exist_ok=True)
+            SEEN.write_text(json.dumps(seen))
+        return web.json_response({"ok": True})
 
     def models_llm_forget(name):
         from . import llm as _l
@@ -1896,6 +1950,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/model-override", api_model_override),
         web.post("/api/stt-override", api_stt_override),
         web.get("/api/permissions", api_permissions),
+        web.post("/api/seen", api_seen),
         web.post("/api/permissions", api_permissions),
         web.post("/api/handover", api_handover),
         web.get("/api/install", api_install),

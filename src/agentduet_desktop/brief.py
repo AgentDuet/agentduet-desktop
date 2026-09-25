@@ -58,8 +58,9 @@ Update the brief with the new information below.
 - At most {words} words, in three short parts:
   Who: who they are and how they relate to {owner}.
   Open: EVERY appointment, meeting, promise or follow-up either side mentioned that has not
-        happened yet as of today, each with its date and time. One per line.
-  Last contact: the date and what it was about.
+        happened yet as of today, each with its date and time. One per line. A request to
+        call back, or a promise to call, is a follow-up.
+  Last contact: the date of the NEWEST call or message below, and what was said in it.
 
 Reply with the brief only. Never repeat these rules.
 
