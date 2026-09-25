@@ -5883,6 +5883,23 @@ def test_budget_split() -> None:
     ok("and a fast one never more than the engine's window", fast["total"] <= budget.MAX_TOTAL_TOKENS)
 
 
+def test_unread_badge() -> None:
+    """A person's row counts what is new since the owner last opened them."""
+    print("\n  -- the unread badge --")
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    web = (src / "web.py").read_text()
+    hub = (src / "web.html").read_text(encoding="utf-8")
+    ok("only what the person did is news: calls in, their messages",
+       'not c.get("outgoing")' in web and 'm.get("them")' in web)
+    ok("the first time, everyone starts as seen", "if seen is None:" in web)
+    ok("the daemon keeps it, so it survives a restart", 'SEEN = paths.RUN / "seen.json"' in web)
+    ok("opening a person marks up to what was on screen, not now",
+       "post('/api/seen', {who: p.who, at: newest" in hub)
+    ok("the row shows the count, except for the person on screen",
+       "p.unread && p.who !== PICKED" in hub)
+    ok("and the poll notices a count change", "${p.unread || 0}" in hub)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -5896,6 +5913,7 @@ def main() -> None:
     test_jobs_and_briefs()
     test_assistant_memory()
     test_budget_split()
+    test_unread_badge()
     test_release_ships_the_native_shell()
     test_apple_stt_engine()
     test_local_models_do_not_monologue()
