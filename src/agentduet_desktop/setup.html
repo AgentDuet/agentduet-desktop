@@ -228,15 +228,15 @@
            silently on the first call. Both are stated, not asked — the machine picks the AI model,
            the speech model is the default engine — both start the moment this step is on screen,
            and Finish does not wait for either: they run in the daemon and the hub shows them. -->
+      <!-- A BAR, NOT A NAME (Stanley, 2026-09-25): the owner does not need to know which model,
+           only that it is coming and when it is here. A model already on disk shows a full bar. -->
       <div class="field" id="modelField" hidden>
-        <label for="setupModel">AI model</label>
-        <input type="text" id="setupModel" readonly>
-        <div class="dl" id="modelDl" hidden></div>
+        <div class="lbl">AI model</div>
+        <div class="dl" id="modelDl"></div>
       </div>
       <div class="field" id="sttField" hidden>
-        <label for="setupStt">Speech model</label>
-        <input type="text" id="setupStt" readonly>
-        <div class="dl" id="sttDl" hidden></div>
+        <div class="lbl">Speech recognition</div>
+        <div class="dl" id="sttDl"></div>
       </div>
       <p class="dlnote" id="dlNote" hidden>Both download in the background. You can finish setup now.</p>
 
@@ -501,8 +501,7 @@
   fetch(`/api/models?t=${T}`).then(r => r.json()).then(d => {
     PICK = d.pick || {};
     if (!PICK.model) return;
-    $('setupModel').value = PICK.downloaded
-      ? PICK.name : `${PICK.name} \u00b7 ${(PICK.dl_mb / 1024).toFixed(1)} GB`;
+    if (PICK.downloaded) done($('modelDl')); else bar($('modelDl'), 0, PICK.dl_mb || 0);
     $('modelField').hidden = false;
     startPick();
   }).catch(() => {});
@@ -529,7 +528,7 @@
     STT = {model: d.model, name: row.name || d.engine_name, mb: d.mb, cached: d.cached,
            running: d.running};
     if (!d.installed || !STT.model) return;
-    $('setupStt').value = STT.cached ? STT.name : `${STT.name} \u00b7 ${(STT.mb / 1024).toFixed(1)} GB`;
+    if (STT.cached) done($('sttDl')); else bar($('sttDl'), 0, STT.mb || 0);
     $('sttField').hidden = false;
     startSpeech();
   }).catch(() => {});
@@ -546,10 +545,13 @@
   // PROGRESS, once a second while this step is up. Reads the same two endpoints Settings does,
   // so the wizard and Settings cannot disagree about how far a download has got.
   function bar(el, got, total){
-    const pct = total ? Math.min(100, Math.round(got * 100 / total)) : 0;
-    el.hidden = false;
-    el.innerHTML = '<div class="barlab"><span></span><span>' + got + ' / ' + total + ' MB \u00b7 '
-      + pct + '%</span></div><div class="bar"><i style="width:' + pct + '%"></i></div>';
+    const pct = total ? Math.min(99, Math.round(got * 100 / total)) : 0;
+    el.innerHTML = '<div class="barlab"><span>Downloading</span><span>' + got + ' / ' + total
+      + ' MB \u00b7 ' + pct + '%</span></div><div class="bar"><i style="width:' + pct + '%"></i></div>';
+  }
+  function done(el){
+    el.innerHTML = '<div class="barlab"><span>Ready</span><span>100%</span></div>'
+      + '<div class="bar"><i style="width:100%"></i></div>';
   }
   let following = null;
   function follow(){
@@ -560,11 +562,11 @@
         fetch(`/api/models?t=${T}`).then(r => r.json()).catch(() => ({})),
         fetch(`/api/setup/stt?t=${T}`).then(r => r.json()).catch(() => ({}))]);
       const pk = m.pick || {}, job = pk.job;
-      if (job && !pk.downloaded) bar($('modelDl'), job.done_mb, job.total_mb);
-      else { $('modelDl').hidden = true; if (pk.downloaded) $('setupModel').value = pk.name; }
+      if (pk.downloaded) done($('modelDl'));
+      else if (job) bar($('modelDl'), job.done_mb, job.total_mb);
       const row = (t.tiers || []).find(x => x.model === t.model) || {};
-      if (t.running && !t.cached) bar($('sttDl'), row.got_mb || 0, t.mb || row.mb || 0);
-      else { $('sttDl').hidden = true; if (t.cached) $('setupStt').value = row.name || STT.name; }
+      if (t.cached) done($('sttDl'));
+      else if (t.running) bar($('sttDl'), row.got_mb || 0, t.mb || row.mb || 0);
       $('dlNote').hidden = !((job && !pk.downloaded) || (t.running && !t.cached));
     }, 1000);
   }
