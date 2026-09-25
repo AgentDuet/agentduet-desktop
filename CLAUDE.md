@@ -1242,8 +1242,9 @@ claim anyway, because it is the one a regulated buyer is actually asking about.
       app strands nothing. The multi-destination question to Cedric is ON HOLD because of it.
       **PROVEN 2026-09-25:** hang-up from the app ends the call for the caller (after the fix that
       checks `disconnect()`'s result), and a call that rings out in the app passes through to the
-      phone — the fallback that was the riskiest unknown. **Still unmeasured:** echo on speakers
-      rather than headphones, and latency, both "seems good" from real calls.
+      phone — the fallback that was the riskiest unknown. **Speaker and microphone: settled by
+      Stanley, 2026-09-25** — the Mac's own are fine; the mic picking up room noise is expected and
+      accepted, and so is the odd garbled word it causes. Latency is "seems good", not measured.
 - [ ] **Consent gates this AND outbound campaigns, and neither has an answer.** Recording has
       jurisdiction-specific rules (PDPA here, two-party-consent regimes elsewhere); an outbound
       campaign needs to know who is on the list and whether they agreed. Same class of question
