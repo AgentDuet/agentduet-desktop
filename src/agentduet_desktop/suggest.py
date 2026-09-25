@@ -272,7 +272,10 @@ def analyse_once() -> int:
     for text, at in todo:
         key = digest(text)
         try:
-            verdict = _judge(text, client)
+            # BEHIND THE OWNER'S QUESTIONS, and never during a call — see `gate`.
+            from . import gate
+            with gate.priority(gate.SUGGEST):
+                verdict = _judge(text, client)
         except Exception as exc:                  # one bad item must not stop the queue
             logger.warning("could not judge an item: %s", exc)
             continue

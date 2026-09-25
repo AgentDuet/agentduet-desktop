@@ -707,11 +707,20 @@ class OwnerChat:
         self.tainted = False
 
     def _trim(self, lines: list[str]) -> list[str]:
-        """The newest lines that fit KEEP and HISTORY_WORDS. The last line is always kept."""
+        """The newest lines that fit KEEP and HISTORY_WORDS. The last line is always kept.
+
+        IN STEPS, NOT A LINE AT A TIME. Dropping the oldest line every turn changes the start
+        of every prompt, which is the one thing the engine's reuse needs to stay the same. So
+        nothing is dropped until a limit is passed, and then it drops to 60% of it: the start
+        stays stable for several turns between drops.
+        """
+        if len(lines) <= self.KEEP and sum(len(x.split()) for x in lines) <= self.HISTORY_WORDS:
+            return list(lines)
+        cap_lines, cap_words = int(self.KEEP * 0.6), int(self.HISTORY_WORDS * 0.6)
         kept, words = [], 0
-        for line in reversed(lines[-self.KEEP:]):
+        for line in reversed(lines[-cap_lines:]):
             n = len(line.split())
-            if kept and words + n > self.HISTORY_WORDS:
+            if kept and words + n > cap_words:
                 break
             kept.append(line)
             words += n
@@ -842,11 +851,29 @@ class OwnerChat:
             f"THEY ASKED: {message}\n\n"
             f"THE LOOKUP RETURNED:\n" + "\n\n".join(results[-3:]) + "\n\nANSWER:")
 
+    def _stable(self) -> str:
+        """The start every prompt shares until the history changes: what `_prewarm` reads."""
+        return self.system + "\n\n" + "\n".join(self.history)
+
     async def _ask(self, history: list[str], context: str = "") -> str:
-        # Context rides on the SYSTEM side, not in history: it is regenerated per turn from
-        # live state, so storing it would accumulate stale copies of the same queue.
-        text = self.system + ("\n\n" + context if context else "") + "\n\n" + "\n".join(history)
+        # STABLE FIRST, CHANGING LAST (2026-09-25). The engine re-reads a prompt only from its
+        # first change: 4,000 tokens cold took 10.8 s on the M5, the same start plus 100 new
+        # tokens 0.39 s. So the instructions and the earlier conversation go first, and the
+        # context — the inbox and what is on screen, rebuilt every turn — goes AFTER them, just
+        # before this turn's own lines. It sat between the instructions and the history, which
+        # made every question re-read the whole history.
+        # Context is never stored in history: it is regenerated per turn from live state.
+        start = getattr(self, "_turn_start", len(history))
+        past, now = history[:start], history[start:]
+        text = (self.system + "\n\n" + "\n".join(past)
+                + ("\n\n" + context if context else "") + "\n\n" + "\n".join(now))
         return await asyncio.to_thread(self.client.complete, text)
+
+    def _prewarm(self) -> None:
+        """After a turn, read the next prompt's start while the owner is reading the answer."""
+        warm = getattr(self.client, "prewarm", None)
+        if warm:
+            asyncio.get_running_loop().run_in_executor(None, warm, self._stable())
 
     # A completed action claimed in prose. The assistant answered "I have updated the
     # knowledge base to reflect that you are closed next Monday" having called no tool at all —
@@ -952,6 +979,7 @@ class OwnerChat:
             if tools.UNTRUSTED_MARK in context:
                 self.tainted = True
         history = self.history + [f"OWNER: {message}"]
+        self._turn_start = len(self.history)
         used: list[str] = []
         nudged = False
         # WHAT HAS ALREADY BEEN ASKED THIS TURN. The loop was bounded but had no memory, so a
@@ -996,9 +1024,7 @@ class OwnerChat:
                 if _is_transcript(out):
                     logger.warning("discarded a transcript-shaped reply: %r", out[:120])
                     out = ("That came back as my own notes about calling a tool rather than an "
-                          "answer, so nothing ran and nothing was saved. Ask again. If it keeps "
-                          "happening, New conversation clears the history that taught it that "
-                          "shape.")
+                          "answer, so nothing ran and nothing was saved. Ask again.")
                 if _degenerate(out):
                     # NEVER STORE IT. The visible log keeps it forever and `remember` replays it into
                     # every later turn, so a context that visibly repeats primes the next loop — one bad
@@ -1007,7 +1033,7 @@ class OwnerChat:
                                    len(out), self.model)
                     out = ("That came back as one phrase repeated, so I have thrown it away rather "
                              "than keep it. Ask again. If it keeps happening the model is too small for "
-                             "this, or the conversation has grown repetitive — New conversation clears it.")
+                             "this, or the conversation has grown repetitive.")
                 remember(history + [f"ASSISTANT: {out}"])
                 self._record(shown_as, out, used, full=message, draft=draft_intent(message), via=via)
                 return {"reply": out, "tools": used, "proposals": _proposals(),
@@ -1115,9 +1141,7 @@ class OwnerChat:
         if _is_transcript(final):
             logger.warning("discarded a transcript-shaped reply: %r", final[:120])
             final = ("That came back as my own notes about calling a tool rather than an "
-                  "answer, so nothing ran and nothing was saved. Ask again. If it keeps "
-                  "happening, New conversation clears the history that taught it that "
-                  "shape.")
+                  "answer, so nothing ran and nothing was saved. Ask again.")
         if _degenerate(final):
             # NEVER STORE IT. The visible log keeps it forever and `remember` replays it into
             # every later turn, so a context that visibly repeats primes the next loop — one bad
@@ -1126,9 +1150,10 @@ class OwnerChat:
                            len(final), self.model)
             final = ("That came back as one phrase repeated, so I have thrown it away rather "
                      "than keep it. Ask again. If it keeps happening the model is too small for "
-                     "this, or the conversation has grown repetitive — New conversation clears it.")
+                     "this, or the conversation has grown repetitive.")
         remember(history + [f"ASSISTANT: {final}"])
         self._record(shown_as, final, used, full=message, draft=draft_intent(message), via=via)
+        self._prewarm()
         return {"reply": final, "tools": used, "proposals": _proposals(),
                 "draft": draft_intent(message) and bool(final)}
 

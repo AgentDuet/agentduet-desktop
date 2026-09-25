@@ -149,10 +149,45 @@ class _Local:
         self.model = model
 
     def complete(self, prompt: str, think: bool = False) -> str:
-        from . import models
+        """One answer, through `gate`: one job on the engine at a time, the most urgent first.
+
+        A background job that is overtaken stops at its next token and is run again once the
+        model is free, so its caller still gets a whole answer, only later.
+        """
+        from . import gate
+        prio = gate.current()
+        while True:
+            ticket = gate.acquire(prio)
+            try:
+                return self._complete(prompt, think, prio, ticket)
+            except gate.Preempted:
+                logger.info("model: a priority-%d job gave way and will run again", prio)
+            finally:
+                gate.release(ticket)
+
+    def prewarm(self, prompt: str) -> None:
+        """Read `prompt` now, while idle, so the next question that starts with it is fast.
+
+        Skipped when a question is already waiting: then the question itself does the reading.
+        """
+        from . import gate
+        with gate.priority(gate.PREWARM):
+            ticket = gate.acquire(gate.PREWARM)
+            try:
+                if not gate.question_waiting():
+                    self._complete(prompt, False, gate.PREWARM, ticket, max_tokens=1)
+            except Exception as exc:
+                logger.info("prewarm skipped (%s: %s)", type(exc).__name__, exc)
+            finally:
+                gate.release(ticket)
+
+    def _complete(self, prompt: str, think: bool, prio: int, ticket,
+                  max_tokens: int | None = None) -> str:
+        from . import gate, models
         engine, msg = models.load(self.model)
         if engine is None:
             raise RuntimeError(msg)
+        gate.before(engine, prio)
         # LOADED ONCE AND KEPT. `models.load` returns the resident engine when it is already the
         # one asked for, so a second summary does not re-read gigabytes from disk. Releasing it
         # is the owner's call, through unload — see the three states in models.py.
@@ -176,7 +211,12 @@ class _Local:
             msgs.append({"role": "system", "content": "/no_think"})
         msgs.append({"role": "user", "content": prompt})
         try:
-            out = self._generate(engine, msgs, think)
+            if prio in (gate.QUESTION, gate.PREWARM):
+                out = self._generate(engine, msgs, think, max_tokens)
+            else:
+                out = self._streamed(engine, msgs, think, ticket)
+        except gate.Preempted:
+            raise
         except Exception as exc:
             raise RuntimeError(_local_failure(exc, self.model)) from exc
         answer = out["choices"][0]["message"]["content"] or ""
@@ -186,9 +226,21 @@ class _Local:
         # must not get is 7,000 tokens of deliberation in their chat history.
         return _thought_answer(answer, self.model, think)
 
-    def _generate(self, engine, msgs, think: bool = False):
+    def _streamed(self, engine, msgs, think: bool, ticket) -> dict:
+        """A background job's generation, token by token, so it can give way at any token."""
+        from . import gate
+        parts = []
+        for chunk in self._generate(engine, msgs, think, stream=True):
+            if ticket.cancel.is_set():
+                raise gate.Preempted()
+            parts.append((chunk["choices"][0].get("delta") or {}).get("content") or "")
+        return {"choices": [{"message": {"content": "".join(parts)}}]}
+
+    def _generate(self, engine, msgs, think: bool = False, max_tokens: int | None = None,
+                  stream: bool = False):
         return engine.create_chat_completion(
             messages=msgs,
+            stream=stream,
             # TEMPERATURE 0 IS WRONG FOR REASONING, and this is not a preference. Qwen warns
             # that greedy decoding sends its thinking mode into endless repetition, and that is
             # exactly what was measured: at temperature 0 the 8B exhausted 2,048 tokens with no
@@ -214,7 +266,7 @@ class _Local:
             # 2,048 produced nothing at all — not a poor answer, an empty one. 8,192 is enough
             # for that case and is the honest cost of the setting; the truncation path below
             # covers what happens when even that runs out.
-            max_tokens=8192 if think else 2048)
+            max_tokens=max_tokens or (8192 if think else 2048))
 
 
 def _local_failure(exc: Exception, model: str) -> str:
