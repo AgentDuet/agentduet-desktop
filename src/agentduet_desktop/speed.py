@@ -11,8 +11,8 @@ writing speed is 32 over the rest. A few tokens are run first, because the first
 process compiles kernels and would make the machine look slower than it is.
 
 WHEN. The first time a model is loaded without a measurement, as a background job: lowest
-priority, never during a call, giving way to a question (the measurement is simply dropped and
-asked for again the next time the model loads).
+priority, never during a call, giving way to a question — and then asking for itself again,
+since the question that loads a model is usually the one that interrupts its measurement.
 """
 from __future__ import annotations
 
@@ -72,6 +72,9 @@ def measure(model: str) -> dict:
         t0, first, n = time.time(), None, 0
         for _ in engine.generate(toks, temp=0.0):
             if ticket.cancel.is_set():
+                # A QUESTION ARRIVED. Try again once the model is free — the question that
+                # loads a model is usually the one that interrupts its measurement.
+                request(model)
                 return {}
             if first is None:
                 first = time.time()

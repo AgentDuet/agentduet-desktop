@@ -40,13 +40,17 @@ CALLS_PER_UPDATE = 3
 #: Characters of one transcript given to an update.
 CALL_CHARS = 4000
 
-PROMPT = """You keep a short brief about one person {owner} talks to. {owner}'s assistant reads
+PROMPT = """Today is {today}.
+
+You keep a short brief about one person {owner} talks to. {owner}'s assistant reads
 it before answering questions about this person.
 
 Update the brief with the new information below.
 - Where the new information and the brief disagree, the NEWER one wins.
 - Where {owner} and the other person disagree about the same thing, {owner}'s word wins.
-- Keep the date beside anything that has one: appointments, promises, deadlines.
+- Keep the date beside anything that has one: appointments, promises, deadlines. Work out
+  "tomorrow" or "Friday" from the date of the call it was said in, and write the date. Never
+  add a weekday or a date that was not said or cannot be worked out that way.
 - Drop what is finished or no longer true.
 - Use only the brief and the new information. Do not guess.
 - At most {words} words, in three short parts:
@@ -54,7 +58,7 @@ Update the brief with the new information below.
   Open: what is still open, with dates.
   Last contact: the date and what it was about.
 
-Reply with the brief only.
+Reply with the brief only. Never repeat these rules.
 
 CURRENT BRIEF (as of {asof}):
 {current}
@@ -163,7 +167,8 @@ def update(who: str) -> bool:
                    f"The assistant answered: {a}") for at, q, a in chat]
     items.sort()
     from . import budget
-    prompt = PROMPT.format(owner=owner.name() or "the owner", words=budget.split()["person_words"],
+    prompt = PROMPT.format(today=datetime.now().strftime("%A %d %B %Y"),
+                           owner=owner.name() or "the owner", words=budget.split()["person_words"],
                            asof=rec.get("updated", "never"),
                            current=rec.get("summary") or "(none yet)",
                            new="\n\n".join(x for _, x in items))

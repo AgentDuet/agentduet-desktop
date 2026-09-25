@@ -5717,6 +5717,29 @@ def test_model_gate() -> None:
     ok("and the background job runs once the call ends", bool(got))
     gate.release(got[0])
 
+    # A WHOLE TURN IS BUSY: no background job slips between a lookup and the answer.
+    with gate.turn():
+        got2 = []
+        bg2 = threading.Thread(target=lambda: got2.append(gate.acquire(gate.FOLD)))
+        bg2.start(); bg2.join(0.3)
+        ok("a background job waits for the whole owner turn", not got2)
+    bg2.join(3)
+    ok("and runs once the turn is over", bool(got2))
+    gate.release(got2[0])
+
+    # THE AFTER-TURN JOBS RUN ON EVERY EXIT — they sat after one return path of several, so an
+    # ordinary lookup-then-answer turn never folded, warmed or updated a brief.
+    import asyncio as _aio
+    from agentduet_desktop.assistant import OwnerChat
+    after = []
+    fake = type("F", (), {})()
+    async def early(*a, **k):
+        return {"reply": "early"}
+    fake._turn = early
+    fake._after_turn = lambda viewing: after.append(viewing)
+    _aio.run(OwnerChat.turn(fake, "hi", viewing="+65"))
+    eq("an early return still queues the after-turn jobs", after, ["+65"])
+
     # THE ASSISTANT'S STATE is saved before a background job and restored before the next question.
     class Eng:
         def __init__(self): self.log = []
