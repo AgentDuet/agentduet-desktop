@@ -126,8 +126,6 @@
     padding-bottom:.7rem;border-bottom:1px solid var(--line);border-radius:.6rem .6rem 0 0;}
   .who.pinned .material-symbols-rounded{font-size:1.05rem;color:var(--blue400);}
   .who.pinned .n{font-family:var(--sans);font-weight:600;}
-  .mdl{font-family:var(--mono);font-size:10px;color:var(--faint);padding:.2rem .5rem;
-    border-radius:.3rem;background:var(--slate900);border:1px solid var(--line);}
 
   /* BESIDE THE MARK, NOT COMPETING WITH IT. Monospace and faint, the same register as the
      other small data labels in this page — it is a fact someone looks up, not a heading.
@@ -158,10 +156,6 @@
   .prop button:hover{border-color:var(--faint);color:var(--ink2);}
   .prop button.ok{background:var(--accent);border-color:var(--accent);color:#fff;}
   .prop button.ok:hover{filter:brightness(1.1);}
-  .newconv{background:transparent;border:1px solid var(--line);color:var(--muted);
-           border-radius:.375rem;padding:.25rem .625rem;font:inherit;font-size:.75rem;
-           cursor:pointer;white-space:nowrap;}
-  .newconv:hover{border-color:var(--faint);color:var(--ink2);}
   /* A divider, not a message: the record continues, the model's memory of it does not. */
   .brk{display:flex;align-items:center;gap:.625rem;margin:1rem 0;color:var(--faint);
        font-size:.6875rem;letter-spacing:.06em;text-transform:uppercase;}
@@ -292,8 +286,6 @@
           <p class="sub" id="tSub">Everyone who has called you, and what was recorded.</p>
         </div>
         <div style="display:flex;gap:.6rem;align-items:center">
-          <span class="mdl" id="aModel" hidden>—</span>
-          <button class="newconv" id="newConv" hidden title="Start a new conversation. Your record is kept; the assistant stops carrying the earlier messages.">New conversation</button>
           <span class="pill" id="ovPill"><span class="dot"></span>…</span>
         </div>
       </div>
@@ -458,8 +450,6 @@
     $('tTitle').textContent = 'Personal Assistant';
     $('tSub').textContent = '';
     $('composer').hidden = false;
-    $('aModel').hidden = false;
-    $('newConv').hidden = false;
     const ok = !!MODEL.configured;
     $('ask').disabled = !ok;
     $('send').disabled = !ok;
@@ -472,8 +462,6 @@
 
   function drawThread(){
     const p = people().find(x => x.who === PICKED);
-    $('aModel').hidden = true;
-    $('newConv').hidden = true;
     drawDownload();
     if (!p) { $('composer').hidden = true; return; }
 
@@ -962,14 +950,6 @@
     box.focus();
   }
 
-  $('newConv').onclick = async () => {
-    const d = await post('/api/chat_new', {});
-    TURNS = (d.turns || []).map(t => t.break ? {brk: true} : {q: t.q, a: t.a, draft: !!t.draft, sent: !!t.sent, via: t.via || '', pending: !!t.pending, draft_for_name: t.draft_for_name || ''});
-    PROPOSALS = [];
-    drawChat();
-    $('ask').focus();
-  };
-
   $('send').onclick = send;
   $('ask').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); return; }
@@ -1047,8 +1027,6 @@
     // tell a local 135M model from a hosted one, and the two give very different replies.
     MODEL = D.model || {};
     STT_DL = D.stt || {};
-    $('aModel').textContent = MODEL.name || 'no model';
-    $('aModel').title = MODEL.describe || '';
     // The gate is applied where the composer is drawn, not here — it belongs to the ASSISTANT
     // and not to a reply. Replying to a person needs no model at all, the same way carrying a
     // call needs none, and disabling the box on an install with no key would have left a

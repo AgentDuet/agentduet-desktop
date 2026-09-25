@@ -610,6 +610,10 @@ class OwnerChat:
     # the third step failed. Trimmed rather than unbounded: tool results are verbose and
     # the whole thing is re-sent every turn.
     KEEP = 30
+    #: A GAP THIS LONG STARTS A NEW CONVERSATION BY ITSELF (Stanley, 2026-09-25). It replaces the
+    #: "New conversation" button: coming back after an hour is almost always a new subject, and
+    #: the owner should not have to tell the assistant so. The record is kept, as with the button.
+    IDLE_BREAK_SECONDS = 3600
 
     #: The owner's own chat, persisted. It used to live only in this object, so a page reload
     #: showed an empty panel and a daemon restart genuinely lost it — while the asker side has
@@ -697,6 +701,20 @@ class OwnerChat:
         self.history = []
         self.tainted = False
 
+    def _break_if_idle(self) -> None:
+        """Start a new conversation when the last turn is older than IDLE_BREAK_SECONDS."""
+        for turn in reversed(self.shown):
+            if turn.get("break"):
+                return
+            if "q" in turn:
+                try:
+                    last = datetime.fromisoformat(turn.get("at", ""))
+                except ValueError:
+                    return
+                if (datetime.now() - last).total_seconds() >= self.IDLE_BREAK_SECONDS:
+                    self.new_conversation()
+                return
+
     def _load(self) -> list[dict]:
         try:
             return json.loads(self.STORE.read_text())
@@ -715,6 +733,7 @@ class OwnerChat:
         The slot is filled in by `_record` when the answer lands, rather than a second turn
         being appended, so the thread never shows the question twice.
         """
+        self._break_if_idle()
         turn = {"q": question, "a": "", "tools": [],
                 "at": datetime.now().isoformat(timespec="seconds"), "pending": True}
         if via:
@@ -840,6 +859,7 @@ class OwnerChat:
         The model still receives `message`; only what is stored is replaced.
         """
         shown_as = label or message
+        self._break_if_idle()
         # Hand over what the assistant would otherwise have to ask for, so it does not answer a
         # question about someone from nothing. It used to call `owner_context`, which describes
         # the person's OPEN THREADS and the draft the answering agent wrote for them — objects
