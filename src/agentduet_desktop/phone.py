@@ -31,9 +31,9 @@ import time
 
 logger = logging.getLogger("secretary")
 
-#: How long a call rings in the app before it passes through. Short enough that the fallback
-#: still reaches the destination before a caller gives up; long enough to cross a room.
-RING_SECONDS = 20
+#: How long a call rings in the app before it passes through. 10 s, from 20 on 2026-09-25 after
+#: the first real ring-out: Stanley found 20 too long to wait before the call moved on to his phone.
+RING_SECONDS = 10
 
 #: Mic chunks buffered between the page and the call. At ~20 ms a chunk this is about four
 #: seconds — enough to ride out a stall, small enough that a stuck sender cannot grow it.

@@ -1230,7 +1230,7 @@ claim anyway, because it is the one a regulated buyer is actually asking about.
       The first attempt recorded the owner as exact zeros: a closed lid (see Gotchas). A
       hub switch, "Answer calls here" (`## Answer here`, off unless an explicit yes), shown in
       carry mode only. On, and with a hub page open, an inbound call rings in the page for
-      `phone.RING_SECONDS` (20); answering bridges the caller to the page's microphone and
+      `phone.RING_SECONDS` (10, from 20 on 2026-09-25); answering bridges the caller to the page's microphone and
       speaker; declining, not answering, or no page open falls through to the ordinary
       `connect()` pass-through. Outgoing calls (the owner's own line) are never rung here.
       **No SIP**: it is the SDK's own "Answer a call" sample — `answer()`, the caller's stream
@@ -1240,10 +1240,10 @@ claim anyway, because it is the one a regulated buyer is actually asking about.
       **Pass-through is the platform default** (Stanley, 2026-09-24): with no WSS client the
       backend passes a call through by itself, so the app is only a capture layer and a closed
       app strands nothing. The multi-destination question to Cedric is ON HOLD because of it.
-      **Still unproven:** (1) whether `connect()` still works after a call has rung unanswered in
-      the app for 20s — the fallback path, and the riskiest; August proved only that it fails
-      after `answer()`. Test it by letting a call ring out. (2) Echo on speakers rather than
-      headphones, and (3) latency, both "seems good" from one call and not measured.
+      **PROVEN 2026-09-25:** hang-up from the app ends the call for the caller (after the fix that
+      checks `disconnect()`'s result), and a call that rings out in the app passes through to the
+      phone — the fallback that was the riskiest unknown. **Still unmeasured:** echo on speakers
+      rather than headphones, and latency, both "seems good" from real calls.
 - [ ] **Consent gates this AND outbound campaigns, and neither has an answer.** Recording has
       jurisdiction-specific rules (PDPA here, two-party-consent regimes elsewhere); an outbound
       campaign needs to know who is on the list and whether they agreed. Same class of question
