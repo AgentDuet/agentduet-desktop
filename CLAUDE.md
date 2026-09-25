@@ -893,8 +893,9 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       each turn, and its state is saved/restored around background jobs. Measured on the M5,
       ~3,000-token start: warm question 0.71 s; after a suggestion 1.24 s; mid-suggestion 1.08 s;
       cold 12.5 s. **The person brief is built too** (`brief.py` on `jobs.py`: one pending job
-      per subject, watermarks, newer wins, owner outranks caller). **Not built yet:** the
-      assistant summary, then budgets from a timed run after download. The fixed instructions
+      per subject, watermarks, newer wins, owner outranks caller). **And the assistant
+      memory** (`recall.py`, from the assistant chat only, folded after every turn). **Not
+      built yet:** budgets from a timed run after download. The fixed instructions
       are 1,677 tokens (4.3 s cold) and worth trimming. Design: `docs/design.md`, *The
       assistant's context*.
 - [ ] **Confirm the lead family on QUALITY.** Gemma 4 leads on speed, measured 2026-09-23 on the

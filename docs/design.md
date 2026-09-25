@@ -936,8 +936,15 @@ tokens — on every question. Rules, all in the prompt:
   transcripts it came from. A call with nothing said only moves the watermark.
 Measured on real calls: seven calls of one person folded in two updates, 6.0 s.
 
-**An assistant summary** — not built yet. Made **only from the assistant chat**, never from call
-text it looked up, folded when history outgrows its budget.
+**An assistant memory** — `recall.py`, built. About 200 words, carried right after the
+instructions in every prompt and across conversations. Made **only from the assistant chat** —
+the owner's questions and its answers, never call text a lookup returned. Folded after every turn
+in the background (FOLD priority), incrementally from its watermark, newer wins; the prompt keeps,
+in order, instructions about how to answer, facts and decisions, then things to do later. It sits
+near the top of every prompt, so the fold job warms the next prompt's start AFTER folding.
+Measured on a six-turn sample: 1.3–3.3 s per fold; "keep replies short", the newer of two closing
+times, and a follow-up all kept — the first prompt wording dropped the reply-length instruction,
+which is why the order is now spelled out.
 
 **An hour of quiet starts a new conversation** (`OwnerChat.IDLE_BREAK_SECONDS`). It replaced the
 "New conversation" button: coming back after an hour is almost always a new subject.
