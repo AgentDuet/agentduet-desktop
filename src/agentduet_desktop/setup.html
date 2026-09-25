@@ -184,14 +184,25 @@
         </div>
       </div>
       <div class="perm">
-        <div class="lbl">Documents folder
-          <span class="sublbl">Your call recordings and transcripts are kept in Documents › AgentDuet. Required.</span></div>
+        <div class="lbl">Documents folder (Required)
+          <span class="sublbl">Your call recordings and transcripts are kept in Documents › AgentDuet.</span></div>
         <div class="acts" id="docActs"></div>
       </div>
       <div class="perm">
-        <div class="lbl">Microphone
-          <span class="sublbl">To answer calls in this window. You can skip this.</span></div>
+        <div class="lbl">Microphone (Optional)
+          <span class="sublbl">To answer calls in this window.</span></div>
         <div class="acts" id="micActs"></div>
+      </div>
+      <!-- TICKED, AND ASKED. A phone answering service that is not running answers nothing and
+           says nothing about it, so the owner finds out by missing a call — which is the whole
+           argument for it being on, and none of the argument for switching it on unasked.
+           Adding yourself to someone's login items without asking is what adware does, and it
+           spends trust to get what one ticked box gets anyway. So: visible, pre-ticked, theirs
+           to untick. -->
+      <div class="togrow" id="loginRow">
+        <div class="lbl">Start AgentDuet when I log in (Optional)
+          <span class="sublbl">So calls are recorded without opening the app.</span></div>
+        <label class="sw"><input type="checkbox" id="atLogin" checked><span class="track"></span></label>
       </div>
       <button class="go" id="permsDone" disabled><span>Continue</span>
         <span class="material-symbols-rounded">arrow_forward</span></button>
@@ -229,17 +240,6 @@
       </div>
       <p class="dlnote" id="dlNote" hidden>Both download in the background. You can finish setup now.</p>
 
-
-      <!-- TICKED, AND ASKED. A phone answering service that is not running answers nothing and
-           says nothing about it, so the owner finds out by missing a call — which is the whole
-           argument for it being on, and none of the argument for switching it on unasked.
-           Adding yourself to someone's login items without asking is what adware does, and it
-           spends trust to get what one ticked box gets anyway. So: visible, pre-ticked, theirs
-           to untick. -->
-      <div class="togrow">
-        <div class="lbl">Start AgentDuet when I log in</div>
-        <label class="sw"><input type="checkbox" id="atLogin" checked><span class="track"></span></label>
-      </div>
 
       <button class="go" id="doDone"><span>Complete Setup &amp; Open Hub</span>
         <span class="material-symbols-rounded">arrow_forward</span></button>
@@ -300,8 +300,7 @@
   function show(v){
     // PERMISSIONS COME FIRST, on a Mac that has not granted the Documents folder yet. Every way
     // past sign-in asks for 'setup', so the detour lives here rather than at each call site.
-    if (v === 'setup' && PERMS.applies && !PERMS.passed
-        && !(PERMS.documents === 'granted' && PERMS.mic === 'granted')) v = 'perms';
+    if (v === 'setup' && PERMS.applies && !PERMS.passed) v = 'perms';
     ['login', 'perms', 'setup'].forEach(k => $('v-' + k).classList.toggle('on', k === v));
     if (v === 'perms') drawPerms();
     startPick();
@@ -430,6 +429,8 @@
   fetch(`/api/permissions?t=${T}`).then(r => r.json()).then(d => {
     PERMS.applies = !!d.applies;
     PERMS.documents = d.documents || '';
+    // NO PERMISSIONS STEP off macOS, so the login question goes back to Quick Setup.
+    if (!PERMS.applies) $('doDone').before($('loginRow'));
   }).catch(() => {});
   // The microphone's state WITHOUT asking: the Permissions API reports a grant already made.
   // Anything else shows Allow, which asks — and answers at once if macOS already decided.
