@@ -5681,6 +5681,65 @@ def test_idle_break() -> None:
     ok("and no model label", 'id="aModel"' not in hub)
 
 
+def test_model_gate() -> None:
+    """One local model, one job at a time, the most urgent first; the assistant stays warm."""
+    print("\n  -- the model gate: one job at a time, most urgent first --")
+    import threading, time as _time
+    import unittest.mock as _m
+    from agentduet_desktop import gate
+    order = []
+    first = gate.acquire(gate.PREWARM)            # something holds the model
+    def job(p, name):
+        t = gate.acquire(p)
+        order.append(name)
+        gate.release(t)
+    ts = [threading.Thread(target=job, args=(gate.FOLD, "fold")),
+          threading.Thread(target=job, args=(gate.SUGGEST, "suggest")),
+          threading.Thread(target=job, args=(gate.QUESTION, "question"))]
+    for t in ts:
+        t.start(); _time.sleep(0.05)
+    ok("a lower job is told to give way when a question arrives", first.cancel.is_set())
+    gate.release(first)
+    for t in ts:
+        t.join(3)
+    eq("then they run most urgent first", order, ["question", "suggest", "fold"])
+
+    # NOTHING IN THE BACKGROUND DURING A CALL, but a question still runs.
+    with _m.patch.object(gate, "_call_on", return_value=True):
+        got = []
+        bg = threading.Thread(target=lambda: got.append(gate.acquire(gate.SUGGEST)))
+        bg.start(); bg.join(0.3)
+        ok("a background job waits while a call is on", not got)
+        q = gate.acquire(gate.QUESTION)
+        ok("a question does not", q is not None)
+        gate.release(q)
+    bg.join(3)
+    ok("and the background job runs once the call ends", bool(got))
+    gate.release(got[0])
+
+    # THE ASSISTANT'S STATE is saved before a background job and restored before the next question.
+    class Eng:
+        def __init__(self): self.log = []
+        def save_state(self): self.log.append("save"); return "S"
+        def load_state(self, st): self.log.append("load " + st)
+    e = Eng()
+    gate._owner, gate._saved = "", None
+    gate.before(e, gate.QUESTION)
+    gate.before(e, gate.SUGGEST)
+    gate.before(e, gate.SUGGEST)
+    gate.before(e, gate.QUESTION)
+    gate.before(e, gate.QUESTION)
+    eq("saved once before the background work, restored once after", e.log, ["save", "load S"])
+
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    a = (src / "assistant.py").read_text()
+    ok("the prompt puts the changing context after the earlier conversation",
+       'text = (self.system + "\\n\\n" + "\\n".join(past)' in a)
+    ok("and warms the next prompt after each turn", "self._prewarm()" in a)
+    ok("the suggestion worker runs behind questions",
+       "with gate.priority(gate.SUGGEST):" in (src / "suggest.py").read_text())
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -5690,6 +5749,7 @@ def main() -> None:
     test_gpu_offload()
     test_documents_permission()
     test_idle_break()
+    test_model_gate()
     test_release_ships_the_native_shell()
     test_apple_stt_engine()
     test_local_models_do_not_monologue()

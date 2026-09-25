@@ -884,6 +884,17 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       hosted provider before the auto-pick exists to catch them. Prune after it lands.
       Also found: all 21 old `ram_mb` values are exactly download x 1.30. The module docstring
       said so; three comments further down said they were measured. The comments are fixed.
+- [x] ~~**One job on the model at a time, most urgent first.**~~ **DONE 2026-09-25**, as
+      `gate.py`. Nothing serialised the engine before — the assistant and the suggestion worker
+      could call it from two threads at once. Order: question, suggestion, person summary, fold,
+      prewarm; a background job gives way at its next token and reruns; none runs during a call.
+      The assistant's prompt is ordered stable-first (instructions, earlier chat, THEN the inbox
+      and what is on screen), history is trimmed in steps, the next prompt is prewarmed after
+      each turn, and its state is saved/restored around background jobs. Measured on the M5,
+      ~3,000-token start: warm question 0.71 s; after a suggestion 1.24 s; mid-suggestion 1.08 s;
+      cold 12.5 s. **Not built yet:** the two summaries and machine-derived budgets — the order
+      agreed is gate first, then summaries (person, then assistant), then budgets from a timed
+      run after download. The fixed instructions are 1,677 tokens (4.3 s cold) and worth trimming.
 - [ ] **Confirm the lead family on QUALITY.** Gemma 4 leads on speed, measured 2026-09-23 on the
       M5: E4B read a 1.6k-token call and wrote the reply in 8.7 s, against 15.2 s for Qwen3.5 9B and
       13.8 s for today's Qwen3 8B. Quality is unmeasured — a blind comparison on our own calls can
