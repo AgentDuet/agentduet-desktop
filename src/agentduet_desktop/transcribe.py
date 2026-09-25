@@ -1194,6 +1194,13 @@ async def worker() -> None:
         if merged:
             from . import suggest
             suggest.wake()
+        # AND A PERSON'S BRIEF. The sweep asks only for people with a call newer than their
+        # brief, so it is a no-op when nothing changed — and after a restart it catches up.
+        try:
+            from . import brief
+            brief.sweep()
+        except Exception as exc:
+            logger.warning("brief sweep hit %s: %s", type(exc).__name__, exc)
 
 
 # ---- what is on disk -------------------------------------------------------------------
