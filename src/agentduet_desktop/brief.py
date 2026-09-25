@@ -51,11 +51,14 @@ Update the brief with the new information below.
 - Keep the date beside anything that has one: appointments, promises, deadlines. Work out
   "tomorrow" or "Friday" from the date of the call it was said in, and write the date. Never
   add a weekday or a date that was not said or cannot be worked out that way.
-- Drop what is finished or no longer true.
+- KEEP every open item already in the brief unless the new information changes, cancels or
+  completes it. A call about one thing says nothing about the others.
+- Drop an item only when the new information says it is finished or no longer true.
 - Use only the brief and the new information. Do not guess.
 - At most {words} words, in three short parts:
   Who: who they are and how they relate to {owner}.
-  Open: what is still open, with dates.
+  Open: EVERY appointment, meeting, promise or follow-up either side mentioned that has not
+        happened yet as of today, each with its date and time. One per line.
   Last contact: the date and what it was about.
 
 Reply with the brief only. Never repeat these rules.
@@ -148,6 +151,15 @@ def _chat_after(who: str, after: str) -> list[tuple[str, str, str]]:
             and (t.get("at") or "") > after]
 
 
+def _day(at: str, plus: int = 0) -> str:
+    """"Friday 25 September 2026" for an ISO timestamp, `plus` days on."""
+    from datetime import timedelta
+    try:
+        return (datetime.fromisoformat(at) + timedelta(days=plus)).strftime("%A %d %B %Y")
+    except ValueError:
+        return at
+
+
 def update(who: str) -> bool:
     """Fold what is new about `who` into their brief. True when the model was asked."""
     from . import llm, owner, tools
@@ -166,11 +178,14 @@ def update(who: str) -> bool:
         return False
     if not llm.configured():
         return False
-    items = [(at, f"{at} — a call with them:\n" + (tools.untrusted(text) if text
-                                                   else "(nothing was said)"))
-             for at, text in calls]
-    items += [(at, f"{at} — {owner.name() or 'the owner'} asked the assistant: {q}\n"
-                   f"The assistant answered: {a}") for at, q, a in chat]
+    # RELATIVE DATES ARE WORKED OUT HERE, NOT BY THE MODEL. Told only the call's timestamp, Gemma
+    # put "lunch tomorrow" said on the 25th on the 25th in some runs and the 26th in others, at
+    # temperature 0. So each call says what "today" and "tomorrow" meant in it.
+    items = [(at, f"{_day(at)} — a call with them. In this call \"today\" means {_day(at)} and "
+                  f"\"tomorrow\" means {_day(at, 1)}.\n" + tools.untrusted(text))
+             for at, text in calls if text]
+    items += [(at, f"{_day(at)} — {owner.name() or 'the owner'} told the assistant (\"tomorrow\" "
+                   f"means {_day(at, 1)}): {q}\nThe assistant answered: {a}") for at, q, a in chat]
     items.sort()
     from . import budget
     prompt = PROMPT.format(today=datetime.now().strftime("%A %d %B %Y"),

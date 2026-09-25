@@ -40,7 +40,8 @@ Update the memory with the new exchanges below.
   3. Anything {owner} asked the assistant to do or remind them of later.
 - Leave out small talk, and details of individual callers' calls (those are kept elsewhere).
 - Where the new exchanges and the memory disagree, the NEWER one wins.
-- Drop what is finished or no longer true.
+- KEEP every line already in the memory unless the new exchanges change or finish it.
+- Drop a line only when the new exchanges say it is finished or no longer true.
 - Use only the memory and the exchanges. Do not guess.
 - At most {words} words, as short plain lines.
 

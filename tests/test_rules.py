@@ -5806,6 +5806,8 @@ def test_jobs_and_briefs() -> None:
             ok("a new call is folded in", brief.update("+6511112222"))
             ok("and the call's words go to the model marked as a caller's",
                tools.UNTRUSTED_MARK in asked[-1])
+            ok("relative dates are worked out in code, not left to the model",
+               '"tomorrow" means Monday 21 September 2026' in asked[-1])
             ok("the prompt says newer wins, and the owner outranks the caller",
                "the NEWER one wins" in asked[-1] and "word wins" in asked[-1])
             ok("nothing new: the model is not asked", not brief.update("+6511112222"))
