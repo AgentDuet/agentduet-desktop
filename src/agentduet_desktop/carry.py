@@ -206,7 +206,7 @@ def _wav_path(stamp: str, call_id: str, leg: str) -> "paths.pathlib.Path":
     return legs() / f"{stamp}-{call_id}-{leg}.wav"
 
 
-async def _record_leg(party, stamp: str, call_id: str, leg: str) -> None:
+async def _record_leg(party, stamp: str, call_id: str, leg: str, live_leg=None) -> None:
     """Drain one leg's audio into its own WAV file.
 
     ONE FILE PER LEG, not a mix. They arrive as separate streams because they ARE separate
@@ -264,6 +264,15 @@ async def _record_leg(party, stamp: str, call_id: str, leg: str) -> None:
                                    call_id, leg, exc)
             writer.writeframes(chunk)
             frames += len(chunk)
+            # THE LIVE PREVIEW sees every chunk the file does. Never allowed to cost the
+            # recording: a fault here is logged once and the tap is dropped for this leg.
+            if live_leg is not None:
+                try:
+                    live_leg.feed(chunk)
+                except Exception as exc:
+                    logger.warning("call %s: live captions stopped for the %s leg (%s: %s)",
+                                   call_id, leg, type(exc).__name__, exc)
+                    live_leg = None
         # THE STREAM ENDED BY ITSELF, which is the case worth separating. Reaching here means
         # `audio_stream` raised StopAsyncIteration — the SDK puts a sentinel on the queue when
         # its voice session closes — rather than this task being cancelled at the end of the
@@ -406,10 +415,13 @@ async def handle(sm, noti) -> None:
     far, near = (call.callee, call.caller) if outgoing else (call.caller, call.callee)
     # ONE STAMP FOR THE CALL, so both legs share a stem and the merge can find the pair.
     stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    captions = await _live_start(str(call.id), other)
     # `recorders`, not `legs` — that name is now the folder they are written to, and a local
     # shadowing it here is a trap for whoever next needs the folder in this function.
-    recorders = [asyncio.create_task(_record_leg(far, stamp, str(call.id), "caller")),
-                 asyncio.create_task(_record_leg(near, stamp, str(call.id), "callee"))]
+    recorders = [asyncio.create_task(_record_leg(far, stamp, str(call.id), "caller",
+                                                 captions and captions[0])),
+                 asyncio.create_task(_record_leg(near, stamp, str(call.id), "callee",
+                                                 captions and captions[1]))]
     try:
         # DO NOT ANSWER FIRST. Connect straight away.
         #
@@ -485,6 +497,7 @@ async def handle(sm, noti) -> None:
         for t in recorders:
             t.cancel()
         await asyncio.gather(*recorders, return_exceptions=True)
+        await _live_end(str(call.id))
         # WRITE THE INDEX LAST, once the files are closed and their sizes are final. Recording
         # filenames carry a CALL ID, not a person, so without this row there is no way back from
         # a .wav to whoever was on it — which is the whole basis of a per-person view. The
@@ -509,6 +522,32 @@ async def handle(sm, noti) -> None:
         # provider being down costs a text file rather than anything on the call.
 
 
+async def _live_start(call_id: str, other: str):
+    """Mark the call live for the hub and return its two caption cutters, or None.
+
+    None when captions cannot run (the speech engine is not Qwen, or its model is not here), and
+    never raises: a preview must not be able to cost the call or its recording.
+    """
+    from . import calls as _calls, live
+    try:
+        await live.start(call_id, _calls.person_of({"caller": other}))
+        if not live.enabled():
+            return None
+        return live.Leg(call_id, "caller"), live.Leg(call_id, "callee")
+    except Exception as exc:
+        logger.warning("call %s: live captions unavailable (%s: %s)", call_id,
+                       type(exc).__name__, exc)
+        return None
+
+
+async def _live_end(call_id: str) -> None:
+    from . import live
+    try:
+        await live.end(call_id)
+    except Exception as exc:
+        logger.warning("call %s: could not close live captions (%s)", call_id, exc)
+
+
 async def _answer_here(call, call_id: str, other: str, done: asyncio.Event) -> None:
     """The owner picked up in the app: answer, bridge to the page, record both sides.
 
@@ -520,8 +559,11 @@ async def _answer_here(call, call_id: str, other: str, done: asyncio.Event) -> N
     from . import calls as _calls
     stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
     far_rec, near_rec = phone._QueueParty(), phone._QueueParty()
-    recorders = [asyncio.create_task(_record_leg(far_rec, stamp, str(call.id), "caller")),
-                 asyncio.create_task(_record_leg(near_rec, stamp, str(call.id), "callee"))]
+    captions = await _live_start(str(call.id), other)
+    recorders = [asyncio.create_task(_record_leg(far_rec, stamp, str(call.id), "caller",
+                                                 captions and captions[0])),
+                 asyncio.create_task(_record_leg(near_rec, stamp, str(call.id), "callee",
+                                                 captions and captions[1]))]
     try:
         if not await call.answer():
             logger.error("call %s from %s: answer() failed after it was picked up in the app",
@@ -537,6 +579,7 @@ async def _answer_here(call, call_id: str, other: str, done: asyncio.Event) -> N
         for t in recorders:
             t.cancel()
         await asyncio.gather(*recorders, return_exceptions=True)
+        await _live_end(str(call.id))
         _calls.record(call_id, other, "carried", note="answered in the app", recordings=sorted(
             str(p.name) for p in legs().glob(f"*{call_id}*.wav")))
 

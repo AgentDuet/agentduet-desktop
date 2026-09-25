@@ -889,6 +889,11 @@ async def main() -> None:
     from . import suggest as _sg
     asyncio.create_task(_sg.worker())
 
+    # LIVE CAPTIONS for a call in progress — a preview; the queue above still writes the record.
+    # Idle until a call is carried, and a no-op unless the speech engine is Qwen.
+    from . import live as _live
+    asyncio.create_task(_live.worker())
+
     if not connector_ready():
         logger.info("No AgentDuet connector yet — running the owner's view only. "
                     "Sign in, or set AGENTDUET_API_KEY and AGENTDUET_CONNECTOR_UUID. "

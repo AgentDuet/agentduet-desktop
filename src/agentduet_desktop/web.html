@@ -84,6 +84,16 @@
   .call .text{font-size:.8rem;color:#cbd5e1;line-height:1.6;white-space:pre-wrap;
     background:var(--slate900);border:1px solid rgba(255,255,255,.05);border-radius:.5rem;
     padding:.7rem;max-height:16rem;overflow:auto;}
+  /* A CALL IN PROGRESS. The person's row carries a red dot, and their history ends in a card of
+     live captions: the other party on the left, the owner on the right, as messages are. */
+  .who .livemark{color:#f87171;font-weight:600;}
+  .who .livemark::before{content:"";display:inline-block;width:.45rem;height:.45rem;border-radius:50%;
+    background:#ef4444;margin-right:.35rem;vertical-align:.05rem;animation:livepulse 1.4s ease-in-out infinite;}
+  @keyframes livepulse{0%,100%{opacity:1}50%{opacity:.35}}
+  @media (prefers-reduced-motion: reduce){.who .livemark::before{animation:none;}}
+  .call.live{border-color:rgba(239,68,68,.45);}
+  .call.live .when{color:#fca5a5;}
+  .call .caps{display:flex;flex-direction:column;gap:.5rem;margin-top:.6rem;}
   .call .none{font-size:.78rem;color:var(--faint);font-style:italic;}
 
   /* THE OFFER. One row, one height, the same gap as everything else in a .call — it sits
@@ -362,8 +372,21 @@
     return bits.join(' · ') || 'no activity';
   }
 
+  // EVERYONE TO LIST: the history, plus anyone on a call right now who has none yet — a first-time
+  // caller has no row until the call is indexed, and the whole point of the mark is to show them
+  // while the call is on.
+  function people(){
+    const list = (THREADS.people || []).slice();
+    Object.values(LIVE.calls).forEach(c => {
+      if (!c.ended && !list.some(p => p.who === c.who))
+        list.unshift({who: c.who, display: c.who, calls: [], messages: [], last: ''});
+    });
+    return list;
+  }
+  const liveOn = who => Object.values(LIVE.calls).some(c => c.who === who && !c.ended);
+
   function drawWho(opening){
-    const list = THREADS.people || [];
+    const list = people();
     if (PICKED !== ASSISTANT && !list.some(p => p.who === PICKED)) PICKED = ASSISTANT;
     $('whoList').innerHTML = `
       <div class="who pinned ${PICKED === ASSISTANT ? 'on' : ''}" data-who="${ASSISTANT}">
@@ -372,7 +395,8 @@
       + (list.length ? list.map(p => `
       <div class="who ${p.who === PICKED ? 'on' : ''}" data-who="${esc(p.who)}">
         <span class="n">${esc(p.display || p.who)}</span>
-        <span class="m">${countLabel(p)} · ${esc(when(p.last))}</span>
+        <span class="m">${liveOn(p.who) ? '<span class="livemark">On a call</span>'
+                                         : countLabel(p) + ' · ' + esc(when(p.last))}</span>
       </div>`).join('')
       : '<div class="who-empty">Nobody yet.</div>');
     $('whoList').querySelectorAll('.who').forEach(el => {
@@ -437,7 +461,7 @@
   }
 
   function drawThread(){
-    const p = (THREADS.people || []).find(x => x.who === PICKED);
+    const p = people().find(x => x.who === PICKED);
     $('aModel').hidden = true;
     $('newConv').hidden = true;
     drawDownload();
@@ -503,7 +527,57 @@
     // FOLLOW THE CONVERSATION ONLY IF THEY WERE ALREADY AT THE BOTTOM. Someone scrolled up
     // reading what a caller said last week should not be yanked away by an unrelated message
     // arriving — the same mistake the model list made once a second during a download.
+    drawLive();
     if (nearBottom) $('mbody').scrollTop = $('mbody').scrollHeight;
+  }
+
+  // ---- live captions ------------------------------------------------------------------------
+  //
+  // A PREVIEW (see live.py): while a call is on, each side is transcribed piece by piece and
+  // pushed over the phone socket. The card sits after the person's history and is redrawn on each
+  // caption — it is small, and it is the only part that changes. When the call ends the mark goes;
+  // the card stays until that call's real transcript arrives in the history, then it is dropped.
+  const LIVE = {calls: {}};
+
+  function onLive(m){
+    if (m.type === 'live_calls') {
+      LIVE.calls = {};
+      (m.calls || []).forEach(c => LIVE.calls[c.call] =
+        {who: c.who, started: c.started, captions: c.captions || [], ended: false});
+    } else if (m.type === 'live_start') {
+      LIVE.calls[m.call] = {who: m.who, started: m.started, captions: [], ended: false};
+    } else if (m.type === 'live_end') {
+      if (LIVE.calls[m.call]) LIVE.calls[m.call].ended = true;
+    } else if (m.type === 'caption') {
+      const c = LIVE.calls[m.call];
+      if (c) c.captions.push({leg: m.leg, at: m.at, text: m.text});
+      if (PICKED !== ASSISTANT) { const near = atBottom(); drawLive(); if (near) $('mbody').scrollTop = $('mbody').scrollHeight; }
+      return;                       // a caption changes no row in the list
+    }
+    drawWho(false);
+  }
+
+  function drawLive(){
+    const host0 = $('thread').querySelector('#threadItems');
+    if (!host0 || PICKED === ASSISTANT) return;
+    let host = $('thread').querySelector('#liveItems');
+    if (!host) { host = document.createElement('div'); host.id = 'liveItems'; host0.after(host); }
+    // DROP A FINISHED CALL ONCE ITS REAL TRANSCRIPT IS IN THE HISTORY — the preview has done its job.
+    const hist = (people().find(p => p.who === PICKED) || {}).calls || [];
+    Object.entries(LIVE.calls).forEach(([id, c]) => {
+      if (c.ended && hist.some(h => h.call_id === id && h.transcript)) delete LIVE.calls[id];
+    });
+    const mine = Object.entries(LIVE.calls).filter(([, c]) => c.who === PICKED);
+    host.innerHTML = mine.map(([, c]) => {
+      const caps = c.captions.slice().sort((a, b) => a.at - b.at).map(x => x.leg === 'callee'
+        ? `<div class="turn me"><div class="bub">${esc(x.text)}</div></div>`
+        : `<div class="turn it"><div class="bub">${esc(x.text)}</div></div>`).join('');
+      const since = when(new Date(c.started * 1000).toISOString());
+      return `<div class="rw"><div class="call${c.ended ? '' : ' live'}">
+        <div class="top"><span class="when">${c.ended ? 'Call ended' : 'On a call'} · ${esc(since)}</span></div>
+        ${caps ? `<div class="caps">${caps}</div>` : ''}
+      </div></div>`;
+    }).join('');
   }
 
   // A PROPOSAL READS DIFFERENTLY PER TOOL, and the difference is the whole point of the card.
@@ -1170,6 +1244,9 @@
           return;
         }
         let m; try { m = JSON.parse(e.data); } catch (x) { return; }
+        // LIVE CAPTIONS share this socket and are not the phone's own state — route them away
+        // before `st` is overwritten, or a caption would hang up the in-app call's display.
+        if (['live_calls', 'live_start', 'live_end', 'caption'].includes(m.type)) { onLive(m); return; }
         st = m;
         if (m.type !== 'live') { mine = false; muted = false; stopAudio(); }
         if (m.type === 'ringing') $('callErr').textContent = '';

@@ -616,6 +616,18 @@ derived from no longer exists, it is the only place that says so.
       **Correction recorded with it:** Apple's engine DOES give timestamps — `attributeOptions:
       [.audioTimeRange]`, verified 2026-09-25 — and our helper asked for none. The 2026-09-09
       quarantine cited "Apple's helper prints bare text"; that was our helper, not Apple.
+- [ ] **Live captions — BUILT 2026-09-25, NOT YET SEEN ON A REAL CALL.** While a call is on, the
+      person's row reads "● On a call" (a first-time caller is listed for the length of the call),
+      and their history ends in a card of balloons: the other party left, the owner right. A
+      PREVIEW (`live.py`): the after-call pass still writes the record, and the card is dropped
+      once that call's transcript arrives. The recorder hands each chunk to `live.Leg`, which
+      cuts at pauses as `_pieces` does; one queue, one worker, the resident Qwen under
+      `transcribe._qwen_lock`, pushed over `/api/phone`. **Measured** by replaying the real
+      Vietnamese + English call at the audio clock: 7 captions, each 0.3–1.1 s after its piece
+      closed, so text lands ~1.5–2.3 s after the speaker stops. Qwen only; Whisper and Apple are
+      not wired. **Not built:** word-by-word text (re-transcribing the growing piece), and the last
+      sentence before hang-up, which the preview drops because the call ends first — the after-call
+      transcript has it.
 - [ ] **Accelerating Whisper — MEASURED 2026-09-09, and the answer is METAL, not Core ML.**
       This item argued a 1.3-1.5x ceiling because Core ML accelerates the ENCODER only. That
       reasoning is sound and it was aimed at the wrong route: `ggml` has a full **Metal**

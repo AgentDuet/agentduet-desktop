@@ -55,6 +55,7 @@ import shutil
 import subprocess
 import sys
 import pathlib
+import threading
 import wave
 
 logger = logging.getLogger("secretary")
@@ -915,6 +916,31 @@ def _qwen_parse(raw: str) -> tuple[str, str]:
     return (lang if sep else ""), (text if sep else raw or "").strip()
 
 
+#: ONE MODEL, TWO USERS. The after-call pass and the live captions (`live.py`) both drive the same
+#: resident Qwen, from different threads, and a llama.cpp context is not safe to share — so every
+#: piece holds this for the length of one transcription. Pieces are short, so neither waits long.
+_qwen_lock = threading.Lock()
+
+
+def qwen_piece(a) -> tuple[str, str]:
+    """Transcribe ONE piece of mono float32 16 kHz audio. Returns (language, text)."""
+    import base64
+    import io
+    import numpy as np
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16_000)
+        w.writeframes((np.clip(a, -1, 1) * 32767).astype(np.int16).tobytes())
+    url = "data:audio/wav;base64," + base64.b64encode(buf.getvalue()).decode()
+    with _qwen_lock:
+        r = _qwen_model().create_chat_completion(
+            messages=[{"role": "user", "content": [{"type": "image_url", "image_url": {"url": url}}]}],
+            max_tokens=1024, temperature=0)
+    return _qwen_parse(r["choices"][0]["message"]["content"])
+
+
 def _qwen(path: pathlib.Path) -> str:
     """Qwen3-ASR, one piece of speech at a time, with the language detected per piece.
 
@@ -922,24 +948,10 @@ def _qwen(path: pathlib.Path) -> str:
     translate a Vietnamese caller into English, and a call that switches language needs each piece
     judged on its own.
     """
-    import base64
-    import io
-    import numpy as np
-    llm = _qwen_model()
     a = _audio16k(path)
     heard = []
     for s, e in _pieces(a):
-        buf = io.BytesIO()
-        with wave.open(buf, "wb") as w:
-            w.setnchannels(1)
-            w.setsampwidth(2)
-            w.setframerate(16_000)
-            w.writeframes((np.clip(a[s:e], -1, 1) * 32767).astype(np.int16).tobytes())
-        url = "data:audio/wav;base64," + base64.b64encode(buf.getvalue()).decode()
-        r = llm.create_chat_completion(
-            messages=[{"role": "user", "content": [{"type": "image_url", "image_url": {"url": url}}]}],
-            max_tokens=1024, temperature=0)
-        lang, said = _qwen_parse(r["choices"][0]["message"]["content"])
+        lang, said = qwen_piece(a[s:e])
         if said:
             heard.append((s / 16_000, e / 16_000, lang, said))
     # A SHORT PIECE DOES NOT GET TO INTRODUCE A LANGUAGE. A second of sound is too little to tell
