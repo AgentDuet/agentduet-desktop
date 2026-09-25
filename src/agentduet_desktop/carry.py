@@ -350,6 +350,11 @@ async def handle(sm, noti) -> None:
     # direction. The format strings must NOT also say "from" — that produced
     # "call c1 from from +6591234567".
     who = f"{'to' if outgoing else 'from'} {other}"
+    # THE LINE, LEARNED FROM EVERY CALL, in and out. `subscriber` is this connector's own number
+    # in both directions (the platform's session log shows it on each), and until now only the
+    # answering path recorded it — so a carrying install never learned its own number.
+    from . import status as _status
+    _status.set_number(getattr(noti, "subscriber", "") or "")
     try:
         import uuid
         session = await sm.open_session(uuid.uuid4().hex, noti.subscriber)

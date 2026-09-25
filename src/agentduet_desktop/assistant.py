@@ -610,6 +610,11 @@ class OwnerChat:
     # the third step failed. Trimmed rather than unbounded: tool results are verbose and
     # the whole thing is re-sent every turn.
     KEEP = 30
+    #: AND AT MOST THIS MANY WORDS carried into the next turn (Stanley, 2026-09-25). Thirty lines
+    #: is not a size: the history holds tool results too, so one transcript the assistant read
+    #: rode along in every later prompt at full length. On a local model, prompt length is
+    #: waiting time, so the budget is in words and the newest lines win.
+    HISTORY_WORDS = 1000
     #: A GAP THIS LONG STARTS A NEW CONVERSATION BY ITSELF (Stanley, 2026-09-25). It replaces the
     #: "New conversation" button: coming back after an hour is almost always a new subject, and
     #: the owner should not have to tell the assistant so. The record is kept, as with the button.
@@ -665,7 +670,7 @@ class OwnerChat:
         # when the model is no longer to be reminded of it.
         for turn in self._since_break(self.KEEP // 2):
             self.history += [f"OWNER: {turn['q']}", f"ASSISTANT: {turn['a']}"]
-        self.history = self.history[-self.KEEP:]
+        self.history = self._trim(self.history)
         # A transcript already in the replayed context still taints this conversation, so the
         # flag is rebuilt from the turns rather than reset to False on every restart. It is
         # rebuilt from the TOOL NAMES, which outlive the tool results: a restart drops the raw
@@ -700,6 +705,17 @@ class OwnerChat:
         self._persist()
         self.history = []
         self.tainted = False
+
+    def _trim(self, lines: list[str]) -> list[str]:
+        """The newest lines that fit KEEP and HISTORY_WORDS. The last line is always kept."""
+        kept, words = [], 0
+        for line in reversed(lines[-self.KEEP:]):
+            n = len(line.split())
+            if kept and words + n > self.HISTORY_WORDS:
+                break
+            kept.append(line)
+            words += n
+        return list(reversed(kept))
 
     def _break_if_idle(self) -> None:
         """Start a new conversation when the last turn is older than IDLE_BREAK_SECONDS."""
@@ -950,7 +966,7 @@ class OwnerChat:
             # What the model SAW is not what we keep. A 3 KB setup instruction block would
             # otherwise ride along in every later turn's context.
             kept = [f"OWNER: {shown_as}" if x == f"OWNER: {message}" else x for x in h]
-            self.history = kept[-self.KEEP:]
+            self.history = self._trim(kept)
 
         for _ in range(8):                       # bounded tool loop — list+read+edit twice is 5
             out = await self._ask(history, context)

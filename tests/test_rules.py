@@ -2994,9 +2994,16 @@ def test_the_hub_does_not_invent_a_sign_in_state() -> None:
     # dash both fields shipped with; since 2026-09-08 both offer the way to fix it instead,
     # because a dash is a dead end on two settings that change real behaviour and, in the
     # number's case, had no field on ANY surface to go and change.
-    ok("an unknown name reads like the unknown number beside it",
-       "D.name ? esc(D.name) : setLink('name')" in web_page
-       and "D.phone ? esc(D.phone) : setLink('number')" in web_page)
+    # The number stopped following it on 2026-09-25 (Stanley): a number or nothing, falling back
+    # to the line learned from calls, and no "Set your number" link.
+    ok("an unknown name offers the way to fix it",
+       "D.name ? esc(D.name) : setLink('name')" in web_page)
+    ok("the number is shown when known, and nothing otherwise",
+       "$('phone').textContent = D.phone || D.line || '';" in web_page
+       and "setLink('number')" not in web_page)
+    ok("carried calls teach the app its line, both directions",
+       '_status.set_number(getattr(noti, "subscriber", "") or "")'
+       in (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "carry.py").read_text())
     ok("and the empty state goes somewhere", 'href="/settings?t=${T}"' in web_page)
 
     # AND IT RE-READS. `load()` drew the name, the number, the model and the channel state, and
@@ -5665,6 +5672,11 @@ def test_idle_break() -> None:
     eq("and never twice for the same gap", len(calls), 1)
     hub = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
            / "web.html").read_text(encoding="utf-8")
+    fake.KEEP, fake.HISTORY_WORDS = OwnerChat.KEEP, OwnerChat.HISTORY_WORDS
+    lines = ["OWNER: hi", "TOOL_RESULT: " + "word " * 1500, "OWNER: next", "ASSISTANT: ok"]
+    eq("a long tool result is not carried into the next turn",
+       OwnerChat._trim(fake, lines), ["OWNER: next", "ASSISTANT: ok"])
+    eq("but the newest line always is", OwnerChat._trim(fake, ["X " * 2000]), ["X " * 2000])
     ok("the hub has no New conversation button", 'id="newConv"' not in hub)
     ok("and no model label", 'id="aModel"' not in hub)
 
