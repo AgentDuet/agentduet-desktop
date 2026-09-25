@@ -1015,6 +1015,12 @@
     if (D.line) { $('lineNum').textContent = D.line; $('lineBadge').classList.add('on'); }
 
     const live = ['live', 'connecting', 'retrying'].indexOf(D.channel) >= 0;
+    // ONE CONNECTION LIGHT (Stanley, 2026-09-25). With the line known, its badge in the title
+    // bar is the light — green while connected, grey when not — and the "Listening" pill beside
+    // the title goes. Before the first call there is no line to show, so the pill stays.
+    $('lineBadge').classList.toggle('off', !live);
+    $('lineBadge').querySelector('.l').textContent = live ? 'Power Mobile Line:' : 'Not connected:';
+    $('ovPill').hidden = !!D.line;
     $('ovPill').className = 'pill' + (live ? '' : ' off');
     $('ovPill').innerHTML = '<span class="dot"></span>' + (live ? 'Listening' : 'Not connected');
 

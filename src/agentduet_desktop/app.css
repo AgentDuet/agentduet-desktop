@@ -144,6 +144,10 @@ html.native.shell .titlebar{padding-left:4.9rem;}
   animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite;}
 .linebadge .l{color:var(--muted);font-size:11px;}
 .linebadge .v{font-family:var(--mono);color:var(--emerald);font-weight:600;font-size:11px;}
+/* NOT CONNECTED: the same badge, greyed and still. It is the connection light wherever the line
+   is known, so it has to be able to say the connection is down. */
+.linebadge.off .dot{background:var(--faint);animation:none;}
+.linebadge.off .v{color:var(--faint);}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .tbtn{font:inherit;font-size:.75rem;padding:.25rem .625rem;border-radius:.5rem;
   background:var(--slate800);color:#cbd5e1;border:1px solid rgba(255,255,255,.1);cursor:pointer;
