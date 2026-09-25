@@ -42,7 +42,6 @@
     box-shadow:0 4px 6px -1px rgba(0,0,0,.1);}
   .sso.apple:hover{background:#f1f5f9;}
   .sso svg{width:1rem;height:1rem;flex:0 0 1rem;}
-  .foot{font-size:11px;color:var(--faint);padding-top:1rem;}
 
   /* quick setup */
   .panel{width:100%;max-width:28rem;background:var(--card);border:1px solid var(--line);
@@ -113,10 +112,6 @@
     <div class="lights">
       <div class="brand"><img class="ad" src="/logo.png?v=2" alt=""><span>AgentDuet</span></div>
     </div>
-    <div class="linebadge" id="lineBadge">
-      <span class="dot"></span><span class="l">Power Mobile Line:</span>
-      <span class="v" id="lineNum">—</span>
-    </div>
     <div></div>
   </div>
 
@@ -125,8 +120,7 @@
     <div class="glyph"><span class="material-symbols-rounded">smart_toy</span></div>
     <div class="head">
       <h1>Welcome to AgentDuet</h1>
-      <p class="sub">On-device AI engine for your Power Mobile service. Please sign in to link
-        your desktop AI hub.</p>
+      <p class="sub">On-device AI for your calls. Please sign in to link your desktop AI hub.</p>
     </div>
     <div class="ssos">
       <button class="sso apple" data-p="Apple">
@@ -165,7 +159,6 @@
         <span class="material-symbols-rounded">arrow_forward</span></button>
     </div>
     <button class="altway" id="skipSso">Set up without signing in</button>
-    <p class="foot">B3Networks Power Mobile AI Protocol • v1.0</p>
   </div>
 
   <!-- VIEW 1b — permissions, macOS only (Stanley, 2026-09-25). One row per permission, with
@@ -417,11 +410,6 @@
     // blank; typing over it wins, because a pasted key must always beat a stored one.
     if (d.offer_key && !$('mKey').value) { KEY_OFFERED = d.offer_key; $('mKey').value = d.offer_key; }
     if (d.offer_uuid || d.offer_key) $('manualBox').hidden = false;
-    // THE LINE, not the owner's own number. This badge says "Power Mobile Line" and rendered
-    // `phone`, which owner.py documents as never disclosed to anyone. It is learned from an
-    // inbound call only, so it stays hidden until one has arrived — which on a first run is
-    // never, and is exactly why the card that used to sit below could show nothing real.
-    if (d.line) { $('lineNum').textContent = d.line; $('lineBadge').classList.add('on'); }
   }).catch(() => {});
 
   // ---- permissions ----------------------------------------------------------------------

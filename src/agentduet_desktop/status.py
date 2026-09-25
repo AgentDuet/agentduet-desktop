@@ -141,7 +141,7 @@ def load_number(sessions_file) -> None:
             # the BA's `phone_number_id` and DDUET's is the connector uuid.
             #
             # It showed: after the first real WhatsApp message the header offered
-            # `1151661421362480` as the "Power Mobile Line" — sixteen digits of Meta identifier
+            # `1151661421362480` as the line's number — sixteen digits of Meta identifier
             # presented as a number to ring. Keep trying the older rows, since one unusable
             # subscriber does not mean a call never happened.
             set_number(entry["subscriber"])
