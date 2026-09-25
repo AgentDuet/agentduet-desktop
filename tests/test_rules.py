@@ -1291,9 +1291,11 @@ def test_setup_mode() -> None:
     # `init.py` against `settings.html` — the hub, not the installer. `init` offered a local
     # model and setup.html did not, so a tester who set up in the browser was never asked.
     setup_page = (src / "setup.html").read_text()
-    # STATED, NOT ASKED (2026-09-24). The model is the machine's pick; the wizard names it and
-    # fetches it at Finish, and a developer overrides it in Settings. Nothing to choose here.
-    ok("the wizard names the model", '<input type="text" id="setupModel" readonly>' in setup_page)
+    # STATED, NOT ASKED (2026-09-24). The model is the machine's pick, fetched with the step, and
+    # a developer overrides it in Settings. Since 2026-09-25 the wizard shows a BAR, not a name:
+    # the owner needs to know it is coming, not which model it is.
+    ok("the wizard shows the model arriving", 'id="modelDl"' in setup_page
+       and "PICK.name" not in setup_page)
     ok("and offers no choice of it", "<select id=\"setupModel\"" not in setup_page
        and "Choose later" not in setup_page)
     # THE DOWNLOAD STARTS WITH THE STEP, not at Finish: 4.8 GB is minutes, and the owner is still
@@ -1317,7 +1319,8 @@ def test_setup_mode() -> None:
     ok("the hub shows the speech model arriving too", "if (sp.running && !sp.cached) bars.push(" in hub)
     ok("and is served its progress", '"got_mb": transcribe.size_on_disk(transcribe.local_model())'
        in (src / "web.py").read_text())
-    ok("the wizard names the speech model", 'id="setupStt"' in setup_page)
+    ok("and the speech model arriving, by bar", 'id="sttDl"' in setup_page
+       and 'id="setupStt"' not in setup_page)
     ok("and starts it with the step, as it does the AI model",
        "startPick();\n    startSpeech();" in setup_page)
     ok("the wizard shows both downloads' progress", 'id="modelDl"' in setup_page and 'id="sttDl"' in setup_page)
