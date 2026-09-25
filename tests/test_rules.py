@@ -5740,6 +5740,65 @@ def test_model_gate() -> None:
        "with gate.priority(gate.SUGGEST):" in (src / "suggest.py").read_text())
 
 
+def test_jobs_and_briefs() -> None:
+    """One pending job per subject; a brief folds only what is new, and says whose words it holds."""
+    print("\n  -- background jobs coalesce; briefs fold only what is new --")
+    import threading, time as _time
+    import unittest.mock as _m
+    from agentduet_desktop import jobs, gate, brief, paths as _p, tools, llm
+    # COALESCING: a key already waiting is not queued twice; one requested while running reruns once.
+    gate_ticket = gate.acquire(gate.QUESTION)       # hold the model so jobs pile up
+    runs, started = [], threading.Event()
+    def slow():
+        started.set(); runs.append("a"); _time.sleep(0.3)
+    jobs.request("t:a", gate.FOLD, slow)
+    _time.sleep(0.1)
+    jobs.request("t:a", gate.FOLD, slow)               # running -> dirty, once
+    jobs.request("t:a", gate.FOLD, slow)               # still just once
+    jobs.request("t:b", gate.FOLD, lambda: runs.append("b"))
+    jobs.request("t:b", gate.FOLD, lambda: runs.append("b"))   # waiting -> ignored
+    gate.release(gate_ticket)
+    for _ in range(40):
+        if not jobs.pending():
+            break
+        _time.sleep(0.1)
+    eq("a dirty key runs once more, a waiting key is not doubled", sorted(runs), ["a", "a", "b"])
+
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    try:
+        rows = [{"caller": "+6511112222", "at": "2026-09-20T10:00:00", "call_id": "c1",
+                 "recordings": ["x.wav"]}]
+        texts = {"c1": "Book me for Friday at 3."}
+        asked = []
+        class Fake:
+            def complete(self, prompt):
+                asked.append(prompt); return "Who: a customer.\nOpen: Friday 3pm.\nLast contact: 20 Sep."
+        with _m.patch.object(_p, "RUN", tmp), \
+             _m.patch("agentduet_desktop.calls.recent", lambda: rows), \
+             _m.patch.object(brief, "_transcript", lambda r: texts.get(r.get("call_id"))), \
+             _m.patch.object(brief, "_chat_after", lambda who, after: []), \
+             _m.patch.object(llm, "configured", lambda: True), \
+             _m.patch.object(llm, "client", lambda *a, **k: Fake()):
+            ok("a new call is folded in", brief.update("+6511112222"))
+            ok("and the call's words go to the model marked as a caller's",
+               tools.UNTRUSTED_MARK in asked[-1])
+            ok("the prompt says newer wins, and the owner outranks the caller",
+               "the NEWER one wins" in asked[-1] and "word wins" in asked[-1])
+            ok("nothing new: the model is not asked", not brief.update("+6511112222"))
+            eq("so it was asked exactly once", len(asked), 1)
+            ok("the brief reaches the assistant marked as a caller's words",
+               tools.UNTRUSTED_MARK in brief.for_prompt("+6511112222")
+               and "Friday 3pm" in brief.for_prompt("+6511112222"))
+            rows.append({"caller": "+6511112222", "at": "2026-09-21T10:00:00", "call_id": "c2",
+                         "note": "missed"})
+            texts["c2"] = ""
+            ok("a missed call only moves the watermark", not brief.update("+6511112222"))
+            eq("without asking the model", len(asked), 1)
+            eq("and the sweep then finds nothing to do", brief.sweep(), 0)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -5750,6 +5809,7 @@ def main() -> None:
     test_documents_permission()
     test_idle_break()
     test_model_gate()
+    test_jobs_and_briefs()
     test_release_ships_the_native_shell()
     test_apple_stt_engine()
     test_local_models_do_not_monologue()

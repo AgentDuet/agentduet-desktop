@@ -16,6 +16,7 @@ reverse it, so the fastest way to make a bad change here is to skip that.
 | "this will be too slow" | **Latency on a call is a UX problem, not a wall** |
 | secrets, or adding a UI | A UI for the secrets is fine |
 | the mcp, or starting/stopping | Two servers · Starting at login |
+| the assistant's prompt, or anything run on the local model | **The assistant's context** |
 
 ---
 
@@ -862,7 +863,7 @@ after another model release.
 **The developer override** takes llama.cpp's own naming, `owner/repo` or `owner/repo:QUANT`
 (e.g. `unsloth/Qwen3.5-9B-GGUF:Q4_K_M`). With no quant it takes Q4_K_M, or the vendor's QAT file.
 It builds on `models.add_custom`, which only ever fetches from huggingface.co and builds the URL
-itself rather than accepting one. Saving it only registers the model; the Model card then offers
+itself rather than accepting one. Saving it only registers the model; About then offers
 its download, and it becomes the model in use once it is on disk. **A registered model is local
 whatever its name contains** — `provider()` checks every model we hold before it looks at vendor
 prefixes, or a repo called `…Qwen…` would be sent to DashScope and refused by the quarantine.
@@ -884,6 +885,74 @@ the owner's behalf should take those. The most-downloaded Qwen3.5 9B GGUF is a c
 **What would reverse this:** the confirming generation coming in below the floor on most real
 installs — local too slow for the median owner machine — or a B3-proxied model (see the
 checklist), which would restore a hosted option as one we operate rather than a vendor picker.
+
+## The assistant's context: stable first, summarised, one job at a time (decided 2026-09-25)
+
+**The measurement that decides all of it** (M5, Gemma 4 E4B, 2026-09-25). Reading a prompt runs at
+~390 tokens/s and grows in a straight line — 1.3 s for 500 tokens, 10.8 s for 4,000, 23.9 s for
+8,000 — while writing runs at 25–36 tokens/s, bounded by memory bandwidth. But **the engine
+re-reads a prompt only from its first change**: the same 4,000-token start plus 100 new tokens
+took 0.39 s, and changing only the first 100 took 10.9 s. So the ORDER of a prompt matters more
+than its size, and size mostly costs a cold read.
+
+**Stable first, changing last.** Every prompt is built as: instructions → earlier conversation →
+(the person's brief) → the inbox and what is on screen → this turn. The changing context used to
+sit between the instructions and the history, so every question re-read the whole history.
+Two things keep the start stable: history is trimmed **in steps** (nothing drops until a limit is
+passed, then it drops to 60%), not a line per turn; and **after each turn the next prompt's start
+is read in the background** (a prewarm), while the owner reads the answer.
+
+**One job on the model at a time, most urgent first** — `gate.py`. Nothing serialised the engine
+before this; the assistant and the suggestion worker could run on it from two threads. Order:
+the owner's question, the calendar suggestion, a person's brief, the assistant fold, prewarm. A
+background job generates token by token and **gives way at the next token** when something more
+urgent arrives, then reruns; the reading of a prompt cannot be stopped part-way, so a question
+waits at most for the rest of that. **No background job runs during a call** — live captions
+need the GPU. A background job replaces the engine's memory, so the assistant's state is saved
+before one (0.29 s, 229 MB at 4,000 tokens) and restored before the next question (0.54 s).
+Measured end to end with a ~3,000-token start: warm question 0.71 s, after a suggestion 1.24 s,
+arriving mid-suggestion 1.08 s, cold 12.5 s.
+
+**One pending job per subject** — `jobs.py`. A job has a key (`person:<number>`,
+`fold:assistant`); a key already waiting is not queued again, because the job reads its input when
+it starts, not when it was asked for; a key asked for while running is marked dirty and runs
+exactly once more. Each summary carries a **watermark** — the newest call and turn it absorbed —
+and a job with nothing newer ends before touching the model. That makes a sweep after every
+merge free when nothing changed, and makes a restart harmless.
+
+**A brief per person** — `brief.py`, built. About 150 words: who they are, what is open with
+dates, the last contact. Sources are that person's calls and the owner's chat with the assistant
+about them (a turn asked while their page was open). The assistant is handed the brief plus only
+the calls it has not absorbed yet, where it was handed up to five whole transcripts — ~5,000
+tokens — on every question. Rules, all in the prompt:
+- **Newer wins** where the new information and the brief disagree, and **the owner's word
+  outranks the caller's** about the same thing. Dates are kept beside what has one, which is what
+  lets the next update tell which fact is newer.
+- **Incremental, never regenerated.** Each update folds only what is new into the current brief;
+  rewriting from everything wears facts away, and a small model compounds its own mistakes.
+- **Shaped by the prompt only.** Nobody edits a brief by hand (Stanley: a poor experience); what
+  the assistant writes is governed by what it is told.
+- **Marked as a caller's words** (`tools.untrusted`) wherever it enters a prompt, like the
+  transcripts it came from. A call with nothing said only moves the watermark.
+Measured on real calls: seven calls of one person folded in two updates, 6.0 s.
+
+**An assistant summary** — not built yet. Made **only from the assistant chat**, never from call
+text it looked up, folded when history outgrows its budget.
+
+**An hour of quiet starts a new conversation** (`OwnerChat.IDLE_BREAK_SECONDS`). It replaced the
+"New conversation" button: coming back after an hour is almost always a new subject.
+
+**Budgets from the machine** — not built yet. The 1,000-word history cap (`HISTORY_WORDS`) is a
+placeholder. The plan: measure reading and writing speed in the timed run after the model
+downloads; the total prompt budget is a cold-read ceiling times that reading speed (10 s × 390
+tokens/s ≈ 3,900 tokens on the M5, half on a Mac with half the GPU). Split: the instructions
+(fixed per day, 1,677 tokens today — worth trimming), a reserve for the inbox, the question and
+the answer, capped shares for the two summaries (~15% assistant, ~25% person, the person's
+share going to the chat when no person is involved), and the rest to recent chat, word for word.
+
+**What would reverse this:** a model or engine without prefix reuse, which would make size the
+cost again and favour a hard small budget over ordering; or summaries that measurably lose facts
+the owner later asks about, which would argue for retrieval over the transcripts instead.
 
 ## Installers
 

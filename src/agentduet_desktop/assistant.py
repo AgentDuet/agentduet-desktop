@@ -793,6 +793,11 @@ class OwnerChat:
         # which matters most for the answers, since those went somewhere.
         if via:
             turn["via"] = via
+        # WHO IT WAS ABOUT: the person on screen when it was asked. Their brief folds it in.
+        about = getattr(self, "_about", "")
+        if about:
+            turn["about"] = about
+        self._about = ""
         # A DRAFT, decided from what the owner asked for. Stored on the turn so the page can
         # label it and so "send it" has one unambiguous referent.
         if draft and answer:
@@ -964,7 +969,11 @@ class OwnerChat:
             # BOTH HALVES OF THE RELATIONSHIP. Calls only, and "help me reply to this" was
             # answered from nothing — the message the owner is looking at was the one thing the
             # assistant could not see.
-            calls = tools.read_call(who=viewing)
+            # THE BRIEF, when there is one: a running summary plus only the calls it has not
+            # absorbed yet, instead of up to five whole transcripts on every question. With no
+            # brief yet, the transcripts as before. See `brief`.
+            from . import brief as _brief
+            calls = _brief.for_prompt(viewing) or tools.read_call(who=viewing)
             msgs = tools.read_messages(who=viewing)
             context += (f"\n\nCONTEXT — the owner is looking at {viewing}.\n\n{calls}\n\n{msgs}"
                        f"\n\nIf the owner says \"her\", \"him\", \"them\" or \"this "
@@ -980,6 +989,7 @@ class OwnerChat:
                 self.tainted = True
         history = self.history + [f"OWNER: {message}"]
         self._turn_start = len(self.history)
+        self._about = viewing
         used: list[str] = []
         nudged = False
         # WHAT HAS ALREADY BEEN ASKED THIS TURN. The loop was bounded but had no memory, so a
@@ -1154,6 +1164,9 @@ class OwnerChat:
         remember(history + [f"ASSISTANT: {final}"])
         self._record(shown_as, final, used, full=message, draft=draft_intent(message), via=via)
         self._prewarm()
+        if viewing:
+            from . import brief as _brief
+            _brief.request(viewing)
         return {"reply": final, "tools": used, "proposals": _proposals(),
                 "draft": draft_intent(message) and bool(final)}
 

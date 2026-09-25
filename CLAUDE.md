@@ -892,9 +892,11 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       and what is on screen), history is trimmed in steps, the next prompt is prewarmed after
       each turn, and its state is saved/restored around background jobs. Measured on the M5,
       ~3,000-token start: warm question 0.71 s; after a suggestion 1.24 s; mid-suggestion 1.08 s;
-      cold 12.5 s. **Not built yet:** the two summaries and machine-derived budgets — the order
-      agreed is gate first, then summaries (person, then assistant), then budgets from a timed
-      run after download. The fixed instructions are 1,677 tokens (4.3 s cold) and worth trimming.
+      cold 12.5 s. **The person brief is built too** (`brief.py` on `jobs.py`: one pending job
+      per subject, watermarks, newer wins, owner outranks caller). **Not built yet:** the
+      assistant summary, then budgets from a timed run after download. The fixed instructions
+      are 1,677 tokens (4.3 s cold) and worth trimming. Design: `docs/design.md`, *The
+      assistant's context*.
 - [ ] **Confirm the lead family on QUALITY.** Gemma 4 leads on speed, measured 2026-09-23 on the
       M5: E4B read a 1.6k-token call and wrote the reply in 8.7 s, against 15.2 s for Qwen3.5 9B and
       13.8 s for today's Qwen3 8B. Quality is unmeasured — a blind comparison on our own calls can
