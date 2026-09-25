@@ -721,6 +721,33 @@ def cancel(model: str = "") -> str:
     return "Stopping " + ", ".join(touched) + "."
 
 
+def fetch_file(url: str, target: pathlib.Path, size: int) -> None:
+    """Fetch one file to `target`, resuming a partial one, and check it arrived whole.
+
+    For weights that are not a CATALOGUE entry — the speech model's two files. Written to
+    `<name>.part` and renamed when complete, so nothing downstream can see a file still arriving;
+    a size check rather than a checksum, because the size is what Hugging Face publishes.
+    """
+    if target.is_file() and target.stat().st_size == size:
+        return
+    part = target.with_name(target.name + ".part")
+    have = part.stat().st_size if part.is_file() else 0
+    req = urllib.request.Request(url, headers={"User-Agent": "agentduet-desktop"})
+    if have:
+        req.add_header("Range", f"bytes={have}-")
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        # A server that ignores Range answers 200 with the whole file; appending that to a
+        # partial one would corrupt it, so start again.
+        resuming = have and resp.status == 206
+        with open(part, "ab" if resuming else "wb") as out:
+            while chunk := resp.read(1 << 20):
+                out.write(chunk)
+    if part.stat().st_size != size:
+        raise RuntimeError(f"{target.name} arrived as {part.stat().st_size} bytes, expected {size}")
+    part.replace(target)
+    logger.info("downloaded %s", target.name)
+
+
 def download(model: str) -> str:
     """Fetch the weights. BLOCKING and slow — gigabytes — so call it off the event loop.
 

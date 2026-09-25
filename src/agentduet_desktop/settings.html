@@ -259,7 +259,7 @@
             <option value="th">Thai</option>
           </select></div>
         <div class="grp">
-            <label class="fl">Whisper models on this machine</label>
+            <label class="fl">Speech models on this machine</label>
           <div id="sttTiers"></div>
         </div>
         <div class="acts">
@@ -755,7 +755,8 @@
     });
     $('sttTiers').querySelectorAll('[data-del]').forEach(el => {
       el.onclick = async () => {
-        if (!confirm(`Delete Whisper ${el.dataset.del}? It can be downloaded again.`)) return;
+        const row = LAST_TIERS.find(t => t.model === el.dataset.del);
+        if (!confirm(`Delete ${row ? row.name : el.dataset.del}? It can be downloaded again.`)) return;
         const r = await post('/api/stt-model', {model: el.dataset.del});
         say('mStt', r.ok, r.message);
         sttCheck();

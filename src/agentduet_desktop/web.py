@@ -442,7 +442,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                 # quietly untrue, and then the line below hardcoded the first one.
                 "engine": transcribe.engine(),
                 "engine_name": ("Apple on-device" if transcribe.engine() == "apple"
-                                else f"Whisper {model}"),
+                                else transcribe.display_name(model)),
                 # THE FOUR TIERS, with what each costs and whether it is here. The page offered
                 # them by adjective alone, so "balanced" and the engine line's "Whisper small"
                 # were the same model under two names and read as a contradiction.
