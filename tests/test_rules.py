@@ -3772,7 +3772,8 @@ def test_about_answers_which_build_this_is() -> None:
     # stale update notice, and a feature "not working" that was not in the build being tested —
     # and neither was answerable from the app.
     ok("settings has an About card", ">About<" in page)
-    for field in ("abVer", "abBackend", "abHome", "abNew", "abCheck"):
+    # Backend and Your files left the card on 2026-09-25; `status` still reports both.
+    for field in ("abVer", "abNew", "abCheck"):
         ok(f"it renders {field}", f'id="{field}"' in page)
 
     # THE BUILD, NOT JUST THE VERSION. During an alpha one version names a dozen binaries, so
