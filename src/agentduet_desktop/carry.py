@@ -517,6 +517,9 @@ async def handle(sm, noti) -> None:
         # empty-leg cleanup and asking what the index would then have to work with.
         _calls.record(call_id, other, "carried", outgoing=outgoing, recordings=sorted(
             str(p.name) for p in legs().glob(f"*{call_id}*.wav")))
+        # TRANSCRIBE IT NOW, not at the next poll: the legs are closed and on disk.
+        from . import transcribe
+        transcribe.wake()
         # THE TRANSCRIPT IS NOT THIS FUNCTION'S JOB. Carrying a call ends when the audio is
         # closed on disk; a `.wav` with no sibling `.txt` is the queue, and the worker in
         # `transcribe` picks it up within a poll. That keeps the call path free of a network
@@ -584,6 +587,8 @@ async def _answer_here(call, call_id: str, other: str, done: asyncio.Event) -> N
         await _live_end(str(call_id))
         _calls.record(call_id, other, "carried", note="answered in the app", recordings=sorted(
             str(p.name) for p in legs().glob(f"*{call_id}*.wav")))
+        from . import transcribe
+        transcribe.wake()
 
 
 def register(sm) -> bool:

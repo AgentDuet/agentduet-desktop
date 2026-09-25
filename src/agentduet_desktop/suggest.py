@@ -307,15 +307,32 @@ def summary() -> str:
             + (f", {waiting} waiting" if waiting else ""))
 
 
+#: Set when a new transcript lands (see `transcribe.worker`), so it is judged now rather than at
+#: the next poll. The poll stays, for messages and anything a wake misses.
+_wake = None
+
+
+def wake() -> None:
+    """Something new to judge. Called on the daemon's loop."""
+    if _wake is not None:
+        _wake.set()
+
+
 async def worker() -> None:
     """Judge new items forever, off the event loop.
 
     On a THREAD: the loop this shares carries call audio, and a model call blocks for seconds.
-    Sleeps FIRST, so a launch is never held up by it.
+    Waits FIRST — for its poll, or for a wake — so a launch is never held up by it.
     """
     import asyncio
+    global _wake
+    _wake = asyncio.Event()
     while True:
-        await asyncio.sleep(POLL_SECONDS)
+        try:
+            await asyncio.wait_for(_wake.wait(), POLL_SECONDS)
+        except asyncio.TimeoutError:
+            pass
+        _wake.clear()
         try:
             await asyncio.to_thread(analyse_once)
         except Exception as exc:                  # a worker that dies takes the feature with it

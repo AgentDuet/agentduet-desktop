@@ -3452,8 +3452,39 @@ def test_a_suggestion_is_judged_once_and_never_guessed() -> None:
     # NOT ON THE STARTUP PATH, and not on the event loop.
     ok("the pass is a background task",
        "asyncio.create_task(_sg.worker())" in (src / "secretary_agent.py").read_text())
-    ok("it sleeps before the first pass",
-       body.index("await asyncio.sleep(POLL_SECONDS)") < body.index("analyse_once)"))
+    ok("it waits before the first pass — for its poll or a wake",
+       body.index("await asyncio.wait_for(_wake.wait(), POLL_SECONDS)") < body.index("analyse_once)"))
+    # WOKEN, NOT ONLY POLLED: the first real call's suggestion took 50 s, nearly all of it two
+    # passes waiting for their next poll. A call ending wakes the transcriber; a merged transcript
+    # wakes this.
+    carry_src = (src / "carry.py").read_text()
+    tr_src = (src / "transcribe.py").read_text()
+    ok("a call ending wakes the transcriber, on both call paths",
+       carry_src.count("transcribe.wake()") == 2)
+    ok("a merged transcript wakes the suggestion pass",
+       "if merged:" in tr_src and "suggest.wake()" in tr_src)
+    ok("the transcriber waits for a wake or its poll", "await _nap(POLL_SECONDS)" in tr_src)
+    # AND IT REALLY WAKES: drive the worker, wake it, and time how long until it drains and hands
+    # the merged call to the suggestion pass. With only the poll, this is POLL_SECONDS (20 s).
+    import asyncio as _aio
+    import time as _time
+    from agentduet_desktop import transcribe as _tr
+    ran = {}
+    async def _drive():
+        with mock.patch.object(_tr, "drain_once", lambda: ran.setdefault("drain", _time.monotonic())), \
+             mock.patch.object(_tr, "merge_once", lambda: 1), \
+             mock.patch.object(sg, "wake", lambda: ran.setdefault("suggest", _time.monotonic())):
+            w = _aio.create_task(_tr.worker())
+            await _aio.sleep(0.05)
+            t0 = _time.monotonic()
+            _tr.wake()
+            await _aio.sleep(0.3)
+            w.cancel()
+            return t0
+    t0 = _aio.run(_drive())
+    ok("a wake drains the queue at once, not at the next poll",
+       "drain" in ran and ran["drain"] - t0 < 0.25, ran)
+    ok("and the merged call goes straight to the suggestion pass", "suggest" in ran)
     ok("and runs the model on a thread", "asyncio.to_thread(analyse_once)" in body)
     ok("a pass is bounded", sg.BATCH > 0 and sg.DAYS > 0)
 
