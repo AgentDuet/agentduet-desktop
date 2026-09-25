@@ -288,14 +288,6 @@
         <div id="sttBar" hidden></div>
         <div id="mStt"></div>
         <div class="row">
-          <div class="lbl">Backend</div>
-          <div class="lbl3" id="abBackend">…</div>
-        </div>
-        <div class="row">
-          <div class="lbl">Your files</div>
-          <div class="lbl3" id="abHome" style="font-family:var(--mono);font-size:10px">…</div>
-        </div>
-        <div class="row">
           <div class="lbl">Newer version
             <span class="sublbl" id="abWhen"></span></div>
           <div style="display:flex;gap:.5rem;align-items:center">
@@ -559,13 +551,8 @@
     const bits = [];
     if (bySso) bits.push(o.email || 'signed in');
     else if (byKey) bits.push('API key ' + cur.key_hint);
-    const uuid = (bySso ? o.connector : cur.connector_uuid) || '';
-    if (uuid) bits.push(uuid);
-    // The backend only when it is NOT production. On a normal install it repeats what the
-    // line already says; on a sandbox install it is the most important thing on the card, and
-    // the failure it prevents is silent — a sign-in against the wrong environment replaces the
-    // connector a production DID routes to, with no error anywhere.
-    if (cur.backend && !cur.backend.startsWith('production')) bits.push('⚠ ' + cur.backend);
+    // WHO, and nothing else (Stanley, 2026-09-25). The connector uuid and the backend were
+    // shown here too; `status` still reports both for whoever needs them.
     $('connWho').textContent = bits.join('  ·  ');
     $('connWho').hidden = !bits.length;
 
@@ -712,8 +699,6 @@
   // managed to look instead, which is a fact either way.
   function aboutRender(d){
     $('abVer').textContent = d.version || '—';
-    $('abBackend').textContent = d.backend || '—';
-    $('abHome').textContent = d.instance || '—';
     const u = d.update || {};
     const link = $('abNew');
     if (u.newer && u.version) {
