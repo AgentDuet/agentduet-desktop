@@ -22,7 +22,14 @@
   .prof .n{font-size:.75rem;font-weight:600;color:var(--ink2);overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap;}
   .prof .p{font-size:10px;font-family:var(--mono);color:var(--emerald);overflow:hidden;
-    text-overflow:ellipsis;white-space:nowrap;}
+    text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:.35rem;}
+  /* THE CONNECTION LIGHT, beside the number (Stanley, 2026-09-25): green and pulsing while
+     connected, grey and still with "Not connected" when not. It lived in the title bar with a
+     second copy of the number, and a "Listening" pill said it a third time. */
+  .prof .p .dot{width:.45rem;height:.45rem;flex:0 0 .45rem;border-radius:50%;
+    background:var(--emerald);animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite;}
+  .prof .p.off{color:var(--faint);}
+  .prof .p.off .dot{background:var(--faint);animation:none;}
   .navlab{font-size:10px;text-transform:uppercase;font-weight:700;letter-spacing:.05em;
     color:var(--faint);flex-shrink:0;}
 
@@ -248,10 +255,7 @@
       <div class="brand"><img class="ad" src="/logo.png?v=2" alt=""><span>AgentDuet</span>
         <span class="ver" id="ver"></span></div>
     </div>
-    <div class="linebadge" id="lineBadge">
-      <span class="dot"></span><span class="l">Power Mobile Line:</span>
-      <span class="v" id="lineNum">—</span>
-    </div>
+    <div></div>
     <div class="tright">
       <span class="hmsg" id="hereMsg" hidden></span>
       <a class="link2" id="updLink" target="_blank" rel="noopener" hidden>—</a>
@@ -268,7 +272,8 @@
         <div class="av" id="av">–</div>
         <div style="min-width:0;flex:1">
           <div class="n" id="who">—</div>
-          <div class="p" id="phone">—</div>
+          <div class="p" id="conn"><span class="dot"></span><span id="phone"></span>
+            <span id="connOff" hidden>Not connected</span></div>
         </div>
       </div>
       <div class="navlab">People</div>
@@ -291,7 +296,6 @@
           <p class="sub" id="tSub">Everyone who has called you, and what was recorded.</p>
         </div>
         <div style="display:flex;gap:.6rem;align-items:center">
-          <span class="pill" id="ovPill"><span class="dot"></span>…</span>
         </div>
       </div>
       <div class="mbody" id="mbody">
@@ -1010,19 +1014,13 @@
       // A NUMBER OR NOTHING (Stanley, 2026-09-25): the owner's own number when set, else the
       // line learned from calls. No "Set your number" link — an empty line says enough.
       $('phone').textContent = D.phone || D.line || '';
-    // THE LINE, not the owner's own mobile — see the panel endpoint. `$('phone')` above is
-    // legitimately theirs; this badge is the number callers reach, learned from a real call.
-    if (D.line) { $('lineNum').textContent = D.line; $('lineBadge').classList.add('on'); }
-
     const live = ['live', 'connecting', 'retrying'].indexOf(D.channel) >= 0;
-    // ONE CONNECTION LIGHT (Stanley, 2026-09-25). With the line known, its badge in the title
-    // bar is the light — green while connected, grey when not — and the "Listening" pill beside
-    // the title goes. Before the first call there is no line to show, so the pill stays.
-    $('lineBadge').classList.toggle('off', !live);
-    $('lineBadge').querySelector('.l').textContent = live ? 'Power Mobile Line:' : 'Not connected:';
-    $('ovPill').hidden = !!D.line;
-    $('ovPill').className = 'pill' + (live ? '' : ' off');
-    $('ovPill').innerHTML = '<span class="dot"></span>' + (live ? 'Listening' : 'Not connected');
+    // ONE CONNECTION LIGHT, beside the number — see `.prof .p .dot`.
+    $('conn').classList.toggle('off', !live);
+    // IN PLACE OF THE NUMBER while down: both do not fit the chip, and being disconnected is
+    // the one thing worth saying then.
+    $('connOff').hidden = live;
+    $('phone').hidden = !live;
 
     // A NEWER BUILD, IF THERE IS ONE. Absent unless there is: an "up to date" line would be a
     // claim, and on a machine that has never reached GitHub it would be a wrong one.

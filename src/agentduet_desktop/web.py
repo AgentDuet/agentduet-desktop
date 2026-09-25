@@ -772,8 +772,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         return web.json_response({
             "name": _own.name() if _own.name() != _own.DEFAULT_NAME else "",
             "phone": _own.phone(),
-            # THE LINE CALLS ARRIVE ON, which is what the "Power Mobile Line" badge means and
-            # never what it showed: both pages rendered `phone`, the OWNER'S OWN mobile, whose
+            # THE LINE CALLS ARRIVE ON, shown beside the connection light when the owner's own
+            # number is not set. The old title-bar line badge never showed it: both pages rendered `phone`, the OWNER'S OWN mobile, whose
             # docstring says it is never disclosed to anyone. Invisible while `## Phone` was
             # empty, which is why it survived. The real value is learned from an inbound call —
             # see status.py — so it is blank until one arrives, and the badge stays hidden.

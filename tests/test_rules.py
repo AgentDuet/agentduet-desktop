@@ -5898,6 +5898,12 @@ def test_unread_badge() -> None:
     ok("the row shows the count, except for the person on screen",
        "p.unread && p.who !== PICKED" in hub)
     ok("and the poll notices a count change", "${p.unread || 0}" in hub)
+    # NO CARRIER BRAND IN THE PAGES (Stanley, 2026-09-25): which "Power" connector can reach this
+    # app is not decided, so nothing may say "Power Mobile".
+    pages = [f for f in src.glob("*.html")]
+    ok("no page names a carrier", not [f.name for f in pages
+                                       if "power mobile" in f.read_text(encoding="utf-8").lower()])
+    ok("the connection light sits beside the number", 'id="conn"' in hub and 'id="lineBadge"' not in hub)
 
 
 def main() -> None:
