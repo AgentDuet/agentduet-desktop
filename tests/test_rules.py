@@ -5336,6 +5336,81 @@ def test_a_call_can_be_answered_in_the_app() -> None:
        (root / "macos" / "Sources" / "AgentDuetShell" / "AppDelegate.swift").read_text())
 
 
+def test_qwen3_asr_is_the_speech_engine() -> None:
+    """Qwen3-ASR transcribes by default, cut at pauses, with the language judged per piece."""
+    print("\n  -- Qwen3-ASR is the speech engine --")
+    import tempfile as _tf
+    import unittest.mock as mock
+    import wave as _wave
+    from agentduet_desktop import transcribe as t
+
+    eq("Qwen3-ASR is the default", t.DEFAULT_MODEL, t.QWEN)
+    ok("and listed first", t.TIERS[0] == t.QWEN)
+    ok("the Whisper tiers stay available", {"small", "large-v3-turbo"} <= set(t.TIERS))
+    eq("its name reads as Qwen, not Whisper", t.display_name(t.QWEN), "Qwen3-ASR 1.7B")
+    eq("and Whisper's as Whisper", t.display_name("large-v3"), "Whisper large-v3")
+    with mock.patch.dict(os.environ, {"SECRETARY_STT_MODEL": ""}), \
+         mock.patch("agentduet_desktop.owner.transcription_quality", lambda: "qwen3-asr-1.7b"):
+        eq("naming it in settings selects it", t.local_model(), t.QWEN)
+
+    # THE OUTPUT FORMAT is `language <Name><asr_text><words>`.
+    eq("the language and the words are separated",
+       t._qwen_parse("language Vietnamese<asr_text>Tôi muốn."), ("Vietnamese", "Tôi muốn."))
+    eq("no marker means no language, and the text survives", t._qwen_parse("Hello."), ("", "Hello."))
+
+    # THE STATIC CHECKS FIRST, because what follows needs numpy and the CI test job installs only
+    # the base package — numpy arrives with the speech and model extras, which the app ships.
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    body = (src / "transcribe.py").read_text().split("def _qwen(path")[1].split("\ndef ")[0]
+    ok("the language setting is not passed to Qwen", "owner.language" not in body
+       and "_configured_language" not in body)
+    ok("the download lives in models, so transcribe makes no network call",
+       "models.fetch_file" in (src / "transcribe.py").read_text())
+    try:
+        import numpy as np
+    except ImportError:
+        print("  SKIP  the piece and short-piece checks need numpy, not installed here")
+        return
+
+    # PIECES: cut at a PAUSE (>= PIECE_GAP), not at a breath.
+    rate = 16_000
+    tone = lambda secs: 0.3 * np.sin(np.linspace(0, secs * 2 * np.pi * 220, int(secs * rate)))
+    hush = lambda secs: np.zeros(int(secs * rate))
+    a = np.concatenate([hush(1), tone(2), hush(0.3), tone(1), hush(3), tone(2), hush(1)]).astype(np.float32)
+    got = [(round(s0 / rate, 1), round(e0 / rate, 1)) for s0, e0 in t._pieces(a, rate)]
+    eq("a breath does not split a piece, a pause does", len(got), 2)
+    ok("and each piece starts where its speech starts", abs(got[0][0] - 0.85) < 0.2 and abs(got[1][0] - 7.15) < 0.2, got)
+    long = np.concatenate([tone(60)]).astype(np.float32)
+    ok("no piece is longer than PIECE_MAX", all((e0 - s0) / rate <= t.PIECE_MAX + 0.5
+                                                 for s0, e0 in t._pieces(long, rate)))
+
+    # A PARTIAL DOWNLOAD IS NOT A MODEL: the size must match exactly.
+    home = pathlib.Path(_tf.mkdtemp(prefix="qwen-test-"))
+    with mock.patch.object(t, "stt_dir", lambda: home):
+        t._qwen_dir().mkdir(parents=True)
+        for name, size in t.QWEN_FILES:
+            (t._qwen_dir() / name).write_bytes(b"\0" * 10)
+        ok("a short file is not a downloaded model", not t.is_cached(t.QWEN))
+
+    # THE SHORT-PIECE RULE, both ways, with a stand-in for the model. A long English piece, then a
+    # one-second piece the model calls Cantonese (dropped), then a one-second English one (kept).
+    wav = home / "leg.wav"
+    with _wave.open(str(wav), "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate)
+        w.writeframes((np.concatenate([tone(5), hush(2), tone(1), hush(2), tone(1)]) * 32767)
+                      .astype(np.int16).tobytes())
+    answers = iter(["language English<asr_text>Can you waive my bill?",
+                    "language Cantonese<asr_text>系诶。",
+                    "language English<asr_text>Yes."])
+    fake = mock.Mock()
+    fake.create_chat_completion.side_effect = lambda **k: {"choices": [{"message": {"content": next(answers)}}]}
+    with mock.patch.object(t, "_qwen_model", lambda: fake):
+        text = t._qwen(wav)
+    eq("a short piece in an unconfirmed language is dropped, a confirmed one kept",
+       text, "Can you waive my bill? Yes.")
+    eq("and every kept piece carries its time", len(t.segments_for(wav)), 2)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -5407,6 +5482,7 @@ def main() -> None:
     test_the_pages_offer_the_pick_not_a_picker()
     test_the_developer_override()
     test_a_call_can_be_answered_in_the_app()
+    test_qwen3_asr_is_the_speech_engine()
     test_capabilities()
     test_capability_disclosure()
     test_policy()

@@ -590,6 +590,32 @@ derived from no longer exists, it is the only place that says so.
       now means the machine's own, picked automatically (see *The local model* below). The
       provider-list mismatch is moot while that quarantine holds. The summariser itself is still
       unbuilt.
+- [ ] **Qwen3-ASR 1.7B IS THE SPEECH ENGINE, from 2026-09-25** — the reason is LANGUAGE, not speed.
+      Measured on the M5, same recordings, all on the GPU:
+
+      | | 222 s English call | 111 s Vietnamese + English | 14 s EN/MS/EN/ZH |
+      |---|---|---|---|
+      | Qwen3-ASR (llama.cpp, Q8) | 9.3 s | 4.3 s, both languages verbatim | all four verbatim |
+      | Whisper large-v3-turbo | 10.7 s | pinned `vi`: TRANSLATED to English, then looped "I can't find it" | invented English for the Mandarin |
+      | Apple SpeechAnalyzer | 1.1 s | cannot (no vi) | Malay sounded out in English, Mandarin dropped |
+
+      It runs in the **llama.cpp engine the app already ships** — `ggml-org/Qwen3-ASR-1.7B-GGUF`,
+      2.4 GB for model + audio encoder — via `_AudioHandler`, which fixes two refusals in
+      llama-cpp-python's `MTMDChatHandler` (it demands VISION; it hands Qwen's template a list
+      where a string is expected). `libmtmd.dylib` is already in the bundle.
+      **No timings from the model**, so `_qwen` cuts each leg at its pauses (`_pieces`) and a
+      piece's start IS its timestamp — the merge is unchanged. Qwen's own aligner covers 11
+      languages and none of vi/ms/th/id/hi, which is why not.
+      **Language is DETECTED per piece, never pinned** — pinning is what made Whisper translate.
+      A piece under `PIECE_SURE` (3 s) may not introduce a language no longer piece confirms:
+      measured, a "Hi" came back Cantonese, an "uh" Chinese, a 2.7 s "okay" Thai.
+      Whisper stays as a tier, not deleted; an explicit Whisper name in `## Transcription` keeps it.
+      **Unproven:** the frozen `.app` (only source-run so far); long-call memory with Gemma also
+      resident (~2.5 + ~5.6 GB); the repeated "You have failed" at the end of the 222 s call, which
+      may be a real repetition or a model loop; and the Thai call, which nobody here can read.
+      **Correction recorded with it:** Apple's engine DOES give timestamps — `attributeOptions:
+      [.audioTimeRange]`, verified 2026-09-25 — and our helper asked for none. The 2026-09-09
+      quarantine cited "Apple's helper prints bare text"; that was our helper, not Apple.
 - [ ] **Accelerating Whisper — MEASURED 2026-09-09, and the answer is METAL, not Core ML.**
       This item argued a 1.3-1.5x ceiling because Core ML accelerates the ENCODER only. That
       reasoning is sound and it was aimed at the wrong route: `ggml` has a full **Metal**

@@ -98,7 +98,24 @@ logger = logging.getLogger("secretary")
 #: NO `distil-*`. They are faster again and ENGLISH ONLY, and this product's own language list
 #: offers Vietnamese, Chinese, Malay and Thai. A model that silently cannot do most of the
 #: languages on the next control is not a tier.
-TIERS = ["small", "medium", "large-v3-turbo", "large-v3"]
+TIERS = ["qwen3-asr-1.7b", "small", "medium", "large-v3-turbo", "large-v3"]
+
+#: QWEN3-ASR, FIRST AND THE DEFAULT (2026-09-25). Measured on this M5 against Whisper
+#: large-v3-turbo on the same recordings, both on the GPU:
+#:
+#:   222s English call      Qwen 9.3s (RTF 0.042)            Whisper 10.7s
+#:   111s Vietnamese+English Qwen 4.3s, each language in its own words
+#:                           Whisper, pinned vi: translated the Vietnamese into English, then
+#:                           repeated "I can't find it." about seventeen times
+#:   14s EN/MS/EN/ZH clip   Qwen: all four parts verbatim, each in its own script
+#:                           Whisper: invented English for the Mandarin
+#:
+#: THE REASON IS LANGUAGE DETECTION, not speed. Callers here switch language mid-call, and a
+#: pinned language is what makes Whisper translate rather than transcribe. Qwen detects per piece
+#: of speech, across 30 languages including every one Apple lacks (vi, ms, th, id, hi) and 22
+#: Chinese dialects. It runs in the llama.cpp engine the app already ships for its text model —
+#: `ggml-org`'s own GGUF, no new dependency.
+QWEN = "qwen3-asr-1.7b"
 
 #: What a fresh install gets, and what an unreadable value falls back to. ONE CONSTANT, because
 #: it was three literals and they are the kind that drift apart.
@@ -111,7 +128,7 @@ TIERS = ["small", "medium", "large-v3-turbo", "large-v3"]
 #: A TYPO FALLS BACK HERE TOO, which means an unreadable value can start a 1.6 GB fetch. That is
 #: deliberate: the alternative is a fresh install and a mistyped one quietly running different
 #: models, and the row marked "in use" says which is running either way.
-DEFAULT_MODEL = "large-v3-turbo"
+DEFAULT_MODEL = QWEN
 
 #: What the four adjectives used to mean. Kept so an instance configured before 2026-08-27 keeps
 #: the model it chose instead of silently jumping tier on upgrade.
@@ -146,7 +163,7 @@ def local_model() -> str:
     # library adds a model, and it already had once.
     if chosen in QUALITY:
         return QUALITY[chosen]
-    return chosen if chosen in _known_models() else DEFAULT_MODEL
+    return chosen if chosen in _known_models() or chosen == QWEN else DEFAULT_MODEL
 
 #: A WAV header with no frames. Written when a call produced no audio at all — which is what an
 #: unbridged call looks like — and there is nothing to transcribe in one.
@@ -185,10 +202,16 @@ def segments_for(path: "pathlib.Path") -> list[tuple[float, float, str]]:
     return _last_segments.get(str(path), [])
 
 
-def _local_available() -> bool:
-    # find_spec, not a try/import: importing the engine pulls in an inference runtime and costs
-    # a second or more, and this is called from `status` and from every queue poll.
+def _local_available(model: str = "") -> bool:
+    """Whether the engine for `model` (default: the one in use) is in this build.
+
+    TWO ENGINES NOW, so the answer depends on the model: Qwen3-ASR runs in llama.cpp, the Whisper
+    tiers in whisper.cpp. find_spec, not a try/import: importing either pulls in an inference
+    runtime and costs a second or more, and this is called from `status` and every queue poll.
+    """
     import importlib.util
+    if (model or local_model()) == QWEN:
+        return importlib.util.find_spec("llama_cpp") is not None
     return importlib.util.find_spec("pywhispercpp") is not None
 
 
@@ -229,6 +252,12 @@ def backend() -> str:
     """
     if not _local_available():
         return ""
+    if local_model() == QWEN:
+        # llama.cpp decides from the wheel, the same as the text model: a Mac wheel built with
+        # Metal offloads, the CPU wheels on Windows and Linux do not.
+        from . import machine
+        return "GPU (Metal)" if machine.can_offload() and sys.platform == "darwin" else (
+            "GPU" if machine.can_offload() else "CPU")
     try:
         import pywhispercpp
         pkg = pathlib.Path(pywhispercpp.__file__).parent
@@ -446,8 +475,8 @@ def describe() -> str:
         where = backend()
         on = f" on the {where}" if where == "GPU (Metal)" else ""
         if APPLE_QUARANTINED and sys.platform == "darwin" and apple_ready()[0]:
-            return (f"Whisper {local_model()} on this machine{on} — Apple's on-device engine "
-                    f"is held back for now, so every language uses Whisper")
+            return (f"{display_name(local_model())} on this machine{on} — Apple's on-device "
+                    f"engine is held back for now")
         # SAY WHY WHISPER. Two different reasons, and both leave a Mac owner staring at Whisper
         # with nowhere to look: either Apple's engine cannot run here, or it can and their
         # settings.md still holds the model name seeded before Apple existed — which every
@@ -462,7 +491,7 @@ def describe() -> str:
         # I happened to be editing, so a build without the Swift helper — which is every
         # pywebview build, and was the first frozen binary I checked — reported the engine with
         # no word about the GPU. The backend is a fact about the ENGINE, not about Apple.
-        return f"Whisper {local_model()} on this machine{on}{why}"
+        return f"{display_name(local_model())} on this machine{on}{why}"
     return "OFF — " + available()[1]
 
 
@@ -473,7 +502,9 @@ def describe() -> str:
 #: on should not be wrong: large-v3-turbo measured 1553 MB against the 1600 written here for
 #: the old format, and base measured 141 against 142. Close, and checked rather than assumed.
 MODEL_MB = {"tiny": 75, "base": 141, "small": 466, "medium": 1530,
-            "large-v3-turbo": 1553, "large-v3": 3095}
+            "large-v3-turbo": 1553, "large-v3": 3095,
+            # The model and its audio encoder together, from Hugging Face's own file sizes.
+            QWEN: 2404}
 
 
 def is_cached(model: str = "") -> bool:
@@ -485,6 +516,9 @@ def is_cached(model: str = "") -> bool:
     poll paid a network round trip to answer a question about the local disk. ggml is one file
     per model, so its presence IS the answer.
     """
+    if (model or local_model()) == QWEN:
+        return all((_qwen_dir() / name).is_file() and (_qwen_dir() / name).stat().st_size == size
+                   for name, size in QWEN_FILES)
     f = _ggml(model or local_model())
     # A PARTIAL DOWNLOAD IS NOT A MODEL. The file appears the moment the fetch starts, and a
     # truncated one loads and then fails mid-transcription — the same trap `models.is_cached`
@@ -501,6 +535,9 @@ def fetch(model: str = "") -> str:
     what pays. Better to say the number and let the owner choose the moment.
     """
     name = model or local_model()
+    if name == QWEN:
+        _qwen_fetch()
+        return name
     from pywhispercpp import utils as _u
 
     stt_dir().mkdir(parents=True, exist_ok=True)
@@ -629,6 +666,8 @@ def _local(path: pathlib.Path) -> str:
     """
     global _local_model, _loaded_name
     want = local_model()
+    if want == QWEN:
+        return _qwen(path)
     # Reload when the tier CHANGES. Without this, raising the quality does nothing until the
     # daemon restarts, and the owner sees no difference from a setting they just changed.
     if _local_model is None or _loaded_name != want:
@@ -722,6 +761,208 @@ def transcribe(path: pathlib.Path) -> str:
     if which != "local":
         raise TranscriptionUnavailable(available()[1])
     return _local(path)
+
+
+# ---- Qwen3-ASR ------------------------------------------------------------------------------
+
+#: The two files, with the exact sizes Hugging Face lists — a partial download must never read as
+#: a model, and a size match is a cheaper test than a checksum on 2.4 GB.
+QWEN_FILES = (("Qwen3-ASR-1.7B-Q8_0.gguf", 2165034944),
+              ("mmproj-Qwen3-ASR-1.7B-Q8_0.gguf", 355709344))
+QWEN_URL = "https://huggingface.co/ggml-org/Qwen3-ASR-1.7B-GGUF/resolve/main/{}"
+
+#: Speech pieces. Qwen reports no timings of its own (its aligner covers 11 languages and none of
+#: vi/ms/th/id/hi), so each leg is cut at its silences and each piece transcribed alone: a piece's
+#: start IS its timestamp, in any language, and detection runs per piece — which is what lets a
+#: call that switches language come back in both.
+PIECE_FRAME = 0.03          # seconds of audio per energy frame
+#: A PAUSE, not a breath. 0.5 s cut sentences in half, and a one-second piece is too little for
+#: language detection: a "Hi" came back as Cantonese and an "uh" as Chinese. Turn-taking still
+#: splits, because this leg is silent for as long as the other party speaks.
+PIECE_GAP = 1.2             # this much silence ends a piece
+#: A piece shorter than this is not trusted to name its own language — see `_qwen`.
+PIECE_SURE = 3.0
+PIECE_MAX = 25.0            # never hand the model more than this in one piece
+PIECE_MIN = 0.4             # anything shorter is a click, not speech
+PIECE_PAD = 0.15            # keep a little either side so the first and last sounds survive
+
+_qwen_llm = None
+
+
+def display_name(model: str) -> str:
+    """What a person calls it. Whisper's own names for Whisper; Qwen's for Qwen."""
+    return "Qwen3-ASR 1.7B" if model == QWEN else f"Whisper {model}"
+
+
+def _qwen_dir() -> pathlib.Path:
+    return stt_dir() / QWEN
+
+
+def _qwen_fetch() -> None:
+    """Download both files, resuming a partial one.
+
+    THE DOWNLOAD LIVES IN `models`, not here: this module must make no network call at all — the
+    test that guards it exists so a path that sends AUDIO anywhere can never regrow — and fetching
+    weights is what `models` already does for the text model.
+    """
+    from . import models
+    _qwen_dir().mkdir(parents=True, exist_ok=True)
+    for name, size in QWEN_FILES:
+        models.fetch_file(QWEN_URL.format(name), _qwen_dir() / name, size)
+
+
+def _qwen_model():
+    """Load Qwen3-ASR once and keep it, like the Whisper model. llama.cpp's multimodal path."""
+    global _qwen_llm
+    if _qwen_llm is not None:
+        return _qwen_llm
+    if not is_cached(QWEN):
+        logger.info("Qwen3-ASR is not downloaded yet — fetching it (%d MB)", MODEL_MB[QWEN])
+        _qwen_fetch()
+    import types
+    import llama_cpp.mtmd_cpp as mtmd
+    from llama_cpp import Llama
+    from llama_cpp.llama_chat_format import MTMDChatHandler
+    from . import machine
+
+    class _AudioHandler(MTMDChatHandler):
+        """llama-cpp-python's multimodal handler, made to accept an AUDIO-only model.
+
+        Two refusals in the stock handler, neither about audio: it raises unless the encoder
+        supports VISION, and it hands the chat template a list of content parts where Qwen's
+        template concatenates a string. The encoder itself loads and runs audio fine.
+        """
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            shim = types.SimpleNamespace(**{n: getattr(mtmd, n) for n in dir(mtmd)
+                                            if not n.startswith("__")})
+            shim.mtmd_support_vision = (lambda ctx: mtmd.mtmd_support_vision(ctx)
+                                        or mtmd.mtmd_support_audio(ctx))
+            self._mtmd_cpp = shim
+
+        def _get_template_messages(self, messages, media_marker):
+            out = []
+            for msg in super()._get_template_messages(messages, media_marker):
+                c = msg.get("content")
+                if isinstance(c, list):
+                    msg = dict(msg, content="".join(p.get("text", "") for p in c
+                                                    if isinstance(p, dict)))
+                out.append(msg)
+            return out
+
+    (model_file, _), (mmproj_file, _) = QWEN_FILES
+    handler = _AudioHandler(clip_model_path=str(_qwen_dir() / mmproj_file), verbose=False)
+    _qwen_llm = Llama(model_path=str(_qwen_dir() / model_file), chat_handler=handler,
+                      n_ctx=8192, n_gpu_layers=-1 if machine.can_offload() else 0,
+                      verbose=False)
+    logger.info("speech model Qwen3-ASR 1.7B loaded on %s", backend())
+    return _qwen_llm
+
+
+def _pieces(a, rate: int = 16_000) -> list[tuple[int, int]]:
+    """Cut mono float audio at its silences. Returns (start, end) sample ranges of speech.
+
+    Energy per 30 ms frame against a floor learned from the quietest tenth of the recording, so a
+    noisy line and a clean one both split where the speaker pauses. A run longer than PIECE_MAX
+    is cut at its quietest frame, recursively, rather than at a fixed point mid-word.
+    """
+    import numpy as np
+    step = int(rate * PIECE_FRAME)
+    if len(a) < step:
+        return []
+    n = len(a) // step
+    rms = np.sqrt((a[: n * step].reshape(n, step) ** 2).mean(axis=1))
+    floor = float(np.percentile(rms, 10))
+    loud = rms > max(floor * 3.0, 0.004)
+    gap = int(PIECE_GAP / PIECE_FRAME)
+    runs, start, quiet = [], None, 0
+    for i, v in enumerate(loud):
+        if v:
+            if start is None:
+                start = i
+            quiet = 0
+        elif start is not None:
+            quiet += 1
+            if quiet >= gap:
+                runs.append((start, i - quiet + 1))
+                start, quiet = None, 0
+    if start is not None:
+        runs.append((start, n - quiet))
+
+    def split(s: int, e: int) -> list[tuple[int, int]]:
+        if (e - s) * PIECE_FRAME <= PIECE_MAX:
+            return [(s, e)]
+        lo, hi = s + int(5 / PIECE_FRAME), e - int(5 / PIECE_FRAME)
+        cut = lo + int(np.argmin(rms[lo:hi])) if hi > lo else (s + e) // 2
+        return split(s, cut) + split(cut, e)
+
+    pad = int(PIECE_PAD / PIECE_FRAME)
+    out = []
+    for s, e in runs:
+        for ps, pe in split(s, e):
+            if (pe - ps) * PIECE_FRAME < PIECE_MIN:
+                continue
+            out.append((max(0, ps - pad) * step, min(n, pe + pad) * step))
+    return out
+
+
+def _qwen_parse(raw: str) -> tuple[str, str]:
+    """`language Vietnamese<asr_text>Tôi muốn…` -> ("Vietnamese", "Tôi muốn…")."""
+    head, sep, text = (raw or "").partition("<asr_text>")
+    lang = head.strip()
+    if lang.lower().startswith("language"):
+        lang = lang[len("language"):].strip()
+    return (lang if sep else ""), (text if sep else raw or "").strip()
+
+
+def _qwen(path: pathlib.Path) -> str:
+    """Qwen3-ASR, one piece of speech at a time, with the language detected per piece.
+
+    `## Language` is NOT passed: detection is the point. A pinned language is what made Whisper
+    translate a Vietnamese caller into English, and a call that switches language needs each piece
+    judged on its own.
+    """
+    import base64
+    import io
+    import numpy as np
+    llm = _qwen_model()
+    a = _audio16k(path)
+    heard = []
+    for s, e in _pieces(a):
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(16_000)
+            w.writeframes((np.clip(a[s:e], -1, 1) * 32767).astype(np.int16).tobytes())
+        url = "data:audio/wav;base64," + base64.b64encode(buf.getvalue()).decode()
+        r = llm.create_chat_completion(
+            messages=[{"role": "user", "content": [{"type": "image_url", "image_url": {"url": url}}]}],
+            max_tokens=1024, temperature=0)
+        lang, said = _qwen_parse(r["choices"][0]["message"]["content"])
+        if said:
+            heard.append((s / 16_000, e / 16_000, lang, said))
+    # A SHORT PIECE DOES NOT GET TO INTRODUCE A LANGUAGE. A second of sound is too little to tell
+    # languages apart, and the failure is fluent text in a script nobody spoke — measured: a noise
+    # at 3.4 s as Thai, "Hi" as Cantonese. A short piece in a language some LONGER piece of this
+    # recording also has is kept, so a quick "Đúng rồi" in a Vietnamese call survives; one in a
+    # language nothing else confirms is dropped. With no long piece at all, nothing is dropped.
+    sure = {lang for s0, e0, lang, _t in heard if e0 - s0 >= PIECE_SURE and lang}
+    segs, langs, dropped = [], set(), 0
+    for s0, e0, lang, said in heard:
+        if sure and e0 - s0 < PIECE_SURE and lang and lang not in sure:
+            dropped += 1
+            continue
+        segs.append((s0, e0, said))
+        if lang:
+            langs.add(lang)
+    if dropped:
+        logger.info("%s: dropped %d short piece(s) in a language no longer piece confirmed",
+                    path.name, dropped)
+    _last_segments[str(path)] = segs
+    if langs:
+        logger.info("%s: %d piece(s), language %s", path.name, len(segs), ", ".join(sorted(langs)))
+    return " ".join(t for _s, _e, t in segs).strip()
 
 
 # ---- the queue -------------------------------------------------------------------------
@@ -848,6 +1089,8 @@ def model_dir(model: str) -> pathlib.Path | None:
     ggml ships one `.bin` per model in a directory we own, so all of that is gone: the path IS
     the answer and its size IS the size.
     """
+    if model == QWEN:
+        return _qwen_dir() if any(_qwen_dir().glob("*.gguf*")) else None
     f = _ggml(model)
     return f if f.is_file() else None
 
@@ -855,6 +1098,9 @@ def model_dir(model: str) -> pathlib.Path | None:
 def size_on_disk(model: str) -> int:
     """Megabytes this model actually occupies, or 0 when absent. Measured, not from the table."""
     f = model_dir(model)
+    if f and f.is_dir():
+        # Both files and any partial download of them, so a fetch in progress shows how far along.
+        return int(sum(x.stat().st_size for x in f.glob("*.gguf*")) / 1024 / 1024)
     return int(f.stat().st_size / 1024 / 1024) if f else 0
 
 
@@ -868,11 +1114,16 @@ def delete_model(model: str) -> str:
     freed = size_on_disk(model)
     # UNLINK, not rmtree: `d` is the model file itself now, and rmtree on a file does nothing
     # silently — which would have reported the space as freed with the model still on disk.
+    # Qwen is a directory of its own two files, removed file by file for the same reason.
     try:
-        d.unlink()
+        if d.is_dir():
+            for x in d.glob("*.gguf*"):
+                x.unlink()
+        else:
+            d.unlink()
     except OSError as exc:
         return f"Could not delete {model}: {exc}"
-    return f"Deleted Whisper {model}, freeing {freed} MB."
+    return f"Deleted {display_name(model)}, freeing {freed} MB."
 
 
 def catalogue() -> list[dict]:
@@ -914,7 +1165,7 @@ def catalogue() -> list[dict]:
         # making a fetch that had barely begun look instantaneous.
         done = is_cached(model)
         on_disk = size_on_disk(model)
-        out.append({"model": model, "name": model,
+        out.append({"model": model, "name": display_name(model),
                     "mb": on_disk if done else MODEL_MB.get(model, 0),
                     # What has landed so far, so a partial fetch can show how far along it is
                     # instead of looking like nothing or like everything.
