@@ -5644,6 +5644,31 @@ def test_documents_permission() -> None:
     ok("macOS is told why", "NSDocumentsFolderUsageDescription" in plist)
 
 
+def test_idle_break() -> None:
+    """An hour of quiet starts a new conversation by itself; the hub has no button for it."""
+    print("\n  -- an idle gap starts a new conversation --")
+    from agentduet_desktop.assistant import OwnerChat
+    calls = []
+    fake = type("F", (), {})()
+    fake.IDLE_BREAK_SECONDS = OwnerChat.IDLE_BREAK_SECONDS
+    fake.new_conversation = lambda: calls.append(1)
+    old = (datetime.now() - timedelta(hours=2)).isoformat(timespec="seconds")
+    recent = (datetime.now() - timedelta(minutes=5)).isoformat(timespec="seconds")
+    fake.shown = [{"q": "hi", "a": "hello", "at": old}]
+    OwnerChat._break_if_idle(fake)
+    eq("two hours later, it breaks", len(calls), 1)
+    fake.shown = [{"q": "hi", "a": "hello", "at": recent}]
+    OwnerChat._break_if_idle(fake)
+    eq("five minutes later, it does not", len(calls), 1)
+    fake.shown = [{"q": "hi", "a": "hello", "at": old}, {"break": True}]
+    OwnerChat._break_if_idle(fake)
+    eq("and never twice for the same gap", len(calls), 1)
+    hub = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+           / "web.html").read_text(encoding="utf-8")
+    ok("the hub has no New conversation button", 'id="newConv"' not in hub)
+    ok("and no model label", 'id="aModel"' not in hub)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -5652,6 +5677,7 @@ def main() -> None:
     test_uninstall_tiers()
     test_gpu_offload()
     test_documents_permission()
+    test_idle_break()
     test_release_ships_the_native_shell()
     test_apple_stt_engine()
     test_local_models_do_not_monologue()
