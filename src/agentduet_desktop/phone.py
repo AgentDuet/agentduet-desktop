@@ -188,6 +188,10 @@ async def on_page(ws) -> None:
     from aiohttp import WSMsgType
     _pages.add(ws)
     await _send(ws, state())
+    # CALLS IN PROGRESS and their captions so far, so a page opened mid-call catches up rather
+    # than showing a call that seems to have started with no words. See `live`.
+    from . import live
+    await _send(ws, live.snapshot())
     try:
         async for msg in ws:
             a = _active

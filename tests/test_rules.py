@@ -5251,7 +5251,10 @@ def test_a_call_can_be_answered_in_the_app() -> None:
            [n for n in legs if n.endswith(("-caller.wav", "-callee.wav"))])
         eq("two legs", len(legs), 2)
         ok("and the index says where it was taken", rows[-1][1].get("note") == "answered in the app")
-        eq("every page is told it is over", tabs[0].sent[-1]["type"], "idle")
+        # Not necessarily LAST: the live-caption feed shares the socket and says the call ended too.
+        ok("every page is told it is over", "idle" in [m["type"] for m in tabs[0].sent[-3:]],
+           [m["type"] for m in tabs[0].sent[-3:]])
+        ok("and that the live call ended", "live_end" in [m["type"] for m in tabs[0].sent])
 
         # NOT ANSWERED: it rings out in the app and passes through, as before.
         async def ignore(call, tabs): await _aio.sleep(0.8); call.gone.set(); call.hangup(None)
@@ -5411,6 +5414,76 @@ def test_qwen3_asr_is_the_speech_engine() -> None:
     eq("and every kept piece carries its time", len(t.segments_for(wav)), 2)
 
 
+def test_live_captions_while_a_call_is_on() -> None:
+    """A call in progress is marked on the person, and each side is captioned piece by piece."""
+    print("\n  -- live captions while a call is on --")
+    import asyncio as _aio
+    import unittest.mock as mock
+    from agentduet_desktop import live, transcribe
+
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    carry_src = (src / "carry.py").read_text()
+    hub = (src / "web.html").read_text()
+    ok("the recorder hands every chunk to the live cutter", "live_leg.feed(chunk)" in carry_src)
+    ok("a fault in the preview cannot cost the recording",
+       "live captions stopped for the" in carry_src)
+    ok("both call paths mark the call live and end it",
+       carry_src.count("await _live_start(") == 2 and carry_src.count("await _live_end(") == 2)
+    ok("the live worker is started with the others",
+       "asyncio.create_task(_live.worker())" in (src / "secretary_agent.py").read_text())
+    ok("a page opened mid-call catches up", "live.snapshot()" in (src / "phone.py").read_text())
+    ok("the page routes captions away from the phone's own state",
+       "['live_calls', 'live_start', 'live_end', 'caption'].includes(m.type)" in hub)
+    ok("a person on a call is marked in the list", 'class="livemark">On a call' in hub)
+    ok("a first-time caller is listed while on the call", "function people()" in hub)
+    ok("the preview is dropped once the real transcript arrives",
+       "c.ended && hist.some(h => h.call_id === id && h.transcript)" in hub)
+    ok("the speech model is shared under one lock", "with _qwen_lock:" in (src / "transcribe.py").read_text())
+    try:
+        import numpy as np
+    except ImportError:
+        print("  SKIP  the cutter checks need numpy, not installed here")
+        return
+
+    # THE CUTTER, fed the way the recorder feeds it: 24 kHz int16 in 20 ms chunks.
+    rate = live.RATE
+    tone = lambda secs: (0.3 * np.sin(np.linspace(0, secs * 2 * np.pi * 220, int(secs * rate))) * 32767).astype(np.int16)
+    hush = lambda secs: np.zeros(int(secs * rate), dtype=np.int16)
+    audio = np.concatenate([hush(1), tone(2), hush(0.3), tone(1), hush(2), tone(1.5), hush(2)]).tobytes()
+    got = []
+    with mock.patch.object(live, "_enqueue", lambda cid, leg, at, secs, pcm: got.append((leg, round(secs, 1)))):
+        leg = live.Leg("cLive", "caller")
+        for i in range(0, len(audio), 960):
+            leg.feed(audio[i:i + 960])
+        leg.flush()
+    eq("a breath does not end a piece, a pause does", len(got), 2)
+    ok("and each piece is about as long as its speech", 3.0 <= got[0][1] <= 4.0 and 1.5 <= got[1][1] <= 2.5, got)
+    eq("the leg is carried through", got[0][0], "caller")
+
+    # THE WORKER: captions go out in order; a short piece may not introduce an unconfirmed language.
+    sent = []
+    async def _drive():
+        async def _push(obj): sent.append(obj)
+        with mock.patch.object(live, "_push", _push), \
+             mock.patch.object(live, "_transcribe", side_effect=[("English", "Can you waive my bill?"),
+                                                                  ("Cantonese", "系诶。"),
+                                                                  ("English", "Yes.")]):
+            w = _aio.create_task(live.worker())
+            await _aio.sleep(0)
+            await live.start("cW", "+6590000000")
+            for secs in (4.0, 1.0, 1.0):
+                live._enqueue("cW", "caller", 0.0, secs, b"\0\0")
+            await _aio.sleep(0.2)
+            await live.end("cW")
+            w.cancel()
+    _aio.run(_drive())
+    kinds = [m["type"] for m in sent]
+    eq("start, the kept captions, end", kinds, ["live_start", "caption", "caption", "live_end"])
+    eq("the unconfirmed short piece is dropped",
+       [m["text"] for m in sent if m["type"] == "caption"], ["Can you waive my bill?", "Yes."])
+    eq("and the call is gone from the snapshot once it ends", live.snapshot()["calls"], [])
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -5483,6 +5556,7 @@ def main() -> None:
     test_the_developer_override()
     test_a_call_can_be_answered_in_the_app()
     test_qwen3_asr_is_the_speech_engine()
+    test_live_captions_while_a_call_is_on()
     test_capabilities()
     test_capability_disclosure()
     test_policy()
