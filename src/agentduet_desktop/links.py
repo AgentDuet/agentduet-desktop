@@ -166,10 +166,18 @@ def calendar_url(title: str, start: str, end: str = "", notes: str = "",
 
 
 def mailto_url(to: str, subject: str = "", body: str = "") -> str:
-    """The `mailto:` link for one draft. Raises ValueError on a field it cannot use."""
+    """The `mailto:` link for one draft. Raises ValueError on a field it cannot use.
+
+    A RECIPIENT THAT IS NOT ONE PLAIN ADDRESS IS LEFT OUT, not refused (2026-09-28). The owner
+    knows people by name and callers arrive as numbers, so "email Kok Choong" gave a name, the
+    draft was refused, and — the refusal never reaching the screen — nothing happened at all.
+    A draft with no recipient is valid (RFC 6068) and the owner types the address in their mail
+    client. The strict check still decides what may ENTER the link: text that is not one
+    address never reaches it, so it cannot add a recipient or a header.
+    """
     address = _line(to, 200)
     if not ADDRESS.match(address):
-        raise ValueError(f"{to!r} does not look like one email address.")
+        address = ""
     fields = {}
     if subject:
         fields["subject"] = _line(subject, 200)
@@ -177,7 +185,7 @@ def mailto_url(to: str, subject: str = "", body: str = "") -> str:
         fields["body"] = _clean(body, 4000)
     # `safe="@"` — an `@` is legal in a mailto address (RFC 6068) and a `%40` is not read by
     # every client, so encoding it turns a valid draft into a mail to nobody.
-    url = "mailto:" + urllib.parse.quote(address, safe="@")
+    url = "mailto:" + (urllib.parse.quote(address, safe="@") if address else "")
     if fields:
         url += "?" + urllib.parse.urlencode(fields, quote_via=urllib.parse.quote)
     if len(url) > MAILTO_LIMIT:
@@ -220,5 +228,9 @@ def draft_email(to: str, subject: str = "", body: str = "") -> str:
     except OSError as exc:
         logger.warning("could not open a mail draft: %s", exc)
         return f"Could not open the mail client: {exc}"
+    if not ADDRESS.match(_line(to, 200)):
+        who = _line(to, 80)
+        return (f"Opened a draft with no recipient — add {who + chr(39) + 's' if who else 'the'} "
+                "email address in your mail client. Nothing is sent until you press Send.")
     return (f"Opened a draft to {_line(to, 200)}. Nothing is sent until you press Send "
             "in your mail client.")

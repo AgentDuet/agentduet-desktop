@@ -893,6 +893,12 @@
     const d = await post('/api/proposal', {id, approve});
     PROPOSALS = d.proposals || [];
     drawChat();
+    // SAY WHAT HAPPENED. The result was thrown away, so a draft the tool refused looked exactly
+    // like one that opened: the card vanished and nothing appeared (2026-09-28, a demo).
+    if (approve && d.message) {
+      const m = String(d.message);
+      note(m, /^(Not opened|Could not|Cannot|tool error|Unknown tool|That proposal)/.test(m));
+    }
   }
   document.addEventListener('click', e => {
     const b = e.target.closest('.prop button');

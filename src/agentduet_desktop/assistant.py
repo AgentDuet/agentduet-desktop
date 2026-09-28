@@ -278,6 +278,33 @@ def pending() -> list[dict]:
     return _proposals()
 
 
+def _queued_reply(queued: list[tuple[str, dict]]) -> str:
+    """The reply when this turn queued something for the owner — written by code, not the model.
+
+    The model was left to say it, through the narrow answer-from-lookup prompt, which reads the
+    "queued for approval" notice as a lookup that found nothing. Asked to email someone, it
+    answered that the lookup "does not contain information on how to email" them, with the draft
+    sitting in a card below (2026-09-28). Code knows exactly what was queued, so code says it.
+    """
+    lines = []
+    for name, a in queued:
+        if name == "draft_email":
+            to = str(a.get("to") or "").strip()
+            lines.append(f"I've prepared an email{' to ' + to if to else ''}"
+                         f"{': ' + str(a.get('subject')) if a.get('subject') else ''}. "
+                         "Press Open below to see it in your mail client — nothing is sent until "
+                         "you press Send there.")
+        elif name == "add_to_calendar":
+            lines.append(f"I've prepared a calendar event: {a.get('title') or 'untitled'}"
+                         f"{', ' + str(a.get('start')) if a.get('start') else ''}. Press Open "
+                         "below to see it in Google Calendar — it is saved only when you save it.")
+        elif name.endswith("_skill"):
+            lines.append("I've proposed a change to how I work. Approve it below if you want it.")
+        else:
+            lines.append("I've proposed an addition to your notes. Approve it below if you want it.")
+    return "\n".join(lines)
+
+
 def resolve(pid: str, approve: bool) -> str:
     """Apply or discard one proposal. THE WRITE HAPPENS HERE, on the owner's click — never
     on the model's say-so, and never inside the turn that read the transcript."""
@@ -1035,6 +1062,7 @@ class OwnerChat:
                 self.tainted = True
         history = self.history + [f"OWNER: {message}"]
         self._turn_start = len(self.history)
+        queued: list[tuple[str, dict]] = []      # what this turn queued for the owner's approval
         self._about = viewing
         used: list[str] = []
         nudged = False
@@ -1065,7 +1093,9 @@ class OwnerChat:
                     continue
                 # A TOOL ALREADY RAN, so the answer comes from what it returned rather
                 # than from another pass over the instructions.
-                if used:
+                if queued:
+                    out = _queued_reply(queued)
+                elif used:
                     narrowed = await self._answer_from_results(message, history)
                     if narrowed:
                         out = narrowed
@@ -1148,6 +1178,7 @@ class OwnerChat:
                                   "To record something a caller SAID, attribute it with "
                                   "note_about instead — that needs no approval.")
                     used.append(name + ":proposed")
+                    queued.append((name, args))
                     history.append(f"ASSISTANT: called {name}")
                     history.append(f"TOOL_RESULT: {result}")
                     continue
@@ -1176,7 +1207,8 @@ class OwnerChat:
                 break               # asking the same thing twice more will not answer it
             continue
 
-        final = (await self._answer_from_results(message, history)
+        final = (_queued_reply(queued) if queued
+                 else await self._answer_from_results(message, history)
                  or await self._ask(history + ["(answer the owner now)"], context))
         # A weak model can loop on the tool call and hand the same JSON back as its "answer".
         # Rendering `{"tool": ...}` to the owner is never right — it is the machinery, not a
