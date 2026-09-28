@@ -4035,12 +4035,18 @@ def test_a_link_tool_cannot_choose_a_destination() -> None:
            and str(links.MAILTO_LIMIT) in str(exc))
     for args, why in ((("a@b.example",), "a good address"),):
         ok(f"{why} is accepted", links.mailto_url(*args).startswith("mailto:"))
-    for bad in ("nope", "a@b", "a b@c.example", "a@b.example, c@d.example"):
-        try:
-            links.mailto_url(bad)
-            ok(f"{bad!r} is refused", False)
-        except ValueError:
-            ok(f"{bad!r} is refused", True)
+    # NOT ONE PLAIN ADDRESS: the draft still opens, with no recipient — a name ("Kok Choong") is
+    # what the owner has, and refusing it made nothing happen at all (2026-09-28). What must
+    # hold is that the text never reaches the link, so it cannot add a recipient or a header.
+    for bad in ("nope", "a@b", "a b@c.example", "a@b.example, c@d.example",
+                "a@b.example?cc=evil@x.example", "Kok Choong"):
+        eq(f"{bad!r} is left out of the link", links.mailto_url(bad, "Hi"), "mailto:?subject=Hi")
+    ok("and the owner is told to add the address",
+       "no recipient" in links.draft_email.__code__.co_consts.__repr__())
+    from agentduet_desktop.assistant import _queued_reply
+    r = _queued_reply([("draft_email", {"to": "Kok Choong", "subject": "Lunch"})])
+    ok("a queued draft is announced by code, not left to the model",
+       "prepared an email to Kok Choong" in r and "nothing is sent" in r)
     try:
         links.calendar_url("x", "2026-09-10 15:00", "2026-09-10 14:00")
         ok("an end before the start is refused", False)
