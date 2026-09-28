@@ -5910,6 +5910,11 @@ def test_unread_badge() -> None:
     ok("no page names a carrier", not [f.name for f in pages
                                        if "power mobile" in f.read_text(encoding="utf-8").lower()])
     ok("the connection light sits beside the number", 'id="conn"' in hub and 'id="lineBadge"' not in hub)
+    # THE FINISHED TRANSCRIPT IN THE CAPTIONS' LAYOUT, so replacing the captions after a call
+    # reads as the text improving rather than the balloons vanishing (2026-09-28).
+    ok("a finished transcript is drawn as balloons", "transcriptHtml(it.call.transcript)" in hub
+       and "/^(you|them):\\s?(.*)$/" in hub)
+    ok("and one with no labels stays a block", "if (!turns.length) return `<div class=\"text\">" in hub)
 
 
 def main() -> None:

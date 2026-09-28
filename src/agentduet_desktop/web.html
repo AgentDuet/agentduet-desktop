@@ -515,7 +515,7 @@
             ? `<div class="none">${it.call.outgoing ? 'No answer.' : 'Missed call.'}</div>`
           : it.call.norecording ? '<div class="none">No recording.</div>'
           : it.call.silent ? '<div class="none">No audio.</div>'
-          : (it.call.transcript ? `<div class="text">${esc(it.call.transcript)}</div>`
+          : (it.call.transcript ? transcriptHtml(it.call.transcript)
              // ONE CARD PER CALL. Until the kept transcript lands, the live captions of this call
              // stand in for it here, rather than a separate "Call ended" card beside a pending one.
              : liveCaps(it.call.call_id) ? `<div class="caps">${liveCaps(it.call.call_id)}</div>`
@@ -570,6 +570,24 @@
       return;                       // a caption changes no row in the list
     }
     drawWho(false);
+  }
+
+  //: A FINISHED TRANSCRIPT AS BALLOONS, in the live captions' layout (Stanley, 2026-09-28): the
+  //: other party left, the owner right. It was one plain text block, so when it replaced the
+  //: captions a couple of seconds after hang-up the balloons seemed to vanish rather than
+  //: improve. One `you:` / `them:` line is one turn; an unlabelled line belongs to the turn
+  //: before it. A transcript with no labels at all (older ones, a single side) stays a block.
+  function transcriptHtml(t){
+    const turns = [];
+    for (const line of String(t).split('\n')) {
+      const m = /^(you|them):\s?(.*)$/.exec(line);
+      if (m) turns.push({me: m[1] === 'you', text: m[2]});
+      else if (turns.length && line.trim()) turns[turns.length - 1].text += '\n' + line;
+    }
+    if (!turns.length) return `<div class="text">${esc(t)}</div>`;
+    return '<div class="caps">' + turns.map(x =>
+      `<div class="turn ${x.me ? 'me' : 'it'}"><div class="bub">${esc(x.text)}</div></div>`).join('')
+      + '</div>';
   }
 
   //: The balloons for one call's captions, or '' when there are none.
