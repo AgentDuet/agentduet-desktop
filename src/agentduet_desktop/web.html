@@ -805,13 +805,13 @@
       <div class="turn me"><div class="bub">${esc(t.q)}${viaLine(t)}</div></div>
       ${t.pending && !t.a ? `<div class="turn it"><div class="dots"><i></i><i></i><i></i></div></div>` : `
       <div class="turn ${t.bad ? 'bad' : 'it'}"><div class="bub${t.draft ? ' draft' : ''}${t.sent ? ' went' : ''}">${
-        t.draft ? `<span class="dlbl${t.sent ? ' gone' : ''}">${t.sent ? 'Sent' : 'Draft reply'}${
-          draftWho(t) ? ' to ' + esc(draftWho(t)) : ''}${t.sent ? '' : ' — not sent'}</span>` : ''
+        t.draft ? `<span class="dlbl${t.sent ? ' gone' : ''}">${t.sent ? 'Sent' : t.held ? 'Queued' : 'Draft reply'}${
+          draftWho(t) ? (t.held ? ' for ' : ' to ') + esc(draftWho(t)) : ''}${t.sent || t.held ? '' : ' — not sent'}</span>` : ''
       }${esc(t.a)}${viaLine(t)}${useAsReply(t, i)}</div></div>`}</div>`);
     // The signature carries everything the row RENDERS, so a turn that changes rebuilds rather
     // than being appended beside its older self. Same discipline as `callSig`.
     reconcile(turnHost, TURNS.map((t, i) => t.brk ? 'brk'
-      : [t.q, t.a, t.pending ? 1 : 0, t.bad ? 1 : 0, t.draft ? 1 : 0, t.sent ? 1 : 0,
+      : [t.q, t.a, t.pending ? 1 : 0, t.bad ? 1 : 0, t.draft ? 1 : 0, t.sent ? 1 : 0, t.held ? 1 : 0,
          t.via || '', i === TURNS.length - 1 ? 'last' : ''].join('\u0000')), html);
     tail.innerHTML = (pending ? `<div class="turn me"><div class="bub">${esc(pending)}</div></div>
          <div class="turn it"><div class="row"><div class="dots"><i></i><i></i><i></i></div>
@@ -842,7 +842,7 @@
   // anyone. A control repeated past the point of meaning stops reading as a control.
   function useAsReply(t, i){
     const who = replyTarget();
-    if (!t.draft || t.sent || i !== TURNS.length - 1 || !who || t.bad || !t.a) return '';
+    if (!t.draft || t.sent || t.held || i !== TURNS.length - 1 || !who || t.bad || !t.a) return '';
     const name = esc(who.display || who.who);
     // TWO ACTIONS, EACH SAYING WHAT IT DOES. One button reading "Use as reply to X" was
     // ambiguous enough that Stanley clicked it expecting a send and got a filled text box.

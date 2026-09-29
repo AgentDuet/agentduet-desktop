@@ -609,10 +609,20 @@ def send_if_asked(chat, message: str, viewing: str = "") -> str | None:
                  (f'"send to {_waiting_names()}"' if _waiting_names()
                   else "who it is for") + ".")
     else:
-        secretary_tools.reply_to(target, draft)
+        outcome = secretary_tools.reply_to(target, draft)
         # THE NAME, NOT THE UID. On DDUET the identity is an account uid, so a confirmation
         # naming it is accurate, unreadable, and no use for checking it went to the right person.
-        reply = f"Sent to {tools._display_for(target)}:\n\n{draft}"
+        name = tools._display_for(target)
+        # HELD IS NOT SENT (#6). Someone who has never written in has no conversation to reply
+        # into, so `reply_to` queues the message and says so. This used to discard that answer
+        # and report "Sent" — and the draft was then marked sent on disk, so the owner believed
+        # a person had been answered who had heard nothing.
+        if "HELD for delivery" in (outcome or ""):
+            reply = (f"Queued for {name}: they have not written in yet, so it sends when "
+                     f"they do.\n\n{draft}")
+            chat.note_sent(message, reply, delivered=False, held=True)
+            return reply
+        reply = f"Sent to {name}:\n\n{draft}"
     chat.note_sent(message, reply, delivered=reply.startswith("Sent"))
     return reply
 
@@ -1272,7 +1282,7 @@ class OwnerChat:
         is not recoverable.
         """
         for turn in reversed(self.shown):
-            if turn.get("break") or turn.get("sent"):
+            if turn.get("break") or turn.get("sent") or turn.get("held"):
                 break
             if turn.get("draft") and turn.get("draft_for"):
                 return str(turn["draft_for"])
@@ -1288,8 +1298,8 @@ class OwnerChat:
         for turn in reversed(self.shown):
             if turn.get("break"):
                 break
-            if turn.get("sent"):
-                # ALREADY GONE. Without this, saying "send it" twice sends it twice — the draft
+            if turn.get("sent") or turn.get("held"):
+                # ALREADY GONE, or already queued. Without this, saying "send it" twice sends it twice — the draft
                 # stays in the log and nothing marked it spent. A duplicate message to a customer
                 # is not recoverable, and "I said it again by accident" is a poor explanation.
                 # Caught by reading a debug dump, not by a test; there is one now.
@@ -1298,21 +1308,28 @@ class OwnerChat:
                 return turn["a"]
         return ""
 
-    def note_sent(self, question: str, confirmation: str, delivered: bool = True) -> None:
+    def note_sent(self, question: str, confirmation: str, delivered: bool = True,
+                  held: bool = False) -> None:
         """Record the send as a turn, and mark the draft it consumed.
 
         THE LABEL HAS TO STOP SAYING "not sent" once it has been. A balloon still claiming a
         message is unsent after the owner watched it go is the same class of untruth as an agent
         reporting work it did not do — and this one is worse, because it invites sending it
         again. Found by reloading the page after the first real send.
+
+        A HELD message is the mirror case (#6): queued, not sent, and it must not say "Sent".
+        It is still CONSUMED — it is in the delivery queue, so a second "send it" would queue it
+        twice — which is why `held` stops `last_draft` exactly as `sent` does. "Queued" stays
+        true after the queue delivers it; whether it has gone yet is the person's thread's to
+        say, and it reads that from the queue itself.
         """
-        if delivered:
+        if delivered or held:
             for turn in reversed(self.shown):
                 if turn.get("draft"):
-                    turn["sent"] = True
+                    turn["held" if held else "sent"] = True
                     break
             self._persist()
-        self._record(question, confirmation, ["reply_to"] if delivered else [])
+        self._record(question, confirmation, ["reply_to"] if delivered or held else [])
 
     def note_failure(self, question: str, explanation: str) -> None:
         """Record a turn that never reached an answer, so the failure is IN the transcript.
