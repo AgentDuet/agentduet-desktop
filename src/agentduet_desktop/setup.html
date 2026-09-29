@@ -395,6 +395,10 @@
   fetch(`/api/setup/current?t=${T}`).then(r => r.json()).then(d => {
     OAUTH = !!d.oauth_available;
     DONE = !!d.setup_done;
+    // SIGNED IN ALREADY: the sign-in screen has nothing left to ask, so move on. Sign-in ends by
+    // reloading this page, and a fresh load always opened on sign-in — so finishing sign-in in
+    // the browser left the app on the screen it had just completed (found 2026-09-29).
+    if (d.oauth && d.oauth.signed_in && $('v-login').classList.contains('on')) show('setup');
     if (FROM === 'settings' || DONE) {
       $('doCancel').parentElement.hidden = true;
       $('backRow').hidden = false;
@@ -418,6 +422,8 @@
     PERMS.applies = !!d.applies;
     PERMS.sandboxed = !!d.sandboxed;
     PERMS.documents = d.documents || '';
+    // IF THE PAGE ALREADY MOVED ON before this answer came, the Permissions step still comes first.
+    if (PERMS.applies && !PERMS.passed && $('v-setup').classList.contains('on')) show('setup');
     // NO PERMISSIONS STEP off macOS, so the login question goes back to Quick Setup.
     if (!PERMS.applies) $('doDone').before($('loginRow'));
   }).catch(() => {});
