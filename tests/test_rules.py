@@ -5024,6 +5024,14 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
        "SignInPanel(model: model.signIn)" in swift["SetupView.swift"] and "SignInPanel(model: signIn)" in view)
     ok("signed out, Settings offers one Sign In… button",
        'Button("Sign In…") { editingKey.value = true }' in view)
+    signin = swift["SignIn.swift"]
+    ok("the buttons read Sign in with…, the wording all three providers allow",
+       all(f'"Sign in with {p_}"' in signin for p_ in ("Apple", "Google", "Microsoft"))
+       and "Continue with" not in signin)
+    ok("Google and Microsoft carry their own marks", "GoogleMark()" in signin and "MicrosoftMark()" in signin)
+    ok("setup's last button is Done", 'Button("Done") { model.finish() }' in swift["SetupView.swift"])
+    for page in ("setup.html", "settings.html"):
+        ok(f"{page} uses the same wording", "Continue with" not in (root / "src/agentduet_desktop" / page).read_text())
     ok("with no separate connector row and no row of three buttons",
        'LabeledContent("Connector and API key")' not in view and "signInButtons" not in view)
     ok("the login item is set BEFORE handover",
@@ -5031,6 +5039,38 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
     ok("a re-run does not hand over", "if rerun { onFinish?(); return }" in setup)
     ok("Documents is required to continue",
        ".disabled(!model.documentsAllowed)" in swift["SetupView.swift"])
+
+
+def test_signing_out_closes_a_live_channel() -> None:
+    """2026-09-29: a channel signed out of stayed live, and calls kept arriving."""
+    print("\n  -- signing out closes the channel --")
+    import asyncio
+    import unittest.mock as mock
+    from agentduet_desktop import secretary_agent as sa
+
+    class _SM:
+        def __init__(self): self.closed = False
+        async def disconnect(self): self.closed = True
+
+    ready = {"v": True}
+    sm = _SM()
+    async def go():
+        with mock.patch.object(sa, "CONNECTOR_POLL_SECONDS", 0.01), \
+             mock.patch.object(sa, "connector_ready", lambda: ready["v"]):
+            task = asyncio.create_task(sa._close_when_signed_out(sm))
+            await asyncio.sleep(0.05)
+            still = not sm.closed
+            ready["v"] = False                     # the owner signs out
+            await asyncio.wait_for(task, 1)
+            return still
+    still_open = asyncio.run(go())
+    ok("a channel with a credential stays open", still_open)
+    ok("and is closed once the credential is gone", sm.closed)
+    src = (pathlib.Path(sa.__file__)).read_text()
+    ok("the channel is watched while it runs",
+       "watch = asyncio.create_task(_close_when_signed_out(sm))" in src)
+    ok("and a signed-out daemon waits for a credential rather than retrying without one",
+       "# SIGNED OUT SINCE THE LAST CONNECT" in src)
 
 
 def test_the_catalogue_carries_gemma_4_and_says_what_was_measured() -> None:
@@ -6306,6 +6346,7 @@ def main() -> None:
     test_the_agent_finds_a_sender_by_the_name_it_was_shown()
     test_a_caller_is_named_by_the_owner_then_contacts_then_the_message()
     test_the_native_settings_window_speaks_the_daemons_api()
+    test_signing_out_closes_a_live_channel()
     test_the_catalogue_carries_gemma_4_and_says_what_was_measured()
     test_the_machine_picks_the_model()
     test_one_place_decides_the_model_and_hosted_is_quarantined()

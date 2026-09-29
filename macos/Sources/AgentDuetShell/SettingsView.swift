@@ -66,6 +66,16 @@ private struct AccountPane: View {
                 TextField("Your number", text: $model.phone, prompt: Text("+6591234567"))
                     .focused($focus, equals: "phone")
                     .onSubmit { model.commit("phone") }
+                // THE LINE IS NOT YOUR NUMBER, and the hub shows it when yours is unset — so it
+                // is named here too, read-only, learned from the calls themselves.
+                if !model.panel.str("line").isEmpty {
+                    LabeledContent {
+                        Text(model.panel.str("line")).textSelection(.enabled)
+                    } label: {
+                        Text("Line")
+                        Text("The number your calls come in on")
+                    }
+                }
             }
             Section {
                 LabeledContent("Status") {
