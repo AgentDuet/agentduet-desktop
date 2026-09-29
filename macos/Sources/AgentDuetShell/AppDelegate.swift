@@ -65,6 +65,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private var loginItem: NSMenuItem!
     private var updateItem: NSMenuItem!
     private let daemon = Daemon()
+    /// Whether the owner can be heard, for "Answer calls here" — see MicWatch.
+    private var micWatch: MicWatch?
     private var siteURL: URL?
     /// Where the update item points, set as the menu opens.
     private var releaseURL: URL?
@@ -87,6 +89,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // THE DOCUMENTS GRANT FIRST: access this process holds is inherited only by a daemon
         // started AFTER it. See FolderAccess.
         FolderAccess.restore(home: daemon.instanceHome)
+        micWatch = MicWatch(home: daemon.instanceHome)
+        micWatch?.start()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             let result = self.daemon.start()

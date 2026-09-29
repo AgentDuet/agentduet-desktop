@@ -395,7 +395,16 @@ async def handle(sm, noti) -> None:
     # through to the ordinary pass-through below, so turning this on can never cost a call that
     # would otherwise have reached the destination.
     from . import owner as _owner          # at use time, like every setting read here
-    if not outgoing and _owner.answer_here() and phone.present():
+    # THE SWITCH IS THE OWNER'S INTENT; whether they can be HEARD is separate (Stanley,
+    # 2026-09-29). With the lid closed on the built-in microphone, no microphone, or access off,
+    # the call passes through to their phone as if the switch were off — a window that cannot hear
+    # them must not answer — and the switch stays as they set it.
+    here = not outgoing and _owner.answer_here() and phone.present()
+    if here and not phone.mic_usable():
+        logger.info("call %s %s: answering here is on, but the microphone cannot be used (%s) — "
+                    "passing it through", call_id, who, phone.mic_state())
+        here = False
+    if here:
         decision = await phone.ring(str(call_id), other, done)
         if decision == "answer":
             await _answer_here(call, call_id, other, done, taken)

@@ -71,6 +71,11 @@ def _pick_payload() -> dict:
             "why": "developer override" if key == llm.override_model() != "" else p["why"]}
 
 
+def _phone_mic() -> str:
+    from . import phone
+    return phone.mic_state()
+
+
 def macperms_sandboxed() -> bool:
     from . import macperms
     return macperms.sandboxed()
@@ -838,7 +843,10 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             # answer mode the agent takes every call and there is nothing to pass through.
             # NOT "phone" — that key is the owner's own number, above.
             "answer_here": {"on": _own.answer_here(),
-                            "carry": _own.calls() == _own.CALLS_CARRY},
+                            "carry": _own.calls() == _own.CALLS_CARRY,
+                            # Whether the owner could be heard now — the shell's report. The page
+                            # says why in red while the switch is on and it is not "ok".
+                            "mic": _phone_mic()},
         })
 
     async def api_threads(request):
