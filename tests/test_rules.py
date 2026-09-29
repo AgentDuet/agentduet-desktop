@@ -5388,9 +5388,28 @@ def test_a_call_can_be_answered_in_the_app() -> None:
     # microphone on macOS is exact zeros, not an error, so the check must look at the samples.
     onchange = hub.split("$('hereOn').onchange")[1][:1500]
     ok("switching on checks the microphone first", "await PHONE.checkMic()" in onchange)
-    ok("and a failed check leaves the switch off", "$('hereOn').checked = fine ? want : !want;" in onchange)
-    ok("and it is off, with a spinner, while the check runs",
-       "$('hereOn').checked = false;" in onchange and "$('hereSpin').hidden = false;" in onchange)
+    # THE SWITCH IS THE OWNER'S INTENT (2026-09-29): a microphone problem shows in red and passes
+    # the call through; it never flips the switch.
+    ok("a microphone problem does not flip the switch", "fine ? want" not in onchange
+       and "if (!r.ok) $('hereOn').checked = !want;" in onchange)
+    carry_src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "carry.py").read_text()
+    ok("a call passes through when the owner cannot be heard",
+       "if here and not phone.mic_usable():" in carry_src)
+    import time as _t, unittest.mock as _mm
+    from agentduet_desktop import phone as _ph, paths as _pp
+    _tmp = pathlib.Path(tempfile.mkdtemp())
+    try:
+        with _mm.patch.object(_pp, "RUN", _tmp):
+            eq("no shell report: unknown, and usable", (_ph.mic_state(), _ph.mic_usable()), ("unknown", True))
+            (_tmp / "mic-state.json").write_text(json.dumps({"state": "lid", "at": _t.time()}))
+            eq("the lid closed on the built-in mic: not usable", (_ph.mic_state(), _ph.mic_usable()), ("lid", False))
+            (_tmp / "mic-state.json").write_text(json.dumps({"state": "lid", "at": _t.time() - 60}))
+            eq("a stale report means nothing", _ph.mic_state(), "unknown")
+    finally:
+        shutil.rmtree(_tmp, ignore_errors=True)
+    mw = (pathlib.Path(__file__).parent.parent / "macos" / "Sources" / "AgentDuetShell" / "MicWatch.swift").read_text()
+    ok("the shell calls it the lid only for the BUILT-IN mic",
+       'else if input.builtIn && lid { state = "lid" }' in mw)
     # THE WHOLE FUNCTION, not a byte window — the diagnostics grew it past one.
     check = hub.split("async function checkMic()")[1].split("\n    connect();")[0]
     ok("an all-zero microphone is reported as silent", "peak > 0 ? {ok: true} : {ok: false, why: 'silent'}" in check)

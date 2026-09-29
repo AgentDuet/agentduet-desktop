@@ -59,11 +59,6 @@
   .tright .sw .track::after{width:.75rem;height:.75rem;}
   .tright .sw input:checked + .track::after{transform:translateX(.75rem);}
   .tright .hmsg{font-size:11px;color:#fca5a5;white-space:nowrap;}
-  /* CHECKING THE MICROPHONE: a spinner in the switch's place, so the switch never shows "on"
-     for a check that may yet refuse it (Stanley, 2026-09-29). */
-  .tright .hspin{width:.95rem;height:.95rem;border-radius:50%;border:2px solid var(--slate700);
-    border-top-color:var(--blue400);animation:hspin .8s linear infinite;}
-  @keyframes hspin{to{transform:rotate(360deg)}}
   .tright a.link2{font-size:11px;color:var(--blue400);text-decoration:none;white-space:nowrap;}
   .tright a.link2:hover{text-decoration:underline;}
   /* A CALL, above everything in the main column: ringing, or live. One bar for both, because
@@ -265,8 +260,7 @@
       <span class="hmsg" id="hereMsg" hidden></span>
       <a class="link2" id="updLink" target="_blank" rel="noopener" hidden>—</a>
       <label class="tbtn on here" id="hereRow" hidden><span>Answer calls here</span>
-        <span class="hspin" id="hereSpin" hidden></span>
-        <span class="sw" id="hereSw"><input type="checkbox" id="hereOn"><span class="track"></span></span></label>
+        <span class="sw"><input type="checkbox" id="hereOn"><span class="track"></span></span></label>
       <a class="tbtn on" id="toSettings" href="#">
         <span class="material-symbols-rounded">settings</span><span>Settings</span></a>
     </div>
@@ -1067,6 +1061,8 @@
     const ph = D.answer_here || {};
     $('hereRow').hidden = !ph.carry;
     if (!HERE_SAVING) $('hereOn').checked = !!ph.on;
+    MIC_NOW = ph.mic || 'unknown';
+    if (!HERE_SAVING && ph.carry && MIC_NOW !== 'unknown') hereMic(!!ph.on);
 
     // WHICH MODEL IS ANSWERING, in the pane that is answering. Without it the owner cannot
     // tell a local 135M model from a hosted one, and the two give very different replies.
@@ -1110,40 +1106,36 @@
     $('hereMsg').hidden = !msg;
     $('hereMsg').innerHTML = msg ? esc(msg) + (link ? ` <a class="link2" href="${MIC_HELP}">Open Settings</a>` : '') : '';
   }
+  // THE SWITCH IS THE OWNER'S INTENT, saved as they set it (Stanley, 2026-09-29). Whether they
+  // can be HEARD is a separate, live fact that the Swift shell reports (MicWatch.swift): the lid,
+  // the input device, microphone access. While the switch is on and that says no, the reason
+  // shows in red and a call passes through to their phone — the switch itself never flips.
+  // Turning it on still opens the microphone once, so macOS asks for access at the moment the
+  // owner opted in rather than over a ringing call; the answer no longer decides the switch.
+  const MIC_TEXT = {lid: 'The lid is closed.', none: 'No microphone found.',
+                    blocked: 'Microphone access is off.', silent: 'The microphone is silent.'};
+  let MIC_NOW = 'unknown';
+  function hereMic(on){
+    const why = on ? MIC_NOW : 'ok';
+    hereSay(MIC_TEXT[why] || '', why === 'blocked');
+  }
   $('hereOn').onchange = async () => {
     HERE_SAVING = true;
     const want = $('hereOn').checked;
     $('hereOn').disabled = true;
-    hereSay('');
-    let fine = true;
-    if (want) {
-      // OFF UNTIL THE CHECK PASSES, with a spinner meanwhile — the switch used to show "on" for
-      // the second the check took, then flip back, which read as the app changing its mind.
-      $('hereOn').checked = false;
-      $('hereSw').hidden = true;
-      $('hereSpin').hidden = false;
-      const m = await PHONE.checkMic().finally(() => {
-        $('hereSpin').hidden = true;
-        $('hereSw').hidden = false;
-      });
-      if (!m.ok) {
-        fine = false;
-        // THREE DIFFERENT FAULTS, three different fixes, so three messages. SILENT is not a
-        // permission problem and must not send the owner to Privacy settings: it is what a
-        // MacBook's built-in microphone gives with the lid closed (macOS disconnects it in
-        // hardware), found 2026-09-24 after an hour spent on permissions that were fine.
-        hereSay({none: 'No microphone found.', silent: 'The microphone is silent.'}[m.why]
-                || 'Microphone access is off.', m.why === 'blocked');
-      }
-    }
-    if (fine) {
-      const r = await post('/api/setup/setting', {field: 'answer_here', value: want ? 'yes' : 'no'})
-        .catch(() => ({ok: false}));
-      fine = !!r.ok;
-    }
-    $('hereOn').checked = fine ? want : !want;
+    const r = await post('/api/setup/setting', {field: 'answer_here', value: want ? 'yes' : 'no'})
+      .catch(() => ({ok: false}));
+    if (!r.ok) $('hereOn').checked = !want;
     $('hereOn').disabled = false;
     HERE_SAVING = false;
+    if (r.ok && want) {
+      const m = await PHONE.checkMic().catch(() => ({ok: true}));
+      // NO SHELL TO ASK (a browser, Windows): the page's own check is all there is to say why.
+      if (MIC_NOW === 'unknown' && !m.ok) {
+        hereSay(MIC_TEXT[m.why] || MIC_TEXT.blocked, m.why === 'blocked'); return;
+      }
+    }
+    hereMic(r.ok ? want : !want);
   };
 
   const PHONE = (() => {
