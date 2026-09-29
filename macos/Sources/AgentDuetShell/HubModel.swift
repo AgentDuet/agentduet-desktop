@@ -296,13 +296,6 @@ import Foundation
         }
     }
 
-    /// The draft into the person's message box, to be edited and sent by the owner.
-    func editDraft(_ text: String) {
-        guard let who = replyTarget else { return }
-        pick(who.str("who"))
-        draft = text
-    }
-
     func decide(_ proposal: JSON, approve: Bool) {
         Task {
             let r = await api.post("/api/proposal", ["id": proposal.str("id"), "approve": approve])
