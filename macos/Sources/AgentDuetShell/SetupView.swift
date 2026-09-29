@@ -187,7 +187,7 @@ private struct BottomBar: View {
             case .quick:
                 Button("Back") { model.step = .permissions }
                 if model.finishing { ProgressView().controlSize(.small) }
-                Button("Complete Setup & Open Hub") { model.finish() }
+                Button("Done") { model.finish() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(model.finishing)
             }

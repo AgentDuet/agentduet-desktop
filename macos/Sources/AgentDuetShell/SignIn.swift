@@ -108,10 +108,14 @@ struct SignInPanel: View {
 
     var body: some View {
         VStack(spacing: 18) {
+            // "SIGN IN WITH", the one wording all three providers' button guidelines allow
+            // (Microsoft's allows no other), and the one the Settings sheet's title asks for.
             VStack(spacing: 10) {
-                wide("Continue with Apple", symbol: "apple.logo") { model.notYet("Apple") }
-                wide("Continue with Google") { model.signInWithGoogle() }
-                wide("Continue with Microsoft") { model.notYet("Microsoft") }
+                wide("Sign in with Apple", mark: AnyView(Image(systemName: "apple.logo"))) {
+                    model.notYet("Apple")
+                }
+                wide("Sign in with Google", mark: AnyView(GoogleMark())) { model.signInWithGoogle() }
+                wide("Sign in with Microsoft", mark: AnyView(MicrosoftMark())) { model.notYet("Microsoft") }
             }
             .frame(width: 300)
             if let n = model.notice {
@@ -145,10 +149,10 @@ struct SignInPanel: View {
         }
     }
 
-    private func wide(_ title: String, symbol: String? = nil, action: @escaping () -> Void) -> some View {
+    private func wide(_ title: String, mark: AnyView, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 6) {
-                if let symbol { Image(systemName: symbol) }
+            HStack(spacing: 8) {
+                mark
                 Text(title)
             }
             .frame(maxWidth: .infinity)
