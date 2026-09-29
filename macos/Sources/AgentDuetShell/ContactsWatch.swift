@@ -48,21 +48,26 @@ final class ContactsWatch {
     }
 
     /// The macOS prompt. Answers at once, without asking, if the owner already decided.
+    ///
+    /// THE PAGE IS TOLD ONLY AFTER THE FILE IS WRITTEN. It re-reads the state the moment it hears,
+    /// and telling it first (then writing on a background queue) had it read the old "not
+    /// asked" and keep showing Allow over a grant that had worked.
     func ask(done: @escaping (Bool) -> Void) {
         CNContactStore().requestAccess(for: .contacts) { ok, _ in
             DispatchQueue.main.async {
                 self.dirty = true
-                self.tick()
-                done(ok)
+                self.tick(force: true) { done(ok) }
             }
         }
     }
 
-    private func tick() {
+    private func tick(force: Bool = false, then: (() -> Void)? = nil) {
         let access = Self.access()
         let wantedDate = (try? wantedFile.resourceValues(forKeys: [.contentModificationDateKey]))?
             .contentModificationDate
-        guard dirty || access != lastAccess || wantedDate != lastWanted, !busy else { return }
+        guard (dirty || access != lastAccess || wantedDate != lastWanted) && (force || !busy) else {
+            then?(); return
+        }
         dirty = false
         lastAccess = access
         lastWanted = wantedDate
@@ -71,15 +76,18 @@ final class ContactsWatch {
         busy = true
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
-            let names = access == "allowed" ? Self.resolve(wanted) : [:]
-            self.write(["access": access, "at": Date().timeIntervalSince1970, "names": names])
-            DispatchQueue.main.async { self.busy = false }
+            let (names, read) = access == "allowed" ? Self.resolve(wanted) : ([:], 0)
+            // `read` is how many numbers Contacts gave us — a count, not the numbers — so "your
+            // caller is not in Contacts" can be told apart from "Contacts could not be read".
+            self.write(["access": access, "at": Date().timeIntervalSince1970, "names": names,
+                        "read": read])
+            DispatchQueue.main.async { self.busy = false; then?() }
         }
     }
 
     /// Every number in Contacts, then each wanted number matched against them.
-    static func resolve(_ wanted: [String]) -> [String: String] {
-        guard !wanted.isEmpty else { return [:] }
+    static func resolve(_ wanted: [String]) -> (names: [String: String], read: Int) {
+        guard !wanted.isEmpty else { return ([:], 0) }
         let keys: [CNKeyDescriptor] = [
             CNContactFormatter.descriptorForRequiredKeys(for: .fullName),
             CNContactPhoneNumbersKey as CNKeyDescriptor,
@@ -100,7 +108,7 @@ final class ContactsWatch {
         for w in wanted {
             if let name = PhoneMatch.best(PhoneMatch.digits(w), in: book) { out[w] = name }
         }
-        return out
+        return (out, book.count)
     }
 
     private func write(_ row: [String: Any]) {
