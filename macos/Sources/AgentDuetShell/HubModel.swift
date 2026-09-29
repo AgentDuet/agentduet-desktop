@@ -167,11 +167,9 @@ import Foundation
         return bits.filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
-    // MARK: - my card
+    // MARK: - the connection
 
-    /// THE OWNER'S OWN CARD, at the top of the list as Contacts puts "My Card": who, which
-    /// number, and whether anything can reach them.
-    var myName: String { panel.str("name") }
+    /// The number this install is reached on: yours where set, else the line.
     var myNumber: String { panel.str("phone").isEmpty ? panel.str("line") : panel.str("phone") }
     var connected: Bool { ["live", "connecting", "retrying"].contains(panel.str("channel")) }
     /// NOT SIGNED IN IS NOT "NOT CONNECTED": with no credential the fix is to sign in.
