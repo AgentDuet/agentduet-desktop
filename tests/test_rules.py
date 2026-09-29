@@ -4620,6 +4620,7 @@ def test_a_poll_notices_everything_it_renders() -> None:
     #: only in lockstep with a field that IS covered.
     EXEMPT = {
         "at": "the call's timestamp, written once with the row and never updated",
+        "started": "when the call began, written once with the row and never updated",
         "mode": "carried/answered, decided before the row exists",
         "bytes": "changes only when the merge lands, and `files` changes with it",
         "outgoing": "which way the call went, decided before the row exists",
@@ -5387,7 +5388,9 @@ def test_a_call_can_be_answered_in_the_app() -> None:
     # microphone on macOS is exact zeros, not an error, so the check must look at the samples.
     onchange = hub.split("$('hereOn').onchange")[1][:1500]
     ok("switching on checks the microphone first", "await PHONE.checkMic()" in onchange)
-    ok("and a failed check leaves the switch off", "if (!fine) $('hereOn').checked = !want;" in onchange)
+    ok("and a failed check leaves the switch off", "$('hereOn').checked = fine ? want : !want;" in onchange)
+    ok("and it is off, with a spinner, while the check runs",
+       "$('hereOn').checked = false;" in onchange and "$('hereSpin').hidden = false;" in onchange)
     # THE WHOLE FUNCTION, not a byte window — the diagnostics grew it past one.
     check = hub.split("async function checkMic()")[1].split("\n    connect();")[0]
     ok("an all-zero microphone is reported as silent", "peak > 0 ? {ok: true} : {ok: false, why: 'silent'}" in check)

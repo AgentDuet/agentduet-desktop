@@ -59,6 +59,11 @@
   .tright .sw .track::after{width:.75rem;height:.75rem;}
   .tright .sw input:checked + .track::after{transform:translateX(.75rem);}
   .tright .hmsg{font-size:11px;color:#fca5a5;white-space:nowrap;}
+  /* CHECKING THE MICROPHONE: a spinner in the switch's place, so the switch never shows "on"
+     for a check that may yet refuse it (Stanley, 2026-09-29). */
+  .tright .hspin{width:.95rem;height:.95rem;border-radius:50%;border:2px solid var(--slate700);
+    border-top-color:var(--blue400);animation:hspin .8s linear infinite;}
+  @keyframes hspin{to{transform:rotate(360deg)}}
   .tright a.link2{font-size:11px;color:var(--blue400);text-decoration:none;white-space:nowrap;}
   .tright a.link2:hover{text-decoration:underline;}
   /* A CALL, above everything in the main column: ringing, or live. One bar for both, because
@@ -260,7 +265,8 @@
       <span class="hmsg" id="hereMsg" hidden></span>
       <a class="link2" id="updLink" target="_blank" rel="noopener" hidden>—</a>
       <label class="tbtn on here" id="hereRow" hidden><span>Answer calls here</span>
-        <span class="sw"><input type="checkbox" id="hereOn"><span class="track"></span></span></label>
+        <span class="hspin" id="hereSpin" hidden></span>
+        <span class="sw" id="hereSw"><input type="checkbox" id="hereOn"><span class="track"></span></span></label>
       <a class="tbtn on" id="toSettings" href="#">
         <span class="material-symbols-rounded">settings</span><span>Settings</span></a>
     </div>
@@ -494,7 +500,9 @@
 
     // INTERLEAVED BY TIME, because they are one relationship and not two logs. Someone who
     // rang and then wrote is one person having one conversation across two channels.
-    const items = calls.map(c => ({at: c.at, call: c}))
+    // BY WHEN A CALL BEGAN, not when it was filed: a missed call the platform closed late was
+    // filed after the call that followed it, and sat below it (2026-09-29).
+    const items = calls.map(c => ({at: c.started || c.at, call: c}))
       .concat(msgs.map(m => ({at: m.at, msg: m})))
       .sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
 
@@ -508,7 +516,7 @@
     const html = items.map(it => it.call ? `<div class="rw">
       <div class="call">
         <div class="top">
-          <span class="when">${esc(when(it.call.at))}</span>
+          <span class="when">${esc(when(it.call.started || it.call.at))}</span>
           <span class="meta">${esc(it.call.mode)}${it.call.files ? ' · ' + it.call.files + ' file' + (it.call.files === 1 ? '' : 's') : ''}${it.call.bytes ? ' · ' + kb(it.call.bytes) : ''}</span>
         </div>
         ${it.call.norecording && it.call.missed
@@ -1109,7 +1117,15 @@
     hereSay('');
     let fine = true;
     if (want) {
-      const m = await PHONE.checkMic();
+      // OFF UNTIL THE CHECK PASSES, with a spinner meanwhile — the switch used to show "on" for
+      // the second the check took, then flip back, which read as the app changing its mind.
+      $('hereOn').checked = false;
+      $('hereSw').hidden = true;
+      $('hereSpin').hidden = false;
+      const m = await PHONE.checkMic().finally(() => {
+        $('hereSpin').hidden = true;
+        $('hereSw').hidden = false;
+      });
       if (!m.ok) {
         fine = false;
         // THREE DIFFERENT FAULTS, three different fixes, so three messages. SILENT is not a
@@ -1125,7 +1141,7 @@
         .catch(() => ({ok: false}));
       fine = !!r.ok;
     }
-    if (!fine) $('hereOn').checked = !want;
+    $('hereOn').checked = fine ? want : !want;
     $('hereOn').disabled = false;
     HERE_SAVING = false;
   };

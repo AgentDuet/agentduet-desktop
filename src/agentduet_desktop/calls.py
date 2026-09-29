@@ -27,7 +27,7 @@ LOG = paths.RUN / "calls.jsonl"
 
 
 def record(call_id: str, caller: str, mode: str, *, recordings: list[str] | None = None,
-           note: str = "", outgoing: bool = False) -> None:
+           note: str = "", outgoing: bool = False, started: float | None = None) -> None:
     """Append one call. Never raises: losing the audio matters, losing the index does not."""
     try:
         paths.RUN.mkdir(parents=True, exist_ok=True)
@@ -44,6 +44,12 @@ def record(call_id: str, caller: str, mode: str, *, recordings: list[str] | None
                 "outgoing": outgoing,
                 "recordings": recordings or [],
                 "note": note,
+                # WHEN IT BEGAN. `at` is when the call was FILED — its end — and stays that, since
+                # the person briefs use it as their watermark. The history orders and labels calls
+                # by this instead: a missed call that the platform closed late was filed after
+                # the call that followed it, and showed below it (2026-09-29).
+                "started": (datetime.fromtimestamp(started).isoformat(timespec="seconds")
+                            if started else ""),
             }) + "\n")
     except OSError as exc:
         logger.warning("could not record call %s: %s", call_id, exc)

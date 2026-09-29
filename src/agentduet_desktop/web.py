@@ -897,6 +897,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                     "missed": (r.get("note", "").startswith("missed")
                                or (not names and r.get("mode") == "carried")),
                     "outgoing": bool(r.get("outgoing")),
+                    # When it BEGAN, where recorded — see calls.record. The page orders by it.
+                    "started": r.get("started", ""),
                 })
             people.append({"who": who, "calls": items, "messages": [],
                            "last": items[0]["at"] if items else ""})
