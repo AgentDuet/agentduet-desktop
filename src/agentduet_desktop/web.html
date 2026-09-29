@@ -41,6 +41,8 @@
   .who:hover{background:rgba(255,255,255,.04);}
   .who.on{border-color:rgba(59,130,246,.4);background:rgba(37,99,235,.15);}
   .who .n{font-family:var(--mono);font-size:.78rem;color:var(--ink2);}
+  /* A NAME IS TEXT, a number is data: mono only for a bare number or uid. */
+  .who .n.named{font-family:inherit;font-size:.8rem;}
   .who .m{font-size:10px;color:var(--faint);}
   /* NEW SINCE LAST LOOKED: a count on the row until the owner opens that person. */
   .who .top{display:flex;align-items:center;justify-content:space-between;gap:.5rem;}
@@ -78,6 +80,13 @@
   main{flex:1;min-width:0;background:var(--bg);display:flex;flex-direction:column;
     overflow:hidden;}
   .mbody{flex:1;overflow-y:auto;padding:0 1.5rem 1.5rem;}
+  .ttl{display:flex;align-items:center;gap:.35rem;min-width:0;}
+  .ttl h1{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .ttl input{font:inherit;font-size:1.25rem;font-weight:600;min-width:16rem;height:var(--ctl);}
+  .ren{background:none;border:0;padding:.2rem;border-radius:.4rem;color:var(--faint);
+    cursor:pointer;display:flex;}
+  .ren:hover{color:var(--ink2);background:rgba(255,255,255,.06);}
+  .ren .material-symbols-rounded{font-size:1.05rem;}
   .thead{display:flex;justify-content:space-between;align-items:center;gap:1rem;
     padding:1.5rem 1.5rem 1.2rem;flex-shrink:0;}
   /* A READABLE MEASURE, CENTRED. In a browser the window is capped at 64rem so the main column
@@ -292,7 +301,14 @@
       </div>
       <div class="thead">
         <div>
-          <h1 id="tTitle">Conversations</h1>
+          <!-- THE ONE RENAME CONTROL, beside the name it changes (2026-09-29). Not a pencil on
+               every row of the list: the list is for picking a person. -->
+          <div class="ttl">
+            <h1 id="tTitle">Conversations</h1>
+            <input type="text" id="tName" hidden spellcheck="false" autocomplete="off" maxlength="60">
+            <button class="ren" id="tRename" hidden title="Rename"
+              aria-label="Rename"><span class="material-symbols-rounded">edit</span></button>
+          </div>
           <p class="sub" id="tSub">Everyone who has called you, and what was recorded.</p>
         </div>
         <div style="display:flex;gap:.6rem;align-items:center">
@@ -397,7 +413,7 @@
         <span class="n">Personal Assistant</span></div>`
       + (list.length ? list.map(p => `
       <div class="who ${p.who === PICKED ? 'on' : ''}" data-who="${esc(p.who)}">
-        <span class="top"><span class="n">${esc(p.display || p.who)}</span>${
+        <span class="top"><span class="n${p.display ? ' named' : ''}">${esc(p.display || p.who)}</span>${
           p.unread && p.who !== PICKED ? `<span class="badge">${p.unread > 99 ? '99+' : p.unread}</span>` : ''}</span>
         <span class="m">${liveOn(p.who) ? '<span class="livemark">On a call</span>'
                                          : countLabel(p) + ' · ' + esc(when(p.last))}</span>
@@ -457,7 +473,7 @@
   // an action and never a timer: `drawWho` is also called from the 5s poll when a transcript
   // lands, and without this flag that stole the cursor out of whatever the owner was doing.
   function drawAssistant(opening){
-    $('tTitle').textContent = 'Personal Assistant';
+    $('tTitle').textContent = 'Personal Assistant'; $('tRename').hidden = true;
     $('tSub').textContent = '';
     $('composer').hidden = false;
     const ok = !!MODEL.configured;
@@ -473,7 +489,7 @@
   function drawThread(){
     const p = people().find(x => x.who === PICKED);
     drawDownload();
-    if (!p) { $('composer').hidden = true; return; }
+    if (!p) { $('composer').hidden = true; $('tRename').hidden = true; return; }
 
     // THE COMPOSER IS THE POINT OF THIS VIEW. Messages are CARRIED now — the agent does not
     // answer them — so if the owner cannot reply from here, nobody replies at all.
@@ -483,9 +499,12 @@
     $('ask').placeholder = `Message ${p.display || p.who}…`;
 
     $('tTitle').textContent = p.display || p.who;
+    $('tRename').hidden = RENAMING;
     const msgs = p.messages || [], calls = p.calls || [];
     markSeen(p);
     const bits = [];
+    // THE NUMBER STAYS IN SIGHT under a name, so the owner can always check who it really is.
+    if (p.display && /^\+?\d{6,15}$/.test(p.who)) bits.push(p.who);
     if (calls.length) bits.push(`${calls.length} call${calls.length === 1 ? '' : 's'}`);
     if (msgs.length) bits.push(`${msgs.length} message${msgs.length === 1 ? '' : 's'}`);
     $('tSub').textContent = bits.join(' · ');
@@ -1436,6 +1455,39 @@
     return {state: () => st, checkMic};
   })();
 
+  // ---- renaming the person on screen -----------------------------------------------------
+  // Enter or leaving the field saves; Esc cancels. Clearing it removes the typed name, so the
+  // Contacts name — or the number — shows again. A label only: nothing is keyed on it.
+  let RENAMING = false;
+  function renameStart(){
+    const p = people().find(x => x.who === PICKED);
+    if (!p) return;
+    RENAMING = true;
+    const f = $('tName');
+    f.value = p.display || '';
+    f.placeholder = p.who;
+    $('tTitle').hidden = true; $('tRename').hidden = true; f.hidden = false;
+    f.focus(); f.select();
+  }
+  async function renameEnd(save){
+    if (!RENAMING) return;
+    RENAMING = false;
+    const f = $('tName'), who = PICKED, name = f.value.trim();
+    f.hidden = true; $('tTitle').hidden = false;
+    const p = people().find(x => x.who === who);
+    if (save && p && name !== (p.display || '')) {
+      await post('/api/name', {who, name});
+      await refresh();
+    }
+    drawWho();
+  }
+  $('tRename').onclick = renameStart;
+  $('tName').onkeydown = e => {
+    if (e.key === 'Enter') { e.preventDefault(); renameEnd(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); renameEnd(false); }
+  };
+  $('tName').onblur = () => renameEnd(true);
+
   async function refresh(){
     THREADS = await fetch(`/api/threads?t=${T}`).then(r => r.json()).catch(() => ({people: []}));
   }
@@ -1468,7 +1520,7 @@
   }
   function threadSig(){
     return (THREADS.people || [])
-      .map(p => `${p.who}:${p.last}:${p.unread || 0}:${(p.messages || []).length}:${
+      .map(p => `${p.who}:${p.display || ''}:${p.last}:${p.unread || 0}:${(p.messages || []).length}:${
         (p.calls || []).map(callSig).join(',')}:${
         (p.messages || []).map(m => (m.suggest || {}).key || '').join(',')}`)
       .join('|');

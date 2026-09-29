@@ -224,6 +224,37 @@
         <div id="mLang"></div>
       </div>
 
+      <!-- PERMISSIONS, in one place (Stanley, 2026-09-29). Setup asks for each once; this is
+           where an owner who skipped one, or refused it, changes their mind. macOS asks ONCE, so
+           a refused row can only offer System Settings — and it notices when that is changed.
+           Microphone and Contacts are reported by the app itself, so they show only in the
+           native window; Start at Login shows everywhere, since Linux and Windows have no menu
+           bar to hold it. -->
+      <div class="card">
+        <div class="head">
+          <div class="tile"><span class="material-symbols-rounded">shield_person</span></div>
+          <div><h2>Permissions</h2></div>
+        </div>
+        <div class="row" id="pDocRow" hidden>
+          <div class="lbl">Documents folder</div>
+          <div class="acts" id="pDocActs"></div>
+        </div>
+        <div class="row" id="pMicRow" hidden>
+          <div class="lbl">Microphone</div>
+          <div class="acts" id="pMicActs"></div>
+        </div>
+        <div class="row" id="pBookRow" hidden>
+          <div class="lbl">Contacts
+            <span class="sublbl" id="pBookWhy"></span></div>
+          <div class="acts" id="pBookActs"></div>
+        </div>
+        <div class="row">
+          <div class="lbl">Start when I log in
+            <span class="sublbl" id="atLoginWhy"></span></div>
+          <label class="sw"><input type="checkbox" id="atLoginOn"><span class="track"></span></label>
+        </div>
+      </div>
+
       <div class="card" id="installCard" hidden>
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">download</span></div>
@@ -239,15 +270,6 @@
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">tune</span></div>
           <div><h2>Advanced</h2></div>
-        </div>
-        <!-- IN ADVANCED BECAUSE IT IS ALWAYS VISIBLE. The macOS menu bar owns this on a Mac,
-             but Linux and Windows have no menu bar at all, and the owner who unticked it during
-             setup needs somewhere to change their mind. "Install" was the tempting home — same
-             subject, right audience — but that card hides itself on a source run. -->
-        <div class="row">
-          <div class="lbl">Start when I log in
-            <span class="sublbl" id="atLoginWhy"></span></div>
-          <label class="sw"><input type="checkbox" id="atLoginOn"><span class="track"></span></label>
         </div>
         <div class="row">
           <div class="lbl">Walk through setup again</div>
@@ -771,8 +793,70 @@
   // IN THE SANDBOX (App Store build) only the shell's system panel can grant a folder: one chosen
   // through osascript is granted to osascript. The shell restarts the daemon with the new folder
   // and answers through `agentduetPicked`.
+  // ---- permissions ----------------------------------------------------------------------
+  const SHELL = window.webkit && window.webkit.messageHandlers
+                && window.webkit.messageHandlers.agentduet;
+  const ALLOWED = '<span class="pill"><span class="dot"></span>Allowed</span>';
+  const toSettings = pane =>
+    `<button class="btn ghost" data-pane="${pane}">Open System Settings</button>`;
+  let PERM = {}, permTimer = null;
+  async function loadPerms(){
+    PERM = await fetch(`/api/permissions?t=${T}`).then(r => r.json()).catch(() => ({}));
+    drawPerms();
+  }
+  function drawPerms(){
+    const doc = PERM.documents, mic = PERM.mic, book = PERM.contacts;
+    $('pDocRow').hidden = !PERM.applies;
+    $('pDocActs').innerHTML = doc === 'granted' ? ALLOWED
+      : doc === 'asking' ? '<span class="lbl3">Waiting for your answer…</span>'
+      : doc === 'denied' ? toSettings('privacy')
+      : '<button class="btn" id="pAskDoc">Allow</button>';
+    $('pMicRow').hidden = !(PERM.applies && mic);
+    $('pMicActs').innerHTML = mic === 'allowed' ? ALLOWED
+      : mic === 'refused' ? toSettings('privacy-mic')
+      : '<button class="btn" id="pAskMic">Allow</button>';
+    $('pBookRow').hidden = !(SHELL && book);
+    $('pBookActs').innerHTML = book === 'allowed' ? ALLOWED
+      : book === 'refused' ? toSettings('privacy-contacts')
+      : '<button class="btn" id="pAskBook">Allow</button>';
+    const n = PERM.contacts_named || 0;
+    $('pBookWhy').textContent = book === 'allowed' && n
+      ? `Names for ${n} ${n === 1 ? 'person' : 'people'}` : '';
+    if ($('pAskDoc')) $('pAskDoc').onclick = async () => {
+      if (PERM.sandboxed && SHELL) { SHELL.postMessage({type: 'pickDocuments'}); return; }
+      await post('/api/permissions', {action: 'documents'});
+      watchPerms();
+    };
+    if ($('pAskMic')) $('pAskMic').onclick = async () => {
+      try {
+        const st = await navigator.mediaDevices.getUserMedia({audio: true});
+        st.getTracks().forEach(t => t.stop());
+      } catch (e) {}
+      watchPerms();
+    };
+    if ($('pAskBook')) $('pAskBook').onclick = () => SHELL.postMessage({type: 'askContacts'});
+    document.querySelectorAll('[data-pane]').forEach(b => b.onclick = async () => {
+      await post('/api/permissions', {action: b.dataset.pane});
+      watchPerms();
+    });
+  }
+  // WHILE AN ANSWER IS OUTSTANDING — the macOS prompt, or a switch flipped in System Settings —
+  // look every two seconds, for a minute. The shell reports microphone and Contacts every few
+  // seconds, so a change there reaches this row on its own.
+  function watchPerms(){
+    if (permTimer) clearInterval(permTimer);
+    let left = 30;
+    permTimer = setInterval(() => {
+      if (--left <= 0) { clearInterval(permTimer); permTimer = null; }
+      loadPerms();
+    }, 2000);
+  }
+  window.agentduetContacts = () => loadPerms();
+  loadPerms();
+
   let SANDBOXED = false;
   window.agentduetPicked = r => {
+    loadPerms();
     if (!r || !r.ok) { $('mRec').innerHTML = ''; return; }
     say('mRec', true, 'Recordings from now on go to ' + r.path + '. Anything already recorded stays where it is.');
     loadPanel();

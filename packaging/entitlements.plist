@@ -40,6 +40,10 @@ device.audio-input
   says why. Paired with NSMicrophoneUsageDescription in Info.plist, without which the app is
   killed on first use.
 
+personal-information.addressbook
+  Names for callers from the owner's Contacts (ContactsWatch.swift). Under the hardened runtime
+  Contacts is refused without this. Paired with NSContactsUsageDescription in Info.plist.
+
 NOT INCLUDED, on purpose:
 
   network.* — those are sandbox keys and mean nothing here. The loopback site on 8899 and the
@@ -56,6 +60,8 @@ NOT INCLUDED, on purpose:
 	<key>com.apple.security.cs.allow-dyld-environment-variables</key>
 	<true/>
 	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<key>com.apple.security.personal-information.addressbook</key>
 	<true/>
 </dict>
 </plist>

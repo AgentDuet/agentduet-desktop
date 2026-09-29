@@ -67,6 +67,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private let daemon = Daemon()
     /// Whether the owner can be heard, for "Answer calls here" — see MicWatch.
     private var micWatch: MicWatch?
+    /// Names for callers from the owner's Contacts — see ContactsWatch.
+    private var contactsWatch: ContactsWatch?
     private var siteURL: URL?
     /// Where the update item points, set as the menu opens.
     private var releaseURL: URL?
@@ -91,6 +93,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         FolderAccess.restore(home: daemon.instanceHome)
         micWatch = MicWatch(home: daemon.instanceHome)
         micWatch?.start()
+        contactsWatch = ContactsWatch(home: daemon.instanceHome)
+        contactsWatch?.start()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             let result = self.daemon.start()
@@ -290,15 +294,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     // MARK: - the page asking the shell
 
-    /// TWO REQUESTS, AND BOTH ONLY OPEN A DIALOG, in a sandboxed build: `pickDocuments` from
-    /// setup's Permissions step (the panel opens in Documents) and `pickFolder` from Settings'
-    /// Change (it opens in the folder in use). Anything else is ignored. The owner's click in the
-    /// system panel is the grant, so nothing the page sends can grant access by itself.
+    /// THREE REQUESTS, AND EACH ONLY OPENS A DIALOG: `pickDocuments` from setup's Permissions
+    /// step (the panel opens in Documents) and `pickFolder` from Settings' Change (it opens in the
+    /// folder in use), both in a sandboxed build; and `askContacts`, the macOS Contacts prompt.
+    /// Anything else is ignored. The owner's answer in the system dialog is the grant, so nothing
+    /// the page sends can grant access by itself.
     func userContentController(_ controller: WKUserContentController,
                                didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any],
-              let type = body["type"] as? String,
-              type == "pickDocuments" || type == "pickFolder" else { return }
+              let type = body["type"] as? String else { return }
+        if type == "askContacts" {
+            contactsWatch?.ask { [weak self] ok in
+                self?.webView.evaluateJavaScript(
+                    "window.agentduetContacts && window.agentduetContacts(\(ok))")
+            }
+            return
+        }
+        guard type == "pickDocuments" || type == "pickFolder" else { return }
         let start = type == "pickFolder" ? FolderAccess.current(home: daemon.instanceHome) : nil
         FolderAccess.ask(over: window, startingIn: start) { [weak self] url in
             guard let self else { return }
@@ -341,7 +353,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                                   injectionTime: .atDocumentStart,
                                   forMainFrameOnly: false)
         config.userContentController.addUserScript(script)
-        // THE PAGE CAN ASK FOR ONE THING: the Documents panel (see `userContentController`).
+        // THE PAGE CAN ASK FOR DIALOGS ONLY: a folder panel or the Contacts prompt (see
+        // `userContentController`).
         config.userContentController.add(self, name: "agentduet")
 
         webView = WKWebView(frame: .zero, configuration: config)

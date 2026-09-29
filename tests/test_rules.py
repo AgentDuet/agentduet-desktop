@@ -4882,6 +4882,59 @@ def test_the_agent_finds_a_sender_by_the_name_it_was_shown() -> None:
     ok("and a different name still finds nothing", other.startswith("No messages with Pauline"))
 
 
+def test_a_caller_is_named_by_the_owner_then_contacts_then_the_message() -> None:
+    """names.py: one order for the hub and the assistant, and the address book never on disk."""
+    print("\n  -- names: typed, then Contacts, then the message's own --")
+    import json as _json
+    import tempfile
+    import unittest.mock as mock
+    from agentduet_desktop import names, tools
+    root = pathlib.Path(__file__).parent.parent
+    num, wa, uid = "+6596918851", "6591234567", "d7553b51-6567-11f1-a64a-a9511a89ac64"
+    with tempfile.TemporaryDirectory() as d:
+        d = pathlib.Path(d)
+        run = d / "run"; run.mkdir()
+        (run / "sessions.json").write_text(_json.dumps({wa: {"display": "WA Name"},
+                                                         num: {"display": "Profile"}}))
+        (run / "contacts.json").write_text(_json.dumps({"access": "allowed",
+                                                         "names": {num: "Cen Lee"}}))
+        with mock.patch.object(names, "TYPED", d / "names.json"), \
+             mock.patch.object(names, "CONTACTS", run / "contacts.json"), \
+             mock.patch.object(names, "WANTED", run / "contacts-wanted.json"), \
+             mock.patch.object(names.paths, "RUN", run):
+            eq("Contacts beats the name a message carried", names.name_for(num), "Cen Lee")
+            eq("the message's name is used where Contacts has none", names.name_for(wa), "WA Name")
+            eq("nothing at all shows the number", names.display("+6511112222"), "+6511112222")
+            names.set_typed(num, "  Cen  (dinner)  ")
+            eq("what the owner typed beats Contacts, tidied", names.name_for(num), "Cen (dinner)")
+            eq("and says where it came from", names.source_of(num), "typed")
+            names.set_typed(num, "")
+            eq("clearing it brings the Contacts name back", names.name_for(num), "Cen Lee")
+            eq("the assistant reads the same name", tools._display_for(num), "Cen Lee")
+            eq("and list_calls shows name and number", tools._caller_label(num),
+               "Cen Lee (+6596918851)")
+            ok("a call is found by the name it is shown by", tools._is_them("cen", num, None))
+            names.want([num, wa, uid, "", "short1"])
+            eq("only NUMBERS are sent to be looked up, never an account uid",
+               _json.loads((run / "contacts-wanted.json").read_text()), sorted([num, wa]))
+    shell = (root / "macos/Sources/AgentDuetShell/ContactsWatch.swift").read_text()
+    ok("the shell writes names for the wanted numbers only", "Self.resolve(wanted)" in shell)
+    for f in ("entitlements.plist", "entitlements-appstore.plist"):
+        ok(f"{f} lets the app read Contacts",
+           "com.apple.security.personal-information.addressbook" in
+           (root / "packaging" / f).read_text())
+    ok("and Info.plist says why, or macOS kills the app when it asks",
+       "NSContactsUsageDescription" in (root / "packaging/make-macos-app.sh").read_text())
+    src = root / "src/agentduet_desktop"
+    setup, settings, hub = ((src / n).read_text() for n in ("setup.html", "settings.html", "web.html"))
+    ok("setup offers Contacts as optional", "Contacts (Optional)" in setup)
+    ok("Settings has one Permissions card", "<h2>Permissions</h2>" in settings)
+    for row in ("pDocRow", "pMicRow", "pBookRow", "atLoginOn"):
+        ok(f"with {row} in it", f'id="{row}"' in settings)
+    ok("the hub renames from the thread's header", 'id="tRename"' in hub and "/api/name" in hub)
+    ok("and a name arriving later redraws the list", "${p.display || ''}" in hub)
+
+
 def test_the_catalogue_carries_gemma_4_and_says_what_was_measured() -> None:
     """The 2026-09-24 refresh, and the difference between a timed figure and an estimate."""
     print("\n  -- the catalogue: Gemma 4, and measured versus derived --")
@@ -6154,6 +6207,7 @@ def main() -> None:
     test_assets_are_utf8_whatever_the_machine_thinks()
     test_a_draft_goes_to_who_it_was_written_for()
     test_the_agent_finds_a_sender_by_the_name_it_was_shown()
+    test_a_caller_is_named_by_the_owner_then_contacts_then_the_message()
     test_the_catalogue_carries_gemma_4_and_says_what_was_measured()
     test_the_machine_picks_the_model()
     test_one_place_decides_the_model_and_hosted_is_quarantined()

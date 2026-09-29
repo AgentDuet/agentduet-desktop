@@ -1,6 +1,6 @@
 # Why this font is here
 
-`material-symbols-rounded.woff2` is Material Symbols Rounded, **subset to the fifteen icons the
+`material-symbols-rounded.woff2` is Material Symbols Rounded, **subset to the icons the
 pages use**. 22 KB; the full variable font is about 3.7 MB.
 
 It used to be loaded from Google Fonts. The failure mode is loud rather than graceful: with no

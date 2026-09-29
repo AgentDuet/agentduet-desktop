@@ -186,6 +186,13 @@
           <span class="sublbl">To answer calls in this window.</span></div>
         <div class="acts" id="micActs"></div>
       </div>
+      <!-- CONTACTS, so a caller shows by name. Only the app itself can ask, so the row appears
+           only in the native window. -->
+      <div class="perm" id="bookRow" hidden>
+        <div class="lbl">Contacts (Optional)
+          <span class="sublbl">To show the names of people who call you.</span></div>
+        <div class="acts" id="bookActs"></div>
+      </div>
       <!-- TICKED, AND ASKED. A phone answering service that is not running answers nothing and
            says nothing about it, so the owner finds out by missing a call — which is the whole
            argument for it being on, and none of the argument for switching it on unasked.
@@ -428,11 +435,16 @@
   }).catch(() => {});
 
   // ---- permissions ----------------------------------------------------------------------
-  let PERMS = {applies: false, passed: false, documents: '', mic: ''};
+  let PERMS = {applies: false, passed: false, documents: '', mic: '', contacts: ''};
+  // THE SHELL, in the native window: the only thing that can ask for Contacts.
+  const SHELL = window.webkit && window.webkit.messageHandlers
+                && window.webkit.messageHandlers.agentduet;
   fetch(`/api/permissions?t=${T}`).then(r => r.json()).then(d => {
     PERMS.applies = !!d.applies;
     PERMS.sandboxed = !!d.sandboxed;
     PERMS.documents = d.documents || '';
+    PERMS.contacts = d.contacts || '';
+    drawPerms();
     // IF THE PAGE ALREADY MOVED ON before this answer came, the Permissions step still comes first.
     if (PERMS.applies && !PERMS.passed && $('v-setup').classList.contains('on')) show('setup');
     // NO PERMISSIONS STEP off macOS, so the login question goes back to Quick Setup.
@@ -456,6 +468,12 @@
     $('micActs').innerHTML = mic === 'granted' ? GRANTED
       : mic === 'denied' ? '<button class="btn ghost" data-open="privacy-mic">Open System Settings</button>'
       : '<button class="btn" id="askMic">Allow</button>';
+    const book = PERMS.contacts;
+    $('bookRow').hidden = !(SHELL && book);
+    $('bookActs').innerHTML = book === 'allowed' ? GRANTED
+      : book === 'refused' ? '<button class="btn ghost" data-open="privacy-contacts">Open System Settings</button>'
+      : '<button class="btn" id="askBook">Allow</button>';
+    if ($('askBook')) $('askBook').onclick = () => SHELL.postMessage({type: 'askContacts'});
     $('permsDone').disabled = doc !== 'granted';
     if ($('askDoc')) $('askDoc').onclick = async () => {
       PERMS.documents = 'asking'; drawPerms();
@@ -472,7 +490,7 @@
       await post('/api/permissions', {action: b.dataset.open});
       watchPerms();
     });
-    if (doc === 'asking' || doc === 'denied' || mic === 'denied') watchPerms();
+    if (doc === 'asking' || doc === 'denied' || mic === 'denied' || book === 'refused') watchPerms();
   }
   async function askMic(){
     try {
@@ -492,6 +510,7 @@
     permTimer = setInterval(async () => {
       const d = await fetch(`/api/permissions?t=${T}`).then(r => r.json()).catch(() => ({}));
       if (d.documents) PERMS.documents = d.documents;
+      if (d.contacts) PERMS.contacts = d.contacts;
       if (PERMS.mic === 'denied') {
         try {
           const p = await navigator.permissions.query({name: 'microphone'});
@@ -499,12 +518,18 @@
         } catch (e) {}
       }
       const open = PERMS.documents === 'asking' || PERMS.documents === 'denied'
-                   || PERMS.mic === 'denied';
+                   || PERMS.mic === 'denied' || PERMS.contacts === 'refused';
       if (!open) { clearInterval(permTimer); permTimer = null; }
       drawPerms();
     }, 1000);
   }
   $('permsDone').onclick = () => { PERMS.passed = true; show('setup'); };
+  // THE SHELL'S ANSWER to the Contacts prompt. The state is read back rather than assumed.
+  window.agentduetContacts = async () => {
+    const d = await fetch(`/api/permissions?t=${T}`).then(x => x.json()).catch(() => ({}));
+    PERMS.contacts = d.contacts || PERMS.contacts;
+    drawPerms();
+  };
   // THE SHELL'S ANSWER to the sandbox panel. Cancelled puts Allow back; allowed restarts the
   // daemon with the grant, so the state is read again from it rather than assumed.
   window.agentduetPicked = async r => {
