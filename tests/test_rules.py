@@ -5096,6 +5096,8 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
     ok("Open Again is the blue primary button", hv.count(".buttonStyle(.borderedProminent)") >= 2)
     ok("Send to is the blue primary button too",
        'Button("Send to \\(HubModel.name(who))") { model.sendDraft() }\n                                    .buttonStyle(.borderedProminent)' in hv)
+    ok("the primary buttons are blue whatever the system accent (Graphite made them grey)",
+       hv.count(".tint(.blue)") >= 3)
     ok("the title bar's status is never cut short", "Text(model.connection).foregroundStyle(.secondary).fixedSize()" in hv)
     ok("your number is shown, learned, not typed",
        'TextField("Your number"' not in swift["SettingsView.swift"]
