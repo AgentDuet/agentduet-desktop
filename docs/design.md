@@ -1071,9 +1071,14 @@ Windows. On a Mac the hub stays HTML only until its native port lands.
 
 **The contract is the daemon's `/api/*`, not a page.** Both UIs call the same routes with the
 same bodies (`DaemonAPI.swift` for the native one), so a setting means the same thing whichever
-surface changed it, and no rule lives in a UI. The cost to plan for: a feature is not done until
-each platform that has its own UI has it, and the Swift code needs its own checks, since
+surface changed it, and no rule lives in a UI. The Swift code needs its own checks, since
 `test_rules.py` reads the pages.
+
+**Mac first, the rest later (Stanley, 2026-09-29).** UI work lands in Swift only, and the HTML
+pages are frozen rather than kept in step: they were last brought in line at `3f89266`, and the
+Mac-only UI changes since are the list to port when another platform is taken up. Keeping two
+UIs in step while only one is being used cost time and bought nothing. The daemon is still one,
+for everyone, and a daemon change must not break the frozen pages.
 
 **Why it also matters for the App Store:** guideline 4.2 ("minimum functionality") rejects apps
 that are mainly a web page in a window, and a loopback site in a WKWebView is close to that. More
