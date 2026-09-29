@@ -471,9 +471,14 @@
     const book = PERMS.contacts;
     $('bookRow').hidden = !(SHELL && book);
     $('bookActs').innerHTML = book === 'allowed' ? GRANTED
+      : book === 'asking' ? '<span class="lbl3">Waiting for your answer…</span>'
       : book === 'refused' ? '<button class="btn ghost" data-open="privacy-contacts">Open System Settings</button>'
       : '<button class="btn" id="askBook">Allow</button>';
-    if ($('askBook')) $('askBook').onclick = () => SHELL.postMessage({type: 'askContacts'});
+    if ($('askBook')) $('askBook').onclick = () => {
+      SHELL.postMessage({type: 'askContacts'});
+      PERMS.contacts = 'asking';
+      watchPerms();
+    };
     $('permsDone').disabled = doc !== 'granted';
     if ($('askDoc')) $('askDoc').onclick = async () => {
       PERMS.documents = 'asking'; drawPerms();
@@ -510,7 +515,9 @@
     permTimer = setInterval(async () => {
       const d = await fetch(`/api/permissions?t=${T}`).then(r => r.json()).catch(() => ({}));
       if (d.documents) PERMS.documents = d.documents;
-      if (d.contacts) PERMS.contacts = d.contacts;
+      // "not asked" while the prompt is still up is the moment BEFORE the answer, not one.
+      if (d.contacts && !(PERMS.contacts === 'asking' && d.contacts === 'not-asked'))
+        PERMS.contacts = d.contacts;
       if (PERMS.mic === 'denied') {
         try {
           const p = await navigator.permissions.query({name: 'microphone'});
@@ -518,7 +525,8 @@
         } catch (e) {}
       }
       const open = PERMS.documents === 'asking' || PERMS.documents === 'denied'
-                   || PERMS.mic === 'denied' || PERMS.contacts === 'refused';
+                   || PERMS.mic === 'denied' || PERMS.contacts === 'refused'
+                   || PERMS.contacts === 'asking';
       if (!open) { clearInterval(permTimer); permTimer = null; }
       drawPerms();
     }, 1000);

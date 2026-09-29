@@ -3760,7 +3760,8 @@ def test_sign_in_uses_the_owners_own_browser() -> None:
         ok(f"{page} decides at click time",
            "window.pywebview || window.agentduetNative" in body)
         ok(f"{page} navigates only in a browser",
-           "if (!isNative()) { location.href" in body)
+           "if (!isNative()) { location.href" in body
+           or "if (!isNative()) { window.top.location.href" in body)
         ok(f"{page} waits for the browser instead",
            "signin/open" in body and "signed_in" in body)
 
@@ -4940,6 +4941,19 @@ def test_a_caller_is_named_by_the_owner_then_contacts_then_the_message() -> None
        cards and all("data-sec=" in c for c in cards), str([c for c in cards if "data-sec" not in c]))
     ok("the sidebar is built from them", "querySelectorAll('.card[data-sec]')" in settings)
     ok("and only the chosen one is shown", ".card[data-sec]:not(.shown){display:none;}" in settings)
+    # A DIALOG OVER THE HUB, one box: the hub draws the rounded dialog, Settings drops its own
+    # frame inside it, and a section's settings sit on the pane rather than in a card.
+    ok("the hub opens Settings as a dialog", 'id="setFrame"' in hub and "&embed=1" in hub)
+    ok("any link to Settings opens it there", "a[href^=\"/settings\"]" in hub)
+    ok("Settings drops its title bar inside it", "html.embed .titlebar{display:none;}" in settings)
+    ok("with no box inside the box", ".split .sec > .card{background:none;border:0;" in settings)
+    ok("the shell's answers reach the dialog", "window.agentduetContacts = toDialog(" in hub)
+    ok("setup replaces the whole window, not the dialog",
+       "window.top.location.href = '/setup" in settings)
+    ok("the rename field has the title's size, so the text does not move",
+       "font-size:1.125rem;font-weight:700;line-height:1.6rem" in hub)
+    ok("the shell tells the page only after writing",
+       "self.tick(force: true) { done(ok) }" in shell)
     ok("and a name arriving later redraws the list", "${p.display || ''}" in hub)
 
 

@@ -81,12 +81,29 @@
     overflow:hidden;}
   .mbody{flex:1;overflow-y:auto;padding:0 1.5rem 1.5rem;}
   .ttl{display:flex;align-items:center;gap:.35rem;min-width:0;}
-  .ttl h1{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .ttl input{font:inherit;font-size:1.25rem;font-weight:600;min-width:16rem;height:var(--ctl);}
+  .ttl h1{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.6rem;}
+  /* THE TEXT MUST NOT MOVE when the title becomes a field: the title's own font and line
+     height, a hairline border, and a negative margin that cancels the padding and border — so
+     the letters sit exactly where the title's were. The house input is a 12px form field. */
+  #tName{width:auto;min-width:14rem;min-height:0;height:auto;box-sizing:border-box;
+    font-size:1.125rem;font-weight:700;line-height:1.6rem;color:var(--ink);
+    padding:0 .35rem;margin:-1px calc(-.35rem - 1px);border:1px solid rgba(59,130,246,.55);
+    border-radius:.35rem;background:transparent;outline:none;}
   .ren{background:none;border:0;padding:.2rem;border-radius:.4rem;color:var(--faint);
     cursor:pointer;display:flex;}
   .ren:hover{color:var(--ink2);background:rgba(255,255,255,.06);}
   .ren .material-symbols-rounded{font-size:1.05rem;}
+  .setovl{position:fixed;inset:0;background:rgba(2,6,23,.6);display:flex;align-items:center;
+    justify-content:center;padding:3rem 2.5rem 2.5rem;z-index:60;}
+  .setovl[hidden]{display:none;}
+  .setdlg{width:100%;max-width:60rem;height:100%;max-height:44rem;background:var(--bg);
+    border:1px solid var(--line);border-radius:.9rem;overflow:hidden;position:relative;
+    box-shadow:0 24px 60px rgba(0,0,0,.55);}
+  .setdlg iframe{border:0;width:100%;height:100%;display:block;background:var(--bg);}
+  .setx{position:absolute;top:.6rem;right:.6rem;z-index:1;background:none;border:0;
+    color:var(--muted);cursor:pointer;display:flex;padding:.3rem;border-radius:.4rem;}
+  .setx:hover{color:var(--ink2);background:var(--slate800);}
+  .setx .material-symbols-rounded{font-size:1.25rem;}
   .thead{display:flex;justify-content:space-between;align-items:center;gap:1rem;
     padding:1.5rem 1.5rem 1.2rem;flex-shrink:0;}
   /* A READABLE MEASURE, CENTRED. In a browser the window is capped at 64rem so the main column
@@ -329,6 +346,13 @@
   </div>
 </div>
 
+<div class="setovl" id="setOvl" hidden>
+  <div class="setdlg" role="dialog" aria-modal="true" aria-label="Settings">
+    <button class="setx" id="setClose" aria-label="Close"><span class="material-symbols-rounded">close</span></button>
+    <iframe id="setFrame" title="Settings"></iframe>
+  </div>
+</div>
+
 <script>
   window.onerror = function (m, src, line, col) {
     try { new Image().src = '/__jserr?m=' + encodeURIComponent(m) + '&line=' + line; } catch (e) {}
@@ -373,8 +397,43 @@
   const post = (path, body) => fetch(`${path}?t=${T}`, {method: 'POST',
     headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}).then(r => r.json());
 
-  const toSettings = e => { e.preventDefault(); location.href = '/settings?t=' + T; };
+  // SETTINGS IS A DIALOG OVER THE HUB (Stanley, 2026-09-29), not a page that replaces it: the
+  // rounded box is the dialog, and inside it the two panes. The page itself is unchanged and
+  // still works on its own at /settings; `embed=1` drops its title bar.
+  function openSettings(sec){
+    $('setFrame').src = `/settings?t=${T}&embed=1${sec ? '#' + sec : ''}`;
+    $('setOvl').hidden = false;
+  }
+  async function closeSettings(){
+    if ($('setOvl').hidden) return;
+    $('setOvl').hidden = true;
+    $('setFrame').src = 'about:blank';          // stops its polling
+    // What was changed there — a name, a model, a folder — shows here at once.
+    await refresh(); drawWho();
+  }
+  const toSettings = e => { e.preventDefault(); openSettings(); };
   $('toSettings').onclick = toSettings;
+  // ANY LINK TO SETTINGS in the hub opens the dialog, at its section when it names one.
+  document.addEventListener('click', e => {
+    const a = e.target.closest && e.target.closest('a[href^="/settings"]');
+    if (!a) return;
+    e.preventDefault();
+    openSettings((a.getAttribute('href').split('#')[1]) || '');
+  });
+  $('setClose').onclick = closeSettings;
+  $('setOvl').onclick = e => { if (e.target === $('setOvl')) closeSettings(); };
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSettings(); });
+  window.addEventListener('message', e => {
+    if (e.origin === location.origin && e.data && e.data.type === 'closeSettings') closeSettings();
+  });
+  // THE SHELL ANSWERS THE MAIN FRAME. A folder panel or the Contacts prompt asked for from the
+  // dialog replies here, so pass it on to the page that asked.
+  const toDialog = name => r => {
+    const w = $('setFrame').contentWindow;
+    if (w && typeof w[name] === 'function') w[name](r);
+  };
+  window.agentduetPicked = toDialog('agentduetPicked');
+  window.agentduetContacts = toDialog('agentduetContacts');
 
   //: Not a person — nobody called from it — so it is pinned above the list rather than
   //: sorted into it, and cannot be pushed down by whoever called most recently.

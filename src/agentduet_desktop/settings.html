@@ -9,7 +9,20 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="icon" href="/logo.png?v=2">
 <link rel="stylesheet" href="/app.css">
+<script>
+  // INSIDE THE HUB'S DIALOG (embed=1): no title bar and no window frame of its own — the dialog
+  // is the frame. Set before the body renders, so nothing flashes.
+  if (new URLSearchParams(location.search).get('embed')) document.documentElement.classList.add('embed');
+</script>
 <style>
+  html.embed body{background:var(--bg);padding:0;align-items:stretch;justify-content:flex-start;}
+  html.embed .window{max-width:none;height:100%;max-height:none;flex:1;border-radius:0;
+    border:0;box-shadow:none;}
+  html.embed .titlebar{display:none;}
+  /* ONE BOX, NOT TWO: the dialog is the rounded box, so a section's settings sit straight on
+     the pane rather than in a card inside it. The card's icon and heading stay as the pane's
+     title. */
+  .split .sec > .card{background:none;border:0;padding:0;box-shadow:none;}
   /* Capped and centred: a settings column spanning a wide window is a long line
      length nobody reads comfortably. Right in a browser and in a native window. */
   .sec{display:flex;flex-direction:column;gap:1.5rem;max-width:40rem;margin:0 auto;
@@ -454,7 +467,17 @@
   // Stored on the instance, not in the browser. The owner site is rendered by three engines
   // now (browser, the pywebview window, the macOS app) and the window has no localStorage at
   // all — reading it there threw and took the whole page down with it.
-  $('rerun').onclick = () => { location.href = '/setup?t=' + T + '&from=settings'; };
+  // THE WHOLE WINDOW, not the dialog: from the hub's dialog, setup replaces the hub.
+  $('rerun').onclick = () => { window.top.location.href = '/setup?t=' + T + '&from=settings'; };
+  // IN THE HUB'S DIALOG, closing is the hub's to do — and Esc typed in here reaches THIS page,
+  // not the hub, so it is passed up. An open developer dialog takes Esc first.
+  if (window.top !== window) {
+    const close = () => window.parent.postMessage({type: 'closeSettings'}, location.origin);
+    $('back').onclick = e => { e.preventDefault(); close(); };
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && $('ovlDev').hidden) close();
+    });
+  }
 
   //: What the server last said the You card's fields were, so Save can send only
   //: what changed. DECLARED BEFORE refreshCurrent, which reads it: a `const` further
@@ -623,7 +646,7 @@
   const isNative = () => !!(window.pywebview || window.agentduetNative);
 
   async function signInWithGoogle(waiting) {
-    if (!isNative()) { location.href = `/api/connector/signin?t=${T}&provider=google`; return; }
+    if (!isNative()) { window.top.location.href = `/api/connector/signin?t=${T}&provider=google`; return; }
     const d = await fetch(`/api/connector/signin/open?t=${T}&provider=google`,
                           {method: 'POST'}).then(r => r.json()).catch(() => ({}));
     if (!d.ok) { waiting(d.url ? `Open this in your browser to finish signing in: ${d.url}`
@@ -888,7 +911,10 @@
       } catch (e) {}
       watchPerms();
     };
-    if ($('pAskBook')) $('pAskBook').onclick = () => SHELL.postMessage({type: 'askContacts'});
+    if ($('pAskBook')) $('pAskBook').onclick = () => {
+      SHELL.postMessage({type: 'askContacts'});
+      watchPerms();
+    };
     document.querySelectorAll('[data-pane]').forEach(b => b.onclick = async () => {
       await post('/api/permissions', {action: b.dataset.pane});
       watchPerms();
