@@ -313,7 +313,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     /// phone on the same socket, and would ring beside the native one.
     private func showHub(_ api: DaemonAPI) {
         window.orderOut(nil)
-        hubWindow.openSettings = { [weak self] in self?.openSettings(nil) }
+        hubWindow.openSettings = { [weak self] in self?.openSettings(SettingsModel.Section(rawValue: $0 ?? "")) }
         hubWindow.show(api: api)
     }
 

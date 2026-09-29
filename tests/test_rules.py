@@ -5067,8 +5067,15 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
        in swift["HubWindow.swift"])
     hv = swift["HubView.swift"]
     ok("its toolbar holds AgentDuet's controls: the mic light, answering here, Settings",
-       'model.micOK ? "mic.fill" : "mic.slash.fill"' in hv and 'Text("Answer Calls Here")' in hv
+       'MicLight(ok: model.micOK, reason: model.micReason)' in hv and 'Text("Answer Calls Here")' in hv
        and 'Label("Settings", systemImage: "gearshape")' in hv)
+    ok("each in its own pill, not crowded into one group",
+       "ToolbarItemGroup" not in hv and hv.count("ToolbarItem(placement: .primaryAction)") == 2)
+    ok("the microphone's reason shows the moment the pointer is over it",
+       ".onHover { hovering.value = $0 }" in hv and ".popover(isPresented: $hovering.value" in hv)
+    ok("your balloons are the same grey as theirs", "Color.blue)" not in hv.split("struct Balloon")[1].split("struct ")[0])
+    ok("My Card heads the list: name, number, and whether anything can reach you",
+       'model.openSettings?("account")' in hv and "model.connection" in hv)
     ok("not Contacts' functions: no search, no Edit button",
        ".searchable(" not in hv and 'Button("Edit")' not in hv)
     ok("renaming is a pencil beside the name", '.help("Rename")' in hv)

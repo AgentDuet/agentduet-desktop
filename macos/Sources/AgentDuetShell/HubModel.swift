@@ -40,8 +40,8 @@ import Foundation
     /// The last PERSON opened, so "her" and "this person" in a question resolve to them.
     private(set) var lastPerson = ""
     @Published var search = ""
-    /// Settings, which the app opens.
-    var openSettings: (() -> Void)?
+    /// Settings, which the app opens — at a section, or where it was.
+    var openSettings: ((String?) -> Void)?
     @Published var notice: SettingsModel.Notice?
 
     let api: DaemonAPI
@@ -165,6 +165,19 @@ import Foundation
             bits.append(ByteCountFormatter.string(fromByteCount: Int64(c.num("bytes")), countStyle: .file))
         }
         return bits.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    // MARK: - my card
+
+    /// THE OWNER'S OWN CARD, at the top of the list as Contacts puts "My Card": who, which
+    /// number, and whether anything can reach them.
+    var myName: String { panel.str("name") }
+    var myNumber: String { panel.str("phone").isEmpty ? panel.str("line") : panel.str("phone") }
+    var connected: Bool { ["live", "connecting", "retrying"].contains(panel.str("channel")) }
+    /// NOT SIGNED IN IS NOT "NOT CONNECTED": with no credential the fix is to sign in.
+    var connection: String {
+        if connected { return "Connected" }
+        return panel.str("channel") == "unset" ? "Not Signed In" : "Not Connected"
     }
 
     // MARK: - the toolbar

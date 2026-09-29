@@ -11,8 +11,8 @@ import SwiftUI
     private var window: NSWindow?
     private var model: HubModel?
     private var phone: PhoneModel?
-    /// Settings, which the app opens.
-    var openSettings: (() -> Void)?
+    /// Settings, which the app opens — at a section, or where it was.
+    var openSettings: ((String?) -> Void)?
 
     var isVisible: Bool { window?.isVisible ?? false }
 
@@ -25,7 +25,7 @@ import SwiftUI
         }
         if window == nil {
             let model = HubModel(api: api)
-            model.openSettings = { [weak self] in self?.openSettings?() }
+            model.openSettings = { [weak self] in self?.openSettings?($0) }
             let phone = PhoneModel(api: api)
             phone.onRing = { [weak self] in self?.bringForward() }
             let hosting = NSHostingController(rootView: HubView(model: model, phone: phone))
