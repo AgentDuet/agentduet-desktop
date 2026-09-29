@@ -398,12 +398,12 @@ async def handle(sm, noti) -> None:
     if not outgoing and _owner.answer_here() and phone.present():
         decision = await phone.ring(str(call_id), other, done)
         if decision == "answer":
-            await _answer_here(call, call_id, other, done)
+            await _answer_here(call, call_id, other, done, taken)
             return
         if decision == "gone":
             logger.info("call %s %s: the caller hung up while it rang in the app", call_id, who)
             from . import calls as _calls
-            _calls.record(call_id, other, "carried", note="missed in the app")
+            _calls.record(call_id, other, "carried", note="missed in the app", started=taken)
             return
         logger.info("call %s %s: %s in the app — passing it through", call_id, who, decision)
 
@@ -524,7 +524,8 @@ async def handle(sm, noti) -> None:
         # named no files at all — and the hub reads that as "No recording." on a call whose
         # audio is sitting on disk. Caught before the first live call, by adding the
         # empty-leg cleanup and asking what the index would then have to work with.
-        _calls.record(call_id, other, "carried", outgoing=outgoing, note=outcome, recordings=sorted(
+        _calls.record(call_id, other, "carried", outgoing=outgoing, note=outcome, started=taken,
+                      recordings=sorted(
             str(p.name) for p in legs().glob(f"*{call_id}*.wav")))
         # TRANSCRIBE IT NOW, not at the next poll: the legs are closed and on disk.
         from . import transcribe
@@ -562,7 +563,8 @@ async def _live_end(call_id: str) -> None:
         logger.warning("call %s: could not close live captions (%s)", call_id, exc)
 
 
-async def _answer_here(call, call_id: str, other: str, done: asyncio.Event) -> None:
+async def _answer_here(call, call_id: str, other: str, done: asyncio.Event,
+                       started: float | None = None) -> None:
     """The owner picked up in the app: answer, bridge to the page, record both sides.
 
     The SDK's own "Answer a call" shape — `answer()`, the caller's stream in, `send_audio()` out
@@ -594,7 +596,8 @@ async def _answer_here(call, call_id: str, other: str, done: asyncio.Event) -> N
             t.cancel()
         await asyncio.gather(*recorders, return_exceptions=True)
         await _live_end(str(call_id))
-        _calls.record(call_id, other, "carried", note="answered in the app", recordings=sorted(
+        _calls.record(call_id, other, "carried", note="answered in the app", started=started,
+                      recordings=sorted(
             str(p.name) for p in legs().glob(f"*{call_id}*.wav")))
         from . import transcribe
         transcribe.wake()
