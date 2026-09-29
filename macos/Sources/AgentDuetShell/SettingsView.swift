@@ -234,10 +234,13 @@ private struct PermissionsPane: View {
     var body: some View {
         Form {
             Section {
-                row("Documents folder", state: docState, allow: model.allowDocuments, pane: "privacy")
-                row("Microphone", state: model.mic, allow: model.allowMic, pane: "privacy-mic")
-                row("Contacts", state: model.contacts, allow: model.allowContacts,
-                    pane: "privacy-contacts", note: contactsNote)
+                PermissionRow(title: "Documents folder", detail: "", state: model.documentsState,
+                              allow: model.allowDocuments, openSettings: { model.openPrivacy("privacy") })
+                PermissionRow(title: "Microphone", detail: "", state: model.mic,
+                              allow: model.allowMic, openSettings: { model.openPrivacy("privacy-mic") })
+                PermissionRow(title: "Contacts", detail: contactsNote, state: model.contacts,
+                              allow: model.allowContacts,
+                              openSettings: { model.openPrivacy("privacy-contacts") })
             }
             Section {
                 Toggle("Start when I log in", isOn: Binding(
@@ -251,25 +254,24 @@ private struct PermissionsPane: View {
         }
     }
 
-    /// The daemon's words for Documents, in the three the rows use.
-    private var docState: String {
-        switch model.documents {
-        case "granted": return "allowed"
-        case "denied": return "refused"
-        case "asking": return "asking"
-        default: return "not-asked"
-        }
-    }
-
     private var contactsNote: String {
         let n = Int(model.perms.num("contacts_named"))
         guard model.contacts == "allowed", n > 0 else { return "" }
         return "Names for \(n) \(n == 1 ? "person" : "people")"
     }
 
-    @ViewBuilder
-    private func row(_ title: String, state: String, allow: @escaping () -> Void, pane: String,
-                     note: String = "") -> some View {
+}
+
+/// One permission: Allowed, waiting, a way to System Settings after a refusal, or Allow. Shared by
+/// Settings and the setup window, so the two cannot describe the same permission differently.
+struct PermissionRow: View {
+    let title: String
+    let detail: String
+    let state: String
+    let allow: () -> Void
+    let openSettings: () -> Void
+
+    var body: some View {
         LabeledContent {
             switch state {
             case "allowed":
@@ -278,13 +280,13 @@ private struct PermissionsPane: View {
             case "asking":
                 Text("Waiting for your answer…").foregroundStyle(.secondary)
             case "refused":
-                Button("Open System Settings…") { model.openPrivacy(pane) }
+                Button("Open System Settings…") { openSettings() }
             default:
                 Button("Allow") { allow() }
             }
         } label: {
             Text(title)
-            if !note.isEmpty { Text(note) }
+            if !detail.isEmpty { Text(detail) }
         }
     }
 }

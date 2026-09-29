@@ -139,9 +139,11 @@ be able to do has to work in `init`.
 
 ## Native UI per platform (decided 2026-09-29)
 
-**The single-codebase rule is dropped: each platform gets its best UI.** Settings on a Mac is a
-native SwiftUI window (`macos/Sources/AgentDuetShell/Settings*.swift`), opened with Cmd-comma, the
-menu bar menu, or the hub's Settings button. The HTML Settings stays for every host without the
+**The single-codebase rule is dropped: each platform gets its best UI.** On a Mac, Settings and
+setup are native SwiftUI windows (`macos/Sources/AgentDuetShell/Settings*.swift`, `Setup*.swift`).
+Settings opens with Cmd-comma, the menu bar menu or the hub's Settings button; setup is shown
+whenever the daemon's `needs_setup` says so, and a link to `/setup` opens it. The hub is next
+(reading, then writing, then the in-app phone). The HTML pages stay for every host without the
 Swift shell. **The daemon's `/api/*` is the contract between them:** a setting's rule lives in
 the daemon, never in a UI, so a change to what a setting does is made there once. A feature is
 not done until each UI that exposes it has it. Reasoning, and what would reverse it:

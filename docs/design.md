@@ -1060,12 +1060,14 @@ for free, where CSS can only keep imitating it.
 **What moves first:** setup, Settings, permissions and the frame — forms and system integration,
 where the platform does best and matters most. The **native Settings window** (`SettingsWindow`,
 `SettingsView`, `SettingsModel` in the shell) is the first piece. Cmd-comma opens it, as do the
-menu bar menu and the hub's own Settings button.
+menu bar menu and the hub's own Settings button. The **native setup window** (`Setup*.swift`)
+is the second: the shell shows it whenever `needs_setup` is true — the question `index` asks to
+serve setup.html — so the two wizards cannot disagree about when setup is due.
+**Then the hub, all of it (Stanley, 2026-09-29):** reading first, then writing, then the in-app
+phone, whose web version stays until the native one works on a real call.
 
-**What stays HTML for now:** the hub's content (conversations, transcripts, cards). It is rich
-text that changes daily and renders well as HTML, and it can move a piece at a time if that is
-ever worth it. The HTML Settings also stays, for every host without the Swift shell: a browser,
-pywebview, Windows.
+**What stays HTML:** every page, for every host without the Swift shell — a browser, pywebview,
+Windows. On a Mac the hub stays HTML only until its native port lands.
 
 **The contract is the daemon's `/api/*`, not a page.** Both UIs call the same routes with the
 same bodies (`DaemonAPI.swift` for the native one), so a setting means the same thing whichever

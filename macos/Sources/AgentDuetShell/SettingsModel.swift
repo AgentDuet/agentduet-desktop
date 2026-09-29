@@ -214,6 +214,15 @@ import Foundation
     // MARK: - Permissions
 
     var documents: String { perms.str("documents") }
+    /// The daemon's words for Documents, in the four the permission rows use.
+    var documentsState: String {
+        switch documents {
+        case "granted": return "allowed"
+        case "denied": return "refused"
+        case "asking": return "asking"
+        default: return "not-asked"
+        }
+    }
     var loginState: String { cur.str("start_at_login_state") }
     var startAtLogin: Bool { loginState == "on" || loginState == "pending" || cur.bool("start_at_login") }
 
