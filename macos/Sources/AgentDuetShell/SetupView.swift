@@ -58,53 +58,11 @@ private struct SignInStep: View {
             VStack(spacing: 18) {
                 StepHeader(title: "Welcome to AgentDuet",
                            subtitle: "On-device AI for your calls. Please sign in to link your desktop AI hub.")
-                VStack(spacing: 10) {
-                    wide("Continue with Apple", symbol: "apple.logo") { model.notYet("Apple") }
-                    wide("Continue with Google") {
-                        if model.canSignIn { model.signInWithGoogle() } else { model.notYet("Google") }
-                    }
-                    wide("Continue with Microsoft") { model.notYet("Microsoft") }
-                }
-                .frame(width: 300)
-                NoticeLine(notice: model.notice).padding(.horizontal, 40)
-                // THE FOURTH WAY IN: the pair a person issued, for an install where sign-in does
-                // not reach. Revealed on demand, since most of a first run is not credentials.
-                Button(model.showManual ? "Hide the connector and API key" : "Use a connector and API key") {
-                    model.showManual.toggle()
-                }
-                .buttonStyle(.link)
-                if model.showManual {
-                    Form {
-                        TextField("Connector uuid", text: $model.uuid,
-                                  prompt: Text("00000000-0000-0000-0000-000000000000"))
-                            .monospaced()
-                        SecureField("API key", text: $model.key, prompt: Text("Required"))
-                        HStack {
-                            Spacer()
-                            if model.checking { ProgressView().controlSize(.small) }
-                            Button("Check and Continue") { model.checkConnector() }
-                                .disabled(model.checking)
-                        }
-                    }
-                    .formStyle(.grouped)
-                    .frame(width: 480)
-                    .scrollDisabled(true)
-                }
+                SignInPanel(model: model.signIn)
                 Button("Set Up Without Signing In") { model.skipSignIn() }.buttonStyle(.link)
             }
             .padding(.bottom, 20)
         }
-    }
-
-    private func wide(_ title: String, symbol: String? = nil, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                if let symbol { Image(systemName: symbol) }
-                Text(title)
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .controlSize(.large)
     }
 }
 

@@ -86,18 +86,13 @@ private struct AccountPane: View {
                     LabeledContent("API key") {
                         HStack {
                             Text(model.cur.str("key_hint")).monospaced()
-                            Button("Edit…") { editingKey.value = true }
+                            Button("Change…") { editingKey.value = true }
                         }
                     }
-                    if model.canSignIn {
-                        LabeledContent("Sign in instead") { signInButtons }
-                    }
                 } else {
-                    if model.canSignIn {
-                        LabeledContent("Sign in") { signInButtons }
-                    }
-                    LabeledContent("Connector and API key") {
-                        Button("Set Up…") { editingKey.value = true }
+                    // ONE BUTTON, and the ways in behind it — the setup window's own panel.
+                    LabeledContent("Account") {
+                        Button("Sign In…") { editingKey.value = true }
                     }
                 }
             } header: {
@@ -112,7 +107,7 @@ private struct AccountPane: View {
             lastFocus.value = now
         }
         .onDisappear { if let was = lastFocus.value { model.commit(was) } }
-        .sheet(isPresented: $editingKey.value) { ConnectorSheet(model: model) }
+        .sheet(isPresented: $editingKey.value) { SignInSheet(model: model) }
         .confirmationDialog("Sign out of AgentDuet?", isPresented: $confirmSignOut.value) {
             Button("Sign Out", role: .destructive) { model.signOut() }
         } message: {
@@ -120,67 +115,43 @@ private struct AccountPane: View {
         }
     }
 
-    /// Only Google works upstream. Apple and Microsoft stay visible, per the agreed design, and
-    /// say so when pressed — as the wizard does.
-    private var signInButtons: some View {
-        HStack {
-            Button("Apple") { notSoon("Apple") }
-            // Equal weight, as System Settings gives a row of choices; prominent read as dark
-            // text on grey whenever the window was not the key one.
-            Button("Google") { model.signIn() }
-            Button("Microsoft") { notSoon("Microsoft") }
-        }
-    }
-
-    private func notSoon(_ who: String) {
-        model.notice[.account] = .init(ok: false, text: "\(who) sign-in is not available yet — only Google is.")
-    }
 }
 
-private struct ConnectorSheet: View {
+/// Sign In…, or Change… for an install set up by key: the setup window's first step, as a sheet.
+private struct SignInSheet: View {
     @ObservedObject var model: SettingsModel
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var uuid = Local("")
-    @StateObject private var key = Local("")
-    @StateObject private var busy = Local(false)
+    @StateObject private var signIn: SignInModel
+
+    init(model: SettingsModel) {
+        self.model = model
+        _signIn = StateObject(wrappedValue: SignInModel(settings: model))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            Form {
-                Section {
-                    TextField("Connector uuid", text: $uuid.value,
-                              prompt: Text("00000000-0000-0000-0000-000000000000"))
-                        .monospaced()
-                    SecureField("API key", text: $key.value, prompt: Text("Required"))
-                } header: {
-                    Text("Connector and API key")
-                } footer: {
-                    NoticeFooter(notice: model.notice[.account])
+            ScrollView {
+                VStack(spacing: 18) {
+                    VStack(spacing: 8) {
+                        Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 56, height: 56)
+                        Text("Sign in to AgentDuet").font(.title2.bold())
+                    }
+                    .padding(.top, 24)
+                    SignInPanel(model: signIn)
                 }
+                .padding(.bottom, 20)
             }
-            .formStyle(.grouped)
+            Divider()
             HStack {
-                if busy.value { ProgressView().controlSize(.small); Text("Checking…").foregroundStyle(.secondary) }
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Save") {
-                    busy.value = true
-                    Task {
-                        let ok = await model.saveConnector(uuid: uuid.value.trimmingCharacters(in: .whitespaces),
-                                                           key: key.value.trimmingCharacters(in: .whitespaces))
-                        busy.value = false
-                        if ok { dismiss() }
-                    }
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(busy.value || uuid.value.trimmingCharacters(in: .whitespaces).isEmpty
-                          || key.value.trimmingCharacters(in: .whitespaces).isEmpty)
             }
-            .padding([.horizontal, .bottom], 20)
+            .padding(.horizontal, 20).padding(.vertical, 14)
         }
-        .frame(width: 480)
+        .frame(width: 560, height: 520)
         .onAppear {
-            uuid.value = model.cur.str("connector_uuid")
+            signIn.prefill()
+            signIn.onDone = { dismiss() }
             model.notice[.account] = nil
         }
     }
