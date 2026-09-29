@@ -5093,9 +5093,10 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
        "andEventID: AEEventID(kAEQuitApplication)" in app and "settingsWindow.close()\n        NSApp.terminate(nil)" in app)
     ok("only the newest draft is labelled a draft",
        'turn.bool("draft") && (newestDraft || turn.bool("sent") || turn.bool("held"))' in hv)
-    ok("Open Again is the blue primary button", hv.count(".buttonStyle(.borderedProminent)") >= 2)
-    ok("Send to is the blue primary button too",
-       'Button("Send to \\(HubModel.name(who))") { model.sendDraft() }\n                                    .buttonStyle(.borderedProminent)' in hv)
+    # ORDINARY BUTTONS IN CONTENT (Stanley, 2026-09-30): the accent-filled default button is for
+    # dialogs, one per window and bound to Return; imitated in a card it drew grey on grey.
+    ok("the cards' and the draft's buttons are ordinary ones",
+       hv.count(".buttonStyle(.borderedProminent)") == 2)          # the call bar's Answer and Hang Up
     # THE SYSTEM'S COLOUR FOR A PRIMARY ACTION (Stanley, 2026-09-30): the owner's accent, as in
     # Apple's own apps — blue forced over Graphite looked wrong, and its text with it.
     ok("the primary buttons follow the system accent", ".tint(.blue)" not in hv)
