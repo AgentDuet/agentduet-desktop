@@ -411,7 +411,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             // What changed there — a name, a folder, a sign-in — shows in the hub now.
             self?.hubWindow.reload()
         }
-        settingsWindow.show(api: api, host: self, section: section)
+        // A SHEET ON THE HUB, which is opened first — Settings is part of the hub's window.
+        // Only while setup is still due is there no hub, and then it has a window of its own.
+        if !setupPending && !hubWindow.isVisible { showHub(api) }
+        settingsWindow.show(api: api, host: self, section: section,
+                            over: setupPending ? nil : hubWindow.nsWindow)
     }
 
     private func tellPage(_ result: [String: Any]) {

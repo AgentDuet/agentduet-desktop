@@ -323,8 +323,12 @@ private struct AssistantPane: View {
                     }
                     .padding(.top, 24).padding(.bottom, 6)
                     Downloads(model: model)
+                    // ONLY THE NEWEST DRAFT IS STILL A DRAFT: "send it" always takes the most recent,
+                    // so an older one is just an answer now and loses the label.
+                    let newestDraft = model.turns.lastIndex { $0.bool("draft") }
                     ForEach(model.turns.indices, id: \.self) { i in
-                        TurnView(model: model, turn: model.turns[i], last: i == model.turns.count - 1)
+                        TurnView(model: model, turn: model.turns[i], last: i == model.turns.count - 1,
+                                 newestDraft: i == newestDraft)
                     }
                     if !model.pendingQuestion.isEmpty {
                         Balloon(text: model.pendingQuestion, mine: true, caption: "")
@@ -376,6 +380,7 @@ private struct TurnView: View {
     @ObservedObject var model: HubModel
     let turn: JSON
     let last: Bool
+    let newestDraft: Bool
 
     var body: some View {
         if turn["break"] != nil {
@@ -385,7 +390,7 @@ private struct TurnView: View {
                 Balloon(text: turn.str("q"), mine: true, caption: "")
                 if !turn.str("a").isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
-                        if turn.bool("draft") {
+                        if turn.bool("draft") && (newestDraft || turn.bool("sent") || turn.bool("held")) {
                             Text(draftLabel).font(.caption.weight(.semibold))
                                 .foregroundStyle(turn.bool("sent") ? Color.green : Color.blue)
                         }
@@ -448,6 +453,7 @@ private struct ProposalCard: View {
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
                 Button(proposal.bool("opened") ? "Open Again" : verb0) { model.decide(proposal, approve: true) }
+                    .buttonStyle(.borderedProminent)
                 Button(reopen ? "Dismiss" : "Discard") { model.decide(proposal, approve: false) }
             }
         }
@@ -634,6 +640,7 @@ private struct SuggestionRow: View {
             Button(suggestion.bool("opened") ? "Open Again" : "Add to Calendar") {
                 model.suggestion(suggestion.str("key"), "add")
             }
+            .buttonStyle(.borderedProminent)
             Button("Dismiss") { model.suggestion(suggestion.str("key"), "dismiss") }
         }
         .padding(10)

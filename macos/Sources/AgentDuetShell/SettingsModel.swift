@@ -70,6 +70,8 @@ import Foundation
 
     let api: DaemonAPI
     weak var host: SettingsHost?
+    /// Done: close the sheet.
+    var done: (() -> Void)?
     private var timer: Timer?
 
     init(api: DaemonAPI) { self.api = api }
@@ -119,6 +121,9 @@ import Foundation
     }
 
     // MARK: - Account
+
+    /// Yours where one was saved, else the line learned from calls.
+    var yourNumber: String { phone.isEmpty ? panel.str("line") : phone }
 
     var oauth: JSON { cur.obj("oauth") }
     var signedIn: Bool { oauth.bool("signed_in") }
