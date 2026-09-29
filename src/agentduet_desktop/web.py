@@ -71,6 +71,11 @@ def _pick_payload() -> dict:
             "why": "developer override" if key == llm.override_model() != "" else p["why"]}
 
 
+def macperms_sandboxed() -> bool:
+    from . import macperms
+    return macperms.sandboxed()
+
+
 def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
     # Built once at startup, `chat` stayed None for the life of a FIRST RUN — no model exists
     # yet, so the setup interview could never run in the session that attached one. Everything
@@ -1605,6 +1610,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             "instance": str(_paths.HOME),
             "backend": _conn.environment(),
             "update": _upd.state(),
+            # An App Store build is updated by the store: no check, no "newer version" row.
+            "store_updates": macperms_sandboxed(),
         })
 
     async def api_about_check(request):
@@ -1617,6 +1624,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
         from . import update as _upd
+        if macperms_sandboxed():
+            return web.json_response({"update": _upd.state()})
         row = await asyncio.to_thread(_upd.check)
         return web.json_response({"update": row})
 

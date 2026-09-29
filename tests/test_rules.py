@@ -5927,6 +5927,9 @@ def test_unread_badge() -> None:
     setup_p = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "setup.html").read_text()
     ok("setup's Allow asks the shell when sandboxed",
        "shell.postMessage({type: 'pickDocuments'})" in setup_p)
+    upd = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "update.py").read_text()
+    ok("an App Store build never checks GitHub for updates",
+       upd.index("if macperms.sandboxed():") < upd.index("await asyncio.sleep(FIRST_CHECK_AFTER)"))
     ok("the App Store build asks for no hardened-runtime exception",
        "cs." not in (pathlib.Path(__file__).parent.parent / "packaging"
                      / "entitlements-appstore.plist").read_text().split("-->", 1)[1])

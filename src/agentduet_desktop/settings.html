@@ -287,7 +287,7 @@
         <div class="acts" id="sttActs" hidden><button class="btn" id="getStt"></button></div>
         <div id="sttBar" hidden></div>
         <div id="mStt"></div>
-        <div class="row">
+        <div class="row" id="abUpdRow">
           <div class="lbl">Newer version
             <span class="sublbl" id="abWhen"></span></div>
           <div style="display:flex;gap:.5rem;align-items:center">
@@ -699,6 +699,8 @@
   // managed to look instead, which is a fact either way.
   function aboutRender(d){
     $('abVer').textContent = d.version || '—';
+    // AN APP STORE BUILD IS UPDATED BY THE STORE, so it has no row to check for one.
+    $('abUpdRow').hidden = !!d.store_updates;
     const u = d.update || {};
     const link = $('abNew');
     if (u.newer && u.version) {

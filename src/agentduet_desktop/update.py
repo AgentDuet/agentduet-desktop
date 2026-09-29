@@ -252,6 +252,12 @@ async def worker() -> None:
     laptop lid.
     """
     import asyncio
+    from . import macperms
+    # THE APP STORE UPDATES AN APP STORE BUILD. A sandboxed build came from the store, which
+    # replaces it; pointing its owner at a GitHub download would be wrong, and is against the
+    # store's rules. So it never asks.
+    if macperms.sandboxed():
+        return
     await asyncio.sleep(FIRST_CHECK_AFTER)
     while True:
         try:
