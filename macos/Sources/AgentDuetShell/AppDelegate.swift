@@ -69,6 +69,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private var micWatch: MicWatch?
     /// Names for callers from the owner's Contacts — see ContactsWatch.
     private var contactsWatch: ContactsWatch?
+    /// The native Settings window — see SettingsWindow.
+    private let settingsWindow = SettingsWindow()
     private var siteURL: URL?
     /// Where the update item points, set as the menu opens.
     private var releaseURL: URL?
@@ -129,8 +131,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     /// The menu bar item, and the menu behind it.
     ///
     /// Deliberately small: what state it is in, a way back to the window, and a way to quit.
-    /// Everything else already exists in the page the window shows, and a menu that grows into
-    /// a second interface is how the "one HTML codebase" property gets lost a line at a time.
+    /// Everything else already exists in the windows, and a menu grows into a second interface
+    /// one item at a time. (Settings is its own native window since 2026-09-29; "Settings…"
+    /// here opens it, as Cmd-comma does.)
     private func buildStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
@@ -166,6 +169,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         menu.addItem(updateItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Open AgentDuet", action: #selector(openWindow), keyEquivalent: "")
+        menu.addItem(withTitle: "Settings…", action: #selector(openSettingsItem), keyEquivalent: "")
         loginItem = NSMenuItem(title: "Start at Login", action: #selector(toggleLoginItem),
                                keyEquivalent: "")
         menu.addItem(loginItem)
@@ -176,7 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // responder-chain message and finds NSApp on its own.
         for item in menu.items
         where item.action == #selector(openWindow) || item.action == #selector(toggleLoginItem)
-              || item.action == #selector(openRelease) {
+              || item.action == #selector(openRelease) || item.action == #selector(openSettingsItem) {
             item.target = self
         }
         statusItem.menu = menu
@@ -303,6 +307,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                                didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any],
               let type = body["type"] as? String else { return }
+        if type == "openSettings" {
+            openSettings(SettingsModel.Section(rawValue: body["section"] as? String ?? ""))
+            return
+        }
         if type == "askContacts" {
             contactsWatch?.ask { [weak self] ok in
                 self?.webView.evaluateJavaScript(
@@ -315,23 +323,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         FolderAccess.ask(over: window, startingIn: start) { [weak self] url in
             guard let self else { return }
             guard let url else { self.tellPage(["ok": false]); return }
-            do {
-                try FolderAccess.save(url, home: self.daemon.instanceHome)
-                FolderAccess.restore(home: self.daemon.instanceHome)
-            } catch {
-                self.tellPage(["ok": false, "error": error.localizedDescription]); return
-            }
-            // RESTART THE DAEMON so it runs with the access just granted. Same port and token,
-            // so the page carries on where it was.
-            DispatchQueue.global(qos: .userInitiated).async {
-                self.daemon.stop()
-                let result = self.daemon.start()
-                DispatchQueue.main.async {
-                    if case .success = result { self.tellPage(["ok": true, "path": url.path]) }
-                    else { self.tellPage(["ok": false, "error": "The service did not come back."]) }
-                }
+            self.keepFolder(url) { error in
+                if let error { self.tellPage(["ok": false, "error": error]) }
+                else { self.tellPage(["ok": true, "path": url.path]) }
             }
         }
+    }
+
+    /// Keep a folder the owner chose in the sandbox's panel, and restart the daemon with it.
+    /// `done` gets nil, or what went wrong.
+    ///
+    /// RESTARTED because access this process gains is inherited only by a child started after
+    /// it. Same port and token, so the pages carry on where they were.
+    private func keepFolder(_ url: URL, done: @escaping (String?) -> Void) {
+        do {
+            try FolderAccess.save(url, home: daemon.instanceHome)
+            FolderAccess.restore(home: daemon.instanceHome)
+        } catch {
+            done(error.localizedDescription); return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.daemon.stop()
+            let result = self.daemon.start()
+            DispatchQueue.main.async {
+                if case .success = result { done(nil) } else { done("The service did not come back.") }
+            }
+        }
+    }
+
+    // MARK: - the native Settings window
+
+    @objc private func openSettingsItem() { openSettings(nil) }
+
+    /// THE NATIVE SETTINGS (2026-09-29), from Cmd-comma, the menu bar menu, or the page's own
+    /// Settings button. Needs the daemon's address; before it has one there is nothing to set.
+    private func openSettings(_ section: SettingsModel.Section?) {
+        guard let url = siteURL, let api = DaemonAPI(site: url) else { return }
+        settingsWindow.onClose = { [weak self] in
+            // What changed there — a name, a folder, a sign-in — shows in the main window now.
+            self?.webView.evaluateJavaScript("window.agentduetSettingsClosed && window.agentduetSettingsClosed()")
+        }
+        settingsWindow.show(api: api, host: self, section: section)
     }
 
     private func tellPage(_ result: [String: Any]) {
@@ -349,7 +381,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // adds `.native` to <html>, which is what stops the page drawing its own traffic lights
         // under the real ones. In a WKWebView `window.pywebview` does not exist, so without
         // this the window shows TWO sets of lights — the exact bug that hack exists to prevent.
-        let script = WKUserScript(source: "window.agentduetNative = true;",
+        // `agentduetNativeSettings`: the page's Settings button asks for the native window
+        // rather than opening the HTML one (see `openSettings`).
+        let script = WKUserScript(source: "window.agentduetNative = true; window.agentduetNativeSettings = true;",
                                   injectionTime: .atDocumentStart,
                                   forMainFrameOnly: false)
         config.userContentController.addUserScript(script)
@@ -558,6 +592,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                         action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
                         keyEquivalent: "")
         appMenu.addItem(.separator())
+        // Cmd-comma, where every Mac app keeps its Settings.
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettingsItem),
+                                      keyEquivalent: ",")
+        settingsItem.target = self
+        appMenu.addItem(settingsItem)
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide \(name)", action: #selector(NSApplication.hide(_:)),
                         keyEquivalent: "h")
         appMenu.addItem(.separator())
@@ -593,5 +633,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         main.addItem(viewItem)
 
         NSApp.mainMenu = main
+    }
+}
+
+// MARK: - what the Settings window asks of the app
+
+extension AppDelegate: SettingsHost {
+    func chooseFolder(startingIn start: URL?, sandboxed: Bool, done: @escaping (URL?) -> Void) {
+        let over = settingsWindow.nsWindow
+        if sandboxed {
+            // The panel IS the grant: keep it, and restart the daemon with it.
+            FolderAccess.ask(over: over, startingIn: start ?? FolderAccess.current(home: daemon.instanceHome)) {
+                [weak self] url in
+                guard let self, let url else { done(nil); return }
+                self.keepFolder(url) { error in done(error == nil ? url : nil) }
+            }
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = start
+        panel.prompt = "Choose"
+        panel.message = "Location to store AgentDuet recordings and transcripts"
+        let finish: (NSApplication.ModalResponse) -> Void = { r in done(r == .OK ? panel.url : nil) }
+        if let over { panel.beginSheetModal(for: over, completionHandler: finish) }
+        else { finish(panel.runModal()) }
+    }
+
+    func grantDocuments(done: @escaping (Bool) -> Void) {
+        FolderAccess.ask(over: settingsWindow.nsWindow) { [weak self] url in
+            guard let self, let url else { done(false); return }
+            self.keepFolder(url) { error in done(error == nil) }
+        }
+    }
+
+    func askContacts(done: @escaping (Bool) -> Void) {
+        guard let contactsWatch else { done(false); return }
+        contactsWatch.ask(done: done)
+    }
+
+    func runSetup() {
+        guard let url = siteURL, let api = DaemonAPI(site: url) else { return }
+        settingsWindow.close()
+        webView.load(URLRequest(url: api.page("/setup", [URLQueryItem(name: "from", value: "settings")])))
+        openWindow()
     }
 }

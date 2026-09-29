@@ -94,7 +94,7 @@ If that assumption changes again, revisit this decision — not the plumbing und
 
 **The cost of a UI is real and has not gone away**, so it is bounded deliberately: a browser page
 is the surface, and the native window renders the same pages rather than being a second
-implementation. The hazard that proved this is worth remembering — on 2026-08-03 a single missing
+implementation. **(Reversed for Settings on 2026-09-29 — see "Native UI per platform" below.)** The hazard that proved this is worth remembering — on 2026-08-03 a single missing
 global (`localStorage`, absent in WebKitGTK) silently unwired the settings link, the quit button
 and the chat form, and the unwired form destroyed the session token on the first keypress.
 Anything the pages rely on must survive three engines, or be avoided.
@@ -1022,7 +1022,8 @@ nobody can find.
 `NSApplication`, where `LSUIElement`, a status item and "do not quit on last window" are nearly
 free; pywebview's loop assumes windows exist, so a windowless-but-alive agent works against the
 library. **The UI stays one HTML codebase** — both shells load the same local page into the same
-WKWebView, so this is not a second interface, it is ~400 Mac-only lines of shell. pywebview
+WKWebView, so this is not a second interface, it is ~400 Mac-only lines of shell. **(No longer
+true from 2026-09-29: see the next section.)** pywebview
 remains the Windows path and the fallback when the Swift shell is not in a build.
 
 **Login at start becomes `SMAppService`** on macOS, so it appears in System Settings → Login
@@ -1047,6 +1048,41 @@ by default. Their prebuilt release, never from git, nothing bundled. **Not Goose
 Linux** — deb/rpm only, both need root, and nothing else here does.
 
 ---
+
+### Native UI per platform, and the API is the contract (decided 2026-09-29)
+
+**Stanley dropped the single-codebase rule: the best experience for each platform over one set
+of pages.** It began with Settings. Next to macOS's Users & Groups, the HTML version did the same
+job but looked wrong: labels left and controls right, no Save buttons, an Edit… sheet wherever a
+change needs committing. SwiftUI's grouped `Form` is that window, so a native Settings gets it
+for free, where CSS can only keep imitating it.
+
+**What moves first:** setup, Settings, permissions and the frame — forms and system integration,
+where the platform does best and matters most. The **native Settings window** (`SettingsWindow`,
+`SettingsView`, `SettingsModel` in the shell) is the first piece. Cmd-comma opens it, as do the
+menu bar menu and the hub's own Settings button.
+
+**What stays HTML for now:** the hub's content (conversations, transcripts, cards). It is rich
+text that changes daily and renders well as HTML, and it can move a piece at a time if that is
+ever worth it. The HTML Settings also stays, for every host without the Swift shell: a browser,
+pywebview, Windows.
+
+**The contract is the daemon's `/api/*`, not a page.** Both UIs call the same routes with the
+same bodies (`DaemonAPI.swift` for the native one), so a setting means the same thing whichever
+surface changed it, and no rule lives in a UI. The cost to plan for: a feature is not done until
+each platform that has its own UI has it, and the Swift code needs its own checks, since
+`test_rules.py` reads the pages.
+
+**Why it also matters for the App Store:** guideline 4.2 ("minimum functionality") rejects apps
+that are mainly a web page in a window, and a loopback site in a WKWebView is close to that. More
+native UI is easier to defend.
+
+**What would reverse it:** the two UIs drifting apart in ways the API contract does not catch.
+If a setting keeps behaving differently between them, pull its rule back into the daemon first,
+before questioning the split.
+
+**Windows:** pywebview until Windows is a focus, then a WinUI shell of its own. The Mac work does
+not block it.
 
 ## Decisions
 

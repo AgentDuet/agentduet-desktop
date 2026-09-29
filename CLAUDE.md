@@ -137,6 +137,21 @@ install silently gets worse transcripts.
 **The Linux browser page is for debugging now**, not the documented path. Anything an owner must
 be able to do has to work in `init`.
 
+## Native UI per platform (decided 2026-09-29)
+
+**The single-codebase rule is dropped: each platform gets its best UI.** Settings on a Mac is a
+native SwiftUI window (`macos/Sources/AgentDuetShell/Settings*.swift`), opened with Cmd-comma, the
+menu bar menu, or the hub's Settings button. The HTML Settings stays for every host without the
+Swift shell. **The daemon's `/api/*` is the contract between them:** a setting's rule lives in
+the daemon, never in a UI, so a change to what a setting does is made there once. A feature is
+not done until each UI that exposes it has it. Reasoning, and what would reverse it:
+`docs/design.md`, *Native UI per platform*.
+
+**SwiftUI here is built WITHOUT Xcode**, with the Command Line Tools only. In the current SDK
+`@State` is a macro whose plugin ships with Xcode, so it does not compile — use `@StateObject`
+with the small `Local<Value>` holder in `SettingsView.swift`. `@FocusState`, `@Environment` and
+`@ObservedObject` are fine.
+
 ## The house style — `app.css`
 
 **One stylesheet, served at `/app.css`, linked by every page.** It was pasted into each page and

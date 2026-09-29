@@ -4974,6 +4974,42 @@ def test_a_caller_is_named_by_the_owner_then_contacts_then_the_message() -> None
     ok("and a name arriving later redraws the list", "${p.display || ''}" in hub)
 
 
+def test_the_native_settings_window_speaks_the_daemons_api() -> None:
+    """2026-09-29: Settings on a Mac is native SwiftUI, and the daemon's /api/* is the contract."""
+    print("\n  -- the native Settings window --")
+    import re as _re
+    root = pathlib.Path(__file__).parent.parent
+    shell = root / "macos/Sources/AgentDuetShell"
+    swift = {f.name: f.read_text() for f in shell.glob("*.swift")}
+    web = (root / "src/agentduet_desktop/web.py").read_text()
+    served = set(_re.findall(r'web\.(?:get|post)\("(/api/[^"]+)"', web))
+    called = set()
+    for text in swift.values():
+        called |= set(_re.findall(r'"(/api/[a-z0-9_/-]+)"', text))
+    missing = sorted(called - served)
+    ok(f"every route the Swift code calls is one the daemon serves{' — MISSING: ' + str(missing) if missing else ''}",
+       called and not missing)
+    for route in ("/api/setup/current", "/api/setup/setting", "/api/permissions",
+                  "/api/setup/login-item", "/api/connector/signin/open", "/api/setup/connector"):
+        ok(f"it uses {route}, as the HTML Settings does", route in called)
+    ok("its sections match the HTML ones",
+       all(f"case {c}" in swift["SettingsModel.swift"] or f", {c}" in swift["SettingsModel.swift"]
+           for c in ("account", "calls", "permissions", "advanced", "about")))
+    app = swift["AppDelegate.swift"]
+    ok("Cmd-comma opens it", 'action: #selector(openSettingsItem),\n                                      keyEquivalent: ","' in app)
+    ok("so does the menu bar menu", 'menu.addItem(withTitle: "Settings…", action: #selector(openSettingsItem)' in app)
+    ok("and the page, through the shell", 'type == "openSettings"' in app
+       and "window.agentduetNativeSettings = true" in app)
+    hub = (root / "src/agentduet_desktop/web.html").read_text()
+    ok("the hub asks for it in the native window, and keeps the HTML dialog elsewhere",
+       "if (window.agentduetNativeSettings && shell) {" in hub and "$('setOvl').hidden = false;" in hub)
+    # NO @State: a macro whose plugin ships with Xcode, and this package builds without it.
+    uses = [n for n, t in swift.items() if _re.search(r"^\s*@State\s", t, _re.M)]
+    ok(f"no Swift file uses @State{' — ' + str(uses) if uses else ''}", not uses)
+    ok("no Save button in the forms: fields save on Return or on leaving",
+       ".onSubmit { model.commit(" in swift["SettingsView.swift"])
+
+
 def test_the_catalogue_carries_gemma_4_and_says_what_was_measured() -> None:
     """The 2026-09-24 refresh, and the difference between a timed figure and an estimate."""
     print("\n  -- the catalogue: Gemma 4, and measured versus derived --")
@@ -6246,6 +6282,7 @@ def main() -> None:
     test_a_draft_goes_to_who_it_was_written_for()
     test_the_agent_finds_a_sender_by_the_name_it_was_shown()
     test_a_caller_is_named_by_the_owner_then_contacts_then_the_message()
+    test_the_native_settings_window_speaks_the_daemons_api()
     test_the_catalogue_carries_gemma_4_and_says_what_was_measured()
     test_the_machine_picks_the_model()
     test_one_place_decides_the_model_and_hosted_is_quarantined()
