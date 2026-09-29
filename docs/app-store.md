@@ -21,6 +21,7 @@ sandboxed process's home directory IS its container. Nothing it does touches the
 | **No hardened runtime, none of the runtime exceptions** (JIT, unsigned memory, library validation off, dyld variables) | All of the above still works. They are not needed for an App Store build |
 | **No update check** | Built: a sandboxed build never asks GitHub, and About hides its "Newer version" row — the store updates it |
 | **Opening a folder** (`open`, from the sandboxed daemon) | Works: Settings' Open showed `~/Documents/AgentDuet` in Finder. Links use the same command; not opened in the spike |
+| **Settings' folder Change** | Built and proven: in the sandbox it opens the same shell panel, in the folder in use; the folder chosen (`~/Documents/test1`) became the recordings folder as it is, allowed, with the iCloud mark set by the sandboxed app. A typed `## Recordings` path is not read there |
 | **The owner's real Documents** | Allowed in setup through the system panel; after quitting and reopening, the sandboxed daemon wrote a call's recording and transcript into `~/Documents/AgentDuet`, iCloud mark in place |
 
 **The one fix it needed.** The page server did not start at all: `aiohttp` builds its MIME table
@@ -51,10 +52,6 @@ The entitlements are in `packaging/entitlements-appstore.plist` (the app) and
 - **Where the files live.** `~/.agentduet-desktop` becomes the container. A Developer ID owner who
   moves to the App Store build starts empty unless we migrate — and the sandboxed build cannot read
   the old folder to migrate it without the owner choosing it.
-- **The folder picker and opening links.** `reveal.pick_folder` runs `osascript`, and `links._open`
-  runs `open`. A folder chosen through `osascript` grants access to osascript, not to us, so the
-  pick has to move into the Swift shell (`NSOpenPanel`), and links should go through
-  `NSWorkspace` there too. Expected to fail; not tried, because both put something on screen.
 - **Sign in with Apple** (App Review 4.8): offering Google sign-in requires an equivalent
   privacy option. Asked of the auth service on #ai-product, 2026-09-29.
 

@@ -276,9 +276,13 @@ def recordings_dir() -> pathlib.Path:
     quietly recording somewhere real and saying so in `status`.
     """
     default = paths.RUN / "recordings"
+    from . import macperms
+    # IN THE SANDBOX a typed path means nothing: the app may use only a folder the owner allowed
+    # in the system panel, which the shell records. So `## Recordings` is not read there.
+    if macperms.sandboxed():
+        return macperms.recordings_default(default) or default
     raw = _first_line(_strip_guidance(_sections().get("Recordings", ""))).strip()
     if not raw:
-        from . import macperms
         return macperms.recordings_default(default) or default
     try:
         chosen = pathlib.Path(raw).expanduser()

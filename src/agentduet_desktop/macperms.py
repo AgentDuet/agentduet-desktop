@@ -68,12 +68,21 @@ def _chosen() -> pathlib.Path | None:
     return pathlib.Path(raw) if raw else None
 
 
+def real_documents() -> pathlib.Path:
+    """The owner's own Documents. In the sandbox `Path.home()` is the app's CONTAINER."""
+    import pwd
+    return pathlib.Path(pwd.getpwuid(os.getuid()).pw_dir) / "Documents"
+
+
 def documents_folder() -> pathlib.Path:
-    """`~/Documents/AgentDuet`. In the sandbox `Path.home()` is the app's CONTAINER, so there it
-    is AgentDuet inside the folder the owner allowed — normally their real Documents."""
+    """`~/Documents/AgentDuet`. In the sandbox, the folder the owner allowed: setup allows
+    Documents itself, and AgentDuet goes inside it; a folder chosen in Settings is the exact
+    folder they want, and is used as it is."""
     if sandboxed():
-        base = _chosen() or pathlib.Path.home() / "Documents"
-        return base if base.name == "AgentDuet" else base / "AgentDuet"
+        chosen = _chosen()
+        if chosen is None:
+            return pathlib.Path.home() / "Documents" / "AgentDuet"
+        return chosen / "AgentDuet" if chosen == real_documents() else chosen
     return pathlib.Path.home() / "Documents" / "AgentDuet"
 
 
@@ -173,8 +182,10 @@ def recordings_default(legacy: pathlib.Path) -> pathlib.Path | None:
     """
     if not applies() or _read().get("documents") != "granted":
         return None
+    # AN EXISTING INSTALL KEEPS ITS FOLDER — except in the sandbox, where the owner has just
+    # CHOSEN one in the system panel, and a choice made that explicitly is what they meant.
     try:
-        if legacy.is_dir() and any(legacy.iterdir()):
+        if not sandboxed() and legacy.is_dir() and any(legacy.iterdir()):
             return None
     except OSError:
         pass

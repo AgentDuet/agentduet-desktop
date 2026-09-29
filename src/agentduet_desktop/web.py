@@ -793,6 +793,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             "recordings_set": _own.recordings_set(),
             "can_reveal": _reveal.available()[0],
             "can_pick": _reveal.can_pick()[0],
+            # In the sandbox the chooser is the shell's system panel, not osascript.
+            "sandboxed": macperms_sandboxed(),
             "dirs": {"calls": str(carry.recordings()),
                      "answered": str(carry.recordings() / carry.ANSWERED)},
             # WHAT IS ACTUALLY ON, not what the design shows switched on. Two of these have

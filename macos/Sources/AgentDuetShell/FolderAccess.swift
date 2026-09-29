@@ -57,7 +57,15 @@ enum FolderAccess {
     }
 
     /// The panel. `done` gets the folder chosen, or nil if the owner cancelled.
-    static func ask(over window: NSWindow?, done: @escaping (URL?) -> Void) {
+    /// The folder allowed now, from `run/documents-folder`, or nil.
+    static func current(home: URL) -> URL? {
+        guard let path = try? String(contentsOf: folderFile(home), encoding: .utf8),
+              !path.isEmpty else { return nil }
+        return URL(fileURLWithPath: path.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    static func ask(over window: NSWindow?, startingIn start: URL? = nil,
+                    done: @escaping (URL?) -> Void) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -65,7 +73,7 @@ enum FolderAccess {
         panel.allowsMultipleSelection = false
         // IN DOCUMENTS, with nothing selected: pressing the button with no selection chooses
         // the folder the panel is showing, so the owner allows Documents in one click.
-        panel.directoryURL = realHome.appendingPathComponent("Documents")
+        panel.directoryURL = start ?? realHome.appendingPathComponent("Documents")
         panel.prompt = "Allow"
         panel.message = "Location to store AgentDuet recordings and transcripts"
         let finish: (NSApplication.ModalResponse) -> Void = { r in done(r == .OK ? panel.url : nil) }

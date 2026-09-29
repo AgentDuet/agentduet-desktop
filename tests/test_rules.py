@@ -5923,7 +5923,15 @@ def test_unread_badge() -> None:
        'panel.prompt = "Allow"' in fa and 'appendingPathComponent("Documents")' in fa)
     ok("and restores the grant before the daemon starts",
        app_d.index("FolderAccess.restore(home: daemon.instanceHome)") < app_d.index("self.daemon.start()"))
-    ok("the page can ask the shell for one thing only", 'body["type"] as? String == "pickDocuments"' in app_d)
+    ok("the page can ask the shell only to open the panel",
+       'type == "pickDocuments" || type == "pickFolder" else { return }' in app_d)
+    mp = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "macperms.py").read_text()
+    ok("setup's Documents gets AgentDuet inside; a Settings choice is used as it is",
+       'return chosen / "AgentDuet" if chosen == real_documents() else chosen' in mp)
+    ow = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "owner.py").read_text()
+    rd = ow[ow.index("def recordings_dir"):]
+    ok("a typed recordings path is not read in the sandbox",
+       rd.index("if macperms.sandboxed():") < rd.index('_sections().get("Recordings", "")'))
     setup_p = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "setup.html").read_text()
     ok("setup's Allow asks the shell when sandboxed",
        "shell.postMessage({type: 'pickDocuments'})" in setup_p)
