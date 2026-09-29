@@ -52,7 +52,7 @@ final class TitlebarDragView: NSView {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate,
-                         NSMenuDelegate {
+                         NSMenuDelegate, WKScriptMessageHandler {
 
     private var window: NSWindow!
     private var webView: WKWebView!
@@ -84,6 +84,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
         // The daemon takes a second or two to bind, and `Daemon.start()` blocks on a socket
         // probe. Doing that on the main thread would freeze the window it is trying to fill.
+        // THE DOCUMENTS GRANT FIRST: access this process holds is inherited only by a daemon
+        // started AFTER it. See FolderAccess.
+        FolderAccess.restore(home: daemon.instanceHome)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             let result = self.daemon.start()
@@ -281,6 +284,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         centreWindowButtons()
     }
 
+    // MARK: - the page asking the shell
+
+    /// ONE REQUEST, AND IT ONLY OPENS A DIALOG: `{type: "pickDocuments"}`, from setup's
+    /// Permissions step in a sandboxed build. Anything else is ignored. The owner's click in the
+    /// system panel is the grant, so nothing the page sends can grant access by itself.
+    func userContentController(_ controller: WKUserContentController,
+                               didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any],
+              body["type"] as? String == "pickDocuments" else { return }
+        FolderAccess.ask(over: window) { [weak self] url in
+            guard let self else { return }
+            guard let url else { self.tellPage(["ok": false]); return }
+            do {
+                try FolderAccess.save(url, home: self.daemon.instanceHome)
+                FolderAccess.restore(home: self.daemon.instanceHome)
+            } catch {
+                self.tellPage(["ok": false, "error": error.localizedDescription]); return
+            }
+            // RESTART THE DAEMON so it runs with the access just granted. Same port and token,
+            // so the page carries on where it was.
+            DispatchQueue.global(qos: .userInitiated).async {
+                self.daemon.stop()
+                let result = self.daemon.start()
+                DispatchQueue.main.async {
+                    if case .success = result { self.tellPage(["ok": true, "path": url.path]) }
+                    else { self.tellPage(["ok": false, "error": "The service did not come back."]) }
+                }
+            }
+        }
+    }
+
+    private func tellPage(_ result: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: result),
+              let json = String(data: data, encoding: .utf8) else { return }
+        webView.evaluateJavaScript("window.agentduetPicked && window.agentduetPicked(\(json))")
+    }
+
     // MARK: - window
 
     private func buildWindow() {
@@ -294,6 +334,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                                   injectionTime: .atDocumentStart,
                                   forMainFrameOnly: false)
         config.userContentController.addUserScript(script)
+        // THE PAGE CAN ASK FOR ONE THING: the Documents panel (see `userContentController`).
+        config.userContentController.add(self, name: "agentduet")
 
         webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = self
