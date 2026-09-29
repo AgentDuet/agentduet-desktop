@@ -102,17 +102,19 @@ def digest(text: str) -> str:
 def for_texts(texts: list[str]) -> dict:
     """{digest: suggestion} for the texts a page is about to render. NO MODEL, no network.
 
-    Only live suggestions come back — a dismissed or already-added one is a verdict we keep so
-    it is not offered again, not something to draw.
+    Only live suggestions come back — a dismissed one is a verdict we keep so it is not offered
+    again. One already opened in the calendar STAYS, marked `opened` (issue #9): opening saves
+    nothing, and the owner may have closed the page before pressing Save.
     """
     rows = _load()
     out = {}
     for t in texts:
         key = digest(t)
         hit = rows.get(key)
-        if hit and hit.get("kind") == "calendar" and not hit.get("state"):
+        if hit and hit.get("kind") == "calendar" and hit.get("state") in (None, "", ADDED):
             out[key] = {"title": hit.get("title", ""), "start": hit.get("start", ""),
-                        "end": hit.get("end", ""), "when": hit.get("when", "")}
+                        "end": hit.get("end", ""), "when": hit.get("when", ""),
+                        "opened": hit.get("state") == ADDED}
     return out
 
 
@@ -123,8 +125,8 @@ def resolve(key: str, action: str) -> str:
     hit = rows.get(key)
     if not hit or hit.get("kind") != "calendar":
         return "That suggestion is no longer there."
-    if hit.get("state"):
-        return "Already dealt with."
+    if hit.get("state") == DISMISSED:
+        return "Already dismissed."
     if action == "dismiss":
         hit["state"] = DISMISSED
         _save(rows)

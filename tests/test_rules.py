@@ -5975,6 +5975,51 @@ def test_unread_badge() -> None:
     ok("and one with no labels stays a block", "if (!turns.length) return `<div class=\"text\">" in hub)
 
 
+def test_cards_stay_after_open() -> None:
+    """A calendar or email card stays after it is opened; only Dismiss removes it (issue #9)."""
+    print("\n  -- calendar and email cards stay after they are opened --")
+    import unittest.mock as _m
+    from agentduet_desktop import assistant, suggest, links, tools, paths as _p
+    tmp = pathlib.Path(tempfile.mkdtemp())
+    try:
+        with _m.patch.object(_p, "RUN", tmp), \
+             _m.patch.object(assistant, "_proposals", lambda: store["rows"]), \
+             _m.patch.object(assistant, "_save_proposals", lambda rows: store.update(rows=list(rows))):
+            store = {"rows": [{"id": "p1", "tool": "draft_email", "args": {"to": "Kok Choong"}},
+                              {"id": "p2", "tool": "add_skill", "args": {"name": "x", "how": "y"}}]}
+            opened = []
+            fake = {"draft_email": (lambda **a: opened.append(a) or "Opened a draft", None),
+                    "add_skill": (lambda **a: "Saved.", None)}
+            with _m.patch.dict(tools.ASSISTANT_SHARED, fake):
+                assistant.resolve("p1", True)
+                row = next((r for r in store["rows"] if r["id"] == "p1"), None)
+                ok("an opened email card stays, marked opened", bool(row and row.get("opened")))
+                assistant.resolve("p1", True)
+                eq("and can be opened again", len(opened), 2)
+                assistant.resolve("p1", False)
+                ok("Dismiss removes it", not any(r["id"] == "p1" for r in store["rows"]))
+                assistant.resolve("p2", True)
+                ok("a proposal that WRITES still goes when approved",
+                   not any(r["id"] == "p2" for r in store["rows"]))
+        with _m.patch.object(_p, "RUN", tmp):
+            text = "Dinner at seven thirty"
+            key = suggest.digest(text)
+            rows = {key: {"kind": "calendar", "title": "Dinner", "start": "2026-09-29 19:30",
+                          "end": "2026-09-29 20:30", "when": "Tue 19:30"}}
+            with _m.patch.object(suggest, "_load", lambda: rows), \
+                 _m.patch.object(suggest, "_save", lambda r: None), \
+                 _m.patch.object(links, "add_to_calendar", lambda *a, **k: "Opened Google Calendar"):
+                suggest.resolve(key, "add")
+                got = suggest.for_texts([text]).get(key)
+                ok("an opened calendar suggestion is still offered, marked opened",
+                   bool(got and got.get("opened")))
+                ok("and opening it again works", suggest.resolve(key, "add").startswith("Opened"))
+                suggest.resolve(key, "dismiss")
+                ok("Dismiss removes it", key not in suggest.for_texts([text]))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -5989,6 +6034,7 @@ def main() -> None:
     test_assistant_memory()
     test_budget_split()
     test_unread_badge()
+    test_cards_stay_after_open()
     test_release_ships_the_native_shell()
     test_apple_stt_engine()
     test_local_models_do_not_monologue()
