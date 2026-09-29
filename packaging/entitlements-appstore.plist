@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- THE APP STORE BUILD (spike, 2026-09-29): the sandbox and what the app needs inside it.
+     NONE of the hardened-runtime exceptions in entitlements.plist (JIT, unsigned executable
+     memory, library validation off, dyld variables): an App Store build is signed WITHOUT the
+     hardened runtime, where they mean nothing, and the spike ran the page server, Gemma on Metal
+     and Qwen3-ASR on Metal with none of them. -->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.app-sandbox</key><true/>
+  <!-- wss-prod, auth.agentduet.com, Hugging Face, GitHub -->
+  <key>com.apple.security.network.client</key><true/>
+  <!-- the loopback site the window loads -->
+  <key>com.apple.security.network.server</key><true/>
+  <key>com.apple.security.device.audio-input</key><true/>
+  <!-- a folder the owner picks for recordings -->
+  <key>com.apple.security.files.user-selected.read-write</key><true/>
+</dict>
+</plist>

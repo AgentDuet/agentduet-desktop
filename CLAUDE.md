@@ -967,6 +967,12 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       **We are NOT going to the Mac App Store**, unchanged: it requires the sandbox, which this
       app's loopback server, home-directory writes and model download would each have to be
       granted around. Deferred, not rejected.
+      **SPIKE STARTED 2026-09-29 — see `docs/app-store.md`.** Sandboxed and signed the App Store
+      way (no hardened runtime), the app runs: the helper daemon, the loopback site (after an
+      `entry.py` fix for `mimetypes`), network out, Gemma and Qwen3-ASR on Metal — and needs NONE
+      of the hardened-runtime exceptions. What must change (the data folder, the Documents default,
+      the folder picker and links moving into the shell, the update check, Sign in with Apple) is
+      listed there. `packaging/appstore-spike.sh --run` rebuilds it.
 
 - [ ] **Propose/approve is NOT a fence.** Half done: **written down 2026-08-11** in
       `docs/design.md`, so the product no longer implies a protection it does not have. What
