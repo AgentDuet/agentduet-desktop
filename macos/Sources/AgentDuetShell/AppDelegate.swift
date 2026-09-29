@@ -177,6 +177,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         menu.addItem(.separator())
         menu.addItem(withTitle: "Open AgentDuet", action: #selector(openWindow), keyEquivalent: "")
         menu.addItem(withTitle: "Settings…", action: #selector(openSettingsItem), keyEquivalent: "")
+        // HERE AS WELL AS IN View: a menu-bar app's own menus are not shown at the top of the
+        // screen, so this menu is the one place the preview can be seen and chosen.
+        menu.addItem(withTitle: "Native Hub Preview", action: #selector(openHubPreview), keyEquivalent: "")
         loginItem = NSMenuItem(title: "Start at Login", action: #selector(toggleLoginItem),
                                keyEquivalent: "")
         menu.addItem(loginItem)
@@ -187,7 +190,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // responder-chain message and finds NSApp on its own.
         for item in menu.items
         where item.action == #selector(openWindow) || item.action == #selector(toggleLoginItem)
-              || item.action == #selector(openRelease) || item.action == #selector(openSettingsItem) {
+              || item.action == #selector(openRelease) || item.action == #selector(openSettingsItem)
+              || item.action == #selector(openHubPreview) {
             item.target = self
         }
         statusItem.menu = menu
