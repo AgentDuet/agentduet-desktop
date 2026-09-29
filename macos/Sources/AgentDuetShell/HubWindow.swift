@@ -36,6 +36,8 @@ import SwiftUI
             w.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
             w.toolbarStyle = .unified
             w.title = "AgentDuet"
+            // DRAWN BY THE TOOLBAR instead, beside the connection status (HubView).
+            w.titleVisibility = .hidden
             w.setContentSize(NSSize(width: 1100, height: 740))
             w.isReleasedWhenClosed = false
             w.delegate = self

@@ -23,6 +23,26 @@ struct HubView: View {
         // TWO CONTROLS, EACH IN ITS OWN PILL, as Contacts groups its toolbar: answering here
         // (with whether you can be heard), and Settings. Side by side in one group they crowded.
         .toolbar {
+            // THE CONNECTION, IN THE TITLE BAR beside the name (Stanley, 2026-09-29): whether
+            // anything can reach you, and the way to change it — Settings at Account.
+            // The window's own title is hidden (HubWindow), so the name and the status read in
+            // order: "AgentDuet ● Connected".
+            ToolbarItem(placement: .navigation) {
+                HStack(spacing: 10) {
+                    Text("AgentDuet").font(.headline)
+                    Button { model.openSettings?("account") } label: {
+                        HStack(spacing: 6) {
+                            Circle().fill(model.connected ? Color.green : Color.secondary)
+                                .frame(width: 7, height: 7)
+                            Text(model.connection).foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help(model.connected && !model.myNumber.isEmpty ? model.myNumber : model.connection)
+                }
+            }
+            // THE STRETCH the hidden title used to give, so the controls below keep to the right.
+            if #available(macOS 26.0, *) { ToolbarSpacer(.flexible) }
             if model.carry {
                 ToolbarItem(placement: .primaryAction) {
                     HStack(spacing: 8) {
@@ -122,28 +142,6 @@ private struct PeopleList: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 2) {
-                // MY CARD, as Contacts has it: who you are, your number, and whether anything can
-                // reach you. It opens Settings at Account, where each of those is changed.
-                row(on: false, tap: { model.openSettings?("account") }) {
-                    HStack(spacing: 10) {
-                        Avatar(person: ["display": model.myName], size: 32)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(model.myName.isEmpty ? "My Card" : model.myName)
-                                .font(.body.weight(.semibold)).lineLimit(1)
-                            HStack(spacing: 5) {
-                                Circle().fill(model.connected ? Color.green : Color.secondary)
-                                    .frame(width: 7, height: 7)
-                                Text(model.connected && !model.myNumber.isEmpty ? model.myNumber : model.connection)
-                                    .lineLimit(1)
-                            }
-                            .font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                    }
-                    .padding(.vertical, 6)
-                }
-                .help(model.connection)
-                Divider().padding(.vertical, 4)
                 row(on: model.onAssistant, tap: { model.pick(HubModel.assistant) }) {
                     HStack(spacing: 10) {
                         ZStack {
