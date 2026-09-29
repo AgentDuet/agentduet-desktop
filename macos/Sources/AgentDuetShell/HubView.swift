@@ -405,7 +405,6 @@ private struct TurnView: View {
                            let who = model.replyTarget {
                             HStack {
                                 Button("Send to \(HubModel.name(who))") { model.sendDraft() }
-                                    .buttonStyle(.borderedProminent)
                                     .disabled(model.busy)
                             }
                         }
@@ -457,7 +456,6 @@ private struct ProposalCard: View {
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
                 Button(proposal.bool("opened") ? "Open Again" : verb0) { model.decide(proposal, approve: true) }
-                    .buttonStyle(.borderedProminent)
                 Button(reopen ? "Dismiss" : "Discard") { model.decide(proposal, approve: false) }
             }
         }
@@ -644,7 +642,6 @@ private struct SuggestionRow: View {
             Button(suggestion.bool("opened") ? "Open Again" : "Add to Calendar") {
                 model.suggestion(suggestion.str("key"), "add")
             }
-            .buttonStyle(.borderedProminent)
             Button("Dismiss") { model.suggestion(suggestion.str("key"), "dismiss") }
         }
         .padding(10)
