@@ -286,14 +286,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     // MARK: - the page asking the shell
 
-    /// ONE REQUEST, AND IT ONLY OPENS A DIALOG: `{type: "pickDocuments"}`, from setup's
-    /// Permissions step in a sandboxed build. Anything else is ignored. The owner's click in the
+    /// TWO REQUESTS, AND BOTH ONLY OPEN A DIALOG, in a sandboxed build: `pickDocuments` from
+    /// setup's Permissions step (the panel opens in Documents) and `pickFolder` from Settings'
+    /// Change (it opens in the folder in use). Anything else is ignored. The owner's click in the
     /// system panel is the grant, so nothing the page sends can grant access by itself.
     func userContentController(_ controller: WKUserContentController,
                                didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any],
-              body["type"] as? String == "pickDocuments" else { return }
-        FolderAccess.ask(over: window) { [weak self] url in
+              let type = body["type"] as? String,
+              type == "pickDocuments" || type == "pickFolder" else { return }
+        let start = type == "pickFolder" ? FolderAccess.current(home: daemon.instanceHome) : nil
+        FolderAccess.ask(over: window, startingIn: start) { [weak self] url in
             guard let self else { return }
             guard let url else { self.tellPage(["ok": false]); return }
             do {

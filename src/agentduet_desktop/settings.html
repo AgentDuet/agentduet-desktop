@@ -752,7 +752,8 @@
     $('openAns').hidden = !d.can_reveal || !((d.services || {}).answer_call || {}).on;
     // Choose, or type — never both. A machine with a folder chooser has no reason to offer a
     // text field where a typo sends recordings somewhere silently wrong.
-    $('pickRec').hidden = !d.can_pick;
+    SANDBOXED = !!d.sandboxed;
+    $('pickRec').hidden = !d.can_pick && !SANDBOXED;
     $('recManual').hidden = !!d.can_pick;
   }
   function loadPanel(){
@@ -767,7 +768,19 @@
     const d = await post('/api/reveal', {folder});
     say('mRec', d.ok, d.message);
   };
+  // IN THE SANDBOX (App Store build) only the shell's system panel can grant a folder: one chosen
+  // through osascript is granted to osascript. The shell restarts the daemon with the new folder
+  // and answers through `agentduetPicked`.
+  let SANDBOXED = false;
+  window.agentduetPicked = r => {
+    if (!r || !r.ok) { $('mRec').innerHTML = ''; return; }
+    say('mRec', true, 'Recordings from now on go to ' + r.path + '. Anything already recorded stays where it is.');
+    loadPanel();
+  };
   $('pickRec').onclick = async () => {
+    const shell = window.webkit && window.webkit.messageHandlers
+                  && window.webkit.messageHandlers.agentduet;
+    if (SANDBOXED && shell) { shell.postMessage({type: 'pickFolder'}); return; }
     // Same as the wizard: the chooser is visible, so announcing it narrates the obvious.
     const d = await post('/api/pick-folder', {});
     // A cancelled dialog is not a failure. Clearing the line beats reporting one.
