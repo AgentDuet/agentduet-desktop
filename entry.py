@@ -45,9 +45,34 @@ def _trust_the_bundled_cas() -> None:
             return
 
 
-_trust_the_bundled_cas()
+def _readable_mime_files() -> None:
+    """Keep only the MIME type files this process may open, before anything imports aiohttp.
 
-from agentduet_desktop.cli import main  # noqa: E402  — CAs must be set before anything connects
+    IN APPLE'S SANDBOX (the App Store spike, 2026-09-29) the owner site did not start at all.
+    `aiohttp` builds its MIME table AT IMPORT, and Python's `mimetypes` reads
+    `/etc/apache2/mime.types` among its `knownfiles`: a file the sandbox forbids raises
+    PermissionError where a missing one is skipped, so the import itself failed and the daemon
+    carried on with no pages. The built-in table covers every type these pages serve.
+
+    By OPENING each file, not `os.access`: the sandbox checks at open, and access() reports the
+    Unix permissions, which allow the read.
+    """
+    import mimetypes
+
+    def opens(path: str) -> bool:
+        try:
+            with open(path, "rb"):
+                return True
+        except OSError:
+            return False
+
+    mimetypes.knownfiles[:] = [f for f in mimetypes.knownfiles if opens(f)]
+
+
+_trust_the_bundled_cas()
+_readable_mime_files()
+
+from agentduet_desktop.cli import main  # noqa: E402  — both must run before anything is imported
 
 if __name__ == "__main__":
     sys.exit(main())

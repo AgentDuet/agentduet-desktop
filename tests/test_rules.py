@@ -5907,6 +5907,16 @@ def test_unread_badge() -> None:
     # NO CARRIER BRAND IN THE PAGES (Stanley, 2026-09-25): which "Power" connector can reach this
     # app is not decided, so nothing may say "Power Mobile".
     pages = [f for f in src.glob("*.html")]
+    # THE SANDBOX (App Store spike, 2026-09-29): aiohttp reads the MIME files AT IMPORT, and one
+    # the sandbox forbids raises. So the filter has to run in entry.py BEFORE the cli import, and
+    # has to test by opening, since os.access reports the Unix permissions.
+    entry = (pathlib.Path(__file__).parent.parent / "entry.py").read_text()
+    ok("the MIME files are filtered before anything imports aiohttp",
+       entry.index("_readable_mime_files()\n") < entry.index("from agentduet_desktop.cli import main"))
+    ok("by opening them, not os.access", 'with open(path, "rb")' in entry)
+    ok("the App Store build asks for no hardened-runtime exception",
+       "cs." not in (pathlib.Path(__file__).parent.parent / "packaging"
+                     / "entitlements-appstore.plist").read_text().split("-->", 1)[1])
     ok("no page names a carrier", not [f.name for f in pages
                                        if "power mobile" in f.read_text(encoding="utf-8").lower()])
     ok("the connection light sits beside the number", 'id="conn"' in hub and 'id="lineBadge"' not in hub)

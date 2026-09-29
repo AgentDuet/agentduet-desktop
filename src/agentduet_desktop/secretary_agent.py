@@ -801,11 +801,13 @@ async def main() -> None:
             raise SystemExit(1)
         logger.warning("Owner site did not start (%s: %s) — carrying on. Inbound is unaffected; "
                        "reach this daemon through the mcp, or `agentduet-desktop status`.",
-                       type(exc).__name__, exc)
+                       type(exc).__name__, exc, exc_info=True)
     except Exception as exc:
+        # WITH THE STACK. "did not start (PermissionError: …)" named the file and not who read
+        # it, which is the half needed to fix it (found in the App Store sandbox spike).
         logger.warning("Owner site did not start (%s: %s) — carrying on. Inbound is unaffected; "
                        "reach this daemon through the mcp, or `agentduet-desktop status`.",
-                       type(exc).__name__, exc)
+                       type(exc).__name__, exc, exc_info=True)
 
     logger.info("Secretary up for %s", owner_name())
 
