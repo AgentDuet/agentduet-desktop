@@ -20,24 +20,48 @@ struct HubView: View {
         .frame(minWidth: 820, minHeight: 520)
         // CONTACTS' LOOK, AGENTDUET'S CONTROLS (Stanley, 2026-09-29): whether you can be heard,
         // answering here, and Settings.
+        // TWO CONTROLS, EACH IN ITS OWN PILL, as Contacts groups its toolbar: answering here
+        // (with whether you can be heard), and Settings. Side by side in one group they crowded.
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                if model.carry {
-                    Image(systemName: model.micOK ? "mic.fill" : "mic.slash.fill")
-                        .foregroundStyle(model.micOK ? Color.green : Color.red)
-                        .help(model.micReason)
-                    // THE LABEL AS TEXT: a toolbar hides a toggle's own label.
-                    HStack(spacing: 6) {
+            if model.carry {
+                ToolbarItem(placement: .primaryAction) {
+                    HStack(spacing: 8) {
+                        MicLight(ok: model.micOK, reason: model.micReason)
+                        // THE LABEL AS TEXT: a toolbar hides a toggle's own label.
                         Text("Answer Calls Here")
                         Toggle("Answer Calls Here", isOn: Binding(
                             get: { model.answerHere }, set: { model.setAnswerHere($0) }))
                             .toggleStyle(.switch).labelsHidden().controlSize(.small)
                     }
+                    .padding(.horizontal, 10).padding(.vertical, 3)
+                    .background(Capsule().fill(Color.primary.opacity(0.07)))
+                    .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12)))
                 }
-                Button { model.openSettings?() } label: { Label("Settings", systemImage: "gearshape") }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button { model.openSettings?(nil) } label: { Label("Settings", systemImage: "gearshape") }
                     .help("Settings")
             }
         }
+    }
+}
+
+// MARK: - the microphone light
+
+/// Green when you can be heard, red when not, and the reason the moment the pointer is over it —
+/// a tooltip waits a second, which is a second too long for the one thing it explains.
+private struct MicLight: View {
+    let ok: Bool
+    let reason: String
+    @StateObject private var hovering = Local(false)
+
+    var body: some View {
+        Image(systemName: ok ? "mic.fill" : "mic.slash.fill")
+            .foregroundStyle(ok ? Color.green : Color.red)
+            .onHover { hovering.value = $0 }
+            .popover(isPresented: $hovering.value, arrowEdge: .bottom) {
+                Text(reason).padding(.horizontal, 12).padding(.vertical, 8)
+            }
     }
 }
 
@@ -98,6 +122,28 @@ private struct PeopleList: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 2) {
+                // MY CARD, as Contacts has it: who you are, your number, and whether anything can
+                // reach you. It opens Settings at Account, where each of those is changed.
+                row(on: false, tap: { model.openSettings?("account") }) {
+                    HStack(spacing: 10) {
+                        Avatar(person: ["display": model.myName], size: 32)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(model.myName.isEmpty ? "My Card" : model.myName)
+                                .font(.body.weight(.semibold)).lineLimit(1)
+                            HStack(spacing: 5) {
+                                Circle().fill(model.connected ? Color.green : Color.secondary)
+                                    .frame(width: 7, height: 7)
+                                Text(model.connected && !model.myNumber.isEmpty ? model.myNumber : model.connection)
+                                    .lineLimit(1)
+                            }
+                            .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(.vertical, 6)
+                }
+                .help(model.connection)
+                Divider().padding(.vertical, 4)
                 row(on: model.onAssistant, tap: { model.pick(HubModel.assistant) }) {
                     HStack(spacing: 10) {
                         ZStack {
@@ -562,11 +608,11 @@ private struct Balloon: View {
             Text(text)
                 .textSelection(.enabled)
                 .padding(.horizontal, 12).padding(.vertical, 7)
-                .foregroundStyle(mine && !held ? Color.white : Color.primary)
+                .foregroundStyle(held ? Color.secondary : Color.primary)
                 .background(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    // BLUE, as Messages draws your side, whatever the system accent is.
-                    .fill(mine ? (held ? Color.gray.opacity(0.25) : Color.blue)
-                               : Color(nsColor: .quaternaryLabelColor)))
+                    // ONE GREY FOR BOTH SIDES (Stanley, 2026-09-29): blue for yours drew the eye to
+                    // the half you already know. Left and right say whose it is.
+                    .fill(held ? Color.gray.opacity(0.15) : Color(nsColor: .quaternaryLabelColor)))
             if !caption.isEmpty {
                 Text(caption).font(.caption2).foregroundStyle(.secondary)
             }
