@@ -683,6 +683,14 @@ def _forget_env(names: list[str]) -> None:
         os.environ.pop(n, None)
 
 
+def _caller_label(number: str) -> str:
+    """ "Cen Lee (+6596918851)" where the number has a name, else the number. Both, so the
+    model can search by either and the owner can check which number it meant."""
+    from . import names as _names
+    name = _names.name_for(number)
+    return f"{name} ({number})" if name and number else (number or "?")
+
+
 def list_calls(days: str = "7") -> str:
     """Calls that were carried and recorded — who, when, and whether a transcript exists."""
     from . import calls as _calls, carry
@@ -702,7 +710,7 @@ def list_calls(days: str = "7") -> str:
             pass
         folder, names = carry.call_audio(r.get("recordings", []), r.get("call_id", ""))
         done = any((folder / n).with_suffix(".txt").is_file() for n in names)
-        out.append(f"- {at}  {r.get('caller') or '?'}  "
+        out.append(f"- {at}  {_caller_label(r.get('caller') or '')}  "
                    f"({'transcript ready' if done else 'no transcript yet'})")
     return "\n".join(out) if out else f"No calls recorded in the last {days} days."
 #: MARK TEXT A STRANGER WROTE, wherever it is about to reach a model.
@@ -728,7 +736,8 @@ def read_call(who: str = "", when: str = "") -> str:
     from . import calls as _calls, carry
     hits = []
     for r in _calls.recent():
-        if who and who.strip().lower() not in (r.get("caller") or "").lower():
+        # BY NAME TOO, since list_calls shows one (#8's rule, for calls).
+        if who and not _is_them(who, r.get("caller") or "", None):
             continue
         if when and not (r.get("at") or "").startswith(when.strip()):
             continue
@@ -743,7 +752,7 @@ def read_call(who: str = "", when: str = "") -> str:
                     # The header is OURS — the timestamp and the caller come from call metadata, not
                     # from anything said. Only the body is the stranger's, so only the body is marked;
                     # marking the header too would let a transcript forge a plausible one.
-                    hits.append(f"--- {r.get('at','')} with {r.get('caller') or '?'} ---\n"
+                    hits.append(f"--- {r.get('at','')} with {_caller_label(r.get('caller') or '')} ---\n"
                                 + untrusted(t.read_text()[:4000]))
                 except OSError:
                     pass
@@ -755,17 +764,14 @@ def read_call(who: str = "", when: str = "") -> str:
                 "recent call may not have one yet.")
     return "\n\n".join(hits)
 def _display_for(asker: str) -> str:
-    """A person's readable name, from the session store. Falls back to the identifier.
+    """A person's readable name. Falls back to the identifier.
 
     The identity is the account uid — on DDUET it is all the relay dependably carries — so a
-    summary that names it reads as a uuid. The name is a display hint stored beside the session
-    when the message arrived; it is never what anything is looked up by.
+    summary that names it reads as a uuid. Which name wins (typed, Contacts, the message's own)
+    is `names.py`'s to say; it is never what anything is looked up by.
     """
-    try:
-        seen = json.loads((paths.RUN / "sessions.json").read_text())
-    except (OSError, json.JSONDecodeError):
-        return asker
-    return (seen.get(asker) or {}).get("display") or asker
+    from . import names
+    return names.display(asker)
 
 
 def _sessions_seen() -> dict:
@@ -775,7 +781,7 @@ def _sessions_seen() -> dict:
         return {}
 
 
-def _is_them(who: str, asker: str, seen: dict) -> bool:
+def _is_them(who: str, asker: str, seen: dict | None) -> bool:
     """Does `who` — what the model typed — pick out this sender? By identifier OR display name.
 
     THE NAME IS WHAT THE MODEL HAS (#8). Every line it reads is rendered through the display
@@ -788,7 +794,8 @@ def _is_them(who: str, asker: str, seen: dict) -> bool:
     want = (who or "").strip().lower()
     if not want:
         return True
-    name = ((seen.get(asker) or {}).get("display") or "").lower()
+    from . import names
+    name = names.name_for(asker, seen).lower()
     return want in asker.lower() or bool(name) and want in name
 
 

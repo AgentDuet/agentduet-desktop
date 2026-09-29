@@ -42,6 +42,7 @@ IGNORE_XATTR = "com.apple.fileprovider.ignore#P"
 PRIVACY = {
     "privacy": "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders",
     "privacy-mic": "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+    "privacy-contacts": "x-apple.systempreferences:com.apple.preference.security?Privacy_Contacts",
 }
 
 _asking = threading.Event()

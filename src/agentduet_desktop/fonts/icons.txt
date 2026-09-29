@@ -1,15 +1,15 @@
 arrow_back
 arrow_forward
 call
-chat_bubble
 close
 dialpad
 download
+edit
 event
 folder
-folder_open
 info
 person
 settings
+shield_person
 smart_toy
 tune

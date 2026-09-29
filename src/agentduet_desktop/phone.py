@@ -58,22 +58,26 @@ def present() -> bool:
 MIC_STALE_SECONDS = 15
 
 
-def mic_state() -> str:
-    """"ok", "lid", "none", "blocked" — or "unknown" where no shell reports it.
-
-    From the Swift shell's `run/mic-state.json` (MicWatch.swift): only it can see the lid and the
-    input device. "unknown" is a browser, Windows, or a shell that has stopped, and is treated as
-    usable — the behaviour before the shell could tell.
-    """
+def mic_report() -> dict:
+    """The Swift shell's `run/mic-state.json` (MicWatch.swift), or {} when it is absent or stale."""
     import json
     from . import paths
     try:
         row = json.loads((paths.RUN / "mic-state.json").read_text())
     except (OSError, ValueError):
-        return "unknown"
-    if time.time() - float(row.get("at") or 0) > MIC_STALE_SECONDS:
-        return "unknown"
-    return str(row.get("state") or "unknown")
+        return {}
+    if not isinstance(row, dict) or time.time() - float(row.get("at") or 0) > MIC_STALE_SECONDS:
+        return {}
+    return row
+
+
+def mic_state() -> str:
+    """"ok", "lid", "none", "blocked" — or "unknown" where no shell reports it.
+
+    Only the shell can see the lid and the input device. "unknown" is a browser, Windows, or a
+    shell that has stopped, and is treated as usable — the behaviour before the shell could tell.
+    """
+    return str(mic_report().get("state") or "unknown")
 
 
 def mic_usable() -> bool:

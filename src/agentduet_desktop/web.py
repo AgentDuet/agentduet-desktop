@@ -352,8 +352,10 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         Settings at Files and Folders, for an owner who refused and changed their mind: macOS
         asks only once, and after a refusal that pane is the only way back.
 
-        The MICROPHONE is not here: the page asks for it itself, through the same `getUserMedia`
-        the in-app phone uses, so the grant it gets is the one that phone will need.
+        The MICROPHONE is ASKED by the page itself, through the same `getUserMedia` the in-app
+        phone uses, so the grant it gets is the one that phone will need; its state is reported
+        here from the shell. CONTACTS are asked by the shell (`askContacts`), for the same reason
+        the Documents panel is: only the app can raise the prompt.
         """
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
@@ -367,12 +369,41 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             else:
                 return web.json_response({"ok": False, "message": "Unknown action."})
             return web.json_response({"ok": True})
-        return web.json_response({
+        from . import names as _names, phone as _phone
+        # MICROPHONE AND CONTACTS ARE THE SHELL'S TO REPORT — each is asked of macOS by the app
+        # itself (MicWatch, ContactsWatch). "" where no shell reports: a browser, or off macOS.
+        mic = _phone.mic_report().get("access", "")
+        book = _names.contacts_state()
+        out = {
             "applies": macperms.applies(),
             # In the sandbox the Documents row asks the SHELL for the system panel.
             "sandboxed": macperms.sandboxed(),
             "documents": await asyncio.to_thread(macperms.documents_state),
-            "folder": str(macperms.documents_folder())})
+            "folder": str(macperms.documents_folder()),
+            "mic": mic,
+            "contacts": book.get("access", ""),
+            "contacts_named": len(_names.from_contacts()),
+        }
+        # START AT LOGIN only when asked for: it asks the shell binary, which is a subprocess,
+        # and setup polls this endpoint every second while a permission is outstanding.
+        if request.query.get("login"):
+            from . import loginitem
+            out["login"] = await asyncio.to_thread(loginitem.registered)
+        return web.json_response(out)
+
+    async def api_name(request):
+        """The owner's name for a person. POST {who, name}; an empty name removes it, so the
+        Contacts name or the number shows again. A label only — nothing is keyed on it."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import names as _names
+        body = await request.json()
+        who = str(body.get("who") or "").strip()
+        if not who:
+            return web.json_response({"error": "who"}, status=400)
+        kept = _names.set_typed(who, str(body.get("name") or ""))
+        return web.json_response({"ok": True, "name": _names.name_for(who),
+                                  "typed": kept})
 
     async def api_setup_login_item(request):
         """Record whether this machine should start the app at login, and make it so.
@@ -998,8 +1029,14 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             seen = json.loads((paths.RUN / "sessions.json").read_text())
         except (OSError, json.JSONDecodeError):
             seen = {}
+        from . import names as _names
+        # WHICH NAME is names.py's to decide: typed, then Contacts, then the message's own.
+        # `name_from` lets the page say where it came from; asking the shell for Contacts names
+        # happens here because this is the list of everyone who has called or written.
+        _names.want(p["who"] for p in people)
         for p in people:
-            p["display"] = (seen.get(p["who"]) or {}).get("display", "")
+            p["display"] = _names.name_for(p["who"], seen)
+            p["name_from"] = _names.source_of(p["who"]) if p["display"] else ""
             p["messages"].sort(key=lambda m: m["at"])
             latest = [p["last"]] + [m["at"] for m in p["messages"]]
             p["last"] = max([x for x in latest if x] or [""])
@@ -1955,6 +1992,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/setup/about", api_setup_about),
         web.post("/api/setup/connector", api_setup_connector),
         web.post("/api/setup/login-item", api_setup_login_item),
+        web.post("/api/name", api_name),
         web.get("/logo.png", logo),
         # Browsers ask for this unprompted, and the console filled with a 404 on every page load.
         web.get("/favicon.ico", logo),
