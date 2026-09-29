@@ -71,6 +71,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private var contactsWatch: ContactsWatch?
     /// The native Settings window — see SettingsWindow.
     private let settingsWindow = SettingsWindow()
+    /// The native setup window — see SetupWindow.
+    private let setupWindow = SetupWindow()
+    /// A first run's setup is not finished yet, so "Open AgentDuet" brings setup back rather
+    /// than an empty main window.
+    private var setupPending = false
     private var siteURL: URL?
     /// Where the update item points, set as the menu opens.
     private var releaseURL: URL?
@@ -105,7 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 case .success(let url):
                     self.siteURL = url
                     self.stateItem.title = Self.answering(url)
-                    self.webView.load(URLRequest(url: url))
+                    self.showHubOrSetup(url)
                 case .failure(let error):
                     self.stateItem.title = "Not running"
                     self.show(title: "AgentDuet could not start",
@@ -290,6 +295,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     /// Bring the window back after it was closed. Works because `isReleasedWhenClosed` is false
     /// — otherwise this would message a deallocated window and crash.
     @objc private func openWindow() {
+        if setupPending { showSetup(rerun: false); return }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         // Reopening lays the titlebar out afresh, so the lights need putting back.
@@ -349,6 +355,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 if case .success = result { done(nil) } else { done("The service did not come back.") }
             }
         }
+    }
+
+    // MARK: - the native setup window
+
+    /// THE NATIVE SETUP (2026-09-29) when the daemon says setup is needed — the same question
+    /// `index` asks to serve setup.html — else the hub. If the daemon cannot be asked, the page
+    /// is loaded, and the daemon itself serves whichever of the two applies.
+    private func showHubOrSetup(_ url: URL) {
+        guard let api = DaemonAPI(site: url) else { webView.load(URLRequest(url: url)); return }
+        Task { @MainActor in
+            let cur = await api.get("/api/setup/current")
+            if cur.bool("needs_setup") { self.showSetup(rerun: false) }
+            else { self.webView.load(URLRequest(url: url)) }
+        }
+    }
+
+    private func showSetup(rerun: Bool) {
+        guard let url = siteURL, let api = DaemonAPI(site: url) else { return }
+        if !rerun { setupPending = true }
+        settingsWindow.close()
+        window.orderOut(nil)
+        setupWindow.onFinish = { [weak self] in
+            guard let self, let url = self.siteURL else { return }
+            self.setupPending = false
+            self.webView.load(URLRequest(url: url))
+            self.openWindow()
+        }
+        setupWindow.onQuit = { NSApp.terminate(nil) }
+        setupWindow.show(api: api, rerun: rerun)
     }
 
     // MARK: - the native Settings window
@@ -523,6 +558,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 NSWorkspace.shared.open(url)
                 decisionHandler(.cancel); return
             }
+            // SETUP IS NATIVE on a Mac: a link to the HTML wizard opens the setup window.
+            if url.path == "/setup" {
+                decisionHandler(.cancel)
+                showSetup(rerun: true); return
+            }
         }
         decisionHandler(.allow)
     }
@@ -640,7 +680,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
 extension AppDelegate: SettingsHost {
     func chooseFolder(startingIn start: URL?, sandboxed: Bool, done: @escaping (URL?) -> Void) {
-        let over = settingsWindow.nsWindow
+        let over = NSApp.keyWindow ?? settingsWindow.nsWindow
         if sandboxed {
             // The panel IS the grant: keep it, and restart the daemon with it.
             FolderAccess.ask(over: over, startingIn: start ?? FolderAccess.current(home: daemon.instanceHome)) {
@@ -664,7 +704,7 @@ extension AppDelegate: SettingsHost {
     }
 
     func grantDocuments(done: @escaping (Bool) -> Void) {
-        FolderAccess.ask(over: settingsWindow.nsWindow) { [weak self] url in
+        FolderAccess.ask(over: NSApp.keyWindow ?? settingsWindow.nsWindow) { [weak self] url in
             guard let self, let url else { done(false); return }
             self.keepFolder(url) { error in done(error == nil) }
         }
@@ -675,10 +715,5 @@ extension AppDelegate: SettingsHost {
         contactsWatch.ask(done: done)
     }
 
-    func runSetup() {
-        guard let url = siteURL, let api = DaemonAPI(site: url) else { return }
-        settingsWindow.close()
-        webView.load(URLRequest(url: api.page("/setup", [URLQueryItem(name: "from", value: "settings")])))
-        openWindow()
-    }
+    func runSetup() { showSetup(rerun: true) }
 }

@@ -639,6 +639,9 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         # already-installed copy it would spawn a replacement and stand this one down — a
         # daemon restart, triggered from a Settings button, for no reason.
         cur["setup_done"] = (paths.RUN / "setup-done").exists()
+        # THE SAME QUESTION `index` asks to choose setup.html over the hub, for a UI that is not
+        # a page: the native wizard is shown exactly when the HTML one would have been.
+        cur["needs_setup"] = needs_setup()
         cur["oauth_available"] = connector.oauth_available()
         return web.json_response(cur)
 

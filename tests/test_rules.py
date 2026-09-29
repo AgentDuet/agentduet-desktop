@@ -5009,6 +5009,21 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
     ok("no Save button in the forms: fields save on Return or on leaving",
        ".onSubmit { model.commit(" in swift["SettingsView.swift"])
 
+    # SETUP IS NATIVE TOO (2026-09-29), shown exactly when the HTML wizard would have been.
+    ok("the daemon reports the same question index asks", 'cur["needs_setup"] = needs_setup()' in web)
+    ok("the shell shows native setup when it is needed",
+       'if cur.bool("needs_setup") { self.showSetup(rerun: false) }' in app)
+    ok("and a link to /setup opens it instead of the page", 'if url.path == "/setup" {' in app)
+    ok("Settings' Run Setup opens it", "func runSetup() { showSetup(rerun: true) }" in app)
+    setup = swift["SetupModel.swift"]
+    ok("setup keeps the wizard's rules: an untouched key mask is sent blank",
+       "(!keyOffered.isEmpty && typed == keyOffered) ? \"\" : typed" in setup)
+    ok("the login item is set BEFORE handover",
+       setup.index('"/api/setup/login-item"') < setup.index('"/api/handover"'))
+    ok("a re-run does not hand over", "if rerun { onFinish?(); return }" in setup)
+    ok("Documents is required to continue",
+       ".disabled(!model.documentsAllowed)" in swift["SetupView.swift"])
+
 
 def test_the_catalogue_carries_gemma_4_and_says_what_was_measured() -> None:
     """The 2026-09-24 refresh, and the difference between a timed figure and an estimate."""
