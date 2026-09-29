@@ -5016,8 +5016,16 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
     ok("and a link to /setup opens it instead of the page", 'if url.path == "/setup" {' in app)
     ok("Settings' Run Setup opens it", "func runSetup() { showSetup(rerun: true) }" in app)
     setup = swift["SetupModel.swift"]
-    ok("setup keeps the wizard's rules: an untouched key mask is sent blank",
-       "(!keyOffered.isEmpty && typed == keyOffered) ? \"\" : typed" in setup)
+    ok("sign-in keeps the wizard's rules: an untouched key mask is sent blank",
+       "(!keyOffered.isEmpty && typed == keyOffered) ? \"\" : typed" in swift["SignIn.swift"])
+    # ONE WAY IN, drawn once: the setup step and Settings' Sign In… sheet are the same panel.
+    view = swift["SettingsView.swift"]
+    ok("setup and Settings sign in through the same panel",
+       "SignInPanel(model: model.signIn)" in swift["SetupView.swift"] and "SignInPanel(model: signIn)" in view)
+    ok("signed out, Settings offers one Sign In… button",
+       'Button("Sign In…") { editingKey.value = true }' in view)
+    ok("with no separate connector row and no row of three buttons",
+       'LabeledContent("Connector and API key")' not in view and "signInButtons" not in view)
     ok("the login item is set BEFORE handover",
        setup.index('"/api/setup/login-item"') < setup.index('"/api/handover"'))
     ok("a re-run does not hand over", "if rerun { onFinish?(); return }" in setup)

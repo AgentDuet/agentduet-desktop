@@ -137,33 +137,11 @@ import Foundation
         }
     }
 
-    func signIn() {
-        Task {
-            let r = await api.post("/api/connector/signin/open", query: ["provider": "google"])
-            if r.bool("ok") {
-                notice[.account] = Notice(ok: true, text: "Waiting for your browser…")
-            } else {
-                let url = r.str("url")
-                notice[.account] = Notice(ok: false, text: url.isEmpty
-                    ? (r.str("message").isEmpty ? "Could not open your browser." : r.str("message"))
-                    : "Open this in your browser to finish signing in: \(url)")
-            }
-        }
-    }
-
     func signOut() {
         Task {
             say(.account, await api.post("/api/connector/signout"))
             await poll()
         }
-    }
-
-    /// The Edit… sheet's Save. True when it was accepted, so the sheet can close.
-    func saveConnector(uuid: String, key: String) async -> Bool {
-        let r = await api.post("/api/setup/connector", ["uuid": uuid, "key": key])
-        say(.account, r)
-        await poll()
-        return r.bool("ok")
     }
 
     // MARK: - Record & Transcribe
