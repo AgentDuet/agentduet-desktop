@@ -43,7 +43,15 @@ IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | awk '/Develope
 SIGN=(codesign --force --timestamp=none --keychain "$KEYCHAIN" --sign "$IDENTITY")
 while IFS= read -r -d '' f; do
   case "$f" in */Contents/MacOS/*) continue;; esac
-  file -b "$f" | grep -q "Mach-O" && "${SIGN[@]}" "$f" 2>/dev/null
+  # AN `if`, AND NO PIPE (2026-09-29): `file | grep -q X && sign` made the loop's status that of
+  # its last file, so a build whose last file was not a binary stopped here under `set -e` — and
+  # `grep -q` quitting early could fail the pipe under pipefail, so which build stopped varied.
+  # ONE RETRY, AND THE ERROR SAID: a signature here has failed intermittently mid-build and then
+  # succeeded by hand, with its error thrown away — so the next one is reported.
+  if [[ "$(file -b "$f")" == *Mach-O* ]]; then
+    "${SIGN[@]}" "$f" >/dev/null 2>&1 || { sleep 1; err=$("${SIGN[@]}" "$f" 2>&1) \
+      || { echo "could not sign $f: $err" >&2; exit 1; }; }
+  fi
 done < <(find "$APP/Contents" -type f -print0)
 for helper in agentduet-desktop agentduet-stt; do
   "${SIGN[@]}" --entitlements packaging/entitlements-appstore-helper.plist \
