@@ -23,6 +23,11 @@ sandboxed process's home directory IS its container. Nothing it does touches the
 | **Opening a folder** (`open`, from the sandboxed daemon) | Works: Settings' Open showed `~/Documents/AgentDuet` in Finder. Links use the same command; not opened in the spike |
 | **Settings' folder Change** | Built and proven: in the sandbox it opens the same shell panel, in the folder in use; the folder chosen (`~/Documents/test1`) became the recordings folder as it is, allowed, with the iCloud mark set by the sandboxed app. A typed `## Recordings` path is not read there |
 | **The owner's real Documents** | Allowed in setup through the system panel; after quitting and reopening, the sandboxed daemon wrote a call's recording and transcript into `~/Documents/AgentDuet`, iCloud mark in place |
+| **Microphone** | A call answered in the window, both sides recorded; hang-up from the app ends it. The closed lid and a Bluetooth headset are detected (MicWatch) |
+| **Google sign-in** | Its loopback callback completes inside the sandbox, and the browser opens from it |
+| **The connector** | Connects from the sandboxed daemon |
+| **Contacts** | Allowed through the macOS prompt; the shell reads the address book in the sandbox |
+| **Start at Login** | Switched off and on from the menu bar, and the app started by itself after a restart of the Mac (2026-09-29) |
 
 **The one fix it needed.** The page server did not start at all: `aiohttp` builds its MIME table
 at import, and Python's `mimetypes` reads `/etc/apache2/mime.types`. The sandbox forbids that read,
@@ -58,11 +63,10 @@ The entitlements are in `packaging/entitlements-appstore.plist` (the app) and
 - **Sign in with Apple** (App Review 4.8): offering Google sign-in requires an equivalent
   privacy option. Asked of the auth service on #ai-product, 2026-09-29.
 
+
 ## Not yet tried
 
-The microphone in the window (entitlement present; needs a call), Start at Login being switched on,
-Google sign-in and its loopback callback, and the connector connecting — the last needs a
-connector that is not the one the dev app uses, since one connector has one client.
+`.requiresApproval` for the login item, which macOS never asked for here.
 
 ## Submitting (mechanical, not started)
 
