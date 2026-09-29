@@ -5082,8 +5082,12 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
     sw = swift["SettingsWindow.swift"]
     ok("Settings is a sheet on the hub", "parent.beginSheet(w)" in sw
        and "over: setupPending ? nil : hubWindow.nsWindow" in app)
-    ok("closed with Done or Esc", 'Button("Done") { model.done?() }' in swift["SettingsView.swift"]
+    ok("closed with Done, in its own title bar at the top, or Esc",
+       'Text("Settings").font(.headline)' in swift["SettingsView.swift"]
+       and 'Button("Done") { model.done?() }' in swift["SettingsView.swift"]
        and ".keyboardShortcut(.cancelAction)" in swift["SettingsView.swift"])
+    ok("a quit request is not refused while Settings is open",
+       "andEventID: AEEventID(kAEQuitApplication)" in app and "settingsWindow.close()\n        NSApp.terminate(nil)" in app)
     ok("only the newest draft is labelled a draft",
        'turn.bool("draft") && (newestDraft || turn.bool("sent") || turn.bool("held"))' in hv)
     ok("Open Again is the blue primary button", hv.count(".buttonStyle(.borderedProminent)") >= 2)

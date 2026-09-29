@@ -391,8 +391,10 @@ private struct TurnView: View {
                 if !turn.str("a").isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         if turn.bool("draft") && (newestDraft || turn.bool("sent") || turn.bool("held")) {
+                            // ORANGE, NOT RED: not sent is waiting on the owner, not a failure.
                             Text(draftLabel).font(.caption.weight(.semibold))
-                                .foregroundStyle(turn.bool("sent") ? Color.green : Color.blue)
+                                .foregroundStyle(turn.bool("sent") ? Color.green
+                                                 : turn.bool("held") ? Color.secondary : Color.orange)
                         }
                         Text(turn.str("a")).textSelection(.enabled)
                         // ONLY UNDER THE LAST ANSWER, and only for a draft that has not gone:
