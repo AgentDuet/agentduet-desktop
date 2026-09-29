@@ -12,8 +12,21 @@
 <style>
   /* Capped and centred: a settings column spanning a wide window is a long line
      length nobody reads comfortably. Right in a browser and in a native window. */
-  .sec{display:flex;flex-direction:column;gap:1.5rem;max-width:48rem;margin:0 auto;
+  .sec{display:flex;flex-direction:column;gap:1.5rem;max-width:40rem;margin:0 auto;
     width:100%;}
+  .split{flex:1;display:flex;min-height:0;}
+  .side{width:16rem;flex:0 0 16rem;background:var(--sidebar);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;padding:1rem .75rem;gap:.5rem;}
+  .sidelist{display:flex;flex-direction:column;gap:.15rem;flex:1;overflow-y:auto;}
+  .sitem{display:flex;align-items:center;gap:.6rem;padding:.4rem .55rem;border-radius:.5rem;
+    border:1px solid transparent;background:none;color:var(--ink2);font:inherit;
+    font-size:.8rem;text-align:left;cursor:pointer;min-height:2.25rem;}
+  .sitem:hover{background:rgba(255,255,255,.04);}
+  .sitem.on{border-color:rgba(59,130,246,.4);background:rgba(37,99,235,.15);}
+  .sitem .ic{width:1.6rem;height:1.6rem;flex:0 0 1.6rem;border-radius:.45rem;display:flex;
+    align-items:center;justify-content:center;background:rgba(37,99,235,.15);color:var(--blue400);}
+  .sitem .ic .material-symbols-rounded{font-size:1rem;}
+  .sec > .card[data-sec]:not(.shown){display:none;}
   /* .4rem, the same gap the model rows use, so a heading sits as close to its field as one
      row sits to the next. It was .5rem here PLUS label.fl's own .25rem margin — 12px, which
      read as a gap rather than as a label belonging to the thing below it. */
@@ -100,7 +113,8 @@
   .sbody{padding:1.25rem;overflow-y:auto;display:flex;flex-direction:column;gap:.5rem;}
   .x{background:none;border:0;color:var(--muted);cursor:pointer;font:inherit;
     display:flex;align-items:center;padding:.25rem;border-radius:.4rem;}
-  .devfoot{display:flex;justify-content:center;padding:.25rem 0 1rem;}
+  .devfoot{display:flex;justify-content:flex-start;padding:.25rem .55rem 0;}
+  .devfoot .link{font-size:11px;}
   .x:hover{color:var(--ink2);background:var(--slate800);}
 </style>
 </head>
@@ -116,10 +130,21 @@
       <span class="material-symbols-rounded">arrow_back</span><span>Back to Hub</span></a>
   </div>
 
+  <!-- TWO PANES, as macOS System Settings (Stanley, 2026-09-29): the sections on the left,
+       the one chosen on the right. Built from the cards themselves (`data-sec`, their icon and
+       heading), so a card added to the page appears in the list without a second edit, and a
+       card that hides itself — Install on a source run — leaves the list too. -->
+  <div class="split">
+  <nav class="side">
+    <div class="sidelist" id="side"></div>
+    <!-- AT THE FOOT, AND A DIALOG. Nothing in it is for an owner: it replaces what the app
+         chose from the machine, so it stays out of the list of settings to scan past. -->
+    <div class="devfoot"><button class="link" id="openDev">Advanced (For developer)</button></div>
+  </nav>
   <div class="scroll">
     <div class="sec">
 
-      <div class="card">
+      <div class="card" data-sec="you">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">person</span></div>
           <div><h2>You</h2></div>
@@ -138,7 +163,7 @@
         <div id="mYou"></div>
       </div>
 
-      <div class="card">
+      <div class="card" data-sec="account">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">dialpad</span></div>
           <div style="flex:1"><h2>AgentDuet Account</h2></div>
@@ -184,7 +209,7 @@
         <div id="mConn"></div>
       </div>
 
-      <div class="card">
+      <div class="card" data-sec="calls">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">call</span></div>
           <div><h2>Record and Transcribe Calls</h2></div>
@@ -230,7 +255,7 @@
            Microphone and Contacts are reported by the app itself, so they show only in the
            native window; Start at Login shows everywhere, since Linux and Windows have no menu
            bar to hold it. -->
-      <div class="card">
+      <div class="card" data-sec="permissions">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">shield_person</span></div>
           <div><h2>Permissions</h2></div>
@@ -255,7 +280,7 @@
         </div>
       </div>
 
-      <div class="card" id="installCard" hidden>
+      <div class="card" data-sec="install" id="installCard" hidden>
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">download</span></div>
           <div><h2>Install</h2></div>
@@ -266,7 +291,7 @@
         <div id="mInst"></div>
       </div>
 
-      <div class="card">
+      <div class="card" data-sec="advanced">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">tune</span></div>
           <div><h2>Advanced</h2></div>
@@ -282,7 +307,7 @@
            came down to "which build are you running?" and neither could be answered without a
            terminal — one was a stale update notice, the other a feature that was simply not in
            the build being tested. -->
-      <div class="card">
+      <div class="card" data-sec="about">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">info</span></div>
           <div><h2>About</h2></div>
@@ -319,11 +344,8 @@
         </div>
       </div>
 
-      <!-- AT THE FOOT, AND A DIALOG. Nothing in it is for an owner: it replaces what the app
-           chose from the machine, so it stays out of the list of settings to scan past. -->
-      <div class="devfoot"><button class="link" id="openDev">Advanced (For developer)</button></div>
-
     </div>
+  </div>
   </div>
 </div>
 
@@ -793,6 +815,38 @@
   // IN THE SANDBOX (App Store build) only the shell's system panel can grant a folder: one chosen
   // through osascript is granted to osascript. The shell restarts the daemon with the new folder
   // and answers through `agentduetPicked`.
+  // ---- the sidebar ------------------------------------------------------------------------
+  // One section shown at a time. Which one is the URL's #fragment, so another page can link
+  // straight to it (settings#permissions), and a reload keeps the place.
+  const CARDS = [...document.querySelectorAll('.card[data-sec]')];
+  function sections(){ return CARDS.filter(c => !c.hidden); }
+  function pick(sec){
+    const list = sections();
+    const card = list.find(c => c.dataset.sec === sec) || list[0];
+    if (!card) return;
+    CARDS.forEach(c => c.classList.toggle('shown', c === card));
+    document.querySelectorAll('.sitem').forEach(b =>
+      b.classList.toggle('on', b.dataset.sec === card.dataset.sec));
+    if (location.hash.slice(1) !== card.dataset.sec)
+      history.replaceState(null, '', location.pathname + location.search + '#' + card.dataset.sec);
+    document.querySelector('.scroll').scrollTop = 0;
+  }
+  function drawSide(){
+    $('side').innerHTML = sections().map(c => {
+      const icon = c.querySelector('.tile .material-symbols-rounded').textContent;
+      const name = c.querySelector('h2').textContent;
+      return `<button class="sitem" data-sec="${c.dataset.sec}"><span class="ic">
+        <span class="material-symbols-rounded">${icon}</span></span><span>${name}</span></button>`;
+    }).join('');
+    document.querySelectorAll('.sitem').forEach(b => b.onclick = () => pick(b.dataset.sec));
+    pick(location.hash.slice(1));
+  }
+  // A CARD THAT HIDES OR SHOWS ITSELF redraws the list, so the list is never out of step.
+  CARDS.forEach(c => new MutationObserver(drawSide).observe(c, {attributes: true,
+    attributeFilter: ['hidden']}));
+  window.addEventListener('hashchange', () => pick(location.hash.slice(1)));
+  drawSide();
+
   // ---- permissions ----------------------------------------------------------------------
   const SHELL = window.webkit && window.webkit.messageHandlers
                 && window.webkit.messageHandlers.agentduet;

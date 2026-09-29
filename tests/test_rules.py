@@ -4932,6 +4932,14 @@ def test_a_caller_is_named_by_the_owner_then_contacts_then_the_message() -> None
     for row in ("pDocRow", "pMicRow", "pBookRow", "atLoginOn"):
         ok(f"with {row} in it", f'id="{row}"' in settings)
     ok("the hub renames from the thread's header", 'id="tRename"' in hub and "/api/name" in hub)
+    # TWO PANES, as System Settings: every card is a section in the sidebar, built from the
+    # cards themselves, so a card added later cannot be missing from the list.
+    import re as _re
+    cards = _re.findall(r'<div class="card"[^>]*>', settings)
+    ok("every Settings card names its section",
+       cards and all("data-sec=" in c for c in cards), str([c for c in cards if "data-sec" not in c]))
+    ok("the sidebar is built from them", "querySelectorAll('.card[data-sec]')" in settings)
+    ok("and only the chosen one is shown", ".card[data-sec]:not(.shown){display:none;}" in settings)
     ok("and a name arriving later redraws the list", "${p.display || ''}" in hub)
 
 
@@ -5200,8 +5208,8 @@ def test_the_pages_offer_the_pick_not_a_picker() -> None:
        and 'id="modelList"' not in st)
     ok("the override lives in the developer dialog",
        st.index('id="ovlDev"') < st.index('id="mOverride"') and "Advanced (For developer)" in st)
-    ok("which opens from the foot of the page, after About",
-       st.index('<h2>About</h2>') < st.index('id="openDev"'))
+    ok("which opens from the foot of the sidebar, below every section",
+       st.index('id="side"') < st.index('id="openDev"') < st.index('<div class="scroll">'))
     ok("and is not in the Advanced card", 'id="mOverride"' not in
        st[st.index("<h2>Advanced</h2>"):st.index("<h2>About</h2>")])
     ok("and offers one button for the pick", 'id="getPick"' in st and 'id="pickBar"' in st)
