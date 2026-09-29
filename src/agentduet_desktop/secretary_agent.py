@@ -739,10 +739,32 @@ async def run_channel() -> None:
             # connected, set its triggers, then dropped every 5s forever.
             # We do not want them regardless: `cli stop` owns shutdown and escalates to
             # SIGKILL itself.
-            await sm.run_forever(install_signal_handlers=False)
+            watch = asyncio.create_task(_close_when_signed_out(sm))
+            try:
+                await sm.run_forever(install_signal_handlers=False)
+            finally:
+                watch.cancel()
         finally:
             # run_forever returning is a disconnect, not a shutdown: main() reconnects.
             status.set_channel("retrying", "disconnected")
+
+
+async def _close_when_signed_out(sm) -> None:
+    """Close a live channel once its credential is gone — a sign-out, or a key removed.
+
+    SIGNING OUT DID NOT STOP CALLS (found 2026-09-29). The session was opened with the token,
+    and the SDK asks for a token again only to refresh or reconnect, so a channel signed out of
+    stayed live — the hub's light still green, calls still arriving — while Settings said they
+    had stopped. `connector_ready` is the same fresh check that opens the channel; when it turns
+    false the session is closed, and `main` waits for a credential as a fresh install does.
+    """
+    while True:
+        await asyncio.sleep(CONNECTOR_POLL_SECONDS)
+        if not connector_ready():
+            logger.info("The connector's credential is gone (signed out, or the key removed) — "
+                        "closing the channel.")
+            await sm.disconnect()
+            return
 
 
 def connector_ready() -> bool:
@@ -909,6 +931,13 @@ async def main() -> None:
     status.load_number(SESSIONS)      # so a restart shows the number before new traffic
     delay = 5
     while True:
+        # SIGNED OUT SINCE THE LAST CONNECT: wait for a credential rather than retry without one.
+        if not connector_ready():
+            status.set_channel("unset")
+            while not connector_ready():
+                await asyncio.sleep(CONNECTOR_POLL_SECONDS)
+            logger.info("A connector was added — connecting without a restart.")
+            delay = 5
         try:
             status.set_channel("connecting")
             await run_channel()
