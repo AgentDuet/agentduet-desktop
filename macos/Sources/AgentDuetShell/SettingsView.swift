@@ -82,7 +82,7 @@ private struct AccountPane: View {
                     HStack(spacing: 6) {
                         Circle().fill(model.connected ? Color.green : Color.secondary)
                             .frame(width: 8, height: 8)
-                        Text(model.connected ? "Connected" : "Not connected")
+                        Text(model.connectionState)
                     }
                 }
                 if model.signedIn {

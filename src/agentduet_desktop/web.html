@@ -60,7 +60,9 @@
   .tright .sw .track{width:1.75rem;height:1rem;}
   .tright .sw .track::after{width:.75rem;height:.75rem;}
   .tright .sw input:checked + .track::after{transform:translateX(.75rem);}
-  .tright .hmsg{font-size:11px;color:#fca5a5;white-space:nowrap;}
+  .tright .micdot{font-size:1.05rem;color:var(--emerald);cursor:default;}
+  .tright .micdot.bad{color:#f87171;}
+  .tright .micdot.bad.fix{cursor:pointer;}
   .tright a.link2{font-size:11px;color:var(--blue400);text-decoration:none;white-space:nowrap;}
   .tright a.link2:hover{text-decoration:underline;}
   /* A CALL, above everything in the main column: ringing, or live. One bar for both, because
@@ -281,8 +283,11 @@
     </div>
     <div></div>
     <div class="tright">
-      <span class="hmsg" id="hereMsg" hidden></span>
       <a class="link2" id="updLink" target="_blank" rel="noopener" hidden>—</a>
+      <!-- THE MICROPHONE AS A LIGHT (Stanley, 2026-09-29): green when the owner can be heard,
+           red when not, and the reason on hover. Outside the switch, so pressing it never
+           flips it; pressing it while access is refused opens the privacy settings. -->
+      <span class="material-symbols-rounded micdot" id="hereMic" hidden>mic</span>
       <label class="tbtn on here" id="hereRow" hidden><span>Answer calls here</span>
         <span class="sw"><input type="checkbox" id="hereOn"><span class="track"></span></span></label>
       <a class="tbtn on" id="toSettings" href="#">
@@ -1141,6 +1146,9 @@
     // IN PLACE OF THE NUMBER while down: both do not fit the chip, and being disconnected is
     // the one thing worth saying then.
     $('connOff').hidden = live;
+    // NOT SIGNED IN IS NOT "NOT CONNECTED" (Stanley, 2026-09-29): with no credential at all
+    // ("unset") the fix is to sign in; with one and the channel down, it is something else.
+    $('connOff').textContent = D.channel === 'unset' ? 'Not Signed In' : 'Not Connected';
     $('phone').hidden = !live;
 
     // A NEWER BUILD, IF THERE IS ONE. Absent unless there is: an "up to date" line would be a
@@ -1157,7 +1165,7 @@
     $('hereRow').hidden = !ph.carry;
     if (!HERE_SAVING) $('hereOn').checked = !!ph.on;
     MIC_NOW = ph.mic || 'unknown';
-    if (!HERE_SAVING && ph.carry && MIC_NOW !== 'unknown') hereMic(!!ph.on);
+    if (!HERE_SAVING) micShow(ph.carry ? MIC_NOW : '');
 
     // WHICH MODEL IS ANSWERING, in the pane that is answering. Without it the owner cannot
     // tell a local 135M model from a hosted one, and the two give very different replies.
@@ -1197,23 +1205,25 @@
   // 14.8 s of silence with nothing to say why. So the check listens briefly and looks for any
   // non-zero sample. Speakers have no permission to check; output is not gated by macOS.
   const MIC_HELP = 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone';
-  function hereSay(msg, link){
-    $('hereMsg').hidden = !msg;
-    $('hereMsg').innerHTML = msg ? esc(msg) + (link ? ` <a class="link2" href="${MIC_HELP}">Open Settings</a>` : '') : '';
-  }
-  // THE SWITCH IS THE OWNER'S INTENT, saved as they set it (Stanley, 2026-09-29). Whether they
-  // can be HEARD is a separate, live fact that the Swift shell reports (MicWatch.swift): the lid,
-  // the input device, microphone access. While the switch is on and that says no, the reason
-  // shows in red and a call passes through to their phone — the switch itself never flips.
-  // Turning it on still opens the microphone once, so macOS asks for access at the moment the
-  // owner opted in rather than over a ringing call; the answer no longer decides the switch.
-  const MIC_TEXT = {lid: 'The lid is closed.', none: 'No microphone found.',
-                    blocked: 'Microphone access is off.', silent: 'The microphone is silent.'};
+  const MIC_TEXT = {ok: 'The microphone is ready.', lid: 'The lid is closed.',
+                    none: 'No microphone found.', blocked: 'Microphone access is off.',
+                    silent: 'The microphone is silent.'};
   let MIC_NOW = 'unknown';
-  function hereMic(on){
-    const why = on ? MIC_NOW : 'ok';
-    hereSay(MIC_TEXT[why] || '', why === 'blocked');
+  // The light, for a state from the shell (MicWatch.swift) or from the page's own check where
+  // there is no shell. "unknown" is a browser with nothing to ask: no light rather than a guess.
+  function micShow(why){
+    const el = $('hereMic');
+    el.hidden = !why || why === 'unknown' || $('hereRow').hidden;
+    if (el.hidden) return;
+    const ok = why === 'ok';
+    el.textContent = ok ? 'mic' : 'mic_off';
+    el.classList.toggle('bad', !ok);
+    el.classList.toggle('fix', why === 'blocked');
+    el.title = MIC_TEXT[why] || MIC_TEXT.blocked;
   }
+  $('hereMic').onclick = () => {
+    if ($('hereMic').classList.contains('fix')) location.href = MIC_HELP;
+  };
   $('hereOn').onchange = async () => {
     HERE_SAVING = true;
     const want = $('hereOn').checked;
@@ -1226,11 +1236,9 @@
     if (r.ok && want) {
       const m = await PHONE.checkMic().catch(() => ({ok: true}));
       // NO SHELL TO ASK (a browser, Windows): the page's own check is all there is to say why.
-      if (MIC_NOW === 'unknown' && !m.ok) {
-        hereSay(MIC_TEXT[m.why] || MIC_TEXT.blocked, m.why === 'blocked'); return;
-      }
+      if (MIC_NOW === 'unknown') { micShow(m.ok ? 'ok' : (m.why || 'blocked')); return; }
     }
-    hereMic(r.ok ? want : !want);
+    micShow(MIC_NOW);
   };
 
   const PHONE = (() => {

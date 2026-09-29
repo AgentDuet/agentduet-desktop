@@ -8,6 +8,8 @@ edit
 event
 folder
 info
+mic
+mic_off
 person
 settings
 shield_person

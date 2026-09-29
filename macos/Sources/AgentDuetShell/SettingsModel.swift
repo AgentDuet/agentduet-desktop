@@ -125,6 +125,12 @@ import Foundation
     var byKey: Bool { !signedIn && !cur.str("key_hint").isEmpty }
     var canSignIn: Bool { oauth.bool("available") && oauth.bool("browser") && !signedIn }
     var connected: Bool { cur.bool("connected") }
+    /// NOT SIGNED IN IS NOT "NOT CONNECTED": with no credential the fix is to sign in; with one
+    /// and the channel down, it is something else.
+    var connectionState: String {
+        if connected { return "Connected" }
+        return !signedIn && !byKey ? "Not Signed In" : "Not Connected"
+    }
 
     /// Return, or leaving the field. Only a field that changed is written.
     func commit(_ field: String) {
@@ -137,9 +143,12 @@ import Foundation
         }
     }
 
+    /// Signing out says nothing on success — the Status row reads Not Signed In, which is the
+    /// outcome. Only a failure is reported.
     func signOut() {
         Task {
-            say(.account, await api.post("/api/connector/signout"))
+            let r = await api.post("/api/connector/signout")
+            notice[.account] = r["ok"] as? Bool == false ? Notice(ok: false, text: r.str("message")) : nil
             await poll()
         }
     }
