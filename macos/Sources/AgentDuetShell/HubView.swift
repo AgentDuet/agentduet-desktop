@@ -406,11 +406,7 @@ private struct TurnView: View {
                             HStack {
                                 Button("Send to \(HubModel.name(who))") { model.sendDraft() }
                                     .buttonStyle(.borderedProminent)
-                                    // BLUE WHATEVER THE ACCENT: the prominent style follows the system accent, which is
-                                    // grey on a Mac set to Graphite, so the primary action read as secondary.
-                                    .tint(.blue)
                                     .disabled(model.busy)
-                                Button("Edit First") { model.editDraft(turn.str("a")) }
                             }
                         }
                     }
@@ -462,9 +458,6 @@ private struct ProposalCard: View {
             HStack {
                 Button(proposal.bool("opened") ? "Open Again" : verb0) { model.decide(proposal, approve: true) }
                     .buttonStyle(.borderedProminent)
-                    // BLUE WHATEVER THE ACCENT: the prominent style follows the system accent, which is
-                    // grey on a Mac set to Graphite, so the primary action read as secondary.
-                    .tint(.blue)
                 Button(reopen ? "Dismiss" : "Discard") { model.decide(proposal, approve: false) }
             }
         }
@@ -652,9 +645,6 @@ private struct SuggestionRow: View {
                 model.suggestion(suggestion.str("key"), "add")
             }
             .buttonStyle(.borderedProminent)
-            // BLUE WHATEVER THE ACCENT: the prominent style follows the system accent, which is
-            // grey on a Mac set to Graphite, so the primary action read as secondary.
-            .tint(.blue)
             Button("Dismiss") { model.suggestion(suggestion.str("key"), "dismiss") }
         }
         .padding(10)
