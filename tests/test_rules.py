@@ -4855,6 +4855,33 @@ def test_a_draft_goes_to_who_it_was_written_for() -> None:
     ok("and offers no send button on it", "t.sent || t.held ||" in page)
 
 
+def test_the_agent_finds_a_sender_by_the_name_it_was_shown() -> None:
+    """#8: every line is rendered through the display name, so the name must also find them."""
+    print("\n  -- read_messages: a name finds the sender it names --")
+    import json as _json
+    import tempfile
+    import unittest.mock as mock
+    from agentduet_desktop import paths, tools
+    uid = "d7553b51-6567-11f1-a64a-a9511a89ac64"
+    with tempfile.TemporaryDirectory() as d:
+        run = pathlib.Path(d)
+        (run / "sessions.json").write_text(_json.dumps({uid: {"display": "Cen Lee"}}))
+        log = run / "queries.jsonl"
+        log.write_text(_json.dumps({"network": "DDUET", "asker": uid, "question": "dinner at 7?",
+                                    "at": "2026-09-04T11:20:00"}) + "\n")
+        with mock.patch.object(paths, "RUN", run), mock.patch.object(tools, "LOG", log):
+            listed = tools.read_messages()
+            by_name = tools.read_messages("Cen Lee")
+            by_first = tools.read_messages("cen")
+            by_uid = tools.read_messages(uid)
+            other = tools.read_messages("Pauline")
+    ok("the summary names her", "Cen Lee" in listed)
+    ok("and her name finds the message it listed", "dinner at 7?" in by_name)
+    ok("in any case, and by part of it", "dinner at 7?" in by_first)
+    ok("the identifier still finds her", "dinner at 7?" in by_uid)
+    ok("and a different name still finds nothing", other.startswith("No messages with Pauline"))
+
+
 def test_the_catalogue_carries_gemma_4_and_says_what_was_measured() -> None:
     """The 2026-09-24 refresh, and the difference between a timed figure and an estimate."""
     print("\n  -- the catalogue: Gemma 4, and measured versus derived --")
@@ -6126,6 +6153,7 @@ def main() -> None:
     test_signing_survives_apples_timestamp_service()
     test_assets_are_utf8_whatever_the_machine_thinks()
     test_a_draft_goes_to_who_it_was_written_for()
+    test_the_agent_finds_a_sender_by_the_name_it_was_shown()
     test_the_catalogue_carries_gemma_4_and_says_what_was_measured()
     test_the_machine_picks_the_model()
     test_one_place_decides_the_model_and_hosted_is_quarantined()

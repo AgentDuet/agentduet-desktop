@@ -768,6 +768,30 @@ def _display_for(asker: str) -> str:
     return (seen.get(asker) or {}).get("display") or asker
 
 
+def _sessions_seen() -> dict:
+    try:
+        return json.loads((paths.RUN / "sessions.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _is_them(who: str, asker: str, seen: dict) -> bool:
+    """Does `who` — what the model typed — pick out this sender? By identifier OR display name.
+
+    THE NAME IS WHAT THE MODEL HAS (#8). Every line it reads is rendered through the display
+    name, so on DDUET, where the identifier is an account uid, "Cen Lee" is the only handle it
+    can search with — and filtering on the uid alone answered "No messages with Cen Lee" four
+    lines after listing her message. This is a CONVENIENCE, not an identity decision: it only
+    picks which rows the owner's own agent reads. Nothing is granted, disclosed or sent on it;
+    `people/` and every permission still key on the uid.
+    """
+    want = (who or "").strip().lower()
+    if not want:
+        return True
+    name = ((seen.get(asker) or {}).get("display") or "").lower()
+    return want in asker.lower() or bool(name) and want in name
+
+
 def read_messages(who: str = "", limit: int = 20, days: int = 0) -> str:
     """The message conversation with someone — DDUET or WhatsApp, oldest first.
 
@@ -784,9 +808,10 @@ def read_messages(who: str = "", limit: int = 20, days: int = 0) -> str:
     cutoff = ""
     if days and int(days) > 0:
         cutoff = (datetime.now() - timedelta(days=int(days))).isoformat(timespec="seconds")
+    seen = _sessions_seen()
     rows_ = [r for r in rows()
              if r.get("network") in ("WA", "DDUET")
-             and (not who or who.strip().lower() in (r.get("asker") or "").lower())
+             and _is_them(who, r.get("asker") or "", seen)
              and (not cutoff or (r.get("at") or "") >= cutoff)]
     if not rows_:
         # NAME THE SUBJECT. This said "No messages with them", and with `who` empty there is no
