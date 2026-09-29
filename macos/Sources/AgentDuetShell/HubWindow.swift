@@ -15,6 +15,8 @@ import SwiftUI
     var openSettings: ((String?) -> Void)?
 
     var isVisible: Bool { window?.isVisible ?? false }
+    /// For Settings, which is a sheet on this window.
+    var nsWindow: NSWindow? { window }
 
     func show(api: DaemonAPI) {
         if model?.api.base != api.base || model?.api.token != api.token {

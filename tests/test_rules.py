@@ -5078,6 +5078,18 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
        "ToolbarItem(placement: .navigation)" in hv and 'model.openSettings?("account")' in hv
        and "Text(model.connection)" in hv)
     ok("and the list has no card of your own", "MY CARD" not in hv)
+    # SETTINGS IS A SHEET ON THE HUB (Stanley, 2026-09-29): part of its window, not a second one.
+    sw = swift["SettingsWindow.swift"]
+    ok("Settings is a sheet on the hub", "parent.beginSheet(w)" in sw
+       and "over: setupPending ? nil : hubWindow.nsWindow" in app)
+    ok("closed with Done or Esc", 'Button("Done") { model.done?() }' in swift["SettingsView.swift"]
+       and ".keyboardShortcut(.cancelAction)" in swift["SettingsView.swift"])
+    ok("only the newest draft is labelled a draft",
+       'turn.bool("draft") && (newestDraft || turn.bool("sent") || turn.bool("held"))' in hv)
+    ok("Open Again is the blue primary button", hv.count(".buttonStyle(.borderedProminent)") >= 2)
+    ok("your number is shown, learned, not typed",
+       'TextField("Your number"' not in swift["SettingsView.swift"]
+       and 'LabeledContent("Your number")' in swift["SettingsView.swift"])
     ok("not Contacts' functions: no search, no Edit button",
        ".searchable(" not in hv and 'Button("Edit")' not in hv)
     ok("renaming is a pencil beside the name", '.help("Rename")' in hv)

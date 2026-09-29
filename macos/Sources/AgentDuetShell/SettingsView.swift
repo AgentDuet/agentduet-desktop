@@ -7,24 +7,40 @@ struct SettingsView: View {
     @ObservedObject var model: SettingsModel
 
     var body: some View {
-        NavigationSplitView {
-            List(SettingsModel.Section.allCases, selection: Binding(
-                get: { model.section }, set: { if let s = $0 { model.section = s } })) { s in
-                Label(s.title, systemImage: s.symbol).tag(s)
-            }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
-        } detail: {
-            Group {
-                switch model.section {
-                case .account: AccountPane(model: model)
-                case .calls: CallsPane(model: model)
-                case .permissions: PermissionsPane(model: model)
-                case .advanced: AdvancedPane(model: model)
-                case .about: AboutPane(model: model)
+        VStack(spacing: 0) {
+            NavigationSplitView {
+                List(SettingsModel.Section.allCases, selection: Binding(
+                    get: { model.section }, set: { if let s = $0 { model.section = s } })) { s in
+                    Label(s.title, systemImage: s.symbol).tag(s)
                 }
+                .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
+            } detail: {
+                VStack(alignment: .leading, spacing: 0) {
+                    // A SHEET HAS NO TITLE BAR, so the pane says its own name.
+                    Text(model.section.title).font(.title2.bold())
+                        .padding(.horizontal, 20).padding(.top, 16)
+                    Group {
+                        switch model.section {
+                        case .account: AccountPane(model: model)
+                        case .calls: CallsPane(model: model)
+                        case .permissions: PermissionsPane(model: model)
+                        case .advanced: AdvancedPane(model: model)
+                        case .about: AboutPane(model: model)
+                        }
+                    }
+                    .formStyle(.grouped)
+                }
+                .frame(minWidth: 460)
             }
-            .formStyle(.grouped)
-            .frame(minWidth: 460)
+            Divider()
+            // DONE, AT THE BOTTOM RIGHT: how a Mac sheet is dismissed. Esc does the same.
+            HStack {
+                Spacer()
+                Button("Done") { model.done?() }
+                    .keyboardShortcut(.defaultAction)
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding(.horizontal, 20).padding(.vertical, 12)
         }
     }
 }
@@ -63,17 +79,11 @@ private struct AccountPane: View {
                 TextField("Name", text: $model.name, prompt: Text("Your name"))
                     .focused($focus, equals: "name")
                     .onSubmit { model.commit("name") }
-                TextField("Your number", text: $model.phone, prompt: Text("+6591234567"))
-                    .focused($focus, equals: "phone")
-                    .onSubmit { model.commit("phone") }
-                // THE LINE IS NOT YOUR NUMBER, and the hub shows it when yours is unset — so it
-                // is named here too, read-only, learned from the calls themselves.
-                if !model.panel.str("line").isEmpty {
-                    LabeledContent {
-                        Text(model.panel.str("line")).textSelection(.enabled)
-                    } label: {
-                        Text("Line")
-                        Text("The number your calls come in on")
+                // LEARNED, NOT TYPED (Stanley, 2026-09-29): the number is mined from the first
+                // call, so it is shown here and not edited — and until then there is no row.
+                if !model.yourNumber.isEmpty {
+                    LabeledContent("Your number") {
+                        Text(model.yourNumber).textSelection(.enabled)
                     }
                 }
             }
