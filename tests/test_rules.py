@@ -654,8 +654,8 @@ def test_answered_call_recording() -> None:
     ok("About names the speech model", stt_page.index('id="sttState"') > about_at)
     ok("and offers its download while it is missing",
        stt_page.index('id="getStt"') > about_at and "$('sttActs').hidden = d.cached" in stt_page)
-    ok("the override is a text field in the developer dialog",
-       stt_page.index('id="sttOverride"') > stt_page.index('id="ovlDev"'))
+    ok("the override is a text field under Advanced's For developers",
+       stt_page.index('id="sttOverride"') > stt_page.index('<div class="subh">For developers</div>'))
     ok("and it is checked by name on the server",
        'Unknown speech model' in web_src_e and '"/api/stt-override"' in web_src_e)
 
@@ -1250,9 +1250,13 @@ def test_setup_mode() -> None:
     # after a reboot, and init signing off with `agentduet-desktop run`, a command that did not
     # exist. Checked on both surfaces because losing it on one is how it was lost at all.
     root = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
-    ok("the settings page can install this build",
-       "/api/install" in (root / "settings.html").read_text())
-    ok("and the console offers it too", "def offer_install" in (root / "init.py").read_text())
+    # REMOVED FROM SETTINGS BY DECISION (Stanley, 2026-09-29): on a Mac the DMG's drag to
+    # Applications is the install and the App Store installs the store build, so the card could
+    # only restate that. The console path, where a downloaded binary does need installing, keeps
+    # it — and Windows gets its own story (#7).
+    ok("Settings has no Install section", 'data-sec="install"' not in
+       (root / "settings.html").read_text())
+    ok("the console offers the install", "def offer_install" in (root / "init.py").read_text())
     # And having offered, it must not sign off with a command that may not be on the PATH.
     ok("the console names a command that exists",
        'how = "agentduet-desktop" if installed' in (root / "init.py").read_text())
@@ -1613,7 +1617,8 @@ def test_setup_mode() -> None:
     think_at = settings_page.index('id="thinkRow"')
     ok("the thinking switch sits beside the model override",
        settings_page.index('id="mOverride"') < think_at)
-    ok("inside the developer dialog", settings_page.index('id="ovlDev"') < think_at)
+    ok("under Advanced's For developers",
+       settings_page.index('<div class="subh">For developers</div>') < think_at)
     ok("and there is no Model card left", "<h2>Model</h2>" not in settings_page)
     about_at = settings_page.index("<h2>About</h2>")
     ok("About names the AI model", settings_page.index('id="modelState"') > about_at)
@@ -4944,6 +4949,11 @@ def test_a_caller_is_named_by_the_owner_then_contacts_then_the_message() -> None
     # A DIALOG OVER THE HUB, one box: the hub draws the rounded dialog, Settings drops its own
     # frame inside it, and a section's settings sit on the pane rather than in a card.
     ok("the hub opens Settings as a dialog", 'id="setFrame"' in hub and "&embed=1" in hub)
+    ok("it closes with Done, as a Mac sheet does, not a top-right ×",
+       '<button class="btn setdone" id="setClose">Done</button>' in hub)
+    ok("Settings is Account, Record & Transcribe, Permissions, Advanced, About",
+       [c.split('"')[1] for c in _re.findall(r'data-sec="[a-z]+"', settings.split("<body>")[1].split("<script>")[0])]
+       == ["account", "calls", "permissions", "advanced", "about"])
     ok("any link to Settings opens it there", "a[href^=\"/settings\"]" in hub)
     ok("Settings drops its title bar inside it", "html.embed .titlebar{display:none;}" in settings)
     ok("with no box inside the box", ".split .sec > .card{background:none;border:0;" in settings)
@@ -5220,12 +5230,11 @@ def test_the_pages_offer_the_pick_not_a_picker() -> None:
     # foot of the page. The backend keeps the quarantine flag.
     ok("Settings has no model picker", 'id="openModels"' not in st and 'id="ovlModels"' not in st
        and 'id="modelList"' not in st)
-    ok("the override lives in the developer dialog",
-       st.index('id="ovlDev"') < st.index('id="mOverride"') and "Advanced (For developer)" in st)
-    ok("which opens from the foot of the sidebar, below every section",
-       st.index('id="side"') < st.index('id="openDev"') < st.index('<div class="scroll">'))
-    ok("and is not in the Advanced card", 'id="mOverride"' not in
-       st[st.index("<h2>Advanced</h2>"):st.index("<h2>About</h2>")])
+    # MERGED INTO ADVANCED (Stanley, 2026-09-29): its own dialog was one more place to find.
+    ok("the override lives in Advanced, under its own label", 'id="mOverride"' in
+       st[st.index("<h2>Advanced</h2>"):st.index("<h2>About</h2>")]
+       and '<div class="subh">For developers</div>' in st)
+    ok("and there is no separate developer dialog", 'id="ovlDev"' not in st)
     ok("and offers one button for the pick", 'id="getPick"' in st and 'id="pickBar"' in st)
 
     # WHY IT WAS PICKED IS NEVER SHOWN. It is a note about our machinery, not an outcome.

@@ -19,6 +19,8 @@
   html.embed .window{max-width:none;height:100%;max-height:none;flex:1;border-radius:0;
     border:0;box-shadow:none;}
   html.embed .titlebar{display:none;}
+  /* Room for the hub's Done button, which sits over the bottom right of this pane. */
+  html.embed .scroll{padding-bottom:4.5rem;}
   /* ONE BOX, NOT TWO: the dialog is the rounded box, so a section's settings sit straight on
      the pane rather than in a card inside it. The card's icon and heading stay as the pane's
      title. */
@@ -110,25 +112,10 @@
   #connManual,#connSignedIn,#connSignIn,#connByKey{
     display:flex;flex-direction:column;gap:1rem;}
 
-  /* Managing models is a DETOUR, not a setting. It only happens when someone is changing
-     one, and it needs a lot of room to say why each model does or does not fit — so it
-     lives in a panel over the page rather than in the page. */
-  .ovl{position:fixed;inset:0;background:rgba(2,6,23,.75);display:flex;
-    align-items:center;justify-content:center;padding:1.5rem;z-index:50;}
-  .ovl[hidden]{display:none;}
-  .sheet{background:var(--card);border:1px solid var(--line);border-radius:.9rem;
-    width:100%;max-width:38rem;max-height:100%;display:flex;flex-direction:column;
-    box-shadow:0 24px 60px rgba(0,0,0,.55);}
-  .shead{display:flex;align-items:center;justify-content:space-between;gap:1rem;
-    padding:1rem 1.25rem;border-bottom:1px solid var(--line);}
-  .shead h2{font-size:.95rem;}
-  .shead p{font-size:11px;color:var(--muted);margin-top:.1rem;}
-  .sbody{padding:1.25rem;overflow-y:auto;display:flex;flex-direction:column;gap:.5rem;}
-  .x{background:none;border:0;color:var(--muted);cursor:pointer;font:inherit;
-    display:flex;align-items:center;padding:.25rem;border-radius:.4rem;}
-  .devfoot{display:flex;justify-content:flex-start;padding:.25rem .55rem 0;}
-  .devfoot .link{font-size:11px;}
-  .x:hover{color:var(--ink2);background:var(--slate800);}
+  /* A SUB-HEADING inside a section, where two subjects share one: the house label style the
+     hub uses for "People", with the room above it that separates the groups. */
+  .subh{font-size:10px;text-transform:uppercase;font-weight:700;letter-spacing:.05em;
+    color:var(--faint);margin-top:.75rem;}
 </style>
 </head>
 <body>
@@ -150,17 +137,17 @@
   <div class="split">
   <nav class="side">
     <div class="sidelist" id="side"></div>
-    <!-- AT THE FOOT, AND A DIALOG. Nothing in it is for an owner: it replaces what the app
-         chose from the machine, so it stays out of the list of settings to scan past. -->
-    <div class="devfoot"><button class="link" id="openDev">Advanced (For developer)</button></div>
   </nav>
   <div class="scroll">
     <div class="sec">
 
-      <div class="card" data-sec="you">
+      <!-- ACCOUNT: who the owner is, and the AgentDuet account this install signs in with.
+           One section since 2026-09-29 (it was "You" and "AgentDuet Account"). -->
+      <div class="card" data-sec="account">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">person</span></div>
-          <div><h2>You</h2></div>
+          <div style="flex:1"><h2>Account</h2></div>
+          <span class="pill off" id="connPill"><span class="dot"></span>…</span>
         </div>
         <div class="grp"><label class="fl">Name</label><input type="text" id="name"></div>
         <!-- NO SURFACE COULD SET THIS until 2026-09-08, and it gates real behaviour: a
@@ -174,14 +161,8 @@
         <div class="acts"><button class="btn" id="saveYou">Save</button></div>
 
         <div id="mYou"></div>
-      </div>
 
-      <div class="card" data-sec="account">
-        <div class="head">
-          <div class="tile"><span class="material-symbols-rounded">dialpad</span></div>
-          <div style="flex:1"><h2>AgentDuet Account</h2></div>
-          <span class="pill off" id="connPill"><span class="dot"></span>…</span>
-        </div>
+        <div class="subh">AgentDuet account</div>
         <div class="state" id="connWho" hidden></div>
 
         <!-- SIGN IN, OR SET IT UP BY HAND — never both at once. The two are mutually
@@ -225,7 +206,7 @@
       <div class="card" data-sec="calls">
         <div class="head">
           <div class="tile"><span class="material-symbols-rounded">call</span></div>
-          <div><h2>Record and Transcribe Calls</h2></div>
+          <div><h2>Record &amp; Transcribe</h2></div>
         </div>
         <div class="row">
           <div class="lbl">Save to this machine</div>
@@ -293,16 +274,6 @@
         </div>
       </div>
 
-      <div class="card" data-sec="install" id="installCard" hidden>
-        <div class="head">
-          <div class="tile"><span class="material-symbols-rounded">download</span></div>
-          <div><h2>Install</h2></div>
-        </div>
-        <div class="state" id="instState">…</div>
-        <div class="acts"><button class="btn" id="doInstall">Install</button>
-          <span class="spin" id="spInst"></span></div>
-        <div id="mInst"></div>
-      </div>
 
       <div class="card" data-sec="advanced">
         <div class="head">
@@ -312,6 +283,36 @@
         <div class="row">
           <div class="lbl">Walk through setup again</div>
           <button class="btn ghost" id="rerun">Run setup</button>
+        </div>
+        <!-- FOR A DEVELOPER, merged in from its own dialog (2026-09-29): overriding what the
+             app chose from the machine. Last in the section, under its own label. -->
+        <div class="subh">For developers</div>
+        <!-- THE MODEL OVERRIDE. A Hugging Face name, in llama.cpp's own form, replaces the
+             automatic pick; empty goes back to it. Saving only REGISTERS the model — the Model
+             card then offers its download, through the same button the pick uses. -->
+        <div class="grp">
+          <label class="fl" for="mOverride">AI model</label>
+          <input type="text" id="mOverride" placeholder="owner/repo or owner/repo:Q4_K_M"
+                 autocomplete="off" spellcheck="false">
+        </div>
+        <div class="acts"><button class="btn" id="saveOverride">Save</button></div>
+        <div id="mOverrideMsg"></div>
+        <!-- THE SPEECH MODEL OVERRIDE, by name: `qwen3-asr-1.7b` (the default) or a Whisper model
+             (`small`, `medium`, `large-v3-turbo`, `large-v3`). Empty goes back to the default. The
+             name is checked on the way in, so a typo is refused rather than silently ignored. -->
+        <div class="grp">
+          <label class="fl" for="sttOverride">Speech model</label>
+          <input type="text" id="sttOverride" placeholder="qwen3-asr-1.7b, large-v3-turbo…"
+                 autocomplete="off" spellcheck="false">
+        </div>
+        <div class="acts"><button class="btn" id="saveSttOverride">Save</button></div>
+        <div id="sttOverrideMsg"></div>
+        <!-- THINKING MODE, moved here with the Model card. HIDDEN, NOT DISABLED, when the model in
+             use cannot reason: a switch that does nothing is worse than none. -->
+        <div class="row" id="thinkRow" hidden>
+          <div class="lbl">Enable Thinking Mode
+            <span class="sublbl" id="thinkWhy"></span></div>
+          <label class="sw"><input type="checkbox" id="thinkOn"><span class="track"></span></label>
         </div>
       </div>
 
@@ -362,44 +363,6 @@
   </div>
 </div>
 
-<div class="ovl" id="ovlDev" hidden>
-  <div class="sheet" role="dialog" aria-modal="true" aria-label="Advanced (For developer)">
-    <div class="shead">
-      <div><h2>Advanced (For developer)</h2></div>
-      <button class="x" id="closeDev" aria-label="Close">
-        <span class="material-symbols-rounded">close</span></button>
-    </div>
-    <div class="sbody">
-      <!-- THE MODEL OVERRIDE. A Hugging Face name, in llama.cpp's own form, replaces the
-           automatic pick; empty goes back to it. Saving only REGISTERS the model — the Model
-           card then offers its download, through the same button the pick uses. -->
-      <div class="grp">
-        <label class="fl" for="mOverride">AI model</label>
-        <input type="text" id="mOverride" placeholder="owner/repo or owner/repo:Q4_K_M"
-               autocomplete="off" spellcheck="false">
-      </div>
-      <div class="acts"><button class="btn" id="saveOverride">Save</button></div>
-      <div id="mOverrideMsg"></div>
-      <!-- THE SPEECH MODEL OVERRIDE, by name: `qwen3-asr-1.7b` (the default) or a Whisper model
-           (`small`, `medium`, `large-v3-turbo`, `large-v3`). Empty goes back to the default. The
-           name is checked on the way in, so a typo is refused rather than silently ignored. -->
-      <div class="grp">
-        <label class="fl" for="sttOverride">Speech model</label>
-        <input type="text" id="sttOverride" placeholder="qwen3-asr-1.7b, large-v3-turbo…"
-               autocomplete="off" spellcheck="false">
-      </div>
-      <div class="acts"><button class="btn" id="saveSttOverride">Save</button></div>
-      <div id="sttOverrideMsg"></div>
-      <!-- THINKING MODE, moved here with the Model card. HIDDEN, NOT DISABLED, when the model in
-           use cannot reason: a switch that does nothing is worse than none. -->
-      <div class="row" id="thinkRow" hidden>
-        <div class="lbl">Enable Thinking Mode
-          <span class="sublbl" id="thinkWhy"></span></div>
-        <label class="sw"><input type="checkbox" id="thinkOn"><span class="track"></span></label>
-      </div>
-    </div>
-  </div>
-</div>
 
 <script>
   // The three circles are ours, drawn in HTML. macOS draws its own in the native window, and
@@ -470,12 +433,12 @@
   // THE WHOLE WINDOW, not the dialog: from the hub's dialog, setup replaces the hub.
   $('rerun').onclick = () => { window.top.location.href = '/setup?t=' + T + '&from=settings'; };
   // IN THE HUB'S DIALOG, closing is the hub's to do — and Esc typed in here reaches THIS page,
-  // not the hub, so it is passed up. An open developer dialog takes Esc first.
+  // not the hub, so it is passed up.
   if (window.top !== window) {
     const close = () => window.parent.postMessage({type: 'closeSettings'}, location.origin);
     $('back').onclick = e => { e.preventDefault(); close(); };
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && $('ovlDev').hidden) close();
+      if (e.key === 'Escape') close();
     });
   }
 
@@ -735,21 +698,6 @@
   sttCheck();
 
   // ---- install ---------------------------------------------------------------------------
-  // HIDDEN WHEN RUNNING FROM SOURCE. There is nothing to install then, and an Install button
-  // that cannot work is worse than no button. This card went missing entirely when setup was
-  // cut to two screens — every surface lost it at once, so an owner could finish setup on any
-  // platform and never have the app installed.
-  function instRender(d){
-    if (!d || !d.frozen) return;                       // source run: leave the card hidden
-    $('installCard').hidden = false;
-    const done = d.installed && d.current;
-    $('instState').innerHTML = done
-      ? 'Installed at <code>' + esc(d.target) + '</code>.'
-      : (d.installed ? 'An OLDER build is installed at <code>' + esc(d.target) + '</code>.'
-                     : 'Not installed. Running from <code>' + esc(d.running_from) + '</code>.');
-    $('doInstall').textContent = d.installed && !d.current ? 'Update it' : 'Install';
-    $('doInstall').hidden = done;
-  }
   // Same shape as the hub's, deliberately: a timestamp should read identically on both pages.
   // Not shared because these two files have no module system between them — the one thing they
   // do share is `app.css`, and this is behaviour rather than style.
@@ -796,14 +744,6 @@
     b.disabled = false; b.textContent = 'Check now';
   });
 
-  fetch(`/api/install?t=${T}`).then(r => r.json()).then(instRender).catch(() => {});
-  $('doInstall').onclick = async () => {
-    $('doInstall').disabled = true; $('spInst').textContent = 'installing…';
-    const d = await post('/api/install', {});
-    $('doInstall').disabled = false; $('spInst').textContent = '';
-    say('mInst', d.ok, d.message);
-    fetch(`/api/install?t=${T}`).then(r => r.json()).then(instRender).catch(() => {});
-  };
 
   // ---- the four services, moved here from the hub -----------------------------------------
   // The hub is people and their calls now; anything with a switch or a field belongs on this
@@ -1009,13 +949,7 @@
   };
   //: The speech list's last-drawn signature — it skips a redraw when nothing it shows changed.
 
-  // ---- Advanced (For developer) ----------------------------------------------------------
-  const dev = $('ovlDev');
-  const closeDev = () => { dev.hidden = true; };
-  $('openDev').onclick = () => { dev.hidden = false; $('mOverride').focus(); };
-  $('closeDev').onclick = closeDev;
-  dev.onclick = e => { if (e.target === dev) closeDev(); };     // click the dim to dismiss
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDev(); });
+  // ---- Advanced: for developers --------------------------------------------------------
   $('mOverride').addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); $('saveOverride').click(); }
   });
