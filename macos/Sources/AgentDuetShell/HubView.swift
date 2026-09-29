@@ -399,21 +399,23 @@ private struct TurnView: View {
                                                  : turn.bool("held") ? Color.secondary : Color.orange)
                         }
                         Text(turn.str("a")).textSelection(.enabled)
-                        // ONLY UNDER THE LAST ANSWER, and only for a draft that has not gone:
-                        // each button says what it does, and both need a person to press it.
-                        if last, turn.bool("draft"), !turn.bool("sent"), !turn.bool("held"),
-                           let who = model.replyTarget {
-                            HStack {
-                                Button("Send to \(HubModel.name(who))") { model.sendDraft() }
-                                    .disabled(model.busy)
-                            }
-                        }
                     }
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .background(RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(Color(nsColor: .quaternaryLabelColor)))
                     .frame(maxWidth: 460, alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    // UNDER THE BALLOON, IN THE CAPTION'S SIZE, as Messages puts "Delivered": a
+                    // bordered button inside the balloon read as a different size and took the eye
+                    // from the words. Only under the last answer, and only for a draft not gone.
+                    if last, turn.bool("draft"), !turn.bool("sent"), !turn.bool("held"),
+                       let who = model.replyTarget {
+                        Button("Send to \(HubModel.name(who))") { model.sendDraft() }
+                            .buttonStyle(.link).font(.caption)
+                            .disabled(model.busy)
+                            .padding(.leading, 12).padding(.top, -4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
             }
         }
