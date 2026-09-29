@@ -145,8 +145,13 @@ Settings opens with Cmd-comma, the menu bar menu or the hub's Settings button; s
 whenever the daemon's `needs_setup` says so, and a link to `/setup` opens it. The hub is next
 (reading, then writing, then the in-app phone). The HTML pages stay for every host without the
 Swift shell. **The daemon's `/api/*` is the contract between them:** a setting's rule lives in
-the daemon, never in a UI, so a change to what a setting does is made there once. A feature is
-not done until each UI that exposes it has it. Reasoning, and what would reverse it:
+the daemon, never in a UI, so a change to what a setting does is made there once.
+
+**MAC FIRST (Stanley, 2026-09-29): UI work lands in Swift only, and the HTML pages are FROZEN.**
+Do not keep them in step — changes are ported when another platform is taken up. The HTML was
+last brought in line at `3f89266`, so the Mac-only UI changes to port are the Swift commits
+after it (`git log 3f89266.. -- macos/`). A daemon change is still made once, for everyone,
+and must not break the pages that are frozen. Reasoning, and what would reverse it:
 `docs/design.md`, *Native UI per platform*.
 
 **SwiftUI here is built WITHOUT Xcode**, with the Command Line Tools only. In the current SDK
