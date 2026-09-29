@@ -405,16 +405,22 @@ private struct TurnView: View {
                         .fill(Color(nsColor: .quaternaryLabelColor)))
                     .frame(maxWidth: 460, alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    // UNDER THE BALLOON, IN THE CAPTION'S SIZE, as Messages puts "Delivered": a
-                    // bordered button inside the balloon read as a different size and took the eye
-                    // from the words. Only under the last answer, and only for a draft not gone.
+                    // A ROW LIKE THE CALENDAR AND EMAIL CARDS (Stanley, 2026-09-30): what it is and
+                    // the action at the right, under the balloon rather than a button inside it.
+                    // Only under the last answer, and only for a draft not gone.
                     if last, turn.bool("draft"), !turn.bool("sent"), !turn.bool("held"),
                        let who = model.replyTarget {
-                        Button("Send to \(HubModel.name(who))") { model.sendDraft() }
-                            .buttonStyle(.link).font(.caption)
-                            .disabled(model.busy)
-                            .padding(.leading, 12).padding(.top, -4)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack(spacing: 8) {
+                            Image(systemName: "paperplane").foregroundStyle(Color.accentColor)
+                            Text("Reply to \(HubModel.name(who))").lineLimit(1)
+                            Spacer()
+                            Button("Send") { model.sendDraft() }.disabled(model.busy)
+                        }
+                        .padding(10)
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(Color.secondary.opacity(0.3)))
+                        .frame(maxWidth: 460, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }

@@ -5100,9 +5100,9 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
     # THE SYSTEM'S COLOUR FOR A PRIMARY ACTION (Stanley, 2026-09-30): the owner's accent, as in
     # Apple's own apps — blue forced over Graphite looked wrong, and its text with it.
     ok("the primary buttons follow the system accent", ".tint(.blue)" not in hv)
-    ok("a draft offers Send to, and no Edit First", '"Edit First"' not in hv and "editDraft" not in hub)
-    ok("Send to sits under the balloon as a caption-sized link, not a button inside it",
-       '.buttonStyle(.link).font(.caption)' in hv.split('Button("Send to')[1][:200])
+    ok("a draft offers Send, and no Edit First", '"Edit First"' not in hv and "editDraft" not in hub)
+    ok("a draft's send is a row like the calendar card, under the balloon",
+       'Text("Reply to \\(HubModel.name(who))")' in hv and 'Button("Send") { model.sendDraft() }' in hv)
     ok("the title bar's status is never cut short", "Text(model.connection).foregroundStyle(.secondary).fixedSize()" in hv)
     ok("your number is shown, learned, not typed",
        'TextField("Your number"' not in swift["SettingsView.swift"]
