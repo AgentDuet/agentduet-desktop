@@ -5044,7 +5044,27 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
        'c.str("started").isEmpty ? c.str("at") : c.str("started")' in hub)
     ok("a transcript's you:/them: lines become turns", 's.hasPrefix("you:") || s.hasPrefix("them:")' in hub)
     ok("opening a person marks them seen", '"/api/seen"' in hub)
-    ok("it opens from the View menu as a preview", '"Native Hub Preview"' in app)
+    # THE HUB IS THE MAIN WINDOW (Stanley, 2026-09-29: "skip the preview"), and the HTML hub
+    # page is not loaded on the Mac any more — it runs its own phone and would ring beside ours.
+    ok("the native hub is the app's window once setup is done",
+       'if cur.bool("needs_setup") { self.showSetup(rerun: false) } else { self.showHub(api) }' in app)
+    ok("and there is no preview any more", "Native Hub Preview" not in app)
+    ok("it replies and asks through the same routes the page used",
+       all(r in hub for r in ('"/api/send"', '"/api/chat"', '"/api/proposal"', '"/api/chat_history"')))
+    ok("a draft is sent only through 'send it', the one guarded path",
+       '["message": "send it", "viewing": who.str("who")]' in hub)
+    ph = swift["PhoneModel.swift"]
+    ok("the phone uses the page's own socket", 'appendingPathComponent("/api/phone")' in ph)
+    ok("and its messages: answer, decline, hang up",
+       all(f'["type": "{t}"]' in ph for t in ("answer", "decline", "hangup")))
+    ok("audio on the wire is 24 kHz mono 16-bit, as the SDK carries",
+       "AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 24000, channels: 1" in ph)
+    ok("with echo cancellation, as the page's echoCancellation gave",
+       "setVoiceProcessingEnabled(true)" in ph)
+    ok("a call that cannot be taken here passes through rather than ringing out",
+       'self.error = "Microphone not available"\n            send(["type": "decline"])' in ph)
+    ok("a ringing call brings the hub forward", "phone.onRing = { [weak self] in self?.bringForward() }"
+       in swift["HubWindow.swift"])
     hv = swift["HubView.swift"]
     ok("its toolbar holds AgentDuet's controls: the mic light, answering here, Settings",
        'model.micOK ? "mic.fill" : "mic.slash.fill"' in hv and 'Text("Answer Calls Here")' in hv

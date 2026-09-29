@@ -1,3 +1,4 @@
+import AVFoundation
 import AppKit
 import Foundation
 
@@ -22,9 +23,22 @@ import Foundation
         var text: String
     }
 
+    /// NOT A PERSON, so pinned above the list rather than sorted into it.
+    static let assistant = "__assistant__"
+
     @Published private(set) var people: [JSON] = []
     @Published private(set) var panel: JSON = [:]
-    @Published var picked: String?
+    @Published var picked: String? = HubModel.assistant
+    /// The assistant's conversation (run/owner_chat.json, on the daemon).
+    @Published private(set) var turns: [JSON] = []
+    /// What the assistant proposes and is waiting on the owner to approve.
+    @Published private(set) var proposals: [JSON] = []
+    /// The message box's text, and the question the assistant is answering right now.
+    @Published var draft = ""
+    @Published private(set) var busy = false
+    @Published private(set) var pendingQuestion = ""
+    /// The last PERSON opened, so "her" and "this person" in a question resolve to them.
+    private(set) var lastPerson = ""
     @Published var search = ""
     /// Settings, which the app opens.
     var openSettings: (() -> Void)?
@@ -49,11 +63,14 @@ import Foundation
     func load() async {
         async let t = api.get("/api/threads")
         async let p = api.get("/api/panel")
-        let (threads, panel) = await (t, p)
+        async let h = api.get("/api/chat_history")
+        let (threads, panel, history) = await (t, p, h)
         people = threads["people"] as? [JSON] ?? []
         self.panel = panel
-        if picked == nil || !people.contains(where: { $0.str("who") == picked }) {
-            picked = people.first?.str("who")
+        // NOT WHILE A TURN IS IN FLIGHT: the pending question is this window's own state.
+        if !busy { turns = history["turns"] as? [JSON] ?? turns }
+        if picked != Self.assistant, !people.contains(where: { $0.str("who") == picked }) {
+            picked = Self.assistant
         }
         markSeen()
     }
@@ -170,6 +187,11 @@ import Foundation
 
     /// The owner's intent, saved as set; whether they can be heard is the light beside it.
     func setAnswerHere(_ on: Bool) {
+        // ASKED NOW, not over a ringing call: macOS asks for the microphone the first time, and
+        // that prompt belongs to the moment the owner opted in.
+        if on, AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
+            AVCaptureDevice.requestAccess(for: .audio) { _ in }
+        }
         Task {
             _ = await api.post("/api/setup/setting", ["field": "answer_here", "value": on ? "yes" : "no"])
             await load()
@@ -187,7 +209,101 @@ import Foundation
 
     func pick(_ who: String?) {
         picked = who
+        if let who, who != Self.assistant { lastPerson = who }
+        notice = nil
         markSeen()
+    }
+
+    var onAssistant: Bool { picked == Self.assistant }
+
+    // MARK: - the message box
+
+    /// Whether the assistant can answer: a model is attached.
+    var modelReady: Bool { panel.obj("model").bool("configured") }
+
+    var placeholder: String {
+        if let p = person { return "Message \(Self.name(p))…" }
+        if modelReady { return "Ask about your calls…" }
+        // `job` is JSON null when nothing is downloading, which is not Swift's nil.
+        return panel.obj("model").obj("pick")["job"] is JSON ? "" : "Download the model in Settings"
+    }
+
+    var canSend: Bool {
+        !busy && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (!onAssistant || modelReady)
+    }
+
+    /// A REPLY TO A PERSON, or a question to the assistant — which of them is open decides, so it
+    /// cannot be got wrong: the assistant never sends, and a reply never asks.
+    func send() {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard canSend else { return }
+        draft = ""
+        busy = true
+        notice = nil
+        Task {
+            defer { busy = false; pendingQuestion = "" }
+            if let who = picked, who != Self.assistant {
+                let r = await api.post("/api/send", ["asker": who, "text": text])
+                // WHAT BECAME OF IT: sent, or held because there is no conversation to reply into.
+                if !r.str("note").isEmpty { notice = .init(ok: !r.bool("held"), text: r.str("note")) }
+                else if r["ok"] as? Bool == false { notice = .init(ok: false, text: r.str("message")) }
+                await load()
+                return
+            }
+            pendingQuestion = text
+            let r = await api.post("/api/chat", ["message": text, "viewing": lastPerson])
+            proposals = r["proposals"] as? [JSON] ?? proposals
+            if r["reply"] == nil, r["ok"] as? Bool == false {
+                notice = .init(ok: false, text: r.str("message"))
+            }
+            let history = await api.get("/api/chat_history")
+            turns = history["turns"] as? [JSON] ?? turns
+        }
+    }
+
+    // MARK: - the assistant's drafts and proposals
+
+    /// Who a draft would go to: the last person opened, else the one person waiting for a reply.
+    var replyTarget: JSON? {
+        if !lastPerson.isEmpty { return people.first { $0.str("who") == lastPerson } }
+        let waiting = people.filter { p in
+            (p["messages"] as? [JSON] ?? []).contains { !$0.str("them").isEmpty && $0.str("us").isEmpty }
+        }
+        return waiting.count == 1 ? waiting[0] : nil
+    }
+
+    /// THROUGH THE SAME GUARDED PATH as typing "send it", so there is one set of checks.
+    func sendDraft() {
+        guard let who = replyTarget else { return }
+        busy = true
+        Task {
+            _ = await api.post("/api/chat", ["message": "send it", "viewing": who.str("who")])
+            let history = await api.get("/api/chat_history")
+            turns = history["turns"] as? [JSON] ?? turns
+            busy = false
+            await load()
+        }
+    }
+
+    /// The draft into the person's message box, to be edited and sent by the owner.
+    func editDraft(_ text: String) {
+        guard let who = replyTarget else { return }
+        pick(who.str("who"))
+        draft = text
+    }
+
+    func decide(_ proposal: JSON, approve: Bool) {
+        Task {
+            let r = await api.post("/api/proposal", ["id": proposal.str("id"), "approve": approve])
+            proposals = r["proposals"] as? [JSON] ?? []
+            // SAY WHAT HAPPENED, or a refused tool looks exactly like one that worked.
+            let m = r.str("message")
+            if approve, !m.isEmpty {
+                let bad = ["Not opened", "Could not", "Cannot", "tool error", "Unknown tool", "That proposal"]
+                    .contains { m.hasPrefix($0) }
+                notice = .init(ok: !bad, text: m)
+            }
+        }
     }
 
     /// Edit's Save. Empty removes the typed name, so the Contacts name or the number shows again.

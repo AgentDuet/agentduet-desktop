@@ -123,6 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        hubWindow.shutDown()
         daemon.stop()
     }
 
@@ -177,9 +178,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         menu.addItem(.separator())
         menu.addItem(withTitle: "Open AgentDuet", action: #selector(openWindow), keyEquivalent: "")
         menu.addItem(withTitle: "Settings…", action: #selector(openSettingsItem), keyEquivalent: "")
-        // HERE AS WELL AS IN View: a menu-bar app's own menus are not shown at the top of the
-        // screen, so this menu is the one place the preview can be seen and chosen.
-        menu.addItem(withTitle: "Native Hub Preview", action: #selector(openHubPreview), keyEquivalent: "")
         loginItem = NSMenuItem(title: "Start at Login", action: #selector(toggleLoginItem),
                                keyEquivalent: "")
         menu.addItem(loginItem)
@@ -190,8 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // responder-chain message and finds NSApp on its own.
         for item in menu.items
         where item.action == #selector(openWindow) || item.action == #selector(toggleLoginItem)
-              || item.action == #selector(openRelease) || item.action == #selector(openSettingsItem)
-              || item.action == #selector(openHubPreview) {
+              || item.action == #selector(openRelease) || item.action == #selector(openSettingsItem) {
             item.target = self
         }
         statusItem.menu = menu
@@ -298,14 +295,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         "Answering — \(url.host ?? "127.0.0.1"):\(url.port ?? 8899)"
     }
 
-    /// Bring the window back after it was closed. Works because `isReleasedWhenClosed` is false
-    /// — otherwise this would message a deallocated window and crash.
+    /// Bring the hub back after it was closed — or setup, on a first run not yet finished. The
+    /// web window is only the "Starting…" and "could not start" screen now; once the daemon
+    /// answers, the hub is the app's window.
     @objc private func openWindow() {
         if setupPending { showSetup(rerun: false); return }
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        // Reopening lays the titlebar out afresh, so the lights need putting back.
-        centreWindowButtons()
+        guard let url = siteURL, let api = DaemonAPI(site: url) else {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            centreWindowButtons()
+            return
+        }
+        showHub(api)
+    }
+
+    /// THE HUB IS NATIVE (2026-09-29). The HTML hub page is NOT loaded any more: it runs its own
+    /// phone on the same socket, and would ring beside the native one.
+    private func showHub(_ api: DaemonAPI) {
+        window.orderOut(nil)
+        hubWindow.openSettings = { [weak self] in self?.openSettings(nil) }
+        hubWindow.show(api: api)
     }
 
     // MARK: - the page asking the shell
@@ -372,13 +381,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         guard let api = DaemonAPI(site: url) else { webView.load(URLRequest(url: url)); return }
         Task { @MainActor in
             let cur = await api.get("/api/setup/current")
-            if cur.bool("needs_setup") { self.showSetup(rerun: false) }
-            else {
-                self.webView.load(URLRequest(url: url))
-                // FOR A LOOK WITHOUT CLICKING: `open … --args --open-hub-preview` opens the
-                // native hub at launch, so it can be screenshotted from a script.
-                if CommandLine.arguments.contains("--open-hub-preview") { self.openHubPreview() }
-            }
+            if cur.bool("needs_setup") { self.showSetup(rerun: false) } else { self.showHub(api) }
         }
     }
 
@@ -388,9 +391,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         settingsWindow.close()
         window.orderOut(nil)
         setupWindow.onFinish = { [weak self] in
-            guard let self, let url = self.siteURL else { return }
+            guard let self else { return }
             self.setupPending = false
-            self.webView.load(URLRequest(url: url))
             self.openWindow()
         }
         setupWindow.onQuit = { NSApp.terminate(nil) }
@@ -401,19 +403,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     @objc private func openSettingsItem() { openSettings(nil) }
 
-    @objc private func openHubPreview() {
-        guard let url = siteURL, let api = DaemonAPI(site: url) else { return }
-        hubWindow.openSettings = { [weak self] in self?.openSettings(nil) }
-        hubWindow.show(api: api)
-    }
-
     /// THE NATIVE SETTINGS (2026-09-29), from Cmd-comma, the menu bar menu, or the page's own
     /// Settings button. Needs the daemon's address; before it has one there is nothing to set.
     private func openSettings(_ section: SettingsModel.Section?) {
         guard let url = siteURL, let api = DaemonAPI(site: url) else { return }
         settingsWindow.onClose = { [weak self] in
-            // What changed there — a name, a folder, a sign-in — shows in the main window now.
-            self?.webView.evaluateJavaScript("window.agentduetSettingsClosed && window.agentduetSettingsClosed()")
+            // What changed there — a name, a folder, a sign-in — shows in the hub now.
+            self?.hubWindow.reload()
         }
         settingsWindow.show(api: api, host: self, section: section)
     }
@@ -633,6 +629,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     // MARK: - menu
 
     @objc private func reload() {
+        if hubWindow.isVisible { hubWindow.reload(); return }
         if let url = siteURL { webView.load(URLRequest(url: url)) } else { webView.reload() }
     }
 
@@ -686,12 +683,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let viewItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
         viewMenu.addItem(withTitle: "Reload", action: #selector(reload), keyEquivalent: "r")
-        viewMenu.addItem(.separator())
-        // THE NATIVE HUB, A PREVIEW until it can reply and take calls (see HubWindow).
-        let hubItem = NSMenuItem(title: "Native Hub Preview", action: #selector(openHubPreview),
-                                 keyEquivalent: "H")          // Cmd-Shift-H
-        hubItem.target = self
-        viewMenu.addItem(hubItem)
         viewItem.submenu = viewMenu
         main.addItem(viewItem)
 

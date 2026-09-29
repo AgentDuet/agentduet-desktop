@@ -142,9 +142,10 @@ be able to do has to work in `init`.
 **The single-codebase rule is dropped: each platform gets its best UI.** On a Mac, Settings and
 setup are native SwiftUI windows (`macos/Sources/AgentDuetShell/Settings*.swift`, `Setup*.swift`).
 Settings opens with Cmd-comma, the menu bar menu or the hub's Settings button; setup is shown
-whenever the daemon's `needs_setup` says so, and a link to `/setup` opens it. The hub is next
-(reading, then writing, then the in-app phone). The HTML pages stay for every host without the
-Swift shell. **The daemon's `/api/*` is the contract between them:** a setting's rule lives in
+whenever the daemon's `needs_setup` says so, and a link to `/setup` opens it. **The hub is native
+too** (`Hub*.swift`, `PhoneModel.swift`), on the Contacts layout, and is the app's main window;
+the HTML hub page is NOT loaded on the Mac, because it runs its own phone on the same socket and
+would ring beside the native one. The HTML pages stay for every host without the Swift shell. **The daemon's `/api/*` is the contract between them:** a setting's rule lives in
 the daemon, never in a UI, so a change to what a setting does is made there once.
 
 **MAC FIRST (Stanley, 2026-09-29): UI work lands in Swift only, and the HTML pages are FROZEN.**
@@ -1271,7 +1272,13 @@ claim anyway, because it is the one a regulated buyer is actually asking about.
       `on_incoming_call`, and one connector has one handler, so answering and carrying are
       mutually exclusive per install. That is a MODE, not a preference.
 - [ ] **Answer a carried call IN THE APP — BUILT 2026-09-24, AND WORKING ON A REAL CALL THE SAME
-      DAY.** At 15:50 a call from `+6596918851` rang in the native dev window, was answered there,
+      DAY.** **NATIVE SINCE 2026-09-29, AND THE NATIVE PHONE HAS NOT YET CARRIED A REAL CALL.**
+      `PhoneModel.swift` speaks the page's protocol on the same `/api/phone` socket, with the audio
+      engine's voice processing in place of the browser's echo cancellation. Everything below was
+      proven with the PAGE's phone; ring, answer, both sides recorded, hang-up and the ring-out
+      fallback all need proving again natively. One behaviour changed on purpose: the native phone
+      stays connected while the app runs, so a call rings with the window closed and brings it
+      forward — the page rang only while a page was open. At 15:50 a call from `+6596918851` rang in the native dev window, was answered there,
       and recorded both sides with real audio (owner peak 20,382, caller 18,918) — through the
       signed app's microphone, so the entitlement, usage string and permission handler all hold.
       The first attempt recorded the owner as exact zeros: a closed lid (see Gotchas). A

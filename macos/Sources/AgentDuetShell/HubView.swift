@@ -1,21 +1,25 @@
 import SwiftUI
 
-/// The native hub (2026-09-29), on the Contacts layout: a plain list of people on the left, and
-/// the chosen person in a rounded box on the right — their avatar, name and number, then the calls
-/// and messages between you, with Edit in the toolbar.
+/// The hub (2026-09-29), on the Contacts layout: a plain list on the left — the Personal Assistant
+/// pinned first, then everyone who has called or written — and the chosen one in a rounded box on
+/// the right, with the message box at its foot. The toolbar holds AgentDuet's own controls.
 struct HubView: View {
     @ObservedObject var model: HubModel
+    @ObservedObject var phone: PhoneModel
 
     var body: some View {
-        HStack(spacing: 0) {
-            PeopleList(model: model)
-                .frame(width: 260)
-            PersonBox(model: model)
-                .padding(10)
+        VStack(spacing: 0) {
+            CallBar(phone: phone, model: model)
+            HStack(spacing: 0) {
+                PeopleList(model: model, phone: phone)
+                    .frame(width: 260)
+                PersonBox(model: model, phone: phone)
+                    .padding(10)
+            }
         }
         .frame(minWidth: 820, minHeight: 520)
-        // CONTACTS' LOOK, AGENTDUET'S CONTROLS (Stanley, 2026-09-29): the toolbar holds what the
-        // hub's title bar holds — whether you can be heard, answering here, and Settings.
+        // CONTACTS' LOOK, AGENTDUET'S CONTROLS (Stanley, 2026-09-29): whether you can be heard,
+        // answering here, and Settings.
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 if model.carry {
@@ -37,48 +41,128 @@ struct HubView: View {
     }
 }
 
+// MARK: - the call bar
+
+/// A call ringing here, or live: who, how long, and what can be done about it.
+private struct CallBar: View {
+    @ObservedObject var phone: PhoneModel
+    @ObservedObject var model: HubModel
+
+    var body: some View {
+        if phone.state == "ringing" || phone.state == "live" {
+            HStack(spacing: 10) {
+                Image(systemName: "phone.fill").foregroundStyle(.green)
+                Text(phone.state == "ringing" ? "Incoming call"
+                     : phone.mine ? "On a call with" : "Answered in another window")
+                Text(name).bold()
+                if phone.state == "live" { Elapsed(since: phone.since).foregroundStyle(.secondary) }
+                if !phone.error.isEmpty { Text(phone.error).foregroundStyle(.red) }
+                Spacer()
+                if phone.state == "ringing" {
+                    Button("Decline") { phone.decline() }
+                    Button("Answer") { phone.answer() }.keyboardShortcut(.defaultAction).tint(.green)
+                        .buttonStyle(.borderedProminent)
+                } else if phone.mine {
+                    Button(phone.muted ? "Unmute" : "Mute") { phone.muted.toggle() }
+                    Button("Hang Up") { phone.hangUp() }.tint(.red).buttonStyle(.borderedProminent)
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+            .background(Color.green.opacity(0.12))
+        }
+    }
+
+    /// The caller's name where there is one.
+    private var name: String {
+        if let p = model.people.first(where: { $0.str("who") == phone.from }) { return HubModel.name(p) }
+        return phone.from
+    }
+}
+
+private struct Elapsed: View {
+    let since: Double
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { ctx in
+            let s = max(0, Int(ctx.date.timeIntervalSince1970 - since))
+            Text(String(format: "%d:%02d", s / 60, s % 60)).monospacedDigit()
+        }
+    }
+}
+
 // MARK: - the list
 
 private struct PeopleList: View {
     @ObservedObject var model: HubModel
+    @ObservedObject var phone: PhoneModel
 
     var body: some View {
-        // ROWS WITH THEIR OWN HIGHLIGHT, as Contacts draws them: a rounded grey band on the one
-        // chosen, the same whether or not the window is in front.
         ScrollView {
             LazyVStack(spacing: 2) {
-                ForEach(model.shown.indices, id: \.self) { i in
-                    let p = model.shown[i]
+                row(on: model.onAssistant, tap: { model.pick(HubModel.assistant) }) {
+                    HStack(spacing: 10) {
+                        ZStack {
+                            Circle().fill(LinearGradient(colors: [.purple, .blue], startPoint: .top, endPoint: .bottom))
+                            Image(systemName: "sparkles").foregroundStyle(.white).font(.system(size: 15))
+                        }
+                        .frame(width: 32, height: 32)
+                        Text("Personal Assistant").font(.body.weight(.semibold))
+                        Spacer()
+                    }
+                    .padding(.vertical, 6)
+                }
+                Divider().padding(.vertical, 4)
+                ForEach(everyone.indices, id: \.self) { i in
+                    let p = everyone[i]
                     let on = p.str("who") == model.picked
-                    PersonRow(person: p, picked: on)
-                        .padding(.horizontal, 8)
-                        .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(on ? Color.primary.opacity(0.12) : Color.clear))
-                        .contentShape(Rectangle())
-                        .onTapGesture { model.pick(p.str("who")) }
+                    row(on: on, tap: { model.pick(p.str("who")) }) {
+                        PersonRow(person: p, picked: on, onCall: phone.onACall(p.str("who")))
+                    }
+                }
+                if everyone.isEmpty {
+                    Text("Nobody yet.").foregroundStyle(.secondary).padding(.top, 8)
                 }
             }
             .padding(8)
         }
-        .overlay {
-            if model.shown.isEmpty {
-                Text(model.search.isEmpty ? "Nobody yet." : "No one matches.").foregroundStyle(.secondary)
-            }
+    }
+
+    /// EVERYONE, plus anyone on a call right now who has no history yet — a first-time caller
+    /// has no row until the call is filed, and the whole point is to show them while it is on.
+    private var everyone: [JSON] {
+        var list = model.people
+        for c in phone.live.values where !c.ended && !list.contains(where: { $0.str("who") == c.who }) {
+            list.insert(["who": c.who, "display": "", "calls": [JSON](), "messages": [JSON](), "last": ""], at: 0)
         }
+        return list
+    }
+
+    /// ROWS WITH THEIR OWN HIGHLIGHT, as Contacts draws them: a rounded grey band on the chosen one.
+    private func row<C: View>(on: Bool, tap: @escaping () -> Void, @ViewBuilder _ content: () -> C) -> some View {
+        content()
+            .padding(.horizontal, 8)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(on ? Color.primary.opacity(0.12) : Color.clear))
+            .contentShape(Rectangle())
+            .onTapGesture(perform: tap)
     }
 }
 
 private struct PersonRow: View {
     let person: JSON
     let picked: Bool
+    let onCall: Bool
 
     var body: some View {
         HStack(spacing: 10) {
             Avatar(person: person, size: 32)
             VStack(alignment: .leading, spacing: 2) {
                 Text(HubModel.name(person)).font(.body.weight(.semibold)).lineLimit(1)
-                Text("\(HubModel.counts(person)) · \(HubModel.when(person.str("last")))")
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                if onCall {
+                    Label("On a call", systemImage: "phone.fill").font(.caption).foregroundStyle(.green)
+                } else {
+                    Text("\(HubModel.counts(person)) · \(HubModel.when(person.str("last")))")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
             }
             Spacer(minLength: 4)
             // NEW SINCE LAST LOOKED, until the owner opens that person.
@@ -87,7 +171,7 @@ private struct PersonRow: View {
                 Text(unread > 99 ? "99+" : "\(unread)")
                     .font(.caption2.bold()).foregroundStyle(.white)
                     .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Capsule().fill(Color.accentColor))
+                    .background(Capsule().fill(Color.blue))
             }
         }
         .padding(.vertical, 6)
@@ -118,29 +202,240 @@ private struct Avatar: View {
 
 private struct PersonBox: View {
     @ObservedObject var model: HubModel
+    @ObservedObject var phone: PhoneModel
 
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color(nsColor: .controlBackgroundColor))
                 .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
-            if let p = model.person {
-                Conversation(model: model, person: p)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            } else {
-                Text("Nobody has called or written yet.").foregroundStyle(.secondary)
+            VStack(spacing: 0) {
+                if model.onAssistant {
+                    AssistantPane(model: model)
+                } else if let p = model.person {
+                    Conversation(model: model, phone: phone, person: p)
+                } else if let who = model.picked {
+                    // A first-time caller, on a call: nothing filed yet but the call itself.
+                    Conversation(model: model, phone: phone,
+                                 person: ["who": who, "display": "", "calls": [JSON](), "messages": [JSON]()])
+                }
+                Composer(model: model)
             }
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
     }
 }
 
+// MARK: - the message box
+
+/// One box, whose meaning is whoever is open: a question to the assistant, or a reply to a person.
+private struct Composer: View {
+    @ObservedObject var model: HubModel
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(spacing: 6) {
+            if let n = model.notice {
+                Text(n.text).font(.callout).foregroundStyle(n.ok ? Color.secondary : Color.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField(model.placeholder, text: $model.draft, axis: .vertical)
+                    .lineLimit(1...6)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color.secondary.opacity(0.35)))
+                    .focused($focused)
+                    .onSubmit { model.send() }
+                    .disabled(model.onAssistant && !model.modelReady)
+                Button("Send") { model.send() }
+                    .disabled(!model.canSend)
+                    .keyboardShortcut(.return, modifiers: .command)
+            }
+        }
+        .padding(12)
+        .background(.bar)
+        .onChange(of: model.picked) { _ in focused = true }
+    }
+}
+
+// MARK: - the assistant
+
+private struct AssistantPane: View {
+    @ObservedObject var model: HubModel
+
+    var body: some View {
+        ScrollViewReader { reader in
+            ScrollView {
+                VStack(spacing: 12) {
+                    VStack(spacing: 6) {
+                        ZStack {
+                            Circle().fill(LinearGradient(colors: [.purple, .blue], startPoint: .top, endPoint: .bottom))
+                            Image(systemName: "sparkles").foregroundStyle(.white).font(.system(size: 36))
+                        }
+                        .frame(width: 88, height: 88)
+                        Text("Personal Assistant").font(.title.bold())
+                    }
+                    .padding(.top, 24).padding(.bottom, 6)
+                    Downloads(model: model)
+                    ForEach(model.turns.indices, id: \.self) { i in
+                        TurnView(model: model, turn: model.turns[i], last: i == model.turns.count - 1)
+                    }
+                    if !model.pendingQuestion.isEmpty {
+                        Balloon(text: model.pendingQuestion, mine: true, caption: "")
+                        HStack { ProgressView().controlSize(.small); Spacer() }
+                    }
+                    ForEach(model.proposals.indices, id: \.self) { i in
+                        ProposalCard(model: model, proposal: model.proposals[i])
+                    }
+                    Color.clear.frame(height: 1).id("end")
+                }
+                .frame(maxWidth: 640)
+                .padding(.horizontal, 24).padding(.bottom, 16)
+                .frame(maxWidth: .infinity)
+            }
+            .onAppear { reader.scrollTo("end", anchor: .bottom) }
+            .onChange(of: model.turns.count) { _ in withAnimation { reader.scrollTo("end", anchor: .bottom) } }
+            .onChange(of: model.pendingQuestion) { _ in reader.scrollTo("end", anchor: .bottom) }
+        }
+    }
+}
+
+/// The two models a first install fetches, while either is still arriving.
+private struct Downloads: View {
+    @ObservedObject var model: HubModel
+    var body: some View {
+        let pick = model.panel.obj("model").obj("pick"), stt = model.panel.obj("stt")
+        VStack(spacing: 8) {
+            if let job = pick["job"] as? JSON, !pick.bool("downloaded") {
+                bar(pick.str("name"), job.num("done_mb"), job.num("total_mb"))
+            }
+            if stt.bool("running"), !stt.bool("cached") {
+                bar(stt.str("name"), stt.num("got_mb"), stt.num("mb"))
+            }
+        }
+    }
+    private func bar(_ name: String, _ done: Double, _ total: Double) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(name); Spacer()
+                Text("\(Int(done)) / \(Int(total)) MB").monospacedDigit()
+            }
+            .font(.caption).foregroundStyle(.secondary)
+            ProgressView(value: total > 0 ? min(done / total, 1) : 0)
+        }
+    }
+}
+
+private struct TurnView: View {
+    @ObservedObject var model: HubModel
+    let turn: JSON
+    let last: Bool
+
+    var body: some View {
+        if turn["break"] != nil {
+            HStack { line; Text("New conversation").font(.caption).foregroundStyle(.secondary); line }
+        } else {
+            VStack(spacing: 8) {
+                Balloon(text: turn.str("q"), mine: true, caption: "")
+                if !turn.str("a").isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if turn.bool("draft") {
+                            Text(draftLabel).font(.caption.weight(.semibold))
+                                .foregroundStyle(turn.bool("sent") ? Color.green : Color.blue)
+                        }
+                        Text(turn.str("a")).textSelection(.enabled)
+                        // ONLY UNDER THE LAST ANSWER, and only for a draft that has not gone:
+                        // each button says what it does, and both need a person to press it.
+                        if last, turn.bool("draft"), !turn.bool("sent"), !turn.bool("held"),
+                           let who = model.replyTarget {
+                            HStack {
+                                Button("Send to \(HubModel.name(who))") { model.sendDraft() }
+                                    .disabled(model.busy)
+                                Button("Edit First") { model.editDraft(turn.str("a")) }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color(nsColor: .quaternaryLabelColor)))
+                    .frame(maxWidth: 460, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    private var line: some View { Rectangle().fill(Color.secondary.opacity(0.3)).frame(height: 1) }
+
+    private var draftLabel: String {
+        let who = turn.str("draft_for_name")
+        if turn.bool("sent") { return who.isEmpty ? "Sent" : "Sent to \(who)" }
+        if turn.bool("held") { return who.isEmpty ? "Queued" : "Queued for \(who)" }
+        return (who.isEmpty ? "Draft reply" : "Draft reply to \(who)") + " — not sent"
+    }
+}
+
+/// A proposal reads differently per tool, and the difference is the point of the card: a skill
+/// changes how the assistant WORKS, so its card shows the words and what the owner asked.
+private struct ProposalCard: View {
+    @ObservedObject var model: HubModel
+    let proposal: JSON
+
+    static let kinds: [String: (String, String, String)] = [
+        "add_skill": ("Follow this from now on", "a new skill", "Do It"),
+        "edit_skill": ("Change how you work", "edits a skill", "Do It"),
+        "forget_skill": ("Stop following this", "removes a skill", "Do It"),
+        "switch_skill": ("Switch this off", "keeps it but stops following it", "Do It"),
+        "add_to_calendar": ("Open this calendar event", "opens Google Calendar prefilled; you save it", "Open It"),
+        "draft_email": ("Open this email draft", "opens your mail client prefilled; you send it", "Open It"),
+    ]
+
+    var body: some View {
+        let tool = proposal.str("tool"), a = proposal.obj("args")
+        let (title, kind, verb0) = Self.kinds[tool] ?? ("Add to your shared notes", a.str("file").isEmpty ? "knowledge" : a.str("file"), "Add It")
+        // A CARD THAT ONLY OPENS SOMETHING STAYS after it is used (issue #9), and says so.
+        let reopen = tool == "add_to_calendar" || tool == "draft_email"
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).bold()
+            Text(body(tool, a)).textSelection(.enabled)
+            Text("\(kind) · \(proposal.str("asked").isEmpty ? "proposed after reading a call" : "you asked: “\(proposal.str("asked"))”")\(proposal.bool("opened") ? " · opened" : "")")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button(proposal.bool("opened") ? "Open Again" : verb0) { model.decide(proposal, approve: true) }
+                Button(reopen ? "Dismiss" : "Discard") { model.decide(proposal, approve: false) }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.blue.opacity(0.45)))
+    }
+
+    private func body(_ tool: String, _ a: JSON) -> String {
+        switch tool {
+        case "add_skill": return "\(a.str("name")) — \(a.str("how"))"
+        case "edit_skill": return "\(a.str("name")): \(a.str("old")) → \(a.str("new").isEmpty ? "(deleted)" : a.str("new"))"
+        case "forget_skill", "switch_skill": return a.str("name")
+        case "add_to_calendar": return "\(a.str("title")) — \(a.str("start"))\(a.str("end").isEmpty ? "" : " to " + a.str("end"))"
+        case "draft_email": return "\(a.str("to")) — \(a.str("subject").isEmpty ? "(no subject)" : a.str("subject"))"
+        default: return [a.str("fact"), a.str("new"), a.str("old")].first { !$0.isEmpty } ?? ""
+        }
+    }
+}
+
+// MARK: - a person's conversation
+
 private struct Conversation: View {
     @ObservedObject var model: HubModel
+    @ObservedObject var phone: PhoneModel
     let person: JSON
     @StateObject private var editing = Local(false)
 
     var body: some View {
         let items = model.items(person)
+        let calls = person["calls"] as? [JSON] ?? []
+        let liveNow = phone.liveCalls(for: person.str("who"), history: calls)
         ScrollViewReader { reader in
             ScrollView {
                 VStack(spacing: 14) {
@@ -148,33 +443,49 @@ private struct Conversation: View {
                         Avatar(person: person, size: 88)
                         HStack(spacing: 6) {
                             Text(HubModel.name(person)).font(.title.bold()).textSelection(.enabled)
-                            Button { editing.value = true } label: { Image(systemName: "pencil") }
-                                .buttonStyle(.borderless).foregroundStyle(.secondary).help("Rename")
+                            if !person.str("display").isEmpty || !calls.isEmpty || !(person["messages"] as? [JSON] ?? []).isEmpty {
+                                Button { editing.value = true } label: { Image(systemName: "pencil") }
+                                    .buttonStyle(.borderless).foregroundStyle(.secondary).help("Rename")
+                            }
                         }
                         Text(HubModel.subtitle(person)).foregroundStyle(.secondary).textSelection(.enabled)
                     }
                     .padding(.top, 24).padding(.bottom, 6)
-                    if let n = model.notice {
-                        Text(n.text).font(.callout).foregroundStyle(n.ok ? Color.secondary : Color.red)
-                    }
                     ForEach(items) { item in
                         Group {
-                            if let c = item.call { CallCard(model: model, call: c) }
-                            else if let m = item.message { MessageRows(model: model, message: m) }
+                            if let c = item.call {
+                                CallCard(model: model, call: c,
+                                         captions: phone.live[c.str("call_id")]?.captions ?? [])
+                            } else if let m = item.message { MessageRows(model: model, message: m) }
                         }
                         .id(item.id)
                     }
-                    if items.isEmpty { Text("Nothing yet.").foregroundStyle(.secondary) }
+                    // A CALL NOT YET IN THE HISTORY shows here, with its captions as they come.
+                    ForEach(liveNow, id: \.0) { _, c in
+                        VStack(alignment: .leading, spacing: 10) {
+                            Label(c.ended ? "Call ended" : "On a call", systemImage: "phone.fill")
+                                .font(.subheadline.weight(.semibold)).foregroundStyle(c.ended ? Color.secondary : Color.green)
+                            ForEach(c.captions) { cap in Balloon(text: cap.text, mine: cap.mine, caption: "") }
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(Color.green.opacity(c.ended ? 0.2 : 0.5)))
+                    }
+                    if items.isEmpty && liveNow.isEmpty { Text("Nothing yet.").foregroundStyle(.secondary) }
                     Color.clear.frame(height: 1).id("end")
                 }
                 .frame(maxWidth: 640)
-                .padding(.horizontal, 24).padding(.bottom, 24)
+                .padding(.horizontal, 24).padding(.bottom, 16)
                 .frame(maxWidth: .infinity)
             }
             // THE LATEST AT THE BOTTOM, in view on opening and when something new arrives.
             .onAppear { reader.scrollTo("end", anchor: .bottom) }
             .onChange(of: items.count) { _ in withAnimation { reader.scrollTo("end", anchor: .bottom) } }
             .onChange(of: person.str("who")) { _ in reader.scrollTo("end", anchor: .bottom) }
+            .onChange(of: liveNow.map { $0.1.captions.count }.reduce(0, +)) { _ in
+                reader.scrollTo("end", anchor: .bottom)
+            }
         }
         .sheet(isPresented: $editing.value) { RenameSheet(model: model) }
     }
@@ -185,6 +496,8 @@ private struct Conversation: View {
 private struct CallCard: View {
     @ObservedObject var model: HubModel
     let call: JSON
+    /// This call's live captions, which stand in until its kept transcript lands.
+    var captions: [PhoneModel.Caption] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -194,7 +507,9 @@ private struct CallCard: View {
                 Spacer()
                 Text(HubModel.callMeta(call)).font(.caption).foregroundStyle(.secondary)
             }
-            if let state = HubModel.callState(call) {
+            if call.str("transcript").isEmpty, !captions.isEmpty {
+                ForEach(captions) { c in Balloon(text: c.text, mine: c.mine, caption: "") }
+            } else if let state = HubModel.callState(call) {
                 Text(state).foregroundStyle(.secondary).italic()
             } else {
                 let turns = HubModel.turns(call.str("transcript"))
