@@ -5914,6 +5914,19 @@ def test_unread_badge() -> None:
     ok("the MIME files are filtered before anything imports aiohttp",
        entry.index("_readable_mime_files()\n") < entry.index("from agentduet_desktop.cli import main"))
     ok("by opening them, not os.access", 'with open(path, "rb")' in entry)
+    # DOCUMENTS IN THE SANDBOX: the panel is the permission, opened by the shell, and the grant
+    # restored BEFORE the daemon starts so the daemon inherits it (proven 2026-09-29).
+    shell = (pathlib.Path(__file__).parent.parent / "macos" / "Sources" / "AgentDuetShell")
+    fa = (shell / "FolderAccess.swift").read_text()
+    app_d = (shell / "AppDelegate.swift").read_text()
+    ok("the shell opens the panel in Documents, button Allow",
+       'panel.prompt = "Allow"' in fa and 'appendingPathComponent("Documents")' in fa)
+    ok("and restores the grant before the daemon starts",
+       app_d.index("FolderAccess.restore(home: daemon.instanceHome)") < app_d.index("self.daemon.start()"))
+    ok("the page can ask the shell for one thing only", 'body["type"] as? String == "pickDocuments"' in app_d)
+    setup_p = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "setup.html").read_text()
+    ok("setup's Allow asks the shell when sandboxed",
+       "shell.postMessage({type: 'pickDocuments'})" in setup_p)
     ok("the App Store build asks for no hardened-runtime exception",
        "cs." not in (pathlib.Path(__file__).parent.parent / "packaging"
                      / "entitlements-appstore.plist").read_text().split("-->", 1)[1])

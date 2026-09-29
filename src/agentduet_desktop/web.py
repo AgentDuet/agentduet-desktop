@@ -359,6 +359,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response({"ok": True})
         return web.json_response({
             "applies": macperms.applies(),
+            # In the sandbox the Documents row asks the SHELL for the system panel.
+            "sandboxed": macperms.sandboxed(),
             "documents": await asyncio.to_thread(macperms.documents_state),
             "folder": str(macperms.documents_folder())})
 

@@ -19,6 +19,7 @@ sandboxed process's home directory IS its container. Nothing it does touches the
 | Gemma 4 E4B on Metal (llama.cpp) | Loads and answers |
 | Qwen3-ASR on Metal | Loads and transcribes both sides of a real call, same text as outside |
 | **No hardened runtime, none of the runtime exceptions** (JIT, unsigned memory, library validation off, dyld variables) | All of the above still works. They are not needed for an App Store build |
+| **The owner's real Documents** | Allowed in setup through the system panel; after quitting and reopening, the sandboxed daemon wrote a call's recording and transcript into `~/Documents/AgentDuet`, iCloud mark in place |
 
 **The one fix it needed.** The page server did not start at all: `aiohttp` builds its MIME table
 at import, and Python's `mimetypes` reads `/etc/apache2/mime.types`. The sandbox forbids that read,
@@ -26,6 +27,19 @@ and a forbidden file raises where a missing one is skipped, so the import failed
 had nothing to load. `entry.py` now drops the MIME files the process cannot open before anything
 imports `aiohttp`. Checked by opening the file: `os.access` reports the Unix permissions, which
 allow it, and the first version of the fix kept the very file it failed on.
+
+**How Documents works in the sandbox** (Stanley's call: ask for Documents, do not make the owner
+pick a folder). There is no entitlement for Documents, and a sandboxed app cannot raise the plain
+"would like to access your Documents folder" prompt — the system open panel IS the permission
+prompt. So setup's Documents row is unchanged, and its Allow asks the Swift shell
+(`FolderAccess.swift`, over a one-message `agentduet` handler) to open that panel already in
+Documents, titled "Location to store AgentDuet recordings and transcripts", button "Allow".
+Pressing Allow with nothing selected allows Documents; `AgentDuet` is created inside it. The
+shell saves a security-scoped bookmark and restores it on every launch BEFORE starting the
+daemon, because access a process gains is inherited only by a child started after it — which is
+also why it restarts the daemon right after the owner allows. The daemon only learns the path,
+from `run/documents-folder`. Outside the sandbox none of this runs: the Developer ID build still
+raises the ordinary prompt.
 
 The entitlements are in `packaging/entitlements-appstore.plist` (the app) and
 `packaging/entitlements-appstore-helper.plist` (the two helpers).
@@ -35,10 +49,6 @@ The entitlements are in `packaging/entitlements-appstore.plist` (the app) and
 - **Where the files live.** `~/.agentduet-desktop` becomes the container. A Developer ID owner who
   moves to the App Store build starts empty unless we migrate — and the sandboxed build cannot read
   the old folder to migrate it without the owner choosing it.
-- **The Documents default.** Inside the sandbox "Documents" is the container's own
-  (`…/Containers/…/Data/Documents/AgentDuet`), so the Permissions step would "succeed" and put
-  recordings where the owner never looks. The App Store build needs the owner to PICK the folder
-  once, remembered with a security-scoped bookmark — and the Permissions step changes with it.
 - **The folder picker and opening links.** `reveal.pick_folder` runs `osascript`, and `links._open`
   runs `open`. A folder chosen through `osascript` grants access to osascript, not to us, so the
   pick has to move into the Swift shell (`NSOpenPanel`), and links should go through

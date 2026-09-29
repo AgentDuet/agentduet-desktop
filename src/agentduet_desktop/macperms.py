@@ -52,7 +52,28 @@ def applies() -> bool:
     return sys.platform == "darwin"
 
 
+def sandboxed() -> bool:
+    """Running in Apple's sandbox — the App Store build. macOS sets this for every sandboxed
+    process, the helper daemon included."""
+    return bool(os.environ.get("APP_SANDBOX_CONTAINER_ID"))
+
+
+def _chosen() -> pathlib.Path | None:
+    """IN THE SANDBOX, the folder the owner allowed in the system panel, as the shell recorded
+    it (`FolderAccess.swift`). The shell holds the grant; this process only learns the path."""
+    try:
+        raw = (paths.RUN / "documents-folder").read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return pathlib.Path(raw) if raw else None
+
+
 def documents_folder() -> pathlib.Path:
+    """`~/Documents/AgentDuet`. In the sandbox `Path.home()` is the app's CONTAINER, so there it
+    is AgentDuet inside the folder the owner allowed — normally their real Documents."""
+    if sandboxed():
+        base = _chosen() or pathlib.Path.home() / "Documents"
+        return base if base.name == "AgentDuet" else base / "AgentDuet"
     return pathlib.Path.home() / "Documents" / "AgentDuet"
 
 
@@ -103,7 +124,9 @@ def documents_state() -> str:
     if _asking.is_set():
         return "asking"
     rec = _read().get("documents")
-    if rec is None:
+    # IN THE SANDBOX the owner has answered once the shell has recorded a folder; the panel
+    # is the question, and there is no macOS prompt to have avoided.
+    if rec is None and not (sandboxed() and _chosen()):
         return "not-asked"
     try:
         _open_documents()
@@ -120,7 +143,8 @@ def documents_state() -> str:
 
 def request_documents() -> None:
     """Ask, in the background: the call blocks until the owner answers the macOS prompt."""
-    if not applies() or _asking.is_set():
+    # IN THE SANDBOX the page asks the shell for the panel instead; there is nothing to touch here.
+    if not applies() or sandboxed() or _asking.is_set():
         return
 
     def _go() -> None:

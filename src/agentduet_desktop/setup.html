@@ -416,6 +416,7 @@
   let PERMS = {applies: false, passed: false, documents: '', mic: ''};
   fetch(`/api/permissions?t=${T}`).then(r => r.json()).then(d => {
     PERMS.applies = !!d.applies;
+    PERMS.sandboxed = !!d.sandboxed;
     PERMS.documents = d.documents || '';
     // NO PERMISSIONS STEP off macOS, so the login question goes back to Quick Setup.
     if (!PERMS.applies) $('doDone').before($('loginRow'));
@@ -441,6 +442,11 @@
     $('permsDone').disabled = doc !== 'granted';
     if ($('askDoc')) $('askDoc').onclick = async () => {
       PERMS.documents = 'asking'; drawPerms();
+      // IN THE SANDBOX (App Store build) the permission IS the system folder panel, and only the
+      // shell can open it. It answers through `agentduetPicked` once the daemon is back.
+      const shell = window.webkit && window.webkit.messageHandlers
+                    && window.webkit.messageHandlers.agentduet;
+      if (PERMS.sandboxed && shell) { shell.postMessage({type: 'pickDocuments'}); return; }
       await post('/api/permissions', {action: 'documents'});
       watchPerms();
     };
@@ -482,6 +488,14 @@
     }, 1000);
   }
   $('permsDone').onclick = () => { PERMS.passed = true; show('setup'); };
+  // THE SHELL'S ANSWER to the sandbox panel. Cancelled puts Allow back; allowed restarts the
+  // daemon with the grant, so the state is read again from it rather than assumed.
+  window.agentduetPicked = async r => {
+    if (!r || !r.ok) { PERMS.documents = 'not-asked'; drawPerms(); return; }
+    const d = await fetch(`/api/permissions?t=${T}`).then(x => x.json()).catch(() => ({}));
+    PERMS.documents = d.documents || 'not-asked';
+    drawPerms();
+  };
 
   // THE MACHINE'S PICK, from the same builder Settings uses, so the two pages cannot name
   // different models.

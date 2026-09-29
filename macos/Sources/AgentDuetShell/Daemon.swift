@@ -30,7 +30,7 @@ final class Daemon {
     // MARK: - where things are
 
     /// `$AGENTDUET_HOME`, default `~/.agentduet-desktop` — the same resolution as `paths.home()`.
-    private var instanceHome: URL {
+    var instanceHome: URL {
         if let explicit = ProcessInfo.processInfo.environment["AGENTDUET_HOME"], !explicit.isEmpty {
             return URL(fileURLWithPath: explicit)
         }
