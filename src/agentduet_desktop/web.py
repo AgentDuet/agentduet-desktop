@@ -518,6 +518,9 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             return web.json_response({"error": "unauthorised"}, status=401)
         from . import connector
         cur = tools.current_setup()
+        from . import owner as _ownr
+        # A SUGGESTION for setup's name field, never saved by itself — see owner.os_full_name.
+        cur["os_name"] = _ownr.os_full_name()
         # summary(), not describe(): this line is read by the owner, and describe() answers a
         # log's question — provider key, credential kind, client health. /api/state still
         # carries describe() for diagnostics.

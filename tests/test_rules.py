@@ -5955,6 +5955,11 @@ def test_unread_badge() -> None:
     ok("a typed recordings path is not read in the sandbox",
        rd.index("if macperms.sandboxed():") < rd.index('_sections().get("Recordings", "")'))
     setup_p = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "setup.html").read_text()
+    ok("setup asks for the owner's name, prefilled from the OS account",
+       'id="setupName"' in setup_p and "d.name || d.os_name" in setup_p)
+    ok("and saves it before a re-run leaves",
+       setup_p.index("await post('/api/setup/setting', {field: 'name', value: nm})")
+       < setup_p.index("if (DONE) { location.href = '/?t=' + T; return; }"))
     ok("setup moves past sign-in when it loads already signed in",
        "if (d.oauth && d.oauth.signed_in && $('v-login').classList.contains('on')) show('setup');" in setup_p)
     ok("setup's Allow asks the shell when sandboxed",
