@@ -29,12 +29,14 @@ struct HubView: View {
             // order: "AgentDuet ● Connected".
             ToolbarItem(placement: .navigation) {
                 HStack(spacing: 10) {
-                    Text("AgentDuet").font(.headline)
+                    Text("AgentDuet").font(.headline).fixedSize()
                     Button { model.openSettings?("account") } label: {
                         HStack(spacing: 6) {
                             Circle().fill(model.connected ? Color.green : Color.secondary)
                                 .frame(width: 7, height: 7)
-                            Text(model.connection).foregroundStyle(.secondary)
+                            // ITS OWN WIDTH: the toolbar gives an item a width, and cut
+                            // "Connected" to "Connect…".
+                            Text(model.connection).foregroundStyle(.secondary).fixedSize()
                         }
                     }
                     .buttonStyle(.plain)
@@ -403,6 +405,7 @@ private struct TurnView: View {
                            let who = model.replyTarget {
                             HStack {
                                 Button("Send to \(HubModel.name(who))") { model.sendDraft() }
+                                    .buttonStyle(.borderedProminent)
                                     .disabled(model.busy)
                                 Button("Edit First") { model.editDraft(turn.str("a")) }
                             }

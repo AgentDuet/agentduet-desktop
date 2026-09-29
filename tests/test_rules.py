@@ -3163,7 +3163,10 @@ def test_owner_writes_to_their_own_agent() -> None:
     # WA ONLY. On DDUET the participant is an account uid, never a number, so the comparison has
     # no subject there and the owner path must not be reachable.
     ok("the owner path is WhatsApp only",
-       "if dd is None and owner_settings.is_own_number(asker)" in src)
+       "if OWNER_WHATSAPP_DOOR and dd is None and owner_settings.is_own_number(asker)" in src)
+    # CLOSED FOR NOW (Stanley, 2026-09-29): the site is the only door until the number is decided.
+    from agentduet_desktop import secretary_agent as _sa_door
+    ok("and the door is closed", _sa_door.OWNER_WHATSAPP_DOOR is False)
     ok("and it goes to the owner's assistant, not the asker brain",
        "_owner_answer(question)" in src and "_owner_answer" in src)
     ok("a failure is sent back rather than swallowed",
@@ -5091,6 +5094,9 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
     ok("only the newest draft is labelled a draft",
        'turn.bool("draft") && (newestDraft || turn.bool("sent") || turn.bool("held"))' in hv)
     ok("Open Again is the blue primary button", hv.count(".buttonStyle(.borderedProminent)") >= 2)
+    ok("Send to is the blue primary button too",
+       'Button("Send to \\(HubModel.name(who))") { model.sendDraft() }\n                                    .buttonStyle(.borderedProminent)' in hv)
+    ok("the title bar's status is never cut short", "Text(model.connection).foregroundStyle(.secondary).fixedSize()" in hv)
     ok("your number is shown, learned, not typed",
        'TextField("Your number"' not in swift["SettingsView.swift"]
        and 'LabeledContent("Your number")' in swift["SettingsView.swift"])
