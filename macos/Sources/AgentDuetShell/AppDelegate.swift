@@ -71,6 +71,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private var contactsWatch: ContactsWatch?
     /// The native Settings window — see SettingsWindow.
     private let settingsWindow = SettingsWindow()
+    /// The native hub, a preview for now — see HubWindow.
+    private let hubWindow = HubWindow()
     /// The native setup window — see SetupWindow.
     private let setupWindow = SetupWindow()
     /// A first run's setup is not finished yet, so "Open AgentDuet" brings setup back rather
@@ -367,7 +369,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         Task { @MainActor in
             let cur = await api.get("/api/setup/current")
             if cur.bool("needs_setup") { self.showSetup(rerun: false) }
-            else { self.webView.load(URLRequest(url: url)) }
+            else {
+                self.webView.load(URLRequest(url: url))
+                // FOR A LOOK WITHOUT CLICKING: `open … --args --open-hub-preview` opens the
+                // native hub at launch, so it can be screenshotted from a script.
+                if CommandLine.arguments.contains("--open-hub-preview") { self.openHubPreview() }
+            }
         }
     }
 
@@ -389,6 +396,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     // MARK: - the native Settings window
 
     @objc private func openSettingsItem() { openSettings(nil) }
+
+    @objc private func openHubPreview() {
+        guard let url = siteURL, let api = DaemonAPI(site: url) else { return }
+        hubWindow.openSettings = { [weak self] in self?.openSettings(nil) }
+        hubWindow.show(api: api)
+    }
 
     /// THE NATIVE SETTINGS (2026-09-29), from Cmd-comma, the menu bar menu, or the page's own
     /// Settings button. Needs the daemon's address; before it has one there is nothing to set.
@@ -669,6 +682,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let viewItem = NSMenuItem()
         let viewMenu = NSMenu(title: "View")
         viewMenu.addItem(withTitle: "Reload", action: #selector(reload), keyEquivalent: "r")
+        viewMenu.addItem(.separator())
+        // THE NATIVE HUB, A PREVIEW until it can reply and take calls (see HubWindow).
+        let hubItem = NSMenuItem(title: "Native Hub Preview", action: #selector(openHubPreview),
+                                 keyEquivalent: "H")          // Cmd-Shift-H
+        hubItem.target = self
+        viewMenu.addItem(hubItem)
         viewItem.submenu = viewMenu
         main.addItem(viewItem)
 

@@ -5037,6 +5037,25 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
     ok("the login item is set BEFORE handover",
        setup.index('"/api/setup/login-item"') < setup.index('"/api/handover"'))
     ok("a re-run does not hand over", "if rerun { onFinish?(); return }" in setup)
+    # THE NATIVE HUB, reading (2026-09-29): a preview beside the working hub for now.
+    hub = swift["HubModel.swift"]
+    ok("the native hub reads the same people the HTML hub does", '"/api/threads"' in hub)
+    ok("and interleaves calls and messages by when a call BEGAN",
+       'c.str("started").isEmpty ? c.str("at") : c.str("started")' in hub)
+    ok("a transcript's you:/them: lines become turns", 's.hasPrefix("you:") || s.hasPrefix("them:")' in hub)
+    ok("opening a person marks them seen", '"/api/seen"' in hub)
+    ok("it opens from the View menu as a preview", '"Native Hub Preview"' in app)
+    hv = swift["HubView.swift"]
+    ok("its toolbar holds AgentDuet's controls: the mic light, answering here, Settings",
+       'model.micOK ? "mic.fill" : "mic.slash.fill"' in hv and 'Text("Answer Calls Here")' in hv
+       and 'Label("Settings", systemImage: "gearshape")' in hv)
+    ok("not Contacts' functions: no search, no Edit button",
+       ".searchable(" not in hv and 'Button("Edit")' not in hv)
+    ok("renaming is a pencil beside the name", '.help("Rename")' in hv)
+    ok("Status says Not Signed In apart from Not Connected",
+       '"Not Signed In" : "Not Connected"' in swift["SettingsModel.swift"])
+    ok("and signing out says nothing on success",
+       "Notice(ok: false, text: r.str(\"message\")) : nil" in swift["SettingsModel.swift"])
     ok("Documents is required to continue",
        ".disabled(!model.documentsAllowed)" in swift["SetupView.swift"])
 
@@ -5660,7 +5679,12 @@ def test_a_call_can_be_answered_in_the_app() -> None:
     ok("an all-zero microphone is reported as silent", "peak > 0 ? {ok: true} : {ok: false, why: 'silent'}" in check)
     # SILENT IS NOT A PERMISSION PROBLEM — a closed MacBook lid disconnects the built-in mic — so
     # only a refusal may send the owner to the Privacy settings.
-    ok("only a refusal links to Privacy settings", "m.why === 'blocked');" in onchange)
+    ok("only a refusal links to Privacy settings", "el.classList.toggle('fix', why === 'blocked');" in hub)
+    # THE LIGHT (2026-09-29): green when heard, red when not, the reason on hover.
+    ok("the microphone shows as a light with its reason on hover",
+       "el.textContent = ok ? 'mic' : 'mic_off';" in hub and "el.title = MIC_TEXT[why]" in hub)
+    icons = (pathlib.Path(__file__).parent.parent / "src/agentduet_desktop/fonts/icons.txt").read_text().split()
+    ok("both of its icons are in the font", "mic" in icons and "mic_off" in icons)
     # A NEW MICROPHONE WARMS UP IN SILENCE, so the check listens up to 3 s and stops at the first
     # sound rather than judging one fixed second.
     ok("the check waits out the warm-up", "i < 30 && !peak" in hub)
