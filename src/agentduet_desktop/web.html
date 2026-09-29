@@ -401,9 +401,19 @@
   // rounded box is the dialog, and inside it the two panes. The page itself is unchanged and
   // still works on its own at /settings; `embed=1` drops its title bar.
   function openSettings(sec){
+    // ON A MAC, THE NATIVE SETTINGS WINDOW (2026-09-29): the shell draws it with macOS's own
+    // controls. The HTML dialog stays for every other host — a browser, pywebview, Windows.
+    const shell = window.webkit && window.webkit.messageHandlers
+                  && window.webkit.messageHandlers.agentduet;
+    if (window.agentduetNativeSettings && shell) {
+      shell.postMessage({type: 'openSettings', section: sec || ''});
+      return;
+    }
     $('setFrame').src = `/settings?t=${T}&embed=1${sec ? '#' + sec : ''}`;
     $('setOvl').hidden = false;
   }
+  // The native window closed: show what changed there.
+  window.agentduetSettingsClosed = async () => { await refresh(); drawWho(); };
   async function closeSettings(){
     if ($('setOvl').hidden) return;
     $('setOvl').hidden = true;
