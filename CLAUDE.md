@@ -315,8 +315,12 @@ Break one of these and the secretary is a different product.
 5. **An edit must match exactly once** (`edit_knowledge`), and every edit is journalled.
 6. **Drafting has no send path.** `draft_reply` cannot send; only `reply_to` sends.
 7. **A grant cannot be walked out of** via symlink (`folder_index`).
-8. **The owner site binds loopback only**, with a per-machine token. **THE SITE IS NO LONGER
-   THE ONLY DOOR, since 2026-09-07** — a WhatsApp message from the number in `## Phone` reaches
+8. **The owner site binds loopback only**, with a per-machine token. **THE WHATSAPP DOOR IS
+   CLOSED AGAIN, since 2026-09-29** (Stanley): `secretary_agent.OWNER_WHATSAPP_DOOR = False`, so
+   the site is the only door today. It closed when the owner's number stopped being typed and
+   became the line learned from calls; which number may open it is not yet decided. What follows
+   describes the door as it was, and as it will be if reopened. **From 2026-09-07 the site was not
+   the only door** — a WhatsApp message from the number in `## Phone` reached
    the owner's assistant, which holds the owner's tools. That door is authenticated by caller
    id: a real claim, since Meta authenticates the sending account, and weaker than the token,
    because a hijacked WhatsApp account inherits it. Stanley's call, made explicitly. It is

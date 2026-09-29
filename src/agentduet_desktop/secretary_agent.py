@@ -104,6 +104,14 @@ def owner_name() -> str:
 #: one behaviour: waiting for the owner to supply something, in the same process.
 CONNECTOR_POLL_SECONDS = 3
 
+#: THE OWNER'S WHATSAPP DOOR TO THEIR ASSISTANT — CLOSED FOR NOW (Stanley, 2026-09-29). A message
+#: from the number in `## Phone` reached the owner's assistant, which holds the owner's tools,
+#: authenticated only by caller id (CLAUDE.md, invariant 8). Closed when the number stopped being
+#: typed and became the line learned from calls: which number may open it is a decision not yet
+#: made. While closed, a message from the owner's number is filed like anyone else's. The path
+#: below is kept whole, so reopening is this one line and a release.
+OWNER_WHATSAPP_DOOR = False
+
 #: Meta Graph API version quoted on every outbound WhatsApp message, matching the SDK's
 #: `examples/wa_echo_bot.py`. A code constant on purpose: it is the same in every environment
 #: and is not something an operator retunes — it changes when Meta deprecates a version, which
@@ -512,7 +520,8 @@ async def run_channel() -> None:
             #   * SAID OUT LOUD in the log, every time, so a message that took this path is
             #     visible rather than inferred.
             from . import assistant as assistant_module, owner as owner_settings
-            if dd is None and owner_settings.is_own_number(asker):
+            # CLOSED FOR NOW (Stanley, 2026-09-29) — see OWNER_WHATSAPP_DOOR.
+            if OWNER_WHATSAPP_DOOR and dd is None and owner_settings.is_own_number(asker):
                 logger.info("[WA] %s is the owner's own number — to their assistant, "
                             "not filed as a person", asker)
                 # SIXTY-TWO SECONDS OF SILENCE READS AS BROKEN, and that is measured: a
