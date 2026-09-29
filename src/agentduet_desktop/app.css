@@ -276,3 +276,16 @@ input[readonly]{font-family:var(--mono);}
 .pick input{width:auto;margin:0 .5rem 0 0;accent-color:var(--accent);}
 .pick b{font-weight:600;color:var(--ink2);}
 .pick .sm{display:block;margin:.35rem 0 0 1.4rem;color:var(--faint);font-size:11px;line-height:1.5;}
+
+/* ---- sign-in buttons -------------------------------------------------------------------- */
+/* The wizard's, and Settings' when signed out: one look, so the two cannot drift. */
+.ssos{width:100%;max-width:20rem;display:flex;flex-direction:column;gap:.75rem;padding-top:.5rem;}
+.sso{width:100%;padding:.625rem 1rem;border-radius:.75rem;font:inherit;font-size:.75rem;
+  font-weight:600;display:flex;align-items:center;justify-content:center;gap:.5rem;
+  cursor:pointer;border:1px solid rgba(255,255,255,.1);background:var(--slate900);
+  color:var(--ink2);transition:background .12s;}
+.sso:hover{background:var(--slate800);}
+.sso.apple{background:#fff;color:#000;border-color:transparent;
+  box-shadow:0 4px 6px -1px rgba(0,0,0,.1);}
+.sso.apple:hover{background:#f1f5f9;}
+.sso svg{width:1rem;height:1rem;flex:0 0 1rem;}

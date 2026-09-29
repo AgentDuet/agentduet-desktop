@@ -4949,6 +4949,13 @@ def test_a_caller_is_named_by_the_owner_then_contacts_then_the_message() -> None
     # A DIALOG OVER THE HUB, one box: the hub draws the rounded dialog, Settings drops its own
     # frame inside it, and a section's settings sit on the pane rather than in a card.
     ok("the hub opens Settings as a dialog", 'id="setFrame"' in hub and "&embed=1" in hub)
+    # SIGNED OUT, Settings shows the wizard's sign-in; signed in, only who and Sign out.
+    css = (src / "app.css").read_text()
+    ok("the sign-in buttons' look is shared, in app.css", ".sso.apple{" in css
+       and ".sso.apple{" not in setup)
+    ok("Settings offers the same three buttons signed out",
+       all(f'data-p="{p_}"' in settings for p_ in ("Apple", "Google", "Microsoft")))
+    ok("and no API-key link while signed in", "Use an API key instead" not in settings)
     ok("it closes with Done, as a Mac sheet does, not a top-right ×",
        '<button class="btn setdone" id="setClose">Done</button>' in hub)
     ok("Settings is Account, Record & Transcribe, Permissions, Advanced, About",
