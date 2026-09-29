@@ -213,6 +213,15 @@
         </div>
       </div>
 
+      <!-- YOUR NAME, prefilled with the account's full name (Stanley, 2026-09-29). It primes
+           speech recognition to hear the owner's name, and the briefs and the assistant use it;
+           it lived only in Settings, so an owner who never went there had none. Not required:
+           cleared, the app goes without, as before. -->
+      <div class="field">
+        <label class="lbl" for="setupName">Your name</label>
+        <input type="text" id="setupName" autocomplete="name" spellcheck="false">
+      </div>
+
       <!-- NO FOLDER QUESTION, from 2026-09-25 (Stanley): recordings go to the default folder,
            and Settings still changes it. One fewer choice on the first screen. -->
 
@@ -391,10 +400,12 @@
   };
 
   const FROM = new URLSearchParams(location.search).get('from') || '';
-  let DONE = false;
+  let DONE = false, NAME_WAS = '';
   fetch(`/api/setup/current?t=${T}`).then(r => r.json()).then(d => {
     OAUTH = !!d.oauth_available;
     DONE = !!d.setup_done;
+    NAME_WAS = d.name || '';
+    if (!$('setupName').value) $('setupName').value = d.name || d.os_name || '';
     // SIGNED IN ALREADY: the sign-in screen has nothing left to ask, so move on. Sign-in ends by
     // reloading this page, and a fresh load always opened on sign-in — so finishing sign-in in
     // the browser left the app on the screen it had just completed (found 2026-09-29).
@@ -583,6 +594,9 @@
     // A RE-RUN JUST GOES BACK. Handover promotes the installed copy and stands this one down,
     // which is the right last act of an installer and nothing at all on a second walk through
     // — there it is a daemon restart fired from a Settings button.
+    // THE NAME FIRST, on a re-run too, which leaves just below.
+    const nm = $('setupName').value.trim();
+    if (nm && nm !== NAME_WAS) await post('/api/setup/setting', {field: 'name', value: nm});
     if (DONE) { location.href = '/?t=' + T; return; }
     $('doDone').disabled = true;
     // Normally already running. If the first attempt was refused, one more try — and a refusal

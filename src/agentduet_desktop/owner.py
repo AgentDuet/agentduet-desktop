@@ -69,6 +69,31 @@ def name() -> str:
     return os.getenv("OWNER_NAME") or _first_line(_sections().get("Name", "")) or DEFAULT_NAME
 
 
+def os_full_name() -> str:
+    """The account's full name as the operating system has it, or "". A SUGGESTION ONLY.
+
+    Setup prefills its name field with it (Stanley, 2026-09-29), so a new owner has their name
+    set with one click: it primes speech recognition, and the briefs and the assistant use it.
+    On a Mac it is the user record's full name, which the App Store sandbox can read too; on
+    Windows the account's display name. Never saved by itself — only what the owner confirms.
+    """
+    import sys
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            size = ctypes.c_ulong(0)
+            secur32 = ctypes.windll.secur32                       # type: ignore[attr-defined]
+            secur32.GetUserNameExW(3, None, ctypes.byref(size))  # 3 = NameDisplay
+            buf = ctypes.create_unicode_buffer(size.value or 256)
+            if secur32.GetUserNameExW(3, buf, ctypes.byref(size)):
+                return buf.value.strip()
+            return ""
+        import pwd
+        return (pwd.getpwuid(os.getuid()).pw_gecos or "").split(",")[0].strip()
+    except Exception:
+        return ""
+
+
 def cannot_answer(deep: bool = False) -> str:
     """Why this instance could not answer a stranger at all, or "" if it could.
 
