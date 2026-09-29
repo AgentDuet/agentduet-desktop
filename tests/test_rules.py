@@ -4782,8 +4782,8 @@ def test_a_draft_goes_to_who_it_was_written_for() -> None:
             return "Hi Cen, we are having Hawaiian pizza for dinner."
         def last_draft_for(self):
             return self._who
-        def note_sent(self, q, r, delivered=True):
-            self.noted = (r, delivered)
+        def note_sent(self, q, r, delivered=True, held=False):
+            self.noted = (r, delivered, held)
 
     sent = []
     def _reply_to(asker, text, *a, **k):
@@ -4825,6 +4825,34 @@ def test_a_draft_goes_to_who_it_was_written_for() -> None:
         out = assistant.send_if_asked(_Chat("Cen"), "send it", viewing="Stanley Leong")
         eq("an ambiguous pin sends nothing at all", sent, [])
         ok("and says why rather than picking one", "Two people" in (out or ""))
+
+    # HELD IS NOT SENT (#6). Someone who has never written in has no conversation to reply into,
+    # so reply_to queues the message and says HELD. This used to be reported as "Sent", and the
+    # draft marked sent on disk.
+    def _held(asker, text, *a, **k):
+        return f"Closed: nothing. HELD for delivery — {asker} has never written in."
+    chat = _Chat("Cen Lee")
+    with mock.patch.object(secretary_tools, "reply_to", _held), plain, \
+         mock.patch.object(tools, "_display_for", lambda k: k):
+        out = assistant.send_if_asked(chat, "send it")
+    ok("a held message is not reported as sent", not (out or "").startswith("Sent"))
+    ok("it says it is queued, and for whom", (out or "").startswith("Queued for Cen Lee"))
+    eq("and the draft is recorded as held, not delivered", chat.noted[1:], (False, True))
+
+    # THE MARK ON DISK. Held consumes the draft, as sent does, so "send it" twice cannot queue it
+    # twice — but it is not marked sent, which is what said "Sent" after a reload.
+    oc = assistant.OwnerChat.__new__(assistant.OwnerChat)
+    oc.shown = [{"q": "reply to Cen", "a": "Hi Cen", "draft": True, "draft_for": "Cen Lee"}]
+    with mock.patch.object(assistant.OwnerChat, "_persist", lambda self: None), \
+         mock.patch.object(assistant.OwnerChat, "_record", lambda self, *a, **k: None):
+        oc.note_sent("send it", "Queued for Cen Lee", delivered=False, held=True)
+    ok("the held draft is not marked sent", not oc.shown[0].get("sent"))
+    ok("it is marked held", oc.shown[0].get("held") is True)
+    eq("and a second send finds nothing to send", oc.last_draft(), "")
+    eq("nor anyone to send it to", oc.last_draft_for(), "")
+    page = (pathlib.Path(assistant.__file__).parent / "web.html").read_text()
+    ok("the page labels a held draft Queued", "t.held ? 'Queued'" in page)
+    ok("and offers no send button on it", "t.sent || t.held ||" in page)
 
 
 def test_the_catalogue_carries_gemma_4_and_says_what_was_measured() -> None:
