@@ -804,7 +804,10 @@ binary in a folder"). Ordered; each is worth doing alone.
       no plist to embed and no path to go stale — and it appears in System Settings → General
       → Login Items. It removes the legacy `~/Library/LaunchAgents` plist when enabled, because
       both registered means two daemons at login and the loser of the port race exits silently.
-      **The toggle itself is not yet clicked**, so `.requiresApproval` handling is unproven.
+      **PROVEN 2026-09-29, in the sandboxed App Store build:** switched off and on from the
+      menu bar, `--login-item-status` read `not-registered` then `enabled`, and after a restart of
+      the Mac the app started by itself. `.requiresApproval` never came up, so its handling is
+      still the one unexercised branch.
 
 - [ ] **A styled DMG window** — a background image with an arrow, and the window size and icon
       positions saved into the volume's `.DS_Store`. The `/Applications` alias landed 2026-09-03,
