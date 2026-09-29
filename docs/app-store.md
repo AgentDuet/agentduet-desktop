@@ -49,9 +49,12 @@ The entitlements are in `packaging/entitlements-appstore.plist` (the app) and
 
 ## Must change for the App Store (known)
 
-- **Where the files live.** `~/.agentduet-desktop` becomes the container. A Developer ID owner who
-  moves to the App Store build starts empty unless we migrate — and the sandboxed build cannot read
-  the old folder to migrate it without the owner choosing it.
+- **Where the files live — DECIDED 2026-09-29 (Stanley): no migration, the App Store build starts
+  over.** `~/.agentduet-desktop` becomes the container, and the sandboxed build cannot read the old
+  folder without the owner choosing it, so nothing is imported. **The App Store announcement must
+  say so:** installing the App Store version means setting up again — signing in, the permissions,
+  the models (which download again) — and earlier calls and settings stay with the old app, in
+  `~/.agentduet-desktop`, where the owner can still open them.
 - **Sign in with Apple** (App Review 4.8): offering Google sign-in requires an equivalent
   privacy option. Asked of the auth service on #ai-product, 2026-09-29.
 

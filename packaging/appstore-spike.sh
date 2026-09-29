@@ -54,6 +54,14 @@ done
 codesign --verify --deep --strict "$APP"
 echo "built and signed, sandboxed: $APP"
 
+# THE SIGN-IN SERVICE, as dev-app.sh supplies it: the product still ships it unset, and a
+# sandboxed daemon started through `open` inherits no environment. Written into the CONTAINER's
+# own .env, which the daemon loads at startup — a public address, not a secret.
+CENV="$HOME/Library/Containers/com.b3networks.agentduet-desktop.sandbox/Data/.agentduet-desktop/.env"
+mkdir -p "$(dirname "$CENV")"
+grep -q '^AGENTDUET_OAUTH_URL=' "$CENV" 2>/dev/null \
+  || echo "AGENTDUET_OAUTH_URL=${AGENTDUET_OAUTH_URL:-https://auth.agentduet.com}" >> "$CENV"
+
 if [ "${1:-}" = "--run" ]; then
   # The shell ATTACHES to whatever already answers the port, so nothing else may be up.
   for a in "AgentDuet Desktop" "AgentDuet Dev" "AgentDuet Sandbox"; do

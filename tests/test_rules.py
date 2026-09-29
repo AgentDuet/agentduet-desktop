@@ -5933,6 +5933,8 @@ def test_unread_badge() -> None:
     ok("a typed recordings path is not read in the sandbox",
        rd.index("if macperms.sandboxed():") < rd.index('_sections().get("Recordings", "")'))
     setup_p = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "setup.html").read_text()
+    ok("setup moves past sign-in when it loads already signed in",
+       "if (d.oauth && d.oauth.signed_in && $('v-login').classList.contains('on')) show('setup');" in setup_p)
     ok("setup's Allow asks the shell when sandboxed",
        "shell.postMessage({type: 'pickDocuments'})" in setup_p)
     upd = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "update.py").read_text()
