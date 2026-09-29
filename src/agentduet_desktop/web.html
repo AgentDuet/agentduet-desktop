@@ -537,10 +537,10 @@
          it.call.norecording ? 1 : 0, it.call.missed ? 1 : 0, it.call.silent ? 1 : 0,
          (it.call.transcript || '').length,
          ((LIVE.calls[it.call.call_id] || {}).captions || []).length,
-         (it.call.suggest || {}).key || ''].join('\u0000')
+         (it.call.suggest || {}).key || '', (it.call.suggest || {}).opened ? 1 : 0].join('\u0000')
       : ['m', it.msg.at, it.msg.them, it.msg.us, it.msg.by, it.msg.network,
          it.msg.held ? 1 : 0,
-         (it.msg.suggest || {}).key || ''].join('\u0000')), html);
+         (it.msg.suggest || {}).key || '', (it.msg.suggest || {}).opened ? 1 : 0].join('\u0000')), html);
     // FOLLOW THE CONVERSATION ONLY IF THEY WERE ALREADY AT THE BOTTOM. Someone scrolled up
     // reading what a caller said last week should not be yanked away by an unrelated message
     // arriving — the same mistake the model list made once a second during a download.
@@ -649,8 +649,11 @@
   };
   function propHtml(p){
     const a = p.args || {};
-    const [title, kind, verb] = PROP_KINDS[p.tool]
+    const [title, kind, verb0] = PROP_KINDS[p.tool]
       || ['Add to your shared notes', a.file || 'knowledge', 'Add it'];
+    // A CARD THAT ONLY OPENS SOMETHING STAYS after it is used (issue #9), and says so.
+    const reopen = p.tool === 'add_to_calendar' || p.tool === 'draft_email';
+    const verb = p.opened ? 'Open again' : verb0;
     const body = p.tool === 'add_skill' ? `${a.name || ''} — ${a.how || ''}`
       : p.tool === 'edit_skill' ? `${a.name || ''}: ${a.old || ''} → ${a.new || '(deleted)'}`
       : p.tool && p.tool.endsWith('_skill') ? (a.name || '')
@@ -662,10 +665,10 @@
       <div class="prop">
         <b>${esc(title)}</b>
         <p>${esc(body)}</p>
-        <small>${esc(kind)} · ${esc(asked)}</small>
+        <small>${esc(kind)} · ${esc(asked)}${p.opened ? ' · opened' : ''}</small>
         <div class="row">
           <button class="ok" data-pid="${esc(p.id)}" data-ok="1">${esc(verb)}</button>
-          <button data-pid="${esc(p.id)}">Discard</button>
+          <button data-pid="${esc(p.id)}">${reopen ? 'Dismiss' : 'Discard'}</button>
         </div>
       </div>`;
   }
@@ -684,7 +687,7 @@
     return `<div class="sugg" data-key="${esc(sg.key)}">
       <span class="material-symbols-rounded">event</span>
       <span class="what">${esc(sg.title)} · ${esc(sg.when)}</span>
-      <button class="add" data-act="add">Add to calendar</button>
+      <button class="add" data-act="add">${sg.opened ? 'Open again' : 'Add to calendar'}</button>
       <button class="no" data-act="dismiss">Dismiss</button>
     </div>`;
   }
@@ -865,10 +868,14 @@
     if (act === 'add') b.textContent = 'Opening…';
     try {
       const d = await post('/api/suggestion', {key: row.dataset.key, action: act});
-      // GONE EITHER WAY, and the poll agrees: the verdict now carries a state, so `for_texts`
-      // stops returning it and the row's signature changes on the next pass. Removing it here
-      // is just not waiting five seconds to see it go.
-      row.remove();
+      // DISMISS REMOVES IT; OPENING KEEPS IT (issue #9). Opening Google Calendar saves nothing —
+      // the owner still presses Save there, and may close the page first — so the card stays,
+      // and can be pressed again. The poll agrees: `for_texts` returns it marked `opened`.
+      if (act === 'dismiss') row.remove();
+      else {
+        row.querySelectorAll('button').forEach(x => { x.disabled = false; });
+        b.textContent = 'Open again';
+      }
       if (act === 'add' && d.message && !d.message.startsWith('Opened')) note(d.message);
     } catch (err) {
       row.querySelectorAll('button').forEach(x => { x.disabled = false; });

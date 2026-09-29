@@ -305,6 +305,14 @@ def _queued_reply(queued: list[tuple[str, dict]]) -> str:
     return "\n".join(lines)
 
 
+#: PROPOSALS THAT ONLY OPEN SOMETHING, and so stay after they are used (Stanley, 2026-09-29,
+#: issue #9). Opening a calendar event or an email draft saves and sends nothing — the owner
+#: still has to press Save or Send there, and may close the window first — so the card is kept,
+#: marked opened, and can be pressed again. Only Dismiss removes it. Every OTHER proposal is a
+#: write, done once, and goes when it is approved.
+REOPENABLE = {"add_to_calendar", "draft_email"}
+
+
 def resolve(pid: str, approve: bool) -> str:
     """Apply or discard one proposal. THE WRITE HAPPENS HERE, on the owner's click — never
     on the model's say-so, and never inside the turn that read the transcript."""
@@ -313,16 +321,23 @@ def resolve(pid: str, approve: bool) -> str:
     keep = [r for r in rows if r.get("id") != pid]
     if hit is None:
         return "That proposal is no longer pending."
-    _save_proposals(keep)
+    reopen = approve and hit.get("tool") in REOPENABLE
+    if not reopen:
+        _save_proposals(keep)
     if not approve:
         return "Discarded."
     fn = tools.ASSISTANT_SHARED.get(hit["tool"], (None, None))[0]
     if fn is None:
         return f"Unknown tool '{hit['tool']}'."
     try:
-        return fn(**hit.get("args", {}))
+        out = fn(**hit.get("args", {}))
     except Exception as exc:                      # surface, never crash the page
         return f"tool error: {exc}"
+    # MARKED OPENED ONLY IF IT OPENED: a refused draft must not look used.
+    if reopen and str(out).startswith("Opened"):
+        hit["opened"] = True
+        _save_proposals(rows)
+    return out
 
 
 #: The registry's own names, for recognising a call the model wrote in its own notation.
