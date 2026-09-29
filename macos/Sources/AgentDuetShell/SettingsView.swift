@@ -8,6 +8,20 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // ITS OWN TITLE BAR, with Done at the right (Stanley, 2026-09-29): a sheet has none,
+            // and without one it looked unfinished. Esc closes it too.
+            ZStack {
+                Text("Settings").font(.headline)
+                HStack {
+                    Spacer()
+                    Button("Done") { model.done?() }
+                        .keyboardShortcut(.defaultAction)
+                        .keyboardShortcut(.cancelAction)
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+            .background(.bar)
+            Divider()
             NavigationSplitView {
                 List(SettingsModel.Section.allCases, selection: Binding(
                     get: { model.section }, set: { if let s = $0 { model.section = s } })) { s in
@@ -16,7 +30,6 @@ struct SettingsView: View {
                 .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
             } detail: {
                 VStack(alignment: .leading, spacing: 0) {
-                    // A SHEET HAS NO TITLE BAR, so the pane says its own name.
                     Text(model.section.title).font(.title2.bold())
                         .padding(.horizontal, 20).padding(.top, 16)
                     Group {
@@ -32,15 +45,6 @@ struct SettingsView: View {
                 }
                 .frame(minWidth: 460)
             }
-            Divider()
-            // DONE, AT THE BOTTOM RIGHT: how a Mac sheet is dismissed. Esc does the same.
-            HStack {
-                Spacer()
-                Button("Done") { model.done?() }
-                    .keyboardShortcut(.defaultAction)
-                    .keyboardShortcut(.cancelAction)
-            }
-            .padding(.horizontal, 20).padding(.vertical, 12)
         }
     }
 }

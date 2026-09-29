@@ -90,6 +90,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     // MARK: - launch
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSAppleEventManager.shared().setEventHandler(
+            self, andSelector: #selector(handleQuit(_:withReply:)),
+            forEventClass: AEEventClass(kCoreEventClass), andEventID: AEEventID(kAEQuitApplication))
         buildMenu()
         buildStatusItem()
         buildWindow()
@@ -120,6 +123,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 }
             }
         }
+    }
+
+    /// QUITTING WITH SETTINGS OPEN. AppKit declines a quit request — from a script, from logging
+    /// out, from a restart — with "User canceled" while a sheet is attached, as TextEdit does over
+    /// a save sheet. Settings is not a question awaiting an answer, so the request is handled here:
+    /// close the sheet, then quit. Installed at launch, in `applicationDidFinishLaunching`.
+    @objc private func handleQuit(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
+        settingsWindow.close()
+        NSApp.terminate(nil)
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        settingsWindow.close()
+        return .terminateNow
     }
 
     func applicationWillTerminate(_ notification: Notification) {
