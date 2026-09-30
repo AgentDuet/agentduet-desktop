@@ -45,6 +45,9 @@ PROMPT = """Today is {today}.
 You keep a short brief about one person {owner} talks to. {owner}'s assistant reads
 it before answering questions about this person.
 
+THIS BRIEF IS ABOUT: {person}. Never call them by any other name, and never write about
+anyone else as if they were this person.
+
 Update the brief with the new information below.
 - Where the new information and the brief disagree, the NEWER one wins.
 - Where {owner} and the other person disagree about the same thing, {owner}'s word wins.
@@ -55,6 +58,9 @@ Update the brief with the new information below.
   completes it. A call about one thing says nothing about the others.
 - Drop an item only when the new information says it is finished or no longer true.
 - Use only the brief and the new information. Do not guess.
+- A CORRECTION from {owner} outranks everything: remove or change what it says is wrong,
+  even in the current brief, and keep the rest.
+- Never record what the assistant did or will do (running a tool, drafting) as an open item.
 - At most {words} words, in three short parts:
   Who: who they are and how they relate to {owner}.
   Open: EVERY appointment, meeting, promise or follow-up either side mentioned that has not
@@ -140,16 +146,51 @@ def _calls_after(who: str, after: str) -> tuple[list[tuple[str, str]], bool]:
     return out, False
 
 
-def _chat_after(who: str, after: str) -> list[tuple[str, str, str]]:
-    """The owner's turns with the assistant about `who`, newer than `after`, oldest first."""
+def _about_them(q: str, who: str) -> bool:
+    """Whether a question asked on `who`'s page is ABOUT them (2026-09-30).
+
+    Asked on Cen's page, "email Kok Choong" is about Kok Choong — and filed by page it made Cen's
+    brief say "Who: Kok Choong". A question that names this person counts; one that names
+    somebody else does not; one that names nobody is about the page it was asked on.
+    """
+    from . import calls, names
+    if names.mentions(q, who):
+        return True
+    return not any(names.mentions(q, other) for other in calls.by_person() if other != who)
+
+
+def _chat_after(who: str, after: str) -> list[tuple[str, str]]:
+    """The owner's words to the assistant about `who`, newer than `after`, oldest first.
+
+    THE OWNER'S WORDS ONLY — not the assistant's reply, whose "I need to run a tool" came back
+    as an open item in the brief.
+    """
     from .assistant import OwnerChat
     try:
         shown = json.loads(OwnerChat.STORE.read_text())
     except (OSError, ValueError):
         return []
-    return [(t.get("at", ""), t.get("q", ""), t.get("a", "")) for t in shown
+    return [(t.get("at", ""), t.get("q", "")) for t in shown
             if t.get("about") == who and "q" in t and not t.get("pending")
-            and (t.get("at") or "") > after]
+            and (t.get("at") or "") > after and _about_them(t.get("q", ""), who)]
+
+
+def _person(who: str) -> str:
+    """How the prompt names them: the name the hub shows, or plainly that there is none."""
+    from . import names
+    name = names.name_for(who)
+    return f"{name} ({who})" if name and name != who else \
+        f"a person known only by their number, {who} — do not give them a name"
+
+
+def _prompt(who: str, rec: dict, items: list[str]) -> str:
+    from . import budget, owner
+    return PROMPT.format(today=datetime.now().strftime("%A %d %B %Y"),
+                         owner=owner.name() or "the owner", person=_person(who),
+                         words=budget.split()["person_words"],
+                         asof=rec.get("updated", "never"),
+                         current=rec.get("summary") or "(none yet)",
+                         new="\n\n".join(items))
 
 
 def _day(at: str, plus: int = 0) -> str:
@@ -185,16 +226,10 @@ def update(who: str) -> bool:
     items = [(at, f"{_day(at)} — a call with them. In this call \"today\" means {_day(at)} and "
                   f"\"tomorrow\" means {_day(at, 1)}.\n" + tools.untrusted(text))
              for at, text in calls if text]
-    items += [(at, f"{_day(at)} — {owner.name() or 'the owner'} told the assistant (\"tomorrow\" "
-                   f"means {_day(at, 1)}): {q}\nThe assistant answered: {a}") for at, q, a in chat]
+    items += [(at, f"{_day(at)} — {owner.name() or 'the owner'} said to the assistant (\"tomorrow\" "
+                   f"means {_day(at, 1)}): {q}") for at, q in chat]
     items.sort()
-    from . import budget
-    prompt = PROMPT.format(today=datetime.now().strftime("%A %d %B %Y"),
-                           owner=owner.name() or "the owner", words=budget.split()["person_words"],
-                           asof=rec.get("updated", "never"),
-                           current=rec.get("summary") or "(none yet)",
-                           new="\n\n".join(x for _, x in items))
-    summary = llm.client().complete(prompt).strip()
+    summary = llm.client().complete(_prompt(who, rec, [x for _, x in items])).strip()
     if not summary:
         return True
     rec.update(summary=summary, updated=datetime.now().isoformat(timespec="seconds"))
@@ -207,6 +242,36 @@ def update(who: str) -> bool:
     if more:
         request(who)
     return True
+
+
+def correct(who: str, correction: str) -> str:
+    """Fold the owner's correction into `who`'s brief NOW, as the newest and strongest fact.
+
+    Through the model, never a text edit: the owner says what is wrong in their own words and
+    the brief is rewritten around it, with the rest kept (Stanley, 2026-09-30).
+    """
+    from . import llm, owner
+    rec = load(who)
+    if not rec.get("summary"):
+        return "There is no brief about them yet."
+    if not llm.configured():
+        return "No model is set up to rewrite the brief."
+    said = " ".join((correction or "").split())[:600]
+    if not said:
+        return "Nothing to correct."
+    item = (f"{_day(datetime.now().isoformat())} — CORRECTION from {owner.name() or 'the owner'}: "
+            f"{said}")
+    # AS THE BRIEF'S OWN JOB, not as the question it was asked in: `gate` saves and restores the
+    # assistant's cached conversation around a PERSON job, and a rewrite at QUESTION priority
+    # would overwrite it mid-turn.
+    with gate.priority(gate.PERSON):
+        summary = llm.client().complete(_prompt(who, rec, [item])).strip()
+    if not summary:
+        return "The model returned nothing, so the brief is unchanged."
+    rec.update(summary=summary, updated=datetime.now().isoformat(timespec="seconds"))
+    _save(who, rec)
+    logger.info("brief for %s corrected by the owner", who)
+    return "Corrected. The brief now reads:\n" + summary
 
 
 def request(who: str) -> None:

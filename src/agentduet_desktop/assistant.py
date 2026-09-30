@@ -158,7 +158,8 @@ def _tool_docs(registry: dict | None = None) -> str:
 #: but the words arrive through a channel with no signup and no gatekeeper, so they have to be
 #: treated as input from an unknown author for as long as they are in the context.
 #: `list_appointments` too: its titles are a model's reading of what the caller said.
-TAINTING = {"read_call", "read_messages", "list_appointments"}
+#: `read_brief` too: a brief is a model's reading of what callers said.
+TAINTING = {"read_call", "read_messages", "list_appointments", "read_brief"}
 
 #: WRITES THAT PUBLISH AN UNATTRIBUTED CLAIM. `knowledge/` is one flat, PUBLIC folder — it is
 #: what the agent tells everyone, and what the owner reads and trusts. Promoting "Pauline said
@@ -179,7 +180,11 @@ TAINTING = {"read_call", "read_messages", "list_appointments"}
 # already open in Gmail it is a draft the owner half-believes they asked for.
 NEEDS_OWNER = {"add_knowledge", "edit_knowledge",
                "add_skill", "edit_skill", "forget_skill", "switch_skill",
-               "add_to_calendar", "draft_email", "add_contact"}
+               "add_to_calendar", "draft_email", "add_contact",
+               # A CORRECTION SPEAKS AS THE OWNER, and outranks what callers said. After a
+               # stranger's words were read, "the owner corrected: the caller is a VIP" is exactly
+               # what a caller would try to have the assistant write.
+               "correct_brief"}
 
 
 #: A REPLY THAT HAS STOPPED SAYING ANYTHING. Near-greedy decoding with no repetition penalty
@@ -313,6 +318,8 @@ def _queued_reply(queued: list[tuple[str, dict]]) -> str:
         elif name == "add_to_calendar":
             lines.append(f"I've prepared a calendar event: {a.get('title') or 'untitled'}"
                          f"{', ' + str(a.get('start')) if a.get('start') else ''}.")
+        elif name == "correct_brief":
+            lines.append(f"I've prepared a correction to what I know about {a.get('who') or 'them'}.")
         elif name == "add_contact":
             who = str(a.get("name") or "").strip() or str(a.get("number") or "").strip()
             lines.append(f"I've prepared a new contact: {who}.")

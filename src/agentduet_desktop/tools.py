@@ -713,6 +713,28 @@ def list_calls(days: str = "7") -> str:
         out.append(f"- {at}  {_caller_label(r.get('caller') or '')}  "
                    f"({'transcript ready' if done else 'no transcript yet'})")
     return "\n".join(out) if out else f"No calls recorded in the last {days} days."
+def read_brief(who: str) -> str:
+    """What you know about a person: their running brief — who they are, what is open, last contact."""
+    from . import brief, names
+    target = names.resolve(who)
+    if not target:
+        return f"No one matches {who!r}. Give their number, or the name the hub shows."
+    rec = brief.load(target)
+    if not rec.get("summary"):
+        return f"There is no brief about {_caller_label(target)} yet."
+    return (f"Brief about {_caller_label(target)}, as of {rec.get('updated', '')[:16].replace('T', ' ')}:\n"
+            + rec["summary"])
+
+
+def correct_brief(who: str, correction: str) -> str:
+    """Fix a person's brief with the owner's correction, in the owner's own words."""
+    from . import brief, names
+    target = names.resolve(who)
+    if not target:
+        return f"No one matches {who!r}. Give their number, or the name the hub shows."
+    return brief.correct(target, correction)
+
+
 def list_appointments(days: str = "30") -> str:
     """Appointments agreed on calls and in messages — when, what, and with whom."""
     from . import calls as _calls, carry, names, suggest
@@ -1211,6 +1233,10 @@ ASSISTANT_SHARED = {
 RECORDER_TOOLS = {
     "list_calls": (list_calls, {"days": "how many days back (default 7)"}),
     "list_appointments": (list_appointments, {"days": "how many days back to look (default 30)"}),
+    "read_brief": (read_brief, {"who": "the person — their name as the hub shows it, or their number"}),
+    "correct_brief": (correct_brief, {
+        "who": "the person — their name as the hub shows it, or their number",
+        "correction": "what is wrong and what is right, in the owner's own words"}),
     "read_messages": (read_messages, {
         "who": "the person, or empty for everyone",
         "limit": "how many of the most recent lines (default 20)",

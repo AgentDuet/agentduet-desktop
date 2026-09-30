@@ -97,6 +97,39 @@ def contact(who: str) -> dict:
     return row if isinstance(row, dict) else {}
 
 
+def resolve(who: str) -> str:
+    """The identity `who` means — a number, or a name the hub shows — or "" when it is not ONE
+    person. A number is itself. A name must fit exactly one person who has called or written,
+    by the whole name or by all of its words ("Kok Choong" for "Ong Kok Choong").
+    """
+    who = (who or "").strip()
+    if not who or is_number(who):
+        return who
+    from . import calls
+    identities = set(calls.by_person()) | set(typed())
+    people = contacts_state().get("people")
+    if isinstance(people, dict):
+        identities |= set(people)
+    want = " ".join(who.split()).lower()
+    shown = {i: name_for(i).lower() for i in identities}
+    exact = [i for i, n in shown.items() if n and n == want]
+    if len(exact) == 1:
+        return exact[0]
+    words = set(want.split())
+    loose = [i for i, n in shown.items() if n and words <= set(n.split())]
+    return loose[0] if len(exact) == 0 and len(loose) == 1 else ""
+
+
+def mentions(text: str, who: str) -> bool:
+    """Whether `text` names this person — by the name the hub shows, or by their number."""
+    text = (text or "").lower()
+    digits = re.sub(r"\D", "", who)
+    if len(digits) >= 7 and digits[-8:] in re.sub(r"\D", "", text):
+        return True
+    name = name_for(who).lower()
+    return bool(name) and any(w in text.split() for w in name.split() if len(w) >= 3)
+
+
 def emails_for(who: str) -> list[str]:
     """Email addresses Contacts holds for `who` — a number, or a name the hub shows.
 
