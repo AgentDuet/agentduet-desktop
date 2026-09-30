@@ -385,7 +385,6 @@ private struct WithAssistant: ViewModifier {
                 .scrollIndicators(model.drawerOpen ? .hidden : .automatic)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     VStack(spacing: 0) {
-                        Divider()
                         header
                         if model.drawerOpen {
                             Divider()
@@ -396,7 +395,11 @@ private struct WithAssistant: ViewModifier {
                         Composer(model: model)
                     }
                     .background(Color(nsColor: .controlBackgroundColor))
-                    .shadow(color: .black.opacity(model.drawerOpen ? 0.18 : 0), radius: 8, y: -2)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.secondary.opacity(0.25)))
+                    .shadow(color: .black.opacity(model.drawerOpen ? 0.25 : 0.1), radius: model.drawerOpen ? 10 : 4, y: -1)
+                    .padding(.horizontal, 10).padding(.bottom, 10)
                 }
         }
     }
@@ -599,6 +602,8 @@ private struct Conversation: View {
     @ObservedObject var phone: PhoneModel
     let person: JSON
     @StateObject private var editing = Local(false)
+    /// The big header has scrolled away, so the small one stands in at the top.
+    @StateObject private var compact = Local(false)
 
     var body: some View {
         let items = model.items(person)
@@ -611,22 +616,17 @@ private struct Conversation: View {
                         Avatar(person: person, size: 88)
                         HStack(spacing: 6) {
                             Text(HubModel.name(person)).font(.title.bold()).textSelection(.enabled)
-                            if !person.str("display").isEmpty || !calls.isEmpty || !(person["messages"] as? [JSON] ?? []).isEmpty {
-                                Button { editing.value = true } label: { Image(systemName: "pencil") }
-                                    .buttonStyle(.borderless).foregroundStyle(.secondary).help("Rename")
-                            }
-                            // THE CARD THE NAME CAME FROM, opened in Contacts — the only app that
-                            // edits it. `addressbook://` takes a contact's identifier.
-                            let card = person.str("contact_id")
-                            if !card.isEmpty, let url = URL(string: "addressbook://" + card) {
-                                Button { NSWorkspace.shared.open(url) } label: {
-                                    Image(systemName: "person.crop.square")
-                                }
-                                .buttonStyle(.borderless).foregroundStyle(.secondary).help("Open in Contacts")
-                            }
+                            buttons(calls)
                         }
                         Text(HubModel.subtitle(person)).foregroundStyle(.secondary).textSelection(.enabled)
                     }
+                    // WHERE THE BIG HEADER'S BOTTOM IS, so the small one shows once it has gone.
+                    .background(GeometryReader { g in
+                        let bottom = g.frame(in: .named("conversation")).maxY
+                        Color.clear
+                            .onAppear { setCompact(bottom < 0) }
+                            .onChange(of: bottom) { setCompact($0 < 0) }
+                    })
                     .padding(.top, 24).padding(.bottom, 6)
                     ForEach(items) { item in
                         Group {
@@ -656,8 +656,37 @@ private struct Conversation: View {
                 .padding(.horizontal, 24).padding(.bottom, 16)
                 .frame(maxWidth: .infinity)
             }
+            .coordinateSpace(name: "conversation")
+            .overlay(alignment: .top) {
+                if compact.value {
+                    VStack(spacing: 0) {
+                        HStack(spacing: 10) {
+                            Avatar(person: person, size: 28)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(HubModel.name(person)).font(.headline)
+                                Text(HubModel.subtitle(person)).font(.caption).foregroundStyle(.secondary)
+                            }
+                            buttons(calls)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        Divider()
+                    }
+                    .background(.bar)
+                    .transition(.opacity)
+                }
+            }
+            .animation(.easeOut(duration: 0.15), value: compact.value)
             // THE LATEST AT THE BOTTOM, in view on opening and when something new arrives.
             .onAppear { reader.scrollTo("end", anchor: .bottom) }
+            // AND WHEN THE ASSISTANT OPENS OVER IT: what is left in view is the latest, once the
+            // panel has finished taking its space.
+            .onChange(of: model.drawerOpen) { open in
+                guard open else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    withAnimation { reader.scrollTo("end", anchor: .bottom) }
+                }
+            }
             .onChange(of: items.count) { _ in withAnimation { reader.scrollTo("end", anchor: .bottom) } }
             .onChange(of: person.str("who")) { _ in reader.scrollTo("end", anchor: .bottom) }
             .onChange(of: liveNow.map { $0.1.captions.count }.reduce(0, +)) { _ in
@@ -666,7 +695,28 @@ private struct Conversation: View {
         }
         .sheet(isPresented: $editing.value) { RenameSheet(model: model) }
     }
+
+    private func setCompact(_ on: Bool) {
+        if compact.value != on { compact.value = on }
+    }
+
+    /// Rename, and Open in Contacts — beside the name, big or small.
+    @ViewBuilder private func buttons(_ calls: [JSON]) -> some View {
+        if !person.str("display").isEmpty || !calls.isEmpty || !(person["messages"] as? [JSON] ?? []).isEmpty {
+            Button { editing.value = true } label: { Image(systemName: "pencil") }
+                .buttonStyle(.borderless).foregroundStyle(.secondary).help("Rename")
+        }
+        // THE CARD THE NAME CAME FROM, opened in Contacts — the only app that edits it.
+        // `addressbook://` takes a contact's identifier.
+        let card = person.str("contact_id")
+        if !card.isEmpty, let url = URL(string: "addressbook://" + card) {
+            Button { NSWorkspace.shared.open(url) } label: { Image(systemName: "person.crop.square") }
+                .buttonStyle(.borderless).foregroundStyle(.secondary).help("Open in Contacts")
+        }
+    }
 }
+
+
 
 // MARK: - a call
 

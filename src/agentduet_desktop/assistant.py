@@ -301,6 +301,10 @@ def _queued_reply(queued: list[tuple[str, dict]]) -> str:
             to = str(a.get("to") or "").strip()
             from . import links
             address = links.recipient(to)[0]
+            # The name the hub shows, where the model gave a number.
+            from . import names
+            if names.is_number(to):
+                to = names.display(to)
             if address and address != to:
                 to = f"{to} ({address})"
             lines.append(f"I've prepared an email{' to ' + to if to else ''}"
