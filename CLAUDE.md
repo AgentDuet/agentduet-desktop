@@ -650,6 +650,14 @@ derived from no longer exists, it is the only place that says so.
       A piece under `PIECE_SURE` (3 s) may not introduce a language no longer piece confirms:
       measured, a "Hi" came back Cantonese, an "uh" Chinese, a 2.7 s "okay" Thai.
       Whisper stays as a tier, not deleted; an explicit Whisper name in `## Transcription` keeps it.
+      **NAMES ARE HINTS TOO** (2026-09-30): the owner's name, and the other party's when the owner
+      knows it, are added to that context — "三，李三" became "Stanley, Stanley" where he said it, and
+      a name given but never spoken appeared nowhere. **Longer context was measured and REJECTED:**
+      the mix's transcript as context came back AS the transcript (a 1.5 s piece returned the whole
+      call); a Gemma summary of the mix changed nothing but a Thai misread, for 7 s more a call.
+      **Gemma 4 E4B's own audio input was measured the same day and is far worse** — English read
+      as Dutch and Japanese, its prompt echoed back as the transcript, "lunch at twelve PM" as "late,
+      10 pm", Mandarin lost, and twice Qwen's time. Two models is the price; it is worth paying.
       **Unproven:** the frozen `.app` (only source-run so far); long-call memory with Gemma also
       resident (~2.5 + ~5.6 GB); the repeated "You have failed" at the end of the 222 s call, which
       may be a real repetition or a model loop; and the Thai call, which nobody here can read.
