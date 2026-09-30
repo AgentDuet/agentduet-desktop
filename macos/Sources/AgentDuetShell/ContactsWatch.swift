@@ -175,6 +175,21 @@ enum PhoneMatch {
 /// closing it without a name leaves a card with the number only. The owner asked for the editor
 /// over the confirm dialog; that is the trade.
 enum ContactsAdd {
+    /// Rename a card that is already in Contacts. False when it cannot be read or written.
+    static func rename(id: String, to name: String) -> Bool {
+        guard ContactsWatch.access() == "allowed", !name.isEmpty else { return false }
+        let keys = [CNContactGivenNameKey, CNContactFamilyNameKey, CNContactMiddleNameKey] as [CNKeyDescriptor]
+        guard let found = try? CNContactStore().unifiedContact(withIdentifier: id, keysToFetch: keys),
+              let c = found.mutableCopy() as? CNMutableContact else { return false }
+        let parts = name.split(separator: " ", maxSplits: 1).map(String.init)
+        c.givenName = parts[0]
+        c.middleName = ""
+        c.familyName = parts.count == 2 ? parts[1] : ""
+        let save = CNSaveRequest()
+        save.update(c)
+        return (try? CNContactStore().execute(save)) != nil
+    }
+
     /// `edit` opens the card in the editor; false opens it to look at — a name already typed in
     /// the hub's Rename sheet needs no editing.
     static func addAndEdit(number: String, name: String, edit: Bool = true) -> Bool {

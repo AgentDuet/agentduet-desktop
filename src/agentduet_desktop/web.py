@@ -1070,6 +1070,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         # `name_from` lets the page say where it came from; asking the shell for Contacts names
         # happens here because this is the list of everyone who has called or written.
         _names.want(p["who"] for p in people)
+        _names.prune_typed()
         for p in people:
             p["display"] = _names.name_for(p["who"], seen)
             p["name_from"] = _names.source_of(p["who"]) if p["display"] else ""

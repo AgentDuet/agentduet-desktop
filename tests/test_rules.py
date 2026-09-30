@@ -4086,6 +4086,9 @@ def test_a_link_tool_cannot_choose_a_destination() -> None:
        'Toggle("Add to Contacts"' in rename and 'p.str("contact_id").isEmpty' in rename
        and "HubModel.isNumber(" in rename and "focused = true" in rename)
     ok("and there is no second button for it", 'help("Add to Contacts")' not in hv_src)
+    ok("renaming someone in Contacts asks whether to change the card too, and starts at no",
+       'Toggle("Also change in Contacts"' in rename and "intoContacts = Local(false)" in rename
+       and "ContactsAdd.rename(id:" in rename)
     from agentduet_desktop.assistant import _queued_reply
     r = _queued_reply([("draft_email", {"to": "Kok Choong", "subject": "Lunch"})])
     ok("a queued draft is announced by code, not left to the model",
@@ -4978,6 +4981,14 @@ def test_a_caller_is_named_by_the_owner_then_contacts_then_the_message() -> None
                links.recipient("Cen Lee"), ("", []))
             names.set_typed(other, "")
             eq("the hub is told which card to open", names.contact(num).get("id"), "ABC:ABPerson")
+            # A rename written through to Contacts: typed at once, dropped once Contacts agrees.
+            names.set_typed(num, "Cen Lee")
+            names.set_typed(other, "Someone Else")
+            names.prune_typed()
+            ok("a typed name Contacts now agrees with is dropped, so Contacts' next edit shows",
+               num not in names.typed())
+            eq("one Contacts does not agree with is kept", names.typed().get(other), "Someone Else")
+            names.set_typed(other, "")
             names.want([num, wa, uid, "", "short1"])
             eq("only NUMBERS are sent to be looked up, never an account uid",
                _json.loads((run / "contacts-wanted.json").read_text()), sorted([num, wa]))

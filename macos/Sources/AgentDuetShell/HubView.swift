@@ -935,7 +935,16 @@ private struct RenameSheet: View {
     @StateObject private var name = Local("")
     @StateObject private var busy = Local(false)
     @StateObject private var toContacts = Local(true)
+    /// Off to start with: this changes the owner's real card, which may sync elsewhere.
+    @StateObject private var intoContacts = Local(false)
     @FocusState private var focused: Bool
+
+    /// The card this person's name came from, where the app can write to it.
+    private var card: String {
+        guard let p = model.person, p.str("name_from") == "contacts" || !p.str("contact_id").isEmpty,
+              ContactsWatch.access() == "allowed" else { return "" }
+        return p.str("contact_id")
+    }
 
     /// A number Contacts has no card for.
     private var addable: Bool {
@@ -955,6 +964,8 @@ private struct RenameSheet: View {
                     }
                     if addable {
                         Toggle("Add to Contacts", isOn: $toContacts.value)
+                    } else if !card.isEmpty {
+                        Toggle("Also change in Contacts", isOn: $intoContacts.value)
                     }
                 }
             }
@@ -968,9 +979,13 @@ private struct RenameSheet: View {
                     let typed = name.value.trimmingCharacters(in: .whitespaces)
                     let who = model.person?.str("who") ?? ""
                     let add = addable && toContacts.value && !typed.isEmpty
+                    let change = !card.isEmpty && intoContacts.value && !typed.isEmpty ? card : ""
                     Task {
                         await model.rename(typed)
                         if add { model.addContact(who, name: typed, edit: false) }
+                        if !change.isEmpty, !ContactsAdd.rename(id: change, to: typed) {
+                            model.notice = .init(ok: false, text: "Contacts did not take the new name.")
+                        }
                         busy.value = false
                         dismiss()
                     }
