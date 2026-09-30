@@ -5089,6 +5089,9 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
        'Text("Settings").font(.headline)' in swift["SettingsView.swift"]
        and 'Button("Done") { model.done?() }' in swift["SettingsView.swift"]
        and ".keyboardShortcut(.cancelAction)" in swift["SettingsView.swift"])
+    ok("the app comes back in front after a permission prompt, not Terminal",
+       "static func comeBack()" in app and swift["SettingsModel.swift"].count("AppDelegate.comeBack()") == 1
+       and "AppDelegate.comeBack()" in swift["HubModel.swift"] and "Self.comeBack()" in app)
     ok("a quit request is not refused while Settings is open",
        "andEventID: AEEventID(kAEQuitApplication)" in app and "settingsWindow.close()\n        NSApp.terminate(nil)" in app)
     ok("only the newest draft is labelled a draft",

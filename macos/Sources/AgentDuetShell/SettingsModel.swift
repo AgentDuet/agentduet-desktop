@@ -228,7 +228,10 @@ import Foundation
 
     func allowMic() {
         AVCaptureDevice.requestAccess(for: .audio) { [weak self] _ in
-            Task { @MainActor in await self?.poll() }
+            Task { @MainActor in
+                AppDelegate.comeBack()      // the prompt left the focus with another app
+                await self?.poll()
+            }
         }
     }
 

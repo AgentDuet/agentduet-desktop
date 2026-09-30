@@ -201,7 +201,9 @@ import Foundation
         // ASKED NOW, not over a ringing call: macOS asks for the microphone the first time, and
         // that prompt belongs to the moment the owner opted in.
         if on, AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
-            AVCaptureDevice.requestAccess(for: .audio) { _ in }
+            AVCaptureDevice.requestAccess(for: .audio) { _ in
+                Task { @MainActor in AppDelegate.comeBack() }   // the prompt took the focus away
+            }
         }
         Task {
             _ = await api.post("/api/setup/setting", ["field": "answer_here", "value": on ? "yes" : "no"])
