@@ -2660,6 +2660,40 @@ def test_hosted_model_lists() -> None:
        "".join(str(v["models"]) for v in llm.HOSTED.values()))
 
 
+def test_a_model_s_own_tool_call_syntax_is_parsed() -> None:
+    """2026-09-30: gemma-4-e4b answered "Pick up the appointments again and what those are" with
+    its native `<|tool_call>call:list_calls{days:7}<tool_call|>`, and the owner saw that raw line
+    as the answer, because only our JSON and the `name: args` shorthand were understood."""
+    from agentduet_desktop import assistant as a
+    parse = a.OwnerChat._parse
+    eq("gemma's native call runs the tool, with numbers as numbers",
+       parse("<|tool_call>call:list_calls{days:7}<tool_call|>"), [("list_calls", {"days": 7})])
+    eq("its fenced strings arrive as strings",
+       parse('<|tool_call>call:read_messages{who:<|"|>+6594378817<|"|>,limit:20}<tool_call|>'),
+       [("read_messages", {"who": "+6594378817", "limit": 20})])
+    eq("a name that is not a registered tool is still not a call",
+       parse("<|tool_call>call:no_such_tool{x:1}<tool_call|>"), [])
+    eq("a withheld tool cannot be reached this way either",
+       parse("<|tool_call>call:read_knowledge{name:x}<tool_call|>"), [])
+    eq("the shorthand still parses", parse('read_messages: who "", limit 20'),
+       [("read_messages", {"who": "", "limit": 20})])
+    eq("and prose is prose", parse("Plain answer: nothing."), [])
+    # The turn AFTER that raw call (15:01): the model replayed it as a call already made and said
+    # "I have checked the records…" with nothing run.
+    real = ("I have checked the records for calls and messages from the last 7 days, but there "
+            "are no appointments listed in those logs.")
+    ok("a claimed lookup is recognised as one", bool(a.OwnerChat.LOOKED.search(real)))
+    ok("and is not mistaken for a claimed write", not a.OwnerChat.CLAIMED.search(real))
+    ok("a plain answer is not a claimed lookup",
+       not a.OwnerChat.LOOKED.search("Kok Choong called at noon about lunch."))
+    src = pathlib.Path(a.__file__).read_text()
+    ok("a claimed lookup with no tool run is sent back to call the tool",
+       "if not nudged and not used and self.LOOKED.search(out):" in src)
+    ok("a raw call is never replayed into the model's history",
+       'if RAW_CALL_MARK in str(turn.get("a", "")):\n                continue' in src)
+    ok("nor shown or kept as an answer", "if RAW_CALL_MARK in out:" in src)
+
+
 def test_pages_parse() -> None:
     """Every page's JavaScript must PARSE. A comment broke a page and every test still passed."""
     print("\n  -- the pages' scripts parse --")
@@ -6520,6 +6554,7 @@ def main() -> None:
     test_owner_writes_to_their_own_agent()
     test_inbound_whatsapp_shape()
     test_pages_parse()
+    test_a_model_s_own_tool_call_syntax_is_parsed()
     test_prompts()
     test_asker_tool_surface()
     test_untrusted_marking()
