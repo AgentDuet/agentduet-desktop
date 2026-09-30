@@ -88,8 +88,11 @@ import Foundation
     var shown: [JSON] {
         let q = search.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return people }
+        // A NUMBER AS PEOPLE TYPE IT — "9855 4074" finds +6598554074 — so digits match digits.
+        let digits = q.filter(\.isNumber)
         return people.filter {
             $0.str("who").lowercased().contains(q) || $0.str("display").lowercased().contains(q)
+                || (digits.count >= 3 && $0.str("who").filter(\.isNumber).contains(digits))
         }
     }
 
