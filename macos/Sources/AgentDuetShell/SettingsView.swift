@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The native Settings window (2026-09-29): macOS's own sidebar and grouped forms, as System
 /// Settings draws them — label on the left, control on the right, no Save buttons, and an
@@ -161,7 +162,7 @@ private struct AccountPane: View {
                     }
                 }
             } header: {
-                Text("AgentDuet account")
+                Text("AgentDuet Connection")
             } footer: {
                 NoticeFooter(notice: model.notice[.account])
             }
@@ -261,14 +262,22 @@ private struct CallsPane: View {
             Section {
                 Toggle("Save calls to this Mac", isOn: Binding(
                     get: { model.recordCalls }, set: { model.setRecordCalls($0) }))
+                // THE FOLDER'S NAME, NOT ITS PATH, as Safari's download folder does: a path is as
+                // long as the owner made it and a row is not. The full path is on hover.
                 LabeledContent("Folder") {
-                    HStack {
-                        Text(abbreviated(model.storage)).foregroundStyle(.secondary)
-                            .lineLimit(1).truncationMode(.middle)
-                            .help(model.storage)
+                    Menu {
                         Button("Show in Finder") { model.showFolder() }
+                        Divider()
                         Button("Change…") { model.changeFolder() }
+                    } label: {
+                        Label {
+                            Text(folderName)
+                        } icon: {
+                            Image(nsImage: folderIcon)
+                        }
                     }
+                    .fixedSize()
+                    .help(abbreviated(model.storage))
                 }
             }
             Section {
@@ -280,6 +289,18 @@ private struct CallsPane: View {
                 NoticeFooter(notice: model.notice[.calls])
             }
         }
+    }
+
+    private var folderName: String {
+        model.storage.isEmpty ? "None" : FileManager.default.displayName(atPath: model.storage)
+    }
+
+    private var folderIcon: NSImage {
+        let image = model.storage.isEmpty
+            ? NSWorkspace.shared.icon(for: .folder)
+            : NSWorkspace.shared.icon(forFile: model.storage)
+        image.size = NSSize(width: 16, height: 16)
+        return image
     }
 
     private func abbreviated(_ path: String) -> String {
