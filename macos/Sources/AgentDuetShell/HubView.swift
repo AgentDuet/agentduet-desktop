@@ -613,6 +613,7 @@ private struct ProposalCard: View {
         "add_to_calendar": ("Open this calendar event", "", "Open It"),
         "draft_email": ("Open this email draft", "", "Open It"),
         "add_contact": ("Add to Contacts", "", "Open It"),
+        "correct_brief": ("Correct what I know", "", "Correct It"),
     ]
 
     var body: some View {
@@ -647,6 +648,7 @@ private struct ProposalCard: View {
         case "edit_skill": return "\(a.str("name")): \(a.str("old")) → \(a.str("new").isEmpty ? "(deleted)" : a.str("new"))"
         case "forget_skill", "switch_skill": return a.str("name")
         case "add_to_calendar": return "\(a.str("title")) — \(a.str("start"))\(a.str("end").isEmpty ? "" : " to " + a.str("end"))"
+        case "correct_brief": return "\(a.str("who")) — \(a.str("correction"))"
         case "draft_email": return "\(a.str("to")) — \(a.str("subject").isEmpty ? "(no subject)" : a.str("subject"))"
         default: return [a.str("fact"), a.str("new"), a.str("old")].first { !$0.isEmpty } ?? ""
         }

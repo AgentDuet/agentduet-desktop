@@ -6595,6 +6595,53 @@ def test_logs_can_be_exported() -> None:
     ok("the route is served", 'web.get("/api/logs", api_logs)' in (root / "src/agentduet_desktop/web.py").read_text())
 
 
+def test_briefs_are_about_the_right_person() -> None:
+    """A brief hears only what was said ABOUT its person, knows their name, and takes corrections."""
+    print("\n  -- person briefs: the right person, the owner's words, and corrections --")
+    import json as _json
+    import unittest.mock as mock
+    from agentduet_desktop import assistant as _a, brief, calls, llm, names, owner, tools
+    run = TMP / "brief-run"
+    (run / "briefs").mkdir(parents=True, exist_ok=True)
+    cen, kc = "+6598554074", "+6594378817"
+    chat = run / "owner_chat.json"
+    chat.write_text(_json.dumps([
+        {"q": "what time is the meeting?", "a": "I need to run a tool.", "at": "2026-09-30T15:00:00", "about": cen},
+        {"q": "Help me email Kok Choong", "a": "Drafted.", "at": "2026-09-30T15:01:00", "about": cen},
+    ]))
+    seen = {}
+    class _Model:
+        def complete(self, prompt, think=False):
+            seen["prompt"] = prompt
+            return "Who: Cen.\nOpen: none.\nLast contact: 30 Sep."
+    shown = {cen: "Cen", kc: "Ong Kok Choong"}
+    with mock.patch.object(brief.paths, "RUN", run), \
+         mock.patch.object(_a.OwnerChat, "STORE", chat), \
+         mock.patch.object(calls, "recent", lambda: []), \
+         mock.patch.object(calls, "by_person", lambda: {cen: [], kc: []}), \
+         mock.patch.object(names, "name_for", lambda w, seen=None: shown.get(w, "")), \
+         mock.patch.object(llm, "configured", lambda: True), \
+         mock.patch.object(llm, "client", lambda *a: _Model()), \
+         mock.patch.object(owner, "name", lambda: "Stanley"):
+        brief.update(cen)
+        got = seen.get("prompt", "")
+        ok("the brief is told who it is about, by name", "THIS BRIEF IS ABOUT: Cen (+6598554074)" in got, got[:300])
+        ok("a question on their page that names nobody is about them", "what time is the meeting?" in got)
+        ok("a question on their page about someone else is NOT", "Kok Choong" not in got.split("NEW INFORMATION")[1])
+        ok("only the owner's words go in, never the assistant's", "I need to run a tool" not in got)
+        seen.clear()
+        out = brief.correct(cen, "Cen is not Kok Choong; the 2:30 meeting was on 30 September")
+        ok("a correction goes in as the owner's, strongest fact",
+           "CORRECTION from Stanley: Cen is not Kok Choong" in seen.get("prompt", ""), seen.get("prompt", "")[-300:])
+        ok("and the corrected brief is saved and shown", out.startswith("Corrected.") and
+           brief.load(cen).get("summary", "").startswith("Who: Cen"))
+        ok("a name resolves to the one person it fits", names.resolve("Kok Choong") == kc)
+    ok("the assistant can read a brief, and it counts as a stranger's words",
+       "read_brief" in tools.RECORDER_TOOLS and "read_brief" in _a.TAINTING)
+    ok("it can correct one, which needs the owner after a stranger's words",
+       "correct_brief" in tools.RECORDER_TOOLS and "correct_brief" in _a.NEEDS_OWNER)
+
+
 def test_cards_stay_after_open() -> None:
     """A calendar or email card stays after it is opened; only Dismiss removes it (issue #9)."""
     print("\n  -- calendar and email cards stay after they are opened --")
@@ -6734,6 +6781,7 @@ def main() -> None:
     test_knowledge_writes()
     test_appointments_are_a_tool()
     test_logs_can_be_exported()
+    test_briefs_are_about_the_right_person()
     # EVERY TEST MUST BE CALLED. They are invoked by hand above, so a new `test_*`
     # function is dead until someone adds a line — and a dead test is worse than no
     # test, because the count still goes up and the suite still says it passed. I
