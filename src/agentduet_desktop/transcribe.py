@@ -781,6 +781,12 @@ PIECE_FRAME = 0.03          # seconds of audio per energy frame
 #: language detection: a "Hi" came back as Cantonese and an "uh" as Chinese. Turn-taking still
 #: splits, because this leg is silent for as long as the other party speaks.
 PIECE_GAP = 1.2             # this much silence ends a piece
+#: WHEN THE OTHER LEG IS KNOWN, cut at a much shorter pause: `_turns` joins the pieces back up
+#: unless the other party spoke in between, so a sentence still arrives whole — but a reply fitted
+#: into a sub-second gap is no longer glued to the next one. Measured 2026-09-30 on a call with
+#: line noise and backchannel ("ah, okay" while the other talks): no pause reached 1.2 s, so a
+#: 22-second leg came back as ONE piece and the transcript as two blocks, one per party.
+TURN_GAP = 0.3
 #: A piece shorter than this is not trusted to name its own language — see `_qwen`.
 PIECE_SURE = 3.0
 PIECE_MAX = 25.0            # never hand the model more than this in one piece
@@ -860,7 +866,8 @@ def _qwen_model():
     return _qwen_llm
 
 
-def _pieces(a, rate: int = 16_000) -> list[tuple[int, int]]:
+def _pieces(a, rate: int = 16_000, gap_s: float = PIECE_GAP,
+            min_s: float = PIECE_MIN) -> list[tuple[int, int]]:
     """Cut mono float audio at its silences. Returns (start, end) sample ranges of speech.
 
     Energy per 30 ms frame against a floor learned from the quietest tenth of the recording, so a
@@ -875,7 +882,7 @@ def _pieces(a, rate: int = 16_000) -> list[tuple[int, int]]:
     rms = np.sqrt((a[: n * step].reshape(n, step) ** 2).mean(axis=1))
     floor = float(np.percentile(rms, 10))
     loud = rms > max(floor * 3.0, 0.004)
-    gap = int(PIECE_GAP / PIECE_FRAME)
+    gap = int(gap_s / PIECE_FRAME)
     runs, start, quiet = [], None, 0
     for i, v in enumerate(loud):
         if v:
@@ -901,7 +908,7 @@ def _pieces(a, rate: int = 16_000) -> list[tuple[int, int]]:
     out = []
     for s, e in runs:
         for ps, pe in split(s, e):
-            if (pe - ps) * PIECE_FRAME < PIECE_MIN:
+            if (pe - ps) * PIECE_FRAME < min_s:
                 continue
             out.append((max(0, ps - pad) * step, min(n, pe + pad) * step))
     return out
@@ -1029,7 +1036,13 @@ def _qwen(path: pathlib.Path) -> str:
     a = _audio16k(path)
     context = qwen_context()
     other = _other_speech(path)
-    chunks = _pieces(a) if other is None else _turns(_pieces(a), other)
+    if other is None:
+        chunks = _pieces(a)
+    else:
+        # Clicks are judged on the TURN, not on the bits a short gap leaves: cut at 0.3 s, a
+        # caller's opening "啊啊" was three bits under PIECE_MIN and vanished.
+        chunks = [(s, e) for s, e in _turns(_pieces(a, gap_s=TURN_GAP, min_s=0), other)
+                  if (e - s) / 16_000 >= PIECE_MIN]
     heard = []
     for s, e in chunks:
         lang, said = qwen_piece(a[s:e], context)
