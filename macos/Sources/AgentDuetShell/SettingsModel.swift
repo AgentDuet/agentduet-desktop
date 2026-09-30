@@ -227,6 +227,7 @@ import Foundation
     }
 
     func allowMic() {
+        guard !Quarantine.answerHere else { return }
         AVCaptureDevice.requestAccess(for: .audio) { [weak self] _ in
             Task { @MainActor in
                 AppDelegate.comeBack()      // the prompt left the focus with another app

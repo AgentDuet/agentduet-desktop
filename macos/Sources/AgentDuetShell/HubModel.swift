@@ -211,6 +211,7 @@ import Foundation
 
     /// The owner's intent, saved as set; whether they can be heard is the light beside it.
     func setAnswerHere(_ on: Bool) {
+        guard !Quarantine.answerHere else { return }
         // ASKED NOW, not over a ringing call: macOS asks for the microphone the first time, and
         // that prompt belongs to the moment the owner opted in.
         if on, AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {

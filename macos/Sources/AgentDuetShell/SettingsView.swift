@@ -319,8 +319,11 @@ private struct PermissionsPane: View {
             Section {
                 PermissionRow(title: "Documents folder", detail: "", state: model.documentsState,
                               allow: model.allowDocuments, openSettings: { model.openPrivacy("privacy") })
-                PermissionRow(title: "Microphone", detail: "", state: model.mic,
-                              allow: model.allowMic, openSettings: { model.openPrivacy("privacy-mic") })
+                // No microphone while answering in the app is quarantined — see `Quarantine`.
+                if !Quarantine.answerHere {
+                    PermissionRow(title: "Microphone", detail: "", state: model.mic,
+                                  allow: model.allowMic, openSettings: { model.openPrivacy("privacy-mic") })
+                }
                 PermissionRow(title: "Contacts", detail: contactsNote, state: model.contacts,
                               allow: model.allowContacts,
                               openSettings: { model.openPrivacy("privacy-contacts") })

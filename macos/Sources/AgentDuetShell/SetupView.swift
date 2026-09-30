@@ -80,9 +80,11 @@ private struct PermissionsStep: View {
                                   detail: "Your call recordings and transcripts are kept in Documents › AgentDuet.",
                                   state: s.documentsState, allow: s.allowDocuments,
                                   openSettings: { s.openPrivacy("privacy") })
-                    PermissionRow(title: "Microphone (Optional)", detail: "To answer calls in this window.",
-                                  state: s.mic, allow: s.allowMic,
-                                  openSettings: { s.openPrivacy("privacy-mic") })
+                    if !Quarantine.answerHere {
+                        PermissionRow(title: "Microphone (Optional)", detail: "To answer calls in this window.",
+                                      state: s.mic, allow: s.allowMic,
+                                      openSettings: { s.openPrivacy("privacy-mic") })
+                    }
                     PermissionRow(title: "Contacts (Optional)",
                                   detail: "To show the names of people who call you.",
                                   state: s.contacts, allow: s.allowContacts,

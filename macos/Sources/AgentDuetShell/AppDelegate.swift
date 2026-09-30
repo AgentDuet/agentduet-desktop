@@ -103,8 +103,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // THE DOCUMENTS GRANT FIRST: access this process holds is inherited only by a daemon
         // started AFTER it. See FolderAccess.
         FolderAccess.restore(home: daemon.instanceHome)
-        micWatch = MicWatch(home: daemon.instanceHome)
-        micWatch?.start()
+        // Nothing to report while answering here is quarantined, and nothing may touch the mic.
+        if !Quarantine.answerHere {
+            micWatch = MicWatch(home: daemon.instanceHome)
+            micWatch?.start()
+        }
         contactsWatch = ContactsWatch(home: daemon.instanceHome)
         contactsWatch?.start()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in

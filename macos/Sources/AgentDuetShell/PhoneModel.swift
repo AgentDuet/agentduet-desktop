@@ -11,6 +11,18 @@ import Foundation
 ///
 /// ECHO CANCELLATION is the audio engine's voice processing — what the browser's
 /// `echoCancellation` gave the page — so the caller does not hear themselves from the speaker.
+/// ANSWERING IN THE APP IS QUARANTINED (Stanley, 2026-09-30): the use case is mobile MITM — every
+/// call is carried through to the owner's mobile and recorded in the middle; nobody talks into the
+/// Mac. Mirrors `owner.ANSWER_HERE_QUARANTINED` in the daemon.
+///
+/// THE APP HOLDS NO MICROPHONE PERMISSION while this is true — no entitlement, no usage string —
+/// and macOS KILLS an app that asks for the microphone without a usage string. So every place
+/// that asks checks this first. Bringing the feature back is this flag, the daemon's, the
+/// `audio-input` entitlement and `NSMicrophoneUsageDescription`, together.
+enum Quarantine {
+    static let answerHere = true
+}
+
 @MainActor final class PhoneModel: ObservableObject {
 
     /// "idle", "ringing" or "live", as the daemon says.
@@ -140,6 +152,8 @@ import Foundation
     // MARK: - the call
 
     func answer() {
+        // The daemon never rings the app while quarantined; this is the belt to that brace.
+        guard !Quarantine.answerHere else { return }
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
             startAnswering()

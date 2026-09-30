@@ -340,6 +340,9 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         body = await request.json()
         field = (body.get("field") or "").strip()
         value = body.get("value") or ""
+        from . import owner as _own
+        if field == "answer_here" and _own.ANSWER_HERE_QUARANTINED:
+            return web.json_response({"ok": False, "message": "Answering calls in the app is off."})
         out = tools.set_setting(field, value)
         if out.lower().startswith("unknown"):
             return web.json_response({"ok": False, "message": out})
@@ -909,8 +912,12 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             # THE IN-APP PHONE. `carry` because the toggle only means something there: in
             # answer mode the agent takes every call and there is nothing to pass through.
             # NOT "phone" — that key is the owner's own number, above.
+            # QUARANTINED, `carry` reads false, which is what hides the switch on the native hub
+            # and on the frozen page alike — neither page needed an edit.
             "answer_here": {"on": _own.answer_here(),
-                            "carry": _own.calls() == _own.CALLS_CARRY,
+                            "carry": (_own.calls() == _own.CALLS_CARRY
+                                      and not _own.ANSWER_HERE_QUARANTINED),
+                            "quarantined": _own.ANSWER_HERE_QUARANTINED,
                             # Whether the owner could be heard now — the shell's report. The page
                             # says why in red while the switch is on and it is not "ok".
                             "mic": _phone_mic()},
