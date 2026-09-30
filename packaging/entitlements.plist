@@ -34,11 +34,10 @@ allow-dyld-environment-variables
   libraries. The hardened runtime strips those by default, and the two-process onefile launch
   described in CLAUDE.md is exactly the shape that depends on them.
 
-device.audio-input
-  The in-app phone (phone.py) answers a call through the page's microphone. Under the hardened
-  runtime the microphone is refused without this — silently: getUserMedia fails and nothing
-  says why. Paired with NSMicrophoneUsageDescription in Info.plist, without which the app is
-  killed on first use.
+device.audio-input — REMOVED 2026-09-30, with answering in the app quarantined (mobile MITM;
+  see owner.ANSWER_HERE_QUARANTINED). It let the in-app phone answer through the microphone, and
+  was paired with NSMicrophoneUsageDescription, now gone too. Restore both to bring it back —
+  under the hardened runtime the microphone is refused silently without this entitlement.
 
 personal-information.addressbook
   Names for callers from the owner's Contacts (ContactsWatch.swift). Under the hardened runtime
@@ -58,8 +57,6 @@ NOT INCLUDED, on purpose:
 	<key>com.apple.security.cs.disable-library-validation</key>
 	<true/>
 	<key>com.apple.security.cs.allow-dyld-environment-variables</key>
-	<true/>
-	<key>com.apple.security.device.audio-input</key>
 	<true/>
 	<key>com.apple.security.personal-information.addressbook</key>
 	<true/>

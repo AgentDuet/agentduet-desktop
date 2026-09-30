@@ -31,6 +31,11 @@ import ServiceManagement
 // the permission state and the loudest sample over two seconds. Run it as the app, so macOS
 // attributes it to the bundle rather than to a terminal:
 //     open -n -W "AgentDuet Dev.app" --args --mic-probe /path/to/result.txt
+if CommandLine.arguments.contains("--mic-probe"), Quarantine.answerHere {
+    // No usage string in the bundle while quarantined, so asking would get the app killed.
+    FileHandle.standardError.write("mic-probe: the microphone is quarantined in this build\n".data(using: .utf8)!)
+    exit(2)
+}
 if let i = CommandLine.arguments.firstIndex(of: "--mic-probe") {
     final class Peak: @unchecked Sendable { var value: Float = 0 }
     let out = i + 1 < CommandLine.arguments.count ? CommandLine.arguments[i + 1] : "/dev/stdout"

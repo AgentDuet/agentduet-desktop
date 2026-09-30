@@ -12,7 +12,6 @@
   <key>com.apple.security.network.client</key><true/>
   <!-- the loopback site the window loads -->
   <key>com.apple.security.network.server</key><true/>
-  <key>com.apple.security.device.audio-input</key><true/>
   <!-- names for callers from Contacts (ContactsWatch.swift) -->
   <key>com.apple.security.personal-information.addressbook</key><true/>
   <!-- a folder the owner picks for recordings -->

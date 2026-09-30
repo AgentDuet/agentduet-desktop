@@ -1283,8 +1283,16 @@ claim anyway, because it is the one a regulated buyer is actually asking about.
       **The mode collision is still real and still unresolved:** `voice.register()` claims
       `on_incoming_call`, and one connector has one handler, so answering and carrying are
       mutually exclusive per install. That is a MODE, not a preference.
-- [ ] **Answer a carried call IN THE APP — BUILT 2026-09-24, AND WORKING ON A REAL CALL THE SAME
-      DAY.** **NATIVE SINCE 2026-09-29, AND THE NATIVE PHONE HAS NOT YET CARRIED A REAL CALL.**
+- [ ] **Answer a carried call IN THE APP — QUARANTINED 2026-09-30** (Stanley, from the meeting):
+      the use case is streamlined to **MOBILE MITM** — every call is carried to the owner's mobile
+      and recorded in the middle, and nobody talks into the Mac. `owner.ANSWER_HERE_QUARANTINED`
+      and the shell's `Quarantine.answerHere` keep the code; the call never rings in the app, the
+      switch is hidden on both UIs (`answer_here.carry` reads false), and **the app holds NO
+      microphone permission** — the `audio-input` entitlement and `NSMicrophoneUsageDescription`
+      are gone. macOS kills an app that asks for the mic without that string, so every ask is
+      behind the flag and a test pins it. Bringing it back is both flags, the entitlement and the
+      string, together. What follows is the record of the feature as built.
+      **BUILT 2026-09-24, AND WORKING ON A REAL CALL THE SAME DAY.** **NATIVE SINCE 2026-09-29, AND THE NATIVE PHONE HAS NOT YET CARRIED A REAL CALL.**
       `PhoneModel.swift` speaks the page's protocol on the same `/api/phone` socket, with the audio
       engine's voice processing in place of the browser's echo cancellation. Everything below was
       proven with the PAGE's phone; ring, answer, both sides recorded, hang-up and the ring-out

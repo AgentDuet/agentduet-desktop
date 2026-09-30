@@ -153,9 +153,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
        item, nothing to click. Which is why the PyInstaller bundle in
        packaging/agentduet-desktop.spec keeps this FALSE — pywebview has no status item. -->
   <key>LSUIElement</key><true/>
-  <!-- THE IN-APP PHONE answers a call through the page's microphone. Without this string
-       macOS KILLS the app the first time anything asks for the microphone. -->
-  <key>NSMicrophoneUsageDescription</key><string>AgentDuet uses the microphone when you answer a call in the app.</string>
+  <!-- NO NSMicrophoneUsageDescription since 2026-09-30: answering in the app is quarantined
+       (mobile MITM), and the app does not ask for the microphone. Without the string macOS KILLS
+       an app that asks, which is why every place that could ask checks `Quarantine.answerHere`.
+       Restore it with the audio-input entitlement to bring the in-app phone back. -->
   <!-- NAMES FOR CALLERS, from Contacts (ContactsWatch.swift). Optional in setup; without this
        string macOS kills the app the first time it asks. -->
   <key>NSContactsUsageDescription</key><string>AgentDuet shows the names of people who call you, from your contacts.</string>

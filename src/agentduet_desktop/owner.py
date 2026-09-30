@@ -321,14 +321,27 @@ def recordings_dir() -> pathlib.Path:
         return default
 
 
+#: ANSWERING IN THE APP IS QUARANTINED (Stanley, 2026-09-30, from the meeting): the use case is
+#: streamlined to MOBILE MITM — every call is carried through to the owner's mobile, and the app
+#: sits in the middle, recording both sides. Nobody talks into the Mac. So a call never rings in
+#: the app, the switch is hidden on every UI, and the Mac app no longer holds the microphone
+#: permission at all. The code stays, as the model picker's and Apple's engine's did: clearing
+#: this flag, restoring the entitlement and the usage string, and a release bring it back.
+ANSWER_HERE_QUARANTINED = True
+
+
 def answer_here() -> bool:
     """Whether a carried inbound call rings IN THE APP first. Default OFF — pass through.
+
+    Always False while `ANSWER_HERE_QUARANTINED` holds, whatever `## Answer here` says.
 
     Off unless an explicit yes, like `start_at_login`: the useful value changes what happens to
     every inbound call, so a typo must not switch it on. Only meaningful in carry mode, and only
     while a hub page is open to ring; otherwise the call passes through exactly as before. Read
     at use time — the hub's toggle writes it, and the next call must see it without a restart.
     """
+    if ANSWER_HERE_QUARANTINED:
+        return False
     first = _first_line(_strip_guidance(_sections().get("Answer here", ""))).strip().lower()
     return first in ("yes", "on", "true")
 

@@ -5934,12 +5934,26 @@ def test_a_call_can_be_answered_in_the_app() -> None:
     ok("a blocked microphone links to the Privacy settings", "Privacy_Microphone" in hub)
     ok("and the window hands that link to macOS", '"x-apple.systempreferences"' in
        (src.parent.parent / "macos" / "Sources" / "AgentDuetShell" / "AppDelegate.swift").read_text())
-    # THE MAC NEEDS THREE THINGS, and missing any one fails silently or kills the app.
+    # QUARANTINED 2026-09-30 (mobile MITM): the app holds NO microphone permission. macOS kills an
+    # app that asks without a usage string, so the permission goes only with every ask guarded.
     root = src.parent.parent
-    ok("the entitlement is granted", "com.apple.security.device.audio-input" in
-       (root / "packaging" / "entitlements.plist").read_text().split("<dict>")[1])
-    ok("Info.plist says why", "NSMicrophoneUsageDescription" in
-       (root / "packaging" / "make-macos-app.sh").read_text())
+    from agentduet_desktop import owner as _qo
+    ok("answering in the app is quarantined in the daemon", _qo.ANSWER_HERE_QUARANTINED)
+    for f in ("entitlements.plist", "entitlements-appstore.plist"):
+        ok(f"{f} grants no microphone", "com.apple.security.device.audio-input" not in
+           (root / "packaging" / f).read_text().split("<dict>")[1])
+    ok("Info.plist declares no microphone use",
+       "<key>NSMicrophoneUsageDescription</key>" not in (root / "packaging" / "make-macos-app.sh").read_text())
+    shell = root / "macos" / "Sources" / "AgentDuetShell"
+    ok("the shell's flag says the same", "static let answerHere = true" in (shell / "PhoneModel.swift").read_text())
+    for f in sorted(shell.glob("*.swift")):
+        body = f.read_text()
+        for m in re.finditer(r"AVCaptureDevice\.requestAccess\(for: \.audio\)", body):
+            before = body[max(0, m.start() - 1600):m.start()]
+            ok(f"{f.name}: every ask for the microphone is behind the quarantine",
+               "Quarantine.answerHere" in before, f.name)
+    with mock.patch.object(_qo, "_sections", lambda: {"Answer here": "yes"}):
+        ok("a saved 'yes' does not ring the app", _qo.answer_here() is False)
     ok("the web view answers the permission request", "requestMediaCapturePermissionFor" in
        (root / "macos" / "Sources" / "AgentDuetShell" / "AppDelegate.swift").read_text())
 
