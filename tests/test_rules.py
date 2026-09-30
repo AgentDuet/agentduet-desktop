@@ -2694,6 +2694,50 @@ def test_a_model_s_own_tool_call_syntax_is_parsed() -> None:
     ok("nor shown or kept as an answer", "if RAW_CALL_MARK in out:" in src)
 
 
+def test_gemma_gets_real_messages_and_declared_tools() -> None:
+    """2026-09-30: the owner chat reached gemma-4-e4b as one flattened user message teaching a
+    JSON convention, and it drifted every way that allows. Gemma 4 is now driven through its own
+    template: real turns, declared tools, calls and responses in its syntax."""
+    from agentduet_desktop import assistant as a
+    ok("gemma 4 takes the native path", a.native_models("gemma-4-e4b") and a.native_models("gemma-4-26b-a4b"))
+    ok("other models keep the JSON convention", not a.native_models("glm-4-9b") and not a.native_models("qwen3-8b"))
+    schemas = {s["function"]["name"]: s["function"] for s in a._tool_schemas(a.assistant_tools())}
+    ok("every assistant tool is declared", set(schemas) == set(a.assistant_tools()))
+    limit = schemas["read_messages"]["parameters"]["properties"]["limit"]
+    eq("a parameter's type comes from the function's annotation, a string one too",
+       limit["type"], "integer")
+    ok("a withheld tool is not declared", "read_knowledge" not in schemas)
+    chat = object.__new__(a.OwnerChat)
+    chat.native_system = "SYS"
+    chat._turn_start = 2
+    chat._call_args = [("list_calls", {"days": 1})]
+    msgs = chat._native_messages(
+        ["OWNER: earlier", "ASSISTANT: earlier answer",
+         "OWNER: who called today?", "ASSISTANT: called list_calls", "TOOL_RESULT: 3 calls",
+         "ASSISTANT: I will check", "TOOL_RESULT: You described what you intend to do"],
+        "CONTEXT — inbox")
+    eq("the roles are the conversation's", [m["role"] for m in msgs],
+       ["system", "user", "assistant", "user", "assistant", "tool", "assistant", "user"])
+    eq("this turn's call carries the arguments it used",
+       msgs[4]["tool_calls"][0]["function"], {"name": "list_calls", "arguments": {"days": 1}})
+    eq("and its result answers that call", (msgs[5]["tool_call_id"], msgs[5]["content"]),
+       (msgs[4]["tool_calls"][0]["id"], "3 calls"))
+    ok("a nudge with no call before it goes back as a note", msgs[7]["content"].startswith("(note) "))
+    ok("the live context joins this turn's question, not the system turn",
+       msgs[3]["content"].startswith("CONTEXT — inbox") and msgs[0]["content"].startswith("SYS"))
+    src = pathlib.Path(a.__file__).read_text()
+    ok("the prompt's JSON convention is swapped out for the native path",
+       "self.system.replace(_JSON_PROTOCOL, _NATIVE_PROTOCOL)" in src and _in_prompt(a))
+    llm_src = (pathlib.Path(a.__file__).parent / "llm.py").read_text()
+    ok("generation stops before the model can write a tool's response itself",
+       'stop=["<|tool_response>"]' in llm_src)
+
+
+def _in_prompt(a) -> bool:
+    """The swap only works while the prompt still carries the exact convention text."""
+    return a._JSON_PROTOCOL in a.ASSISTANT_PROMPT
+
+
 def test_pages_parse() -> None:
     """Every page's JavaScript must PARSE. A comment broke a page and every test still passed."""
     print("\n  -- the pages' scripts parse --")
@@ -6554,6 +6598,7 @@ def main() -> None:
     test_owner_writes_to_their_own_agent()
     test_inbound_whatsapp_shape()
     test_pages_parse()
+    test_gemma_gets_real_messages_and_declared_tools()
     test_a_model_s_own_tool_call_syntax_is_parsed()
     test_prompts()
     test_asker_tool_surface()
