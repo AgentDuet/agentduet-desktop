@@ -294,9 +294,10 @@ import Foundation
         return digits.count >= 6 && digits.allSatisfy(\.isNumber)
     }
 
-    /// Open a new card in Contacts for this number. Only a failure is worth saying: the card on
-    /// screen is the outcome.
-    func addContact(_ who: String) {
+    /// A new contact for this number, opened in Contacts' editor — or, without Contacts access,
+    /// a card Contacts asks to add. Only a failure is worth saying: what opens is the outcome.
+    func addContact(_ who: String, name: String = "") {
+        if ContactsAdd.addAndEdit(number: who, name: name) { return }
         Task {
             let r = await api.post("/api/contacts/add", ["who": who])
             if r["ok"] as? Bool == false { notice = .init(ok: false, text: r.str("message")) }

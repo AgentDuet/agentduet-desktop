@@ -603,7 +603,12 @@ private struct ProposalCard: View {
             else { Text(body(tool, a)).textSelection(.enabled) }
             if !kind.isEmpty { Text(kind).font(.caption).foregroundStyle(.secondary) }
             HStack {
-                Button(proposal.bool("opened") ? "Open Again" : verb0) { model.decide(proposal, approve: true) }
+                Button(proposal.bool("opened") ? "Open Again" : verb0) {
+                    // A NEW CONTACT OPENS IN CONTACTS' EDITOR where the app has Contacts access;
+                    // the card stays, as the other cards that only open something do.
+                    if tool == "add_contact", ContactsAdd.addAndEdit(number: a.str("number"), name: a.str("name")) { return }
+                    model.decide(proposal, approve: true)
+                }
                 Button(reopen ? "Dismiss" : "Discard") { model.decide(proposal, approve: false) }
             }
         }
@@ -792,7 +797,9 @@ private struct Conversation: View {
         } else if card.isEmpty, person.str("name_from") != "contacts", HubModel.isNumber(person.str("who")) {
             // NOT IN CONTACTS: a card to add, with the number and any name we have. Contacts asks
             // before it adds anything, so this needs no Contacts permission.
-            Button { model.addContact(person.str("who")) } label: {
+            // The name the hub shows, unless that is only the number.
+            let known = person.str("display") == person.str("who") ? "" : person.str("display")
+            Button { model.addContact(person.str("who"), name: known) } label: {
                 Image(systemName: "person.crop.circle.badge.plus")
             }
             .buttonStyle(.borderless).foregroundStyle(.secondary).help("Add to Contacts")

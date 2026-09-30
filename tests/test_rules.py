@@ -4074,6 +4074,12 @@ def test_a_link_tool_cannot_choose_a_destination() -> None:
        "add_contact" in _a.NEEDS_OWNER and "add_contact" in _a.REOPENABLE)
     hv_src = (pathlib.Path(__file__).parent.parent
               / "macos/Sources/AgentDuetShell/HubView.swift").read_text()
+    ok("with no name, the card has none — never the number as one",
+       "FN:\r\n" in links.vcard("", "+6598554074") and "FN:+65" not in links.vcard("", "+6598554074"))
+    cw_src = (pathlib.Path(__file__).parent.parent
+              / "macos/Sources/AgentDuetShell/ContactsWatch.swift").read_text()
+    ok("with Contacts access the new contact opens in Contacts' editor",
+       'addressbook://\(c.identifier)?edit' in cw_src and 'ContactsWatch.access() == "allowed"' in cw_src)
     ok("the header offers Add to Contacts only for a number not already there",
        'else if card.isEmpty, person.str("name_from") != "contacts", HubModel.isNumber(' in hv_src)
     from agentduet_desktop.assistant import _queued_reply

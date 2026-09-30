@@ -283,7 +283,9 @@ def vcard(name: str, number: str) -> str:
         lines += [f"N:{_vcard_text(family)};{_vcard_text(given)};;;",
                   f"FN:{_vcard_text(name)}"]
     else:
-        lines += ["N:;;;;", f"FN:{_vcard_text(number)}"]
+        # NO NAME, not the number as one (Stanley, 2026-09-30): Contacts shows "No Name" and the
+        # owner types it, rather than deleting a number from the name field first.
+        lines += ["N:;;;;", "FN:"]
     lines += [f"TEL;TYPE=CELL:{_vcard_text(number)}", "END:VCARD"]
     return "\r\n".join(lines) + "\r\n"
 
