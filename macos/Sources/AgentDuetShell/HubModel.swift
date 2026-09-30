@@ -230,7 +230,12 @@ import Foundation
     /// ON SCREEN IS SEEN: up to the newest item this window has.
     private func markSeen() {
         guard let p = person, p.num("unread") > 0 else { return }
-        let newest = items(p).map(\.at).max() ?? ""
+        // BY THE TIME THE DAEMON COUNTS WITH: a call's `at`, when it was filed at hang-up — not
+        // `started`, which orders the page. Sent as `started`, the newest call was always later
+        // than "seen" and its badge could not be cleared (Cen, 2026-09-30).
+        let calls = (p["calls"] as? [JSON] ?? []).map { $0.str("at") }
+        let msgs = (p["messages"] as? [JSON] ?? []).map { $0.str("at") }
+        let newest = (calls + msgs).max() ?? ""
         Task { _ = await api.post("/api/seen", ["who": p.str("who"), "at": newest]) }
     }
 
