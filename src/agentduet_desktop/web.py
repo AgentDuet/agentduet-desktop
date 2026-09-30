@@ -383,6 +383,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         from . import macperms
         if request.method == "POST":
             act = ((await request.json()) or {}).get("action", "")
+            logger.info("permissions: the owner pressed %r", act)
             if act == "documents":
                 macperms.request_documents()
             elif act in macperms.PRIVACY:
@@ -411,6 +412,16 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             from . import loginitem
             out["login"] = await asyncio.to_thread(loginitem.registered)
         return web.json_response(out)
+
+    async def api_logs(request):
+        """The logs as one zip, for Help › Export Logs… — see `logbundle` for what is in it."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import logbundle
+        data = await asyncio.to_thread(logbundle.bundle)
+        name = f"AgentDuet Logs {datetime.now():%Y-%m-%d %H%M}.zip"
+        return web.Response(body=data, content_type="application/zip",
+                            headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
     async def api_contact_add(request):
         """The header's Add to Contacts: a card with this person's number, and the name the hub
@@ -2039,6 +2050,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/setup/login-item", api_setup_login_item),
         web.post("/api/name", api_name),
         web.post("/api/contacts/add", api_contact_add),
+        web.get("/api/logs", api_logs),
         web.get("/logo.png", logo),
         # Browsers ask for this unprompted, and the console filled with a 404 on every page load.
         web.get("/favicon.ico", logo),

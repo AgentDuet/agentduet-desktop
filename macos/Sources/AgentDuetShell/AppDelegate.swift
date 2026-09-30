@@ -710,6 +710,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         viewItem.submenu = viewMenu
         main.addItem(viewItem)
 
+        let helpItem = NSMenuItem()
+        let helpMenu = NSMenu(title: "Help")
+        let export = NSMenuItem(title: "Export Logs…", action: #selector(exportLogs), keyEquivalent: "")
+        export.target = self
+        helpMenu.addItem(export)
+        helpItem.submenu = helpMenu
+        main.addItem(helpItem)
+        NSApp.helpMenu = helpMenu
+
         NSApp.mainMenu = main
     }
 }
@@ -765,4 +774,35 @@ extension AppDelegate: SettingsHost {
     }
 
     func runSetup() { showSetup(rerun: true) }
+
+    /// THE LOGS AS ONE FILE, for a tester to send (2026-09-30). The daemon builds the zip — it
+    /// knows what may go in (`logbundle.py`) — and this saves it through the system's panel,
+    /// which is also what lets a sandboxed build write outside its container.
+    @objc func exportLogs() {
+        guard let url = siteURL, let api = DaemonAPI(site: url) else { return }
+        Task { @MainActor in
+            guard let data = await api.data("/api/logs") else {
+                let alert = NSAlert()
+                alert.messageText = "Could not export the logs"
+                alert.informativeText = "AgentDuet is not answering. Quit it, open it again, and try once more."
+                alert.runModal()
+                return
+            }
+            let panel = NSSavePanel()
+            let stamp = ISO8601DateFormatter.string(from: Date(), timeZone: .current,
+                                                    formatOptions: [.withFullDate])
+            panel.nameFieldStringValue = "AgentDuet Logs \(stamp).zip"
+            panel.allowedContentTypes = [.zip]
+            // WHAT IS IN IT, said where the owner decides to send it.
+            panel.message = "The logs include phone numbers and caller names. Recordings, transcripts and passwords are not included."
+            NSApp.activate(ignoringOtherApps: true)
+            guard panel.runModal() == .OK, let dest = panel.url else { return }
+            do { try data.write(to: dest) } catch {
+                let alert = NSAlert(error: error)
+                alert.runModal()
+                return
+            }
+            NSWorkspace.shared.activateFileViewerSelecting([dest])
+        }
+    }
 }

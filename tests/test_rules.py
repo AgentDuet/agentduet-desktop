@@ -6555,6 +6555,46 @@ def test_appointments_are_a_tool() -> None:
        and "await self._answer_from_results(message, history) or out" in body)
 
 
+def test_logs_can_be_exported() -> None:
+    """Help › Export Logs…: one zip a tester can send, with no credential in it."""
+    print("\n  -- export logs: what goes in, and what never does --")
+    import io
+    import unittest.mock as mock
+    import zipfile
+    from agentduet_desktop import logbundle, paths
+    run = TMP / "logs-run"
+    run.mkdir(parents=True, exist_ok=True)
+    (run / "daemon.log").write_text(
+        'GET /api/panel?t=Cm6ShSlph7nVJaPNwbAlbA HTTP/1.1\n'
+        'connect with api_key=sk-live-123 and Authorization: Bearer eyJhbGciOi.x.y\n'
+        '{"refresh_token": "rt-abc"} call from +6598554074\n')
+    (run / "permissions.json").write_text('{"documents": "granted"}')
+    (run / "contacts.json").write_text('{"access": "allowed", "read": 3, "names": {"+65": "Cen"}}')
+    (run / "owner_chat.json").write_text('{"secret": "chat"}')
+    (TMP / ".env").write_text("AGENTDUET_API_KEY=sk-live-123")
+    with mock.patch.object(paths, "RUN", run):
+        z = zipfile.ZipFile(io.BytesIO(logbundle.bundle()))
+    names = z.namelist()
+    log = z.read("daemon.log").decode()
+    ok("the site token is scrubbed from every request line", "Cm6ShSlph7nVJaPNwbAlbA" not in log
+       and "t=REDACTED" in log, log)
+    ok("and anything else shaped like a secret", "sk-live-123" not in log and "eyJhbGciOi" not in log
+       and "rt-abc" not in log, log)
+    ok("the numbers stay — they are what a diagnosis needs", "+6598554074" in log)
+    ok("the chat, the credentials and the recordings never go in",
+       not any(n in names for n in ("owner_chat.json", ".env", "oauth.json")))
+    access = z.read("contacts-access.json").decode()
+    ok("Contacts: whether access was given, never the names", "allowed" in access and "Cen" not in access)
+    ok("it says which build it came from", "about.json" in names and "README.txt" in names)
+    root = pathlib.Path(__file__).parent.parent
+    app = (root / "macos/Sources/AgentDuetShell/AppDelegate.swift").read_text()
+    ok("the Help menu offers it", '"Export Logs…", action: #selector(exportLogs)' in app)
+    ok("and says what is in it before it is saved", "include phone numbers and caller names" in app)
+    ok("About offers it too", 'Button("Export Logs…")' in
+       (root / "macos/Sources/AgentDuetShell/SettingsView.swift").read_text())
+    ok("the route is served", 'web.get("/api/logs", api_logs)' in (root / "src/agentduet_desktop/web.py").read_text())
+
+
 def test_cards_stay_after_open() -> None:
     """A calendar or email card stays after it is opened; only Dismiss removes it (issue #9)."""
     print("\n  -- calendar and email cards stay after they are opened --")
@@ -6693,6 +6733,7 @@ def main() -> None:
     test_memory()
     test_knowledge_writes()
     test_appointments_are_a_tool()
+    test_logs_can_be_exported()
     # EVERY TEST MUST BE CALLED. They are invoked by hand above, so a new `test_*`
     # function is dead until someone adds a line — and a dead test is worse than no
     # test, because the count still goes up and the suite still says it passed. I
