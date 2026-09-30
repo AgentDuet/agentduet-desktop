@@ -398,16 +398,27 @@ private struct AssistantPane: View {
                     // ONLY THE NEWEST DRAFT IS STILL A DRAFT: "send it" always takes the most recent,
                     // so an older one is just an answer now and loses the label.
                     let newestDraft = model.turns.lastIndex { $0.bool("draft") }
+                    // EACH CARD UNDER THE TURN THAT MADE IT (Stanley, 2026-09-30: "why are the email
+                    // cards always at the bottom?" — they were all drawn after every turn). A
+                    // proposal is filed a moment before its turn is recorded, so it belongs to the
+                    // first turn at or after it; one whose turn is still being answered has none
+                    // yet and stays at the foot.
+                    let cardTurn = model.proposals.map { p in
+                        model.turns.firstIndex { $0.str("at") >= p.str("at") }
+                    }
                     ForEach(model.turns.indices, id: \.self) { i in
                         TurnView(model: model, turn: model.turns[i], last: i == model.turns.count - 1,
                                  newestDraft: i == newestDraft)
+                        ForEach(model.proposals.indices.filter { cardTurn[$0] == i }, id: \.self) { j in
+                            ProposalCard(model: model, proposal: model.proposals[j])
+                        }
                     }
                     if !model.pendingQuestion.isEmpty {
                         Balloon(text: model.pendingQuestion, mine: true, caption: "")
                         HStack { ProgressView().controlSize(.small); Spacer() }
                     }
-                    ForEach(model.proposals.indices, id: \.self) { i in
-                        ProposalCard(model: model, proposal: model.proposals[i])
+                    ForEach(model.proposals.indices.filter { cardTurn[$0] == nil }, id: \.self) { j in
+                        ProposalCard(model: model, proposal: model.proposals[j])
                     }
                     Color.clear.frame(height: 1).id("end")
                 }
