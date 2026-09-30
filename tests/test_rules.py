@@ -4078,10 +4078,14 @@ def test_a_link_tool_cannot_choose_a_destination() -> None:
        "FN:\r\n" in links.vcard("", "+6598554074") and "FN:+65" not in links.vcard("", "+6598554074"))
     cw_src = (pathlib.Path(__file__).parent.parent
               / "macos/Sources/AgentDuetShell/ContactsWatch.swift").read_text()
-    ok("with Contacts access the new contact opens in Contacts' editor",
-       'addressbook://\(c.identifier)?edit' in cw_src and 'ContactsWatch.access() == "allowed"' in cw_src)
-    ok("the header offers Add to Contacts only for a number not already there",
-       'else if card.isEmpty, person.str("name_from") != "contacts", HubModel.isNumber(' in hv_src)
+    ok("with Contacts access the new contact is made, then opened in Contacts",
+       r'addressbook://\(c.identifier)" + (edit ? "?edit" : "")' in cw_src
+       and 'ContactsWatch.access() == "allowed"' in cw_src)
+    rename = hv_src.split("private struct RenameSheet")[1].split("\nprivate struct ")[0]
+    ok("Rename adds to Contacts, only for a number Contacts has no card for, cursor in the name",
+       'Toggle("Add to Contacts"' in rename and 'p.str("contact_id").isEmpty' in rename
+       and "HubModel.isNumber(" in rename and "focused = true" in rename)
+    ok("and there is no second button for it", 'help("Add to Contacts")' not in hv_src)
     from agentduet_desktop.assistant import _queued_reply
     r = _queued_reply([("draft_email", {"to": "Kok Choong", "subject": "Lunch"})])
     ok("a queued draft is announced by code, not left to the model",
