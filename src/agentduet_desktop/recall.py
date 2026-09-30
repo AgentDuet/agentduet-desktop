@@ -5,8 +5,12 @@ and an hour of quiet starts a new conversation. What the owner told the assistan
 like things done, what they decided, what they asked it to follow up — used to fall out with the
 oldest lines. This keeps it: ~200 words, carried in every prompt, across conversations.
 
-ONLY FROM THE ASSISTANT CHAT: the owner's questions and the assistant's answers. Never the call
-text a lookup returned — that belongs to the person's brief (`brief.py`), which is where a
+ONLY FROM THE ASSISTANT CHAT, and ONLY THE OWNER'S WORDS (2026-09-30). The assistant's answers
+went in too, and a small model folded them as facts: "there are no appointments listed" and
+"Cen has 1 in touch" — both wrong — sat in the memory of every later conversation, and the
+narrating style of its false "I have called `x`" replies came with them. Everything the memory
+is for (instructions, the owner's facts and decisions, what to follow up) is the owner's.
+Never the call text a lookup returned — that belongs to the person's brief (`brief.py`), which is where a
 caller's words are summarised.
 
 FOLDED AFTER EVERY TURN, while the owner reads the answer (`jobs`, FOLD priority, behind
@@ -33,7 +37,7 @@ PROMPT = """Today is {today}.
 You keep a short memory for {owner}'s assistant, so it remembers what matters from
 earlier conversations with {owner}.
 
-Update the memory with the new exchanges below.
+Update the memory with what {owner} said below.
 - Keep, in this order:
   1. Instructions {owner} gave about how the assistant should answer (length, tone, language).
   2. Facts {owner} told the assistant about their work, and decisions {owner} made.
@@ -94,7 +98,7 @@ def fold() -> bool:
         return False
     batch, more = turns[:TURNS_PER_FOLD], len(turns) > TURNS_PER_FOLD
     who = owner.name() or "the owner"
-    new = "\n\n".join(f"{t.get('at', '')}\n{who}: {t['q']}\nAssistant: {t['a']}" for t in batch)
+    new = "\n\n".join(f"{t.get('at', '')}\n{who}: {t['q']}" for t in batch)
     from . import budget
     words = budget.split()["memory_words"]
     prompt = PROMPT.format(today=datetime.now().strftime("%A %d %B %Y"), owner=who, words=words,

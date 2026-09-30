@@ -6641,6 +6641,9 @@ def test_briefs_are_about_the_right_person() -> None:
         ok("asked about someone by name, who_is shows their summary, not 'no profile'",
            "Summary (a running brief" in said and "Who: Cen." in said, said)
     ok("and the summary tool says it is one", "summary" in (tools.read_brief.__doc__ or "").lower())
+    rsrc = (pathlib.Path(__file__).parent.parent / "src/agentduet_desktop/recall.py").read_text()
+    ok("the assistant's memory is folded from the owner's words only, never its own replies",
+       "Assistant: {t['a']}" not in rsrc and "{who}: {t['q']}" in rsrc)
     ok("a reply claiming it called a tool, with none run, is caught",
        bool(_a.OwnerChat.LOOKED.search("I have called `read_messages` for Kok Choong")))
     ok("who_is counts as a stranger's words now that it carries the brief", "who_is" in _a.TAINTING)
