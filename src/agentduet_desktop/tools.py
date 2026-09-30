@@ -713,6 +713,45 @@ def list_calls(days: str = "7") -> str:
         out.append(f"- {at}  {_caller_label(r.get('caller') or '')}  "
                    f"({'transcript ready' if done else 'no transcript yet'})")
     return "\n".join(out) if out else f"No calls recorded in the last {days} days."
+def list_appointments(days: str = "30") -> str:
+    """Appointments agreed on calls and in messages — when, what, and with whom."""
+    from . import calls as _calls, carry, names, suggest
+    from datetime import datetime, timedelta
+    try:
+        cut = datetime.now() - timedelta(days=max(1, int(str(days) or 30)))
+    except ValueError:
+        cut = datetime.now() - timedelta(days=30)
+    # THE SAME VERDICTS THE CARDS SHOW (2026-09-30): each call's and message's CURRENT text,
+    # looked up by digest — so a verdict on a transcript since replaced is not listed, and what
+    # the assistant says matches the card under the balloon.
+    found = []
+    def add(text: str, who: str, at: str, how: str) -> None:
+        try:
+            if at and datetime.fromisoformat(at) < cut:
+                return
+        except ValueError:
+            pass
+        for s in suggest.for_texts([text]).values():
+            found.append((s["start"], s["title"], who, at, how))
+    for who, rows_ in _calls.by_person().items():
+        for r in rows_:
+            af, n = carry.call_audio(r.get("recordings", []), r.get("call_id", ""))
+            add(carry.transcript_of(n, af), who, r.get("at", ""), "call")
+    for r in rows():
+        if r.get("network") in ("WA", "DDUET"):
+            both = "\n".join(p for p in (r.get("question", ""), r.get("answer", "")) if p)
+            add(both, r.get("asker") or "", r.get("at", ""), "message")
+    if not found:
+        return f"No appointments were agreed on calls or in messages in the last {days} days."
+    now = datetime.now().isoformat(timespec="minutes")
+    out = []
+    for start, title, who, at, how in sorted(set(found)):
+        tense = "upcoming" if start >= now else "past"
+        out.append(f"- {start}  {title}  — with {_caller_label(who)}  "
+                   f"({tense}; agreed on a {how} at {at[:16].replace('T', ' ')})")
+    return "\n".join(out)
+
+
 #: MARK TEXT A STRANGER WROTE, wherever it is about to reach a model.
 #:
 #: Two paths need this and they are not the same shape. On the secretary side an asker types at
@@ -1171,6 +1210,7 @@ ASSISTANT_SHARED = {
 
 RECORDER_TOOLS = {
     "list_calls": (list_calls, {"days": "how many days back (default 7)"}),
+    "list_appointments": (list_appointments, {"days": "how many days back to look (default 30)"}),
     "read_messages": (read_messages, {
         "who": "the person, or empty for everyone",
         "limit": "how many of the most recent lines (default 20)",

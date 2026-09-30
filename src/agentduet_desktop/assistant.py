@@ -157,7 +157,8 @@ def _tool_docs(registry: dict | None = None) -> str:
 #: public business slug; `read_call` and `read_messages` hand what they said to this model. Nothing about that is hostile by default and most calls never will be —
 #: but the words arrive through a channel with no signup and no gatekeeper, so they have to be
 #: treated as input from an unknown author for as long as they are in the context.
-TAINTING = {"read_call", "read_messages"}
+#: `list_appointments` too: its titles are a model's reading of what the caller said.
+TAINTING = {"read_call", "read_messages", "list_appointments"}
 
 #: WRITES THAT PUBLISH AN UNATTRIBUTED CLAIM. `knowledge/` is one flat, PUBLIC folder — it is
 #: what the agent tells everyone, and what the owner reads and trusts. Promoting "Pauline said
