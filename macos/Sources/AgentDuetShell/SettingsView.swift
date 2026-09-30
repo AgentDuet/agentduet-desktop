@@ -493,6 +493,9 @@ private struct AboutPane: View {
             } footer: {
                 NoticeFooter(notice: model.notice[.about])
             }
+            Section {
+                LabeledContent("Logs") { Button("Export Logs…") { model.exportLogs() } }
+            }
             // AN APP STORE BUILD IS UPDATED BY THE STORE, so it has no row to check for one.
             if !model.storeUpdates {
                 Section {

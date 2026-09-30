@@ -31,9 +31,12 @@ import os
 import pathlib
 import subprocess
 import sys
+import logging
 import threading
 
 from . import paths
+
+logger = logging.getLogger("dduet.macperms")
 
 #: The mark iCloud Drive's File Provider honours as "do not sync this".
 IGNORE_XATTR = "com.apple.fileprovider.ignore#P"
@@ -99,6 +102,9 @@ def _read() -> dict:
 
 
 def _write(key: str, value: str) -> None:
+    # EVERY CHANGE OF ANSWER IS LOGGED (2026-09-30): a tester's "I pressed Allow and nothing
+    # happened" could not be answered from the log, because nothing here ever wrote to it.
+    logger.info("permission %s: %s", key, value)
     d = _read()
     d[key] = value
     f = _state_file()
@@ -161,11 +167,13 @@ def request_documents() -> None:
         try:
             _open_documents()
             _write("documents", "granted")
-        except OSError:
+        except OSError as exc:
+            logger.info("documents: macOS refused access (%s)", exc)
             _write("documents", "denied")
         finally:
             _asking.clear()
 
+    logger.info("documents: asking macOS for %s", documents_folder())
     _asking.set()
     threading.Thread(target=_go, name="documents-permission", daemon=True).start()
 

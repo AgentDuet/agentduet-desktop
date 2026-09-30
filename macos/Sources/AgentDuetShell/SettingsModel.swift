@@ -12,6 +12,8 @@ import Foundation
     func askContacts(done: @escaping (Bool) -> Void)
     /// Setup again, in the main window.
     func runSetup()
+    /// Help › Export Logs…: the daemon's zip, saved where the owner chooses.
+    func exportLogs()
 }
 
 /// The native Settings window's state and actions (2026-09-29).
@@ -97,14 +99,19 @@ import Foundation
         about = await api.get("/api/about")
     }
 
+    /// EACH ANSWER IS SHOWN AS IT ARRIVES (2026-09-30). All four were awaited together, so one
+    /// slow route froze the whole window: a tester pressed Allow for Documents, the grant went
+    /// through, and the row still read "Allow" until the app was restarted.
     func poll() async {
-        async let c = api.get("/api/setup/current")
-        async let p = api.get("/api/panel")
-        async let q = api.get("/api/permissions")
-        async let s = api.get("/api/setup/stt")
-        (cur, panel, perms, stt) = await (c, p, q, s)
         mic = Self.micAccess()
         contacts = ContactsWatch.access()
+        let api = self.api
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { let v = await api.get("/api/permissions"); await MainActor.run { self.perms = v } }
+            group.addTask { let v = await api.get("/api/setup/current"); await MainActor.run { self.cur = v } }
+            group.addTask { let v = await api.get("/api/panel"); await MainActor.run { self.panel = v } }
+            group.addTask { let v = await api.get("/api/setup/stt"); await MainActor.run { self.stt = v } }
+        }
     }
 
     static func micAccess() -> String {
@@ -222,7 +229,13 @@ import Foundation
         if perms.bool("sandboxed") {
             host?.grantDocuments { [weak self] _ in Task { await self?.poll() } }
         } else {
-            Task { _ = await api.post("/api/permissions", ["action": "documents"]); await poll() }
+            Task {
+                // A REFUSED REQUEST IS SAID, not swallowed: pressing Allow and seeing nothing is
+                // the report this came from.
+                let r = await api.post("/api/permissions", ["action": "documents"])
+                if r["ok"] as? Bool == false { say(.permissions, r) }
+                await poll()
+            }
         }
     }
 
@@ -293,6 +306,7 @@ import Foundation
     }
 
     func runSetup() { host?.runSetup() }
+    func exportLogs() { host?.exportLogs() }
 
     // MARK: - About
 

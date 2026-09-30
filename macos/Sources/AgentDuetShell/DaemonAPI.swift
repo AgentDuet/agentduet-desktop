@@ -55,6 +55,15 @@ struct DaemonAPI {
         return await send(request)
     }
 
+    /// A route's raw bytes — the log bundle, which is a zip rather than JSON. nil on any failure.
+    func data(_ path: String) async -> Data? {
+        var request = URLRequest(url: page(path))
+        request.timeoutInterval = 60
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        return data
+    }
+
     /// Never throws: a failure comes back as `{"ok": false, "message": …}`, the shape every
     /// route already uses for its own refusals, so the caller has one case to handle.
     private func send(_ request: URLRequest) async -> JSON {
