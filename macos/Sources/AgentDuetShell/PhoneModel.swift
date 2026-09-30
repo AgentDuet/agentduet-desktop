@@ -21,6 +21,8 @@ import Foundation
     @Published private(set) var mine = false
     @Published var muted = false { didSet { audio?.muted = muted } }
     @Published var error = ""
+    /// The last answer failed because microphone access is off.
+    @Published private(set) var needsMicSetting = false
     /// Live captions by call id: who, when it began, whether it ended, and the captions so far.
     @Published private(set) var live: [String: LiveCall] = [:]
 
@@ -118,7 +120,7 @@ import Foundation
             since = m.num("since")
             if state != "live" { mine = false; muted = false; endAudio() }
             if state == "ringing" {
-                error = ""
+                dismissError()
                 // IN FRONT, SO IT CAN BE ANSWERED: the call rings for only a few seconds.
                 onRing?()
             }
@@ -138,6 +140,26 @@ import Foundation
     // MARK: - the call
 
     func answer() {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            startAnswering()
+        case .notDetermined:
+            // NEVER ASKED, which is where every new build's bundle id starts: ask now, while it
+            // rings. Failing here instead turned the owner's Answer into a decline with no prompt
+            // (2026-09-30, the dev build).
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
+                Task { @MainActor in
+                    AppDelegate.comeBack()      // the prompt took the focus away
+                    guard let self, self.state == "ringing" else { return }
+                    if granted { self.startAnswering() } else { self.cannotAnswer(PhoneAudio.Failure.refused) }
+                }
+            }
+        default:
+            cannotAnswer(PhoneAudio.Failure.refused)
+        }
+    }
+
+    private func startAnswering() {
         do {
             let audio = PhoneAudio()
             // THE TASK ITSELF, not this model: capture runs on the audio thread, and a
@@ -149,13 +171,29 @@ import Foundation
             mine = true
             send(["type": "answer"])
         } catch {
-            // No microphone, or access refused: the call cannot be taken here, so it passes through
-            // rather than ringing out.
-            endAudio()
-            self.error = "Microphone not available"
-            send(["type": "decline"])
+            cannotAnswer(error)
         }
     }
+
+    /// The call cannot be taken here, so it passes through rather than ringing out. SAID, not
+    /// swallowed: on screen until dismissed (the call bar would otherwise vanish with the call),
+    /// and in the daemon's log, which only saw "decline in the app".
+    private func cannotAnswer(_ failure: Error) {
+        endAudio()
+        needsMicSetting = (failure as? PhoneAudio.Failure) == .refused
+        error = failure.localizedDescription
+        send(["type": "diag", "answer": "failed", "error": error])
+        send(["type": "decline"])
+    }
+
+    /// Access is off, so the fix is in System Settings.
+    func openMicSettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+        else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    func dismissError() { error = ""; needsMicSetting = false }
 
     func decline() { send(["type": "decline"]) }
     func hangUp() { send(["type": "hangup"]) }
@@ -197,15 +235,35 @@ final class PhoneAudio {
     /// Set from the main thread, read on the audio thread; a stale read costs one 20 ms frame.
     var muted = false
 
+    /// Why the microphone could not be started, in words the call bar shows as they are.
+    enum Failure: LocalizedError, Equatable {
+        case refused
+        case noInput
+        case step(String, String)
+
+        var errorDescription: String? {
+            switch self {
+            case .refused:
+                return "Microphone access is off for this app — turn it on in System Settings"
+            case .noInput:
+                return "No microphone input is available"
+            case .step(let step, let reason):
+                return "Could not start the microphone (\(step): \(reason))"
+            }
+        }
+    }
+
     func start() throws {
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
-            throw NSError(domain: "AgentDuet", code: 1)
+            throw Failure.refused
         }
         let input = engine.inputNode
-        try input.setVoiceProcessingEnabled(true)
+        do { try input.setVoiceProcessingEnabled(true) } catch {
+            throw Failure.step("echo cancellation", error.localizedDescription)
+        }
         let inFormat = input.outputFormat(forBus: 0)
         guard inFormat.sampleRate > 0, let converter = AVAudioConverter(from: inFormat, to: wire) else {
-            throw NSError(domain: "AgentDuet", code: 2)
+            throw Failure.noInput
         }
         converter.downmix = true
         self.converter = converter
@@ -216,7 +274,9 @@ final class PhoneAudio {
         }
         engine.attach(player)
         engine.connect(player, to: engine.mainMixerNode, format: wireFloat)
-        try engine.start()
+        do { try engine.start() } catch {
+            throw Failure.step("audio engine", error.localizedDescription)
+        }
         player.play()
     }
 
