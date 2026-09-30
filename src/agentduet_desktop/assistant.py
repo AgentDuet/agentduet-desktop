@@ -1148,9 +1148,13 @@ class OwnerChat:
     # THE SAME LIE ABOUT A READ: "I have checked the records for calls and messages from the last
     # 7 days, but there are no appointments" (2026-09-30), with no tool run. Worse than admitting
     # it did not look — the owner takes "nothing there" as an answer.
+    #: "I HAVE CALLED `read_messages`" too (2026-09-30): gemma-4-e4b wrote that, word for word,
+    #: twice, with no tool run — copying its own earlier reply — and nothing caught it, because
+    #: only "checked"/"looked" were listed.
     LOOKED = re.compile(
         r"\bI(?:'ve| have)?\s+(?:just\s+)?"
-        r"(checked|looked|searched|reviewed|scanned|gone through|went through)\b", re.I)
+        r"(checked|looked|searched|reviewed|scanned|gone through|went through|"
+        r"called|ran|run|used|queried|fetched|pulled)\b", re.I)
 
     async def turn(self, message: str, viewing: str = "", label: str = "",
                    via: str = "") -> dict:
