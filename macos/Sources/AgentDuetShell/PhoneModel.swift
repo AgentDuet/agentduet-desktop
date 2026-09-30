@@ -27,6 +27,9 @@ import Foundation
     struct Caption: Identifiable { let id: Int; let mine: Bool; let at: Double; let text: String }
     struct LiveCall { var who: String; var started: Double; var ended: Bool; var captions: [Caption] }
 
+    /// A call is ringing, or on — here or carried through — so nothing else may play.
+    var busy: Bool { state != "idle" || live.values.contains { !$0.ended } }
+
     /// A call has started ringing: the window must be in front to answer it.
     var onRing: (() -> Void)?
 

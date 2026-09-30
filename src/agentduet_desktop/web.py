@@ -81,6 +81,24 @@ def macperms_sandboxed() -> bool:
     return macperms.sandboxed()
 
 
+def _playable(folder, names) -> dict:
+    """{"audio": path, "seconds": length} for a call whose merge is done, else {}.
+
+    The merge only: both sides in one file. A single leg is half a conversation.
+    """
+    from . import carry
+    if len(names) != 1 or folder == carry.legs():
+        return {}
+    path = folder / names[0]
+    try:
+        import wave
+        with wave.open(str(path), "rb") as w:
+            seconds = w.getnframes() / float(w.getframerate() or 1)
+    except (OSError, EOFError, wave.Error):
+        return {}
+    return {"audio": str(path), "seconds": round(seconds, 1)}
+
+
 def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
     # Built once at startup, `chat` stayed None for the life of a FIRST RUN — no model exists
     # yet, so the setup interview could never run in the session that attached one. Everything
@@ -925,6 +943,9 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
                 items.append({
                     "at": r.get("at", ""), "call_id": r.get("call_id", ""),
                     "mode": r.get("mode", ""), "files": len(names), "bytes": audio,
+                    # THE ONE FILE TO PLAY: the merge, both sides in one — never a single leg,
+                    # which is half a conversation. Empty until the merge is done.
+                    **_playable(af, names),
                     "transcript": text,
                     # Empty WAVs are what an unbridged call leaves behind; saying so beats
                     # showing a call that looks recorded and plays nothing.

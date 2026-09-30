@@ -33,6 +33,8 @@ import Foundation
     @Published private(set) var turns: [JSON] = []
     /// What the assistant proposes and is waiting on the owner to approve.
     @Published private(set) var proposals: [JSON] = []
+    /// A call's recording, played from its card.
+    let player = CallPlayer()
     /// The message box's text, and the question the assistant is answering right now.
     @Published var draft = ""
     @Published private(set) var busy = false
@@ -58,7 +60,8 @@ import Foundation
         }
     }
 
-    func stop() { timer?.invalidate(); timer = nil }
+    /// Closing the window stops a recording that is playing, too.
+    func stop() { timer?.invalidate(); timer = nil; player.stop() }
 
     func load() async {
         async let t = api.get("/api/threads")
@@ -162,14 +165,16 @@ import Foundation
         return nil
     }
 
+    /// What kind of call, and how long. Files and bytes are the recorder's business, not the
+    /// owner's.
     static func callMeta(_ c: JSON) -> String {
-        var bits = [c.str("mode")]
-        let files = Int(c.num("files"))
-        if files > 0 { bits.append("\(files) file\(files == 1 ? "" : "s")") }
-        if c.num("bytes") > 0 {
-            bits.append(ByteCountFormatter.string(fromByteCount: Int64(c.num("bytes")), countStyle: .file))
-        }
-        return bits.filter { !$0.isEmpty }.joined(separator: " · ")
+        let kind = c.str("mode") == "answered" ? "Answered by assistant" : "Voice call"
+        return c.num("seconds") > 0 ? "\(kind) · \(clock(c.num("seconds")))" : kind
+    }
+
+    static func clock(_ seconds: Double) -> String {
+        let s = Int(seconds.rounded())
+        return String(format: "%d:%02d", s / 60, s % 60)
     }
 
     // MARK: - the connection

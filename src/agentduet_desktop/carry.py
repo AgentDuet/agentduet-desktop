@@ -159,9 +159,13 @@ def call_audio(names: list[str], call_id: str = "") -> tuple[pathlib.Path, list[
         if not names:
             names = sorted(p.name for p in recordings().glob(f"*{call_id}*.wav"))
     stems = {stem_of(n) for n in names}
-    merged = [f"{st}.wav" for st in sorted(stems) if merged_wav(st).is_file()]
-    if merged:
-        return recordings(), merged
+    # THE FOLDER IT WAS MERGED INTO, which may not be today's: choosing a new folder moves
+    # nothing ("anything already recorded stays where it is"), so a call from before the change
+    # is still in the default one. Without this its merge vanished from the hub (2026-09-30).
+    for folder in dict.fromkeys([recordings(), paths.RUN / "recordings"]):
+        merged = [f"{st}.wav" for st in sorted(stems) if (folder / f"{st}.wav").is_file()]
+        if merged:
+            return folder, merged
     here = [n for n in names if (legs() / n).is_file()]
     if here:
         return legs(), here
