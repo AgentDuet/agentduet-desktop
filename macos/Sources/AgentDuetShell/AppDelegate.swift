@@ -747,7 +747,18 @@ extension AppDelegate: SettingsHost {
 
     func askContacts(done: @escaping (Bool) -> Void) {
         guard let contactsWatch else { done(false); return }
-        contactsWatch.ask(done: done)
+        contactsWatch.ask { ok in
+            Self.comeBack()
+            done(ok)
+        }
+    }
+
+    /// BACK IN FRONT after a permission prompt. The prompt is macOS's own, and when it closes macOS
+    /// returns the focus to the last ORDINARY app — Terminal, Finder — never to a menu-bar app like
+    /// this one, which then sat behind the window the owner had left.
+    static func comeBack() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.keyWindow?.makeKeyAndOrderFront(nil)
     }
 
     func runSetup() { showSetup(rerun: true) }
