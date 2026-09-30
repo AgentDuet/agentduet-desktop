@@ -132,6 +132,19 @@ private struct CallBar: View {
             }
             .padding(.horizontal, 16).padding(.vertical, 10)
             .background(Color.green.opacity(0.12))
+        } else if !phone.error.isEmpty {
+            // THE ANSWER FAILED and the call passed through: the bar stays to say why, or the
+            // owner sees nothing happen while the caller keeps ringing.
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Text("Could not answer").bold()
+                Text(phone.error).foregroundStyle(.secondary)
+                Spacer()
+                if phone.needsMicSetting { Button("Open System Settings") { phone.openMicSettings() } }
+                Button("Dismiss") { phone.dismissError() }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+            .background(Color.orange.opacity(0.12))
         }
     }
 
@@ -820,7 +833,6 @@ private struct CallCard: View {
                             .font(.system(size: 20))
                     }
                     .buttonStyle(.borderless)
-                    .disabled(player.blocked)
                     .help(player.blocked ? "Not during a call" : mine && player.playing ? "Pause" : "Play")
                 }
                 Text(HubModel.when(call.str("started").isEmpty ? call.str("at") : call.str("started")))
@@ -830,6 +842,9 @@ private struct CallCard: View {
                 Text(mine || at > 0 ? "\(HubModel.clock(at)) / \(HubModel.clock(call.num("seconds")))"
                                     : HubModel.callMeta(call))
                     .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+            }
+            if let problem = player.problem, problem.callID == call.str("call_id") {
+                Text(problem.text).font(.caption).foregroundStyle(.orange)
             }
             if call.str("transcript").isEmpty, !captions.isEmpty {
                 ForEach(captions) { c in Balloon(text: c.text, mine: c.mine, caption: "") }

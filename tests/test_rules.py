@@ -5134,7 +5134,14 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
     ok("with echo cancellation, as the page's echoCancellation gave",
        "setVoiceProcessingEnabled(true)" in ph)
     ok("a call that cannot be taken here passes through rather than ringing out",
-       'self.error = "Microphone not available"\n            send(["type": "decline"])' in ph)
+       'send(["type": "diag", "answer": "failed", "error": error])\n        send(["type": "decline"])' in ph)
+    # 2026-09-30: Answer on a dev build never asked for the microphone, declined, and said nothing.
+    ok("an answer from an app never asked for the microphone asks, rather than declining",
+       "case .notDetermined:" in ph and "AVCaptureDevice.requestAccess(for: .audio)" in ph)
+    ok("and a failed answer stays on screen to say why", '} else if !phone.error.isEmpty {' in swift["HubView.swift"])
+    ok("a play press that plays nothing says why",
+       '"Not while a call is ringing or on"' in swift["CallPlayer.swift"]
+       and "guard player.play() else" in swift["CallPlayer.swift"])
     ok("a ringing call brings the hub forward", "phone.onRing = { [weak self] in self?.bringForward() }"
        in swift["HubWindow.swift"])
     hv = swift["HubView.swift"]

@@ -22,14 +22,26 @@ import Foundation
     /// Where each paused recording was left.
     private var places: [String: Double] = [:]
 
+    /// Why the last press played nothing, shown on that call's card. A press that silently did
+    /// nothing is what was reported (2026-09-30), so every refusal below says something.
+    @Published private(set) var problem: (callID: String, text: String)?
+
     func toggle(callID: String, path: String) {
-        guard !blocked else { return }
+        problem = nil
+        guard !blocked else {
+            problem = (callID, "Not while a call is ringing or on")
+            return
+        }
         if self.callID == callID, let player {
             if player.isPlaying { pause() } else { resume() }
             return
         }
         pause()
-        guard let p = try? AVAudioPlayer(contentsOf: URL(fileURLWithPath: path)) else { return }
+        let p: AVAudioPlayer
+        do { p = try AVAudioPlayer(contentsOf: URL(fileURLWithPath: path)) } catch {
+            problem = (callID, "Cannot play this recording (\(error.localizedDescription))")
+            return
+        }
         p.delegate = self
         p.currentTime = places[callID] ?? 0
         player = p
@@ -51,7 +63,10 @@ import Foundation
 
     private func resume() {
         guard let player, !blocked else { return }
-        player.play()
+        guard player.play() else {
+            problem = callID.map { ($0, "Playback did not start — check the sound output") }
+            return
+        }
         playing = true
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
