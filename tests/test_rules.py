@@ -5626,10 +5626,14 @@ def test_a_call_can_be_answered_in_the_app() -> None:
         await _aio.gather(*served)
         return call, tabs
 
+    # THE MICROPHONE IS PINNED USABLE. It is otherwise read from the live instance's
+    # `run/mic-state.json`, which a running shell keeps writing — so a closed lid on the machine
+    # running the tests made every call here pass through instead of ringing (2026-09-30).
     with mock.patch.object(carry, "legs", lambda: home / "legs"), \
          mock.patch.object(carry, "recordings", lambda: home / "recordings"), \
          mock.patch.object(calls, "record", lambda *a, **k: rows.append((a, k))), \
-         mock.patch.object(phone, "RING_SECONDS", 0.5):
+         mock.patch.object(phone, "RING_SECONDS", 0.5), \
+         mock.patch.object(phone, "mic_usable", lambda: True):
         (home / "legs").mkdir(parents=True)
 
         # ANSWERED: the page answers, its mic reaches the call, the caller reaches the page.
