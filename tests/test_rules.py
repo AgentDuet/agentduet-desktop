@@ -5830,7 +5830,7 @@ def test_qwen3_asr_is_the_speech_engine() -> None:
     # A LIKELY LANGUAGE AS CONTEXT, never a forced one: Stanley's wording, measured before it went
     # in — it corrected the owner's mic English and kept every other language intact.
     ok("Qwen is given the context sentence", "qwen_piece(a[s:e], context)" in body
-       and "context = qwen_context()" in body)
+       and "context = qwen_context(_other_name(path))" in body)
     ok("and the live captions get the same context",
        "qwen_piece(a16, transcribe.qwen_context())" in (src / "live.py").read_text())
     # Forcing works by extending the prompt with `language X<asr_text>`, which needs the handler's
@@ -5839,8 +5839,16 @@ def test_qwen3_asr_is_the_speech_engine() -> None:
        "_postprocess_template_text" not in (src / "transcribe.py").read_text())
     with mock.patch.dict(os.environ, {"SECRETARY_STT_LANGUAGE": "vi"}):
         ok("the setting names the likely language", "most likely Vietnamese" in t.qwen_context())
-    with mock.patch.dict(os.environ, {"SECRETARY_STT_LANGUAGE": "ta"}):
-        eq("a language Qwen lacks gets no context at all", t.qwen_context(), "")
+    from agentduet_desktop import owner as _owner
+    with mock.patch.dict(os.environ, {"SECRETARY_STT_LANGUAGE": "ta"}), \
+         mock.patch.object(_owner, "name", lambda: _owner.DEFAULT_NAME):
+        eq("a language Qwen lacks, and no name, gets no context at all", t.qwen_context(), "")
+    with mock.patch.dict(os.environ, {"SECRETARY_STT_LANGUAGE": "ta", "OWNER_NAME": "Pauline"}):
+        eq("a language Qwen lacks still gets the names", t.qwen_context("Cen Lee"),
+           "The owner of this phone is Pauline. The other party is probably Cen Lee.")
+    with mock.patch.dict(os.environ, {"SECRETARY_STT_LANGUAGE": "en", "OWNER_NAME": "Pauline"}):
+        ok("the owner's name is a hint, beside the language",
+           t.qwen_context().endswith("The owner of this phone is Pauline."), t.qwen_context())
     with mock.patch.dict(os.environ, {"SECRETARY_STT_LANGUAGE": "en"}):
         ok("and the other languages are left open", "other languages are possible and speakers "
            "may mix languages" in t.qwen_context(), t.qwen_context())

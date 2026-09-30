@@ -48,6 +48,7 @@ cannot be recreated — is already closed on disk before any of it starts.
 
 import asyncio
 import io
+import json
 import logging
 import functools
 import os
@@ -936,7 +937,7 @@ QWEN_LANGS = {"en": "English", "zh": "Chinese", "yue": "Cantonese", "vi": "Vietn
               "ko": "Korean", "fil": "Filipino", "tl": "Filipino"}
 
 
-def qwen_context() -> str:
+def qwen_context(other: str = "") -> str:
     """The context sentence Qwen is given, or "" when no language is set. Read at use time.
 
     CONTEXT, NOT A FORCED LANGUAGE — Stanley's wording, 2026-09-25, and measured before it went in.
@@ -951,10 +952,18 @@ def qwen_context() -> str:
     from . import owner
     code = (os.getenv("SECRETARY_STT_LANGUAGE") or owner.language() or "").strip().lower()
     name = QWEN_LANGS.get(code.split("-")[0], "")
-    if not name:
-        return ""
-    return (f"This is a phone call. The language is most likely {name}, but other languages "
-            f"are possible and speakers may mix languages.")
+    out = (f"This is a phone call. The language is most likely {name}, but other languages "
+           f"are possible and speakers may mix languages." if name else "")
+    # NAMES, which a phone line blurs and the model cannot know (2026-09-30). Measured on three
+    # calls: "三，李三" became "Stanley, Stanley" where the owner said his name, "啊，兄弟啊" became
+    # "Ah, Stanley" where he was greeted by it — and on a call where the other party's name was
+    # given and never spoken, it appeared nowhere. Short hints only: a whole transcript given
+    # as context came back AS the transcript.
+    me = owner.name()
+    who = [f"The owner of this phone is {me}."] if me and me != owner.DEFAULT_NAME else []
+    if other:
+        who.append(f"The other party is probably {other}.")
+    return " ".join([out] + who).strip() if out or who else ""
 
 
 def qwen_piece(a, context: str = "") -> tuple[str, str]:
@@ -977,6 +986,24 @@ def qwen_piece(a, context: str = "") -> tuple[str, str]:
     with _qwen_lock:
         r = _qwen_model().create_chat_completion(messages=messages, max_tokens=1024, temperature=0)
     return _qwen_parse(r["choices"][0]["message"]["content"])
+
+
+def _other_name(path: pathlib.Path) -> str:
+    """The name the owner knows the other party by (typed, or from Contacts), or ""."""
+    from . import calls, names
+    stem = path.name
+    for suffix in ("-caller.wav", "-callee.wav"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+    call_id = stem.split("-", 1)[1] if "-" in stem else ""
+    try:
+        for line in calls.LOG.read_text().splitlines():
+            if call_id and call_id in line:
+                row = json.loads(line)
+                return names.name_for(str(row.get("caller") or ""))
+    except (OSError, ValueError):
+        pass
+    return ""
 
 
 def _other_speech(path: pathlib.Path) -> list[tuple[float, float]] | None:
@@ -1034,7 +1061,7 @@ def _qwen(path: pathlib.Path) -> str:
     leans, and measured, it corrected misreads without flattening anyone's other language.
     """
     a = _audio16k(path)
-    context = qwen_context()
+    context = qwen_context(_other_name(path))
     other = _other_speech(path)
     if other is None:
         chunks = _pieces(a)
