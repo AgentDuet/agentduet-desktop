@@ -472,7 +472,8 @@ private struct ProposalCard: View {
         let reopen = tool == "add_to_calendar" || tool == "draft_email"
         VStack(alignment: .leading, spacing: 6) {
             Text(title).bold()
-            Text(body(tool, a)).textSelection(.enabled)
+            if tool == "draft_email" { EmailFields(proposal: proposal) }
+            else { Text(body(tool, a)).textSelection(.enabled) }
             if !kind.isEmpty { Text(kind).font(.caption).foregroundStyle(.secondary) }
             HStack {
                 Button(proposal.bool("opened") ? "Open Again" : verb0) { model.decide(proposal, approve: true) }
@@ -493,6 +494,34 @@ private struct ProposalCard: View {
         case "draft_email": return "\(a.str("to")) — \(a.str("subject").isEmpty ? "(no subject)" : a.str("subject"))"
         default: return [a.str("fact"), a.str("new"), a.str("old")].first { !$0.isEmpty } ?? ""
         }
+    }
+}
+
+/// A draft email as the mail client will open it: To, Subject, then the message.
+private struct EmailFields: View {
+    let proposal: JSON
+
+    var body: some View {
+        let a = proposal.obj("args")
+        // The address Contacts gave; else what the assistant was told, for the owner to fill in.
+        let to = proposal.str("address").isEmpty ? a.str("to") : proposal.str("address")
+        VStack(alignment: .leading, spacing: 8) {
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 4) {
+                GridRow {
+                    Text("To").foregroundStyle(.secondary).gridColumnAlignment(.trailing)
+                    Text(to.isEmpty ? "—" : to)
+                }
+                GridRow {
+                    Text("Subject").foregroundStyle(.secondary)
+                    Text(a.str("subject").isEmpty ? "—" : a.str("subject"))
+                }
+            }
+            if !a.str("body").isEmpty {
+                Divider()
+                Text(a.str("body")).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .textSelection(.enabled)
     }
 }
 

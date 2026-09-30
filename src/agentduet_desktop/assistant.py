@@ -274,8 +274,17 @@ def _save_proposals(rows: list[dict]) -> None:
 
 
 def pending() -> list[dict]:
-    """What the assistant wants to write to `knowledge/`, waiting on the owner."""
-    return _proposals()
+    """What the assistant wants to write to `knowledge/`, waiting on the owner.
+
+    A draft email carries `address`: where it will actually go, looked up now so the card shows
+    what Open will put in the To field — the model gives a name, the owner reads an address.
+    """
+    rows = _proposals()
+    from . import links
+    for r in rows:
+        if r.get("tool") == "draft_email":
+            r["address"] = links.recipient(str((r.get("args") or {}).get("to") or ""))[0]
+    return rows
 
 
 def _queued_reply(queued: list[tuple[str, dict]]) -> str:
