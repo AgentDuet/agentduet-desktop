@@ -252,3 +252,65 @@ def draft_email(to: str, subject: str = "", body: str = "") -> str:
     also = f" Contacts also has {', '.join(others)}." if others else ""
     return (f"Opened a draft to {address}.{also} Nothing is sent until you press Send "
             "in your mail client.")
+
+
+#: A NUMBER, and nothing else: an optional "+", then digits, spaces and the separators people
+#: write. It becomes a TEL line in a vCard, where a newline would start a field of its own.
+NUMBER = re.compile(r"^\+?[0-9][0-9 ()./-]{5,24}$")
+
+
+def _vcard_text(value: str) -> str:
+    """RFC 6350 escaping for a text value: backslash, comma, semicolon and newline."""
+    for raw, escaped in (("\\", "\\\\"), (",", "\\,"), (";", "\\;")):
+        value = value.replace(raw, escaped)
+    return value.replace("\r", " ").replace("\n", " ")
+
+
+def vcard(name: str, number: str) -> str:
+    """One contact as a vCard 3.0. Raises ValueError on a number that is not one.
+
+    THE SAME PROPERTY AS THE LINKS: the caller passes FIELDS and this builds the card, so a name
+    cannot smuggle in an email, a URL or a second contact — it is escaped into one value.
+    """
+    number = _line(number, 40)
+    if not NUMBER.match(number):
+        raise ValueError(f"{number!r} is not a phone number")
+    name = _line(name, 120)
+    lines = ["BEGIN:VCARD", "VERSION:3.0"]
+    if name:
+        parts = name.split(" ", 1)
+        given, family = (parts[0], parts[1]) if len(parts) == 2 else (name, "")
+        lines += [f"N:{_vcard_text(family)};{_vcard_text(given)};;;",
+                  f"FN:{_vcard_text(name)}"]
+    else:
+        lines += ["N:;;;;", f"FN:{_vcard_text(number)}"]
+    lines += [f"TEL;TYPE=CELL:{_vcard_text(number)}", "END:VCARD"]
+    return "\r\n".join(lines) + "\r\n"
+
+
+def add_contact(number: str, name: str = "") -> str:
+    """Hand Contacts a prefilled card to add. The owner confirms there — this saves nothing.
+
+    A vCard OPENED, not a contact WRITTEN (2026-09-30): the Contacts app asks before it adds a
+    card, which is the same confirm step as Save in Calendar or Send in Mail, and it needs no
+    Contacts permission because this app never touches the address book.
+    """
+    ok, why = available()
+    if not ok:
+        return f"Cannot open Contacts here: {why}."
+    try:
+        card = vcard(name, number)
+    except ValueError as exc:
+        return f"Not opened: {exc}"
+    from . import paths
+    digits = re.sub(r"\D", "", number)
+    path = paths.RUN / "contacts-new" / f"{digits}.vcf"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(card, encoding="utf-8")
+        _open(str(path))
+    except OSError as exc:
+        logger.warning("could not open a contact card: %s", exc)
+        return f"Could not open Contacts: {exc}"
+    who = _line(name, 120) or _line(number, 40)
+    return f"Opened a new contact for {who} in Contacts. It is added only when you confirm there."

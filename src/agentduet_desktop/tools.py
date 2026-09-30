@@ -1116,6 +1116,12 @@ def draft_email(to: str, subject: str = "", body: str = "") -> str:
     return links.draft_email(to, subject, body)
 
 
+def add_contact(number: str, name: str = "") -> str:
+    """Open a prefilled new contact in Contacts. The owner adds it; this does not."""
+    from . import links
+    return links.add_contact(number, name)
+
+
 ASSISTANT_SHARED = {
     "add_to_calendar": (add_to_calendar, {
         "title": "what the event is called",
@@ -1128,6 +1134,9 @@ ASSISTANT_SHARED = {
               "their address is taken from Contacts",
         "subject": "the subject line",
         "body": "the message — plain text, and short: a link cannot carry a transcript"}),
+    "add_contact": (add_contact, {
+        "number": "their phone number, as the hub shows it",
+        "name": "the name to save them under — ask the owner if it is not known"}),
     "list_skills": (list_skills, {}),
     "read_skills": (read_skills, {"name": "which skill, or omit for all of them"}),
     "add_skill": (add_skill, {

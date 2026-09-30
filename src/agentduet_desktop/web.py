@@ -409,6 +409,18 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             out["login"] = await asyncio.to_thread(loginitem.registered)
         return web.json_response(out)
 
+    async def api_contact_add(request):
+        """The header's Add to Contacts: a card with this person's number, and the name the hub
+        shows them by if it is not just the number. Contacts asks the owner before adding it."""
+        body = await request.json()
+        who = str(body.get("who") or "")
+        from . import links, names as _names
+        if not _names.is_number(who):
+            return web.json_response({"ok": False, "message": "Only a phone number can be added."})
+        name = _names.name_for(who)
+        msg = await asyncio.to_thread(links.add_contact, who, "" if name == who else name)
+        return web.json_response({"ok": msg.startswith("Opened"), "message": msg})
+
     async def api_name(request):
         """The owner's name for a person. POST {who, name}; an empty name removes it, so the
         Contacts name or the number shows again. A label only — nothing is keyed on it."""
@@ -2018,6 +2030,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/setup/connector", api_setup_connector),
         web.post("/api/setup/login-item", api_setup_login_item),
         web.post("/api/name", api_name),
+        web.post("/api/contacts/add", api_contact_add),
         web.get("/logo.png", logo),
         # Browsers ask for this unprompted, and the console filled with a 404 on every page load.
         web.get("/favicon.ico", logo),
