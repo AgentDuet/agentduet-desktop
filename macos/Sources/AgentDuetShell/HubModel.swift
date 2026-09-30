@@ -226,6 +226,7 @@ import Foundation
     }
 
     func pick(_ who: String?) {
+        if who != picked { drawerOpen = false }
         picked = who
         if let who, who != Self.assistant { lastPerson = who }
         notice = nil
@@ -234,40 +235,40 @@ import Foundation
 
     var onAssistant: Bool { picked == Self.assistant }
 
+    /// The assistant's panel at the foot of a person's page: open over their history, or just its
+    /// header and the box. Sending opens it, so the answer is seen.
+    @Published var drawerOpen = false
+
     // MARK: - the message box
 
     /// Whether the assistant can answer: a model is attached.
     var modelReady: Bool { panel.obj("model").bool("configured") }
 
     var placeholder: String {
-        if let p = person { return "Message \(Self.name(p))…" }
-        if modelReady { return "Ask about your calls…" }
+        if modelReady {
+            if let p = person { return "Ask about \(Self.name(p))…" }
+            return "Ask about your calls…"
+        }
         // `job` is JSON null when nothing is downloading, which is not Swift's nil.
         return panel.obj("model").obj("pick")["job"] is JSON ? "" : "Download the model in Settings"
     }
 
     var canSend: Bool {
-        !busy && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (!onAssistant || modelReady)
+        !busy && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && modelReady
     }
 
-    /// A REPLY TO A PERSON, or a question to the assistant — which of them is open decides, so it
-    /// cannot be got wrong: the assistant never sends, and a reply never asks.
+    /// ALWAYS A QUESTION TO THE ASSISTANT (2026-09-30), with the person open as its context. The
+    /// owner never types straight to a person: the assistant prepares a reply or an email, and the
+    /// owner approves it — one way to reach anyone, whichever channel it goes out on.
     func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard canSend else { return }
         draft = ""
         busy = true
         notice = nil
+        if !onAssistant { drawerOpen = true }
         Task {
             defer { busy = false; pendingQuestion = "" }
-            if let who = picked, who != Self.assistant {
-                let r = await api.post("/api/send", ["asker": who, "text": text])
-                // WHAT BECAME OF IT: sent, or held because there is no conversation to reply into.
-                if !r.str("note").isEmpty { notice = .init(ok: !r.bool("held"), text: r.str("note")) }
-                else if r["ok"] as? Bool == false { notice = .init(ok: false, text: r.str("message")) }
-                await load()
-                return
-            }
             pendingQuestion = text
             let r = await api.post("/api/chat", ["message": text, "viewing": lastPerson])
             proposals = r["proposals"] as? [JSON] ?? proposals
