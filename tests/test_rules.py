@@ -5078,8 +5078,10 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
     ok("the native hub is the app's window once setup is done",
        'if cur.bool("needs_setup") { self.showSetup(rerun: false) } else { self.showHub(api) }' in app)
     ok("and there is no preview any more", "Native Hub Preview" not in app)
-    ok("it replies and asks through the same routes the page used",
-       all(r in hub for r in ('"/api/send"', '"/api/chat"', '"/api/proposal"', '"/api/chat_history"')))
+    ok("it asks through the same routes the page used",
+       all(r in hub for r in ('"/api/chat"', '"/api/proposal"', '"/api/chat_history"')))
+    # 2026-09-30: the box always asks the assistant; the owner never types straight to a person.
+    ok("and never sends to a person directly", '"/api/send"' not in hub)
     ok("a draft is sent only through 'send it', the one guarded path",
        '["message": "send it", "viewing": who.str("who")]' in hub)
     ph = swift["PhoneModel.swift"]

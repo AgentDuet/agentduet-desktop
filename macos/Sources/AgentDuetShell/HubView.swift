@@ -271,14 +271,16 @@ private struct PersonBox: View {
             VStack(spacing: 0) {
                 if model.onAssistant {
                     AssistantPane(model: model)
+                    Composer(model: model)
                 } else if let p = model.person {
                     Conversation(model: model, phone: phone, person: p)
+                        .modifier(WithAssistant(model: model))
                 } else if let who = model.picked {
                     // A first-time caller, on a call: nothing filed yet but the call itself.
                     Conversation(model: model, phone: phone,
                                  person: ["who": who, "display": "", "calls": [JSON](), "messages": [JSON]()])
+                        .modifier(WithAssistant(model: model))
                 }
-                Composer(model: model)
             }
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
@@ -307,7 +309,7 @@ private struct Composer: View {
                         .strokeBorder(Color.secondary.opacity(0.35)))
                     .focused($focused)
                     .onSubmit { model.send() }
-                    .disabled(model.onAssistant && !model.modelReady)
+                    .disabled(!model.modelReady)
                 Button("Send") { model.send() }
                     .disabled(!model.canSend)
                     .keyboardShortcut(.return, modifiers: .command)
@@ -323,11 +325,14 @@ private struct Composer: View {
 
 private struct AssistantPane: View {
     @ObservedObject var model: HubModel
+    /// In the panel over a person's page, whose header already says whose it is.
+    var compact = false
 
     var body: some View {
         ScrollViewReader { reader in
             ScrollView {
                 VStack(spacing: 12) {
+                    if !compact {
                     VStack(spacing: 6) {
                         ZStack {
                             Circle().fill(LinearGradient(colors: [.purple, .blue], startPoint: .top, endPoint: .bottom))
@@ -337,6 +342,7 @@ private struct AssistantPane: View {
                         Text("Personal Assistant").font(.title.bold())
                     }
                     .padding(.top, 24).padding(.bottom, 6)
+                    }
                     Downloads(model: model)
                     // ONLY THE NEWEST DRAFT IS STILL A DRAFT: "send it" always takes the most recent,
                     // so an older one is just an answer now and loses the label.
@@ -355,12 +361,73 @@ private struct AssistantPane: View {
                     Color.clear.frame(height: 1).id("end")
                 }
                 .frame(maxWidth: 640)
-                .padding(.horizontal, 24).padding(.bottom, 16)
+                .padding(.horizontal, 24).padding(.top, compact ? 12 : 0).padding(.bottom, 16)
                 .frame(maxWidth: .infinity)
             }
             .onAppear { reader.scrollTo("end", anchor: .bottom) }
             .onChange(of: model.turns.count) { _ in withAnimation { reader.scrollTo("end", anchor: .bottom) } }
             .onChange(of: model.pendingQuestion) { _ in reader.scrollTo("end", anchor: .bottom) }
+        }
+    }
+}
+
+/// THE ASSISTANT AT THE FOOT OF A PERSON'S PAGE (Stanley, 2026-09-30): its header and the box
+/// when closed; open, it covers most of the page. One assistant and one box everywhere, so asking
+/// about someone happens beside them rather than on another page.
+private struct WithAssistant: ViewModifier {
+    @ObservedObject var model: HubModel
+
+    func body(content: Content) -> some View {
+        GeometryReader { geo in
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Covered, so its scroll bar would show beside the panel's.
+                .scrollIndicators(model.drawerOpen ? .hidden : .automatic)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    VStack(spacing: 0) {
+                        Divider()
+                        header
+                        if model.drawerOpen {
+                            Divider()
+                            AssistantPane(model: model, compact: true)
+                                .frame(height: max(160, geo.size.height * 0.85 - 120))
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                        Composer(model: model)
+                    }
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .shadow(color: .black.opacity(model.drawerOpen ? 0.18 : 0), radius: 8, y: -2)
+                }
+        }
+    }
+
+    private var header: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.2)) { model.drawerOpen.toggle() }
+        } label: {
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle().fill(LinearGradient(colors: [.purple, .blue], startPoint: .top, endPoint: .bottom))
+                    Image(systemName: "sparkles").foregroundStyle(.white).font(.system(size: 11))
+                }
+                .frame(width: 22, height: 22)
+                Text("Personal Assistant").font(.headline)
+                Spacer()
+                Image(systemName: model.drawerOpen ? "chevron.down" : "chevron.up")
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(.bar)
+        .help(model.drawerOpen ? "Hide the assistant" : "Show the assistant")
+        .background {
+            // Esc closes it, as it would a sheet.
+            if model.drawerOpen {
+                Button("") { withAnimation(.easeOut(duration: 0.2)) { model.drawerOpen = false } }
+                    .keyboardShortcut(.cancelAction).opacity(0)
+            }
         }
     }
 }
@@ -472,7 +539,7 @@ private struct ProposalCard: View {
         let reopen = tool == "add_to_calendar" || tool == "draft_email"
         VStack(alignment: .leading, spacing: 6) {
             Text(title).bold()
-            if tool == "draft_email" { EmailFields(proposal: proposal) }
+            if tool == "draft_email" { EmailFields(proposal: proposal); Divider() }
             else { Text(body(tool, a)).textSelection(.enabled) }
             if !kind.isEmpty { Text(kind).font(.caption).foregroundStyle(.secondary) }
             HStack {
@@ -508,7 +575,7 @@ private struct EmailFields: View {
         VStack(alignment: .leading, spacing: 8) {
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 4) {
                 GridRow {
-                    Text("To").foregroundStyle(.secondary).gridColumnAlignment(.trailing)
+                    Text("To").foregroundStyle(.secondary).gridColumnAlignment(.leading)
                     Text(to.isEmpty ? "—" : to)
                 }
                 GridRow {
