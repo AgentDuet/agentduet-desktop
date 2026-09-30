@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The hub (2026-09-29), on the Contacts layout: a plain list on the left — the Personal Assistant
@@ -59,6 +60,12 @@ struct HubView: View {
             ToolbarItem(placement: .primaryAction) {
                 Button { model.openSettings?(nil) } label: { Label("Settings", systemImage: "gearshape") }
                     .help("Settings")
+            }
+            // THE SEARCH IS CONTACTS', last in the toolbar (Stanley, 2026-09-30): AppKit's own
+            // search field, filtering the list by name or number. Not `.searchable`, which brings a
+            // stretch of its own and pulled the controls away from it.
+            ToolbarItem(placement: .primaryAction) {
+                SearchField(text: $model.search).frame(width: 220)
             }
         }
     }
@@ -182,7 +189,8 @@ private struct PeopleList: View {
                     }
                 }
                 if everyone.isEmpty {
-                    Text("Nobody yet.").foregroundStyle(.secondary).padding(.top, 8)
+                    Text(model.search.isEmpty ? "Nobody yet." : "No one matches.")
+                        .foregroundStyle(.secondary).padding(.top, 8)
                 }
             }
             .padding(8)
@@ -192,7 +200,8 @@ private struct PeopleList: View {
     /// EVERYONE, plus anyone on a call right now who has no history yet — a first-time caller
     /// has no row until the call is filed, and the whole point is to show them while it is on.
     private var everyone: [JSON] {
-        var list = model.people
+        var list = model.shown
+        // A caller on the line is shown whatever the search: they are why the window came forward.
         for c in phone.live.values where !c.ended && !list.contains(where: { $0.str("who") == c.who }) {
             list.insert(["who": c.who, "display": "", "calls": [JSON](), "messages": [JSON](), "last": ""], at: 0)
         }
@@ -258,6 +267,50 @@ private struct Avatar: View {
             }
         }
         .frame(width: size, height: size)
+    }
+}
+
+/// AppKit's search field — the one Contacts has — with Cmd-F to reach it and Esc to clear it.
+private struct SearchField: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeNSView(context: Context) -> NSSearchField {
+        let f = NSSearchField()
+        f.placeholderString = "Search"
+        f.delegate = context.coordinator
+        f.sendsSearchStringImmediately = true
+        context.coordinator.field = f
+        context.coordinator.watchCommandF()
+        return f
+    }
+
+    func updateNSView(_ f: NSSearchField, context: Context) {
+        if f.stringValue != text { f.stringValue = text }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+
+    final class Coordinator: NSObject, NSSearchFieldDelegate {
+        var text: Binding<String>
+        weak var field: NSSearchField?
+        private var monitor: Any?
+        init(text: Binding<String>) { self.text = text }
+        deinit { if let monitor { NSEvent.removeMonitor(monitor) } }
+
+        func controlTextDidChange(_ n: Notification) {
+            text.wrappedValue = (n.object as? NSSearchField)?.stringValue ?? ""
+        }
+
+        /// Cmd-F, in this window only.
+        func watchCommandF() {
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+                guard let f = self?.field, e.window === f.window,
+                      e.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+                      e.charactersIgnoringModifiers == "f" else { return e }
+                f.window?.makeFirstResponder(f)
+                return nil
+            }
+        }
     }
 }
 
