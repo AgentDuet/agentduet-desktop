@@ -64,11 +64,16 @@ import Foundation
         async let t = api.get("/api/threads")
         async let p = api.get("/api/panel")
         async let h = api.get("/api/chat_history")
-        let (threads, panel, history) = await (t, p, h)
+        // PROPOSALS ARE ON DISK, not only in a chat reply: a card must survive a restart.
+        async let q = api.get("/api/proposals")
+        let (threads, panel, history, pending) = await (t, p, h, q)
         people = threads["people"] as? [JSON] ?? []
         self.panel = panel
         // NOT WHILE A TURN IS IN FLIGHT: the pending question is this window's own state.
-        if !busy { turns = history["turns"] as? [JSON] ?? turns }
+        if !busy {
+            turns = history["turns"] as? [JSON] ?? turns
+            proposals = pending["proposals"] as? [JSON] ?? proposals
+        }
         if picked != Self.assistant, !people.contains(where: { $0.str("who") == picked }) {
             picked = Self.assistant
         }

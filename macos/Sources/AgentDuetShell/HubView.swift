@@ -473,11 +473,7 @@ private struct ProposalCard: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).bold()
             Text(body(tool, a)).textSelection(.enabled)
-            // No hint for a card that only opens something: what it opens is the outcome.
-            Text([kind,
-                  proposal.str("asked").isEmpty ? "proposed after reading a call" : "you asked: “\(proposal.str("asked"))”",
-                  proposal.bool("opened") ? "opened" : ""].filter { !$0.isEmpty }.joined(separator: " · "))
-                .font(.caption).foregroundStyle(.secondary)
+            if !kind.isEmpty { Text(kind).font(.caption).foregroundStyle(.secondary) }
             HStack {
                 Button(proposal.bool("opened") ? "Open Again" : verb0) { model.decide(proposal, approve: true) }
                 Button(reopen ? "Dismiss" : "Discard") { model.decide(proposal, approve: false) }
