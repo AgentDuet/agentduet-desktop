@@ -5143,7 +5143,8 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
     ok("a draft's send is a row like the calendar card, under the balloon",
        'Text("Reply to \\(HubModel.name(who))")' in hv and 'Button("Send") { model.sendDraft() }' in hv)
     ok("one pill per toolbar control, the system's: no capsule of our own inside it",
-       ".background(Capsule().fill(Color.primary.opacity(0.07)))" not in hv)
+       ".background(Capsule().fill(Color.primary.opacity(0.07)))"
+       not in hv.split(".toolbar {")[1].split("extension HubView")[0])
     ok("and no pill around the title", ".sharedBackgroundVisibility(.hidden)" in hv)
     ok("the title bar's status is never cut short", "Text(model.connection).foregroundStyle(.secondary).fixedSize()" in hv)
     ok("your number is shown, learned, not typed",
