@@ -1040,6 +1040,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         for p in people:
             p["display"] = _names.name_for(p["who"], seen)
             p["name_from"] = _names.source_of(p["who"]) if p["display"] else ""
+            p["contact_id"] = _names.contact(p["who"]).get("id") or ""
             p["messages"].sort(key=lambda m: m["at"])
             latest = [p["last"]] + [m["at"] for m in p["messages"]]
             p["last"] = max([x for x in latest if x] or [""])

@@ -290,6 +290,10 @@ def _queued_reply(queued: list[tuple[str, dict]]) -> str:
     for name, a in queued:
         if name == "draft_email":
             to = str(a.get("to") or "").strip()
+            from . import links
+            address = links.recipient(to)[0]
+            if address and address != to:
+                to = f"{to} ({address})"
             lines.append(f"I've prepared an email{' to ' + to if to else ''}"
                          f"{': ' + str(a.get('subject')) if a.get('subject') else ''}. "
                          "Press Open below to see it in your mail client — nothing is sent until "
