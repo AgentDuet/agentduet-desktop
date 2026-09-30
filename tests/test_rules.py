@@ -5009,8 +5009,9 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
     # NO @State: a macro whose plugin ships with Xcode, and this package builds without it.
     uses = [n for n, t in swift.items() if _re.search(r"^\s*@State\s", t, _re.M)]
     ok(f"no Swift file uses @State{' — ' + str(uses) if uses else ''}", not uses)
-    ok("no Save button in the forms: fields save on Return or on leaving",
-       ".onSubmit { model.commit(" in swift["SettingsView.swift"])
+    ok("the name is changed through Edit…, in a sheet with Cancel and Save",
+       'Button("Edit…") { editingName.value = true }' in swift["SettingsView.swift"]
+       and "private struct NameSheet" in swift["SettingsView.swift"])
 
     # SETUP IS NATIVE TOO (2026-09-29), shown exactly when the HTML wizard would have been.
     ok("the daemon reports the same question index asks", 'cur["needs_setup"] = needs_setup()' in web)
@@ -5085,10 +5086,13 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
     sw = swift["SettingsWindow.swift"]
     ok("Settings is a sheet on the hub", "parent.beginSheet(w)" in sw
        and "over: setupPending ? nil : hubWindow.nsWindow" in app)
-    ok("closed with Done, in its own title bar at the top, or Esc",
-       'Text("Settings").font(.headline)' in swift["SettingsView.swift"]
-       and 'Button("Done") { model.done?() }' in swift["SettingsView.swift"]
-       and ".keyboardShortcut(.cancelAction)" in swift["SettingsView.swift"])
+    sv = swift["SettingsView.swift"]
+    ok("System Settings' layout: the sidebar a rounded box, one background, no title-bar band",
+       ".scrollContentBackground(.hidden)" in sv and "RoundedRectangle(cornerRadius: 12" in sv
+       and ".background(.bar)" not in sv.split("struct SettingsView")[1].split("struct NoTopMargin")[0])
+    ok("the pane's title and Done share the top row; Esc closes too",
+       'Text(model.section.title).font(.title2.bold())' in sv and 'Button("Done") { model.done?() }' in sv
+       and ".keyboardShortcut(.cancelAction)" in sv)
     ok("the app comes back in front after a permission prompt, not Terminal",
        "static func comeBack()" in app and swift["SettingsModel.swift"].count("AppDelegate.comeBack()") == 1
        and "AppDelegate.comeBack()" in swift["HubModel.swift"] and "Self.comeBack()" in app)

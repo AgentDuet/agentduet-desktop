@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The native Settings window (2026-09-29): macOS's own sidebar and grouped forms, as System
@@ -6,45 +7,81 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var model: SettingsModel
 
+    // SYSTEM SETTINGS' LAYOUT (Stanley, 2026-09-30): the sidebar a rounded box of its own, inset and
+    // running top to bottom; the pane's title at the top with even space above and below, and Done
+    // beside it; ONE background behind the title and the form — no band for a title bar.
     var body: some View {
-        VStack(spacing: 0) {
-            // ITS OWN TITLE BAR, with Done at the right (Stanley, 2026-09-29): a sheet has none,
-            // and without one it looked unfinished. Esc closes it too.
-            ZStack {
-                Text("Settings").font(.headline)
+        HStack(spacing: 0) {
+            List(SettingsModel.Section.allCases, selection: Binding(
+                get: { model.section }, set: { if let s = $0 { model.section = s } })) { s in
+                Label(s.title, systemImage: s.symbol).tag(s)
+            }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .frame(width: 210)
+            // A LIGHTER LAYER OVER THE TINTED WINDOW, as System Settings' sidebar reads. The sidebar
+            // material itself drew a flat grey inside a sheet.
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.primary.opacity(0.06)))
+            .padding(8)
+
+            VStack(alignment: .leading, spacing: 0) {
                 HStack {
+                    Text(model.section.title).font(.title2.bold())
                     Spacer()
+                    // DONE closes the sheet; Esc does the same.
                     Button("Done") { model.done?() }
                         .keyboardShortcut(.defaultAction)
                         .keyboardShortcut(.cancelAction)
                 }
-            }
-            .padding(.horizontal, 16).padding(.vertical, 10)
-            .background(.bar)
-            Divider()
-            NavigationSplitView {
-                List(SettingsModel.Section.allCases, selection: Binding(
-                    get: { model.section }, set: { if let s = $0 { model.section = s } })) { s in
-                    Label(s.title, systemImage: s.symbol).tag(s)
-                }
-                .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
-            } detail: {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(model.section.title).font(.title2.bold())
-                        .padding(.horizontal, 20).padding(.top, 16)
-                    Group {
-                        switch model.section {
-                        case .account: AccountPane(model: model)
-                        case .calls: CallsPane(model: model)
-                        case .permissions: PermissionsPane(model: model)
-                        case .advanced: AdvancedPane(model: model)
-                        case .about: AboutPane(model: model)
-                        }
+                .padding(.horizontal, 20).padding(.top, 16)
+                Group {
+                    switch model.section {
+                    case .account: AccountPane(model: model)
+                    case .calls: CallsPane(model: model)
+                    case .permissions: PermissionsPane(model: model)
+                    case .advanced: AdvancedPane(model: model)
+                    case .about: AboutPane(model: model)
                     }
-                    .formStyle(.grouped)
                 }
-                .frame(minWidth: 460)
+                .formStyle(.grouped)
+                .scrollContentBackground(.hidden)
+                .modifier(NoTopMargin())
+                // EVEN SPACE ABOVE AND BELOW THE TITLE: a grouped form still keeps room above its
+                // first section, so it is drawn up to meet the title.
+                .padding(.top, -6)
             }
+            .frame(minWidth: 460)
+        }
+        // SYSTEM SETTINGS' OWN COLOURS: the window material, tinted by the wallpaper as the system's
+        // windows are — a flat grey never matched it.
+        .background(WindowMaterial(material: .windowBackground))
+    }
+}
+
+/// A macOS material behind a view — the window's or the sidebar's — tinted by the wallpaper as the
+/// system's own windows are.
+struct WindowMaterial: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = .behindWindow
+        view.state = .followsWindowActiveState
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) { view.material = material }
+}
+
+/// The grouped form's own top margin, taken off so the title has the same space below it as above.
+private struct NoTopMargin: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.contentMargins(.top, 0, for: .scrollContent)
+        } else {
+            content
         }
     }
 }
@@ -72,17 +109,21 @@ private struct NoticeFooter: View {
 
 private struct AccountPane: View {
     @ObservedObject var model: SettingsModel
-    @FocusState private var focus: String?
-    @StateObject private var lastFocus = Local<String?>(nil)
     @StateObject private var editingKey = Local(false)
+    @StateObject private var editingName = Local(false)
     @StateObject private var confirmSignOut = Local(false)
 
     var body: some View {
         Form {
             Section {
-                TextField("Name", text: $model.name, prompt: Text("Your name"))
-                    .focused($focus, equals: "name")
-                    .onSubmit { model.commit("name") }
+                // THE VALUE AND AN EDIT BUTTON (Stanley, 2026-09-30): an inline field looked like
+                // plain text, with nothing to say it could be changed.
+                LabeledContent("Name") {
+                    HStack {
+                        Text(model.name).textSelection(.enabled)
+                        Button("Edit…") { editingName.value = true }
+                    }
+                }
                 // LEARNED, NOT TYPED (Stanley, 2026-09-29): the number is mined from the first
                 // call, so it is shown here and not edited — and until then there is no row.
                 if !model.yourNumber.isEmpty {
@@ -126,12 +167,8 @@ private struct AccountPane: View {
             }
         }
         // LEAVING A FIELD SAVES IT, as Return does — there is no Save button to forget.
-        .onChange(of: focus) { now in
-            if let was = lastFocus.value, was != now { model.commit(was) }
-            lastFocus.value = now
-        }
-        .onDisappear { if let was = lastFocus.value { model.commit(was) } }
         .sheet(isPresented: $editingKey.value) { SignInSheet(model: model) }
+        .sheet(isPresented: $editingName.value) { NameSheet(model: model) }
         .confirmationDialog("Sign out of AgentDuet?", isPresented: $confirmSignOut.value) {
             Button("Sign Out", role: .destructive) { model.signOut() }
         } message: {
@@ -139,6 +176,36 @@ private struct AccountPane: View {
         }
     }
 
+}
+
+/// The name, edited in a sheet with Cancel and Save.
+private struct NameSheet: View {
+    @ObservedObject var model: SettingsModel
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var name = Local("")
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Form {
+                TextField("Name", text: $name.value, prompt: Text("Your name"))
+            }
+            .formStyle(.grouped)
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Save") {
+                    model.name = name.value.trimmingCharacters(in: .whitespaces)
+                    model.commit("name")
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(name.value.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .padding([.horizontal, .bottom], 20)
+        }
+        .frame(width: 420)
+        .onAppear { name.value = model.name }
+    }
 }
 
 /// Sign In…, or Change… for an install set up by key: the setup window's first step, as a sheet.
