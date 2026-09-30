@@ -5845,7 +5845,19 @@ def test_qwen3_asr_is_the_speech_engine() -> None:
         ok("and the other languages are left open", "other languages are possible and speakers "
            "may mix languages" in t.qwen_context(), t.qwen_context())
     ok("the saved transcript is cut by turn when the other leg is there",
-       "chunks = _pieces(a) if other is None else _turns(_pieces(a), other)" in body)
+       "_turns(_pieces(a, gap_s=TURN_GAP, min_s=0), other)" in body)
+    # A backchannel in a sub-second gap is still a hand-over (2026-09-30): at PIECE_GAP a noisy
+    # leg whose pauses never reach 1.2 s came back as one piece.
+    import numpy as _np
+    rate = 16_000
+    tone = lambda sec: 0.1 * _np.sin(_np.arange(int(sec * rate)) * 0.3)
+    quiet = lambda sec: _np.zeros(int(sec * rate))
+    leg = _np.concatenate([quiet(0.5), tone(2), quiet(0.6), tone(2), quiet(0.5)])
+    eq("a 0.6 s pause is not a piece on its own", len(t._pieces(leg)), 1)
+    eq("but is a turn when the other party spoke in it",
+       len(t._turns(t._pieces(leg, gap_s=t.TURN_GAP, min_s=0), [(2.4, 3.2)])), 2)
+    eq("and is joined back when they did not",
+       len(t._turns(t._pieces(leg, gap_s=t.TURN_GAP, min_s=0), [])), 1)
 
     # TURNS: a pause alone does not cut; the other party speaking in it does; PIECE_MAX still caps.
     r = 16_000
