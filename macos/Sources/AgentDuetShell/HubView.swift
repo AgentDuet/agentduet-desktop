@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 /// The hub (2026-09-29), on the Contacts layout: a plain list on the left — the Personal Assistant
@@ -60,12 +59,6 @@ struct HubView: View {
             ToolbarItem(placement: .primaryAction) {
                 Button { model.openSettings?(nil) } label: { Label("Settings", systemImage: "gearshape") }
                     .help("Settings")
-            }
-            // THE SEARCH IS CONTACTS', last in the toolbar (Stanley, 2026-09-30): AppKit's own
-            // search field, filtering the list by name or number. Not `.searchable`, which brings a
-            // stretch of its own and pulled the controls away from it.
-            ToolbarItem(placement: .primaryAction) {
-                SearchField(text: $model.search).frame(width: 220)
             }
         }
     }
@@ -165,36 +158,40 @@ private struct PeopleList: View {
     @ObservedObject var model: HubModel
     @ObservedObject var phone: PhoneModel
 
+    /// THE ASSISTANT AND THE SEARCH STAY; ONLY THE PEOPLE SCROLL (Stanley, 2026-09-30). The search
+    /// sits where the separator was — the assistant's row is set apart enough by its own look.
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 2) {
-                row(on: model.onAssistant, tap: { model.pick(HubModel.assistant) }) {
-                    HStack(spacing: 10) {
-                        ZStack {
-                            Circle().fill(LinearGradient(colors: [.purple, .blue], startPoint: .top, endPoint: .bottom))
-                            Image(systemName: "sparkles").foregroundStyle(.white).font(.system(size: 15))
+        VStack(spacing: 6) {
+            row(on: model.onAssistant, tap: { model.pick(HubModel.assistant) }) {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle().fill(LinearGradient(colors: [.purple, .blue], startPoint: .top, endPoint: .bottom))
+                        Image(systemName: "sparkles").foregroundStyle(.white).font(.system(size: 15))
+                    }
+                    .frame(width: 32, height: 32)
+                    Text("Personal Assistant").font(.body.weight(.semibold))
+                    Spacer()
+                }
+                .padding(.vertical, 6)
+            }
+            SearchField(text: $model.search)
+            ScrollView {
+                LazyVStack(spacing: 2) {
+                    ForEach(everyone.indices, id: \.self) { i in
+                        let p = everyone[i]
+                        let on = p.str("who") == model.picked
+                        row(on: on, tap: { model.pick(p.str("who")) }) {
+                            PersonRow(person: p, picked: on, onCall: phone.onACall(p.str("who")))
                         }
-                        .frame(width: 32, height: 32)
-                        Text("Personal Assistant").font(.body.weight(.semibold))
-                        Spacer()
                     }
-                    .padding(.vertical, 6)
-                }
-                Divider().padding(.vertical, 4)
-                ForEach(everyone.indices, id: \.self) { i in
-                    let p = everyone[i]
-                    let on = p.str("who") == model.picked
-                    row(on: on, tap: { model.pick(p.str("who")) }) {
-                        PersonRow(person: p, picked: on, onCall: phone.onACall(p.str("who")))
+                    if everyone.isEmpty {
+                        Text(model.search.isEmpty ? "Nobody yet." : "No one matches.")
+                            .foregroundStyle(.secondary).padding(.top, 8)
                     }
-                }
-                if everyone.isEmpty {
-                    Text(model.search.isEmpty ? "Nobody yet." : "No one matches.")
-                        .foregroundStyle(.secondary).padding(.top, 8)
                 }
             }
-            .padding(8)
         }
+        .padding(8)
     }
 
     /// EVERYONE, plus anyone on a call right now who has no history yet — a first-time caller
@@ -270,47 +267,31 @@ private struct Avatar: View {
     }
 }
 
-/// AppKit's search field — the one Contacts has — with Cmd-F to reach it and Esc to clear it.
-private struct SearchField: NSViewRepresentable {
+/// The list's search, drawn as Contacts draws its own: a rounded pill with the magnifier, as
+/// tall as the rows around it. (AppKit's search field keeps a fixed height, which sat cramped.)
+/// Cmd-F comes to it; Esc clears it and leaves.
+private struct SearchField: View {
     @Binding var text: String
+    @FocusState private var focused: Bool
 
-    func makeNSView(context: Context) -> NSSearchField {
-        let f = NSSearchField()
-        f.placeholderString = "Search"
-        f.delegate = context.coordinator
-        f.sendsSearchStringImmediately = true
-        context.coordinator.field = f
-        context.coordinator.watchCommandF()
-        return f
-    }
-
-    func updateNSView(_ f: NSSearchField, context: Context) {
-        if f.stringValue != text { f.stringValue = text }
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
-
-    final class Coordinator: NSObject, NSSearchFieldDelegate {
-        var text: Binding<String>
-        weak var field: NSSearchField?
-        private var monitor: Any?
-        init(text: Binding<String>) { self.text = text }
-        deinit { if let monitor { NSEvent.removeMonitor(monitor) } }
-
-        func controlTextDidChange(_ n: Notification) {
-            text.wrappedValue = (n.object as? NSSearchField)?.stringValue ?? ""
-        }
-
-        /// Cmd-F, in this window only.
-        func watchCommandF() {
-            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
-                guard let f = self?.field, e.window === f.window,
-                      e.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-                      e.charactersIgnoringModifiers == "f" else { return e }
-                f.window?.makeFirstResponder(f)
-                return nil
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Search", text: $text).textFieldStyle(.plain).focused($focused)
+            if !text.isEmpty {
+                Button { text = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.borderless).foregroundStyle(.secondary).help("Clear")
             }
         }
+        .padding(.horizontal, 10)
+        .frame(height: 30)
+        .background(Capsule().fill(Color.primary.opacity(0.07)))
+        .overlay(Capsule().strokeBorder(Color.accentColor.opacity(focused ? 0.6 : 0), lineWidth: 2))
+        .onExitCommand { text = ""; focused = false }
+        .background { Button("") { focused = true }.keyboardShortcut("f").opacity(0) }
+        // NOT THE FIRST THING TYPED INTO: a window hands its first field the focus, which put the
+        // owner's first keystrokes in the search rather than the message box.
+        .onAppear { DispatchQueue.main.async { focused = false } }
     }
 }
 

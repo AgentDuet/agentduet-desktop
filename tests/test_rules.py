@@ -5101,9 +5101,12 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
        'MicLight(ok: model.micOK, reason: model.micReason)' in hv and 'Text("Answer Calls Here")' in hv
        and 'Label("Settings", systemImage: "gearshape")' in hv)
     ok("each in its own pill, not crowded into one group",
-       "ToolbarItemGroup" not in hv and hv.count("ToolbarItem(placement: .primaryAction)") == 3)
-    ok("and the search is Contacts', last in the toolbar",
-       "SearchField(text: $model.search)" in hv and ".searchable(" not in hv)
+       "ToolbarItemGroup" not in hv and hv.count("ToolbarItem(placement: .primaryAction)") == 2)
+    people_list = hv.split("private struct PeopleList")[1].split("private struct ")[0]
+    ok("the search sits over the list, and only the people scroll",
+       "SearchField(text: $model.search)" in people_list
+       and people_list.index("SearchField(") < people_list.index("ScrollView {")
+       < people_list.index("ForEach(everyone"))
     ok("the microphone's reason shows the moment the pointer is over it",
        ".onHover { hovering.value = $0 }" in hv and ".popover(isPresented: $hovering.value" in hv)
     ok("your balloons are the same grey as theirs", "Color.blue)" not in hv.split("struct Balloon")[1].split("struct ")[0])
