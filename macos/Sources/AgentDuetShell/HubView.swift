@@ -388,11 +388,13 @@ private struct WithAssistant: ViewModifier {
                     if model.drawerOpen {
                         Divider()
                         AssistantPane(model: model, compact: true)
-                            .frame(height: max(160, geo.size.height * 0.85 - 120))
+                            .frame(maxHeight: .infinity)
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                     Composer(model: model)
                 }
+                // Open, the WHOLE panel is two thirds of the page (Stanley, 2026-09-30).
+                .frame(height: model.drawerOpen ? geo.size.height * 2 / 3 : nil)
                 .background(Color(nsColor: .controlBackgroundColor))
                 // Edge to edge; the box already rounds the bottom, so only the top is rounded here.
                 .clipShape(TopRounded(radius: 12))
