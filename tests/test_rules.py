@@ -4059,7 +4059,7 @@ def test_a_link_tool_cannot_choose_a_destination() -> None:
     from agentduet_desktop.assistant import _queued_reply
     r = _queued_reply([("draft_email", {"to": "Kok Choong", "subject": "Lunch"})])
     ok("a queued draft is announced by code, not left to the model",
-       "prepared an email to Kok Choong" in r and "nothing is sent" in r)
+       "prepared an email to Kok Choong" in r and "Press Open" not in r)
     try:
         links.calendar_url("x", "2026-09-10 15:00", "2026-09-10 14:00")
         ok("an end before the start is refused", False)
