@@ -378,29 +378,27 @@ private struct WithAssistant: ViewModifier {
     @ObservedObject var model: HubModel
 
     func body(content: Content) -> some View {
+        // STACKED, NOT LAID OVER: the history ends where the panel begins, so nothing of it —
+        // content or scroll bar — is ever behind the panel (Stanley, 2026-09-30).
         GeometryReader { geo in
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                // Covered, so its scroll bar would show beside the panel's.
-                .scrollIndicators(model.drawerOpen ? .hidden : .automatic)
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    VStack(spacing: 0) {
-                        header
-                        if model.drawerOpen {
-                            Divider()
-                            AssistantPane(model: model, compact: true)
-                                .frame(height: max(160, geo.size.height * 0.85 - 120))
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
-                        Composer(model: model)
+            VStack(spacing: 0) {
+                content.frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: 0) {
+                    header
+                    if model.drawerOpen {
+                        Divider()
+                        AssistantPane(model: model, compact: true)
+                            .frame(height: max(160, geo.size.height * 0.85 - 120))
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
-                    .background(Color(nsColor: .controlBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.secondary.opacity(0.25)))
-                    .shadow(color: .black.opacity(model.drawerOpen ? 0.25 : 0.1), radius: model.drawerOpen ? 10 : 4, y: -1)
-                    .padding(.horizontal, 10).padding(.bottom, 10)
+                    Composer(model: model)
                 }
+                .background(Color(nsColor: .controlBackgroundColor))
+                // Edge to edge; the box already rounds the bottom, so only the top is rounded here.
+                .clipShape(TopRounded(radius: 12))
+                .overlay(TopRounded(radius: 12).stroke(Color.secondary.opacity(0.25)))
+                .shadow(color: .black.opacity(0.12), radius: 4, y: -1)
+            }
         }
     }
 
@@ -432,6 +430,23 @@ private struct WithAssistant: ViewModifier {
                     .keyboardShortcut(.cancelAction).opacity(0)
             }
         }
+    }
+}
+
+/// A rectangle with only its top corners rounded. (UnevenRoundedRectangle is macOS 14.)
+private struct TopRounded: Shape {
+    let radius: CGFloat
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.minX, y: r.minY + radius))
+        p.addArc(center: CGPoint(x: r.minX + radius, y: r.minY + radius), radius: radius,
+                 startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+        p.addLine(to: CGPoint(x: r.maxX - radius, y: r.minY))
+        p.addArc(center: CGPoint(x: r.maxX - radius, y: r.minY + radius), radius: radius,
+                 startAngle: .degrees(270), endAngle: .degrees(0), clockwise: false)
+        p.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
+        return p
     }
 }
 
