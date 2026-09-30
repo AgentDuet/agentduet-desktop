@@ -1,3 +1,4 @@
+import AppKit
 import Contacts
 import Foundation
 
@@ -163,5 +164,29 @@ enum PhoneMatch {
             return short.count >= 7 && long.hasSuffix(short)
         }.map(\.name))
         return tail.count == 1 ? tail.first : nil
+    }
+}
+
+/// A new contact, made here and opened in Contacts' editor (2026-09-30) — where the owner types
+/// the name. Only with Contacts access; without it the daemon hands Contacts a vCard instead, and
+/// Contacts asks "add 1 card?" rather than opening the editor.
+///
+/// THE CONTACT EXISTS BEFORE THE EDITOR OPENS: `addressbook://<id>?edit` edits a saved card, so
+/// closing it without a name leaves a card with the number only. The owner asked for the editor
+/// over the confirm dialog; that is the trade.
+enum ContactsAdd {
+    static func addAndEdit(number: String, name: String) -> Bool {
+        guard ContactsWatch.access() == "allowed" else { return false }
+        let c = CNMutableContact()
+        let parts = name.split(separator: " ", maxSplits: 1).map(String.init)
+        if parts.count == 2 { c.givenName = parts[0]; c.familyName = parts[1] }
+        else if !name.isEmpty { c.givenName = name }
+        c.phoneNumbers = [CNLabeledValue(label: CNLabelPhoneNumberMobile,
+                                         value: CNPhoneNumber(stringValue: number))]
+        let save = CNSaveRequest()
+        save.add(c, toContainerWithIdentifier: nil)
+        do { try CNContactStore().execute(save) } catch { return false }
+        guard let url = URL(string: "addressbook://\(c.identifier)?edit") else { return false }
+        return NSWorkspace.shared.open(url)
     }
 }
