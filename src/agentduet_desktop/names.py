@@ -65,6 +65,21 @@ def set_typed(who: str, name: str) -> str:
     return name
 
 
+def prune_typed() -> None:
+    """Drop a typed name Contacts now agrees with (2026-09-30).
+
+    A rename written through to Contacts is typed here too, so the hub shows it at once. Once the
+    shell reports the same name from Contacts, the typed copy has done its job — and kept, it would
+    hide the NEXT edit the owner makes in Contacts itself, since a typed name wins.
+    """
+    d, book = typed(), from_contacts()
+    same = [w for w, n in d.items() if (book.get(w) or "").strip() == n]
+    if same:
+        for w in same:
+            d.pop(w, None)
+        TYPED.write_text(json.dumps(d, indent=1, ensure_ascii=False), encoding="utf-8")
+
+
 def contacts_state() -> dict:
     """What the shell last reported. Empty when there is no shell (a browser, Linux, Windows)."""
     return _load(CONTACTS)
