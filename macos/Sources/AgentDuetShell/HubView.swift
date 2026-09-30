@@ -27,21 +27,13 @@ struct HubView: View {
             // anything can reach you, and the way to change it — Settings at Account.
             // The window's own title is hidden (HubWindow), so the name and the status read in
             // order: "AgentDuet ● Connected".
-            ToolbarItem(placement: .navigation) {
-                HStack(spacing: 10) {
-                    Text("AgentDuet").font(.headline).fixedSize()
-                    Button { model.openSettings?("account") } label: {
-                        HStack(spacing: 6) {
-                            Circle().fill(model.connected ? Color.green : Color.secondary)
-                                .frame(width: 7, height: 7)
-                            // ITS OWN WIDTH: the toolbar gives an item a width, and cut
-                            // "Connected" to "Connect…".
-                            Text(model.connection).foregroundStyle(.secondary).fixedSize()
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .help(model.connected && !model.myNumber.isEmpty ? model.myNumber : model.connection)
-                }
+            // A TITLE, NOT A BUTTON: macOS 26 puts every toolbar item in a glass pill, and the
+            // name and status sat in one that ended at the last letter. No pill for the title.
+            if #available(macOS 26.0, *) {
+                ToolbarItem(placement: .navigation) { titleAndStatus }
+                    .sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .navigation) { titleAndStatus }
             }
             // THE STRETCH the hidden title used to give, so the controls below keep to the right.
             if #available(macOS 26.0, *) { ToolbarSpacer(.flexible) }
@@ -55,15 +47,36 @@ struct HubView: View {
                             get: { model.answerHere }, set: { model.setAnswerHere($0) }))
                             .toggleStyle(.switch).labelsHidden().controlSize(.small)
                     }
-                    .padding(.horizontal, 10).padding(.vertical, 3)
-                    .background(Capsule().fill(Color.primary.opacity(0.07)))
-                    .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12)))
+                    // ONE PILL, THE SYSTEM'S: macOS draws it around the item, and a capsule of our
+                    // own inside it made a second, cramped border. The padding is its room.
+                    .padding(.horizontal, 8)
                 }
             }
             ToolbarItem(placement: .primaryAction) {
                 Button { model.openSettings?(nil) } label: { Label("Settings", systemImage: "gearshape") }
                     .help("Settings")
             }
+        }
+    }
+}
+
+extension HubView {
+    /// "AgentDuet ● Connected": the name, and whether anything can reach you — which opens
+    /// Settings at Account, with the number on hover.
+    var titleAndStatus: some View {
+        HStack(spacing: 10) {
+            Text("AgentDuet").font(.headline).fixedSize()
+            Button { model.openSettings?("account") } label: {
+                HStack(spacing: 6) {
+                    Circle().fill(model.connected ? Color.green : Color.secondary)
+                        .frame(width: 7, height: 7)
+                    // ITS OWN WIDTH: the toolbar gives an item a width, and cut
+                    // "Connected" to "Connect…".
+                    Text(model.connection).foregroundStyle(.secondary).fixedSize()
+                }
+            }
+            .buttonStyle(.plain)
+            .help(model.connected && !model.myNumber.isEmpty ? model.myNumber : model.connection)
         }
     }
 }
