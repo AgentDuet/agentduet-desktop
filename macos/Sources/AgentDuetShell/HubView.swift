@@ -794,15 +794,6 @@ private struct Conversation: View {
         if !card.isEmpty, let url = URL(string: "addressbook://" + card) {
             Button { NSWorkspace.shared.open(url) } label: { Image(systemName: "person.crop.square") }
                 .buttonStyle(.borderless).foregroundStyle(.secondary).help("Open in Contacts")
-        } else if card.isEmpty, person.str("name_from") != "contacts", HubModel.isNumber(person.str("who")) {
-            // NOT IN CONTACTS: a card to add, with the number and any name we have. Contacts asks
-            // before it adds anything, so this needs no Contacts permission.
-            // The name the hub shows, unless that is only the number.
-            let known = person.str("display") == person.str("who") ? "" : person.str("display")
-            Button { model.addContact(person.str("who"), name: known) } label: {
-                Image(systemName: "person.crop.circle.badge.plus")
-            }
-            .buttonStyle(.borderless).foregroundStyle(.secondary).help("Add to Contacts")
         }
     }
 }
@@ -935,19 +926,35 @@ private struct SuggestionRow: View {
 
 /// The one thing about a person here the owner can change: the name.
 /// Empty removes the typed name, so the Contacts name — or the number — shows again.
+/// Rename — and, for someone Contacts has no card for, add them there under that name
+/// (Stanley, 2026-09-30): one sheet, the cursor already in the name. Someone already in Contacts
+/// is renamed in the hub only; their real card is edited in Contacts, through Open in Contacts.
 private struct RenameSheet: View {
     @ObservedObject var model: HubModel
     @Environment(\.dismiss) private var dismiss
     @StateObject private var name = Local("")
     @StateObject private var busy = Local(false)
+    @StateObject private var toContacts = Local(true)
+    @FocusState private var focused: Bool
+
+    /// A number Contacts has no card for.
+    private var addable: Bool {
+        guard let p = model.person else { return false }
+        return p.str("contact_id").isEmpty && p.str("name_from") != "contacts"
+            && HubModel.isNumber(p.str("who"))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             Form {
                 Section {
-                    TextField("Name", text: $name.value, prompt: Text(model.person?.str("who") ?? ""))
+                    TextField("Name", text: $name.value, prompt: Text(""))
+                        .focused($focused)
                     if let who = model.person?.str("who") {
                         LabeledContent("Number", value: who)
+                    }
+                    if addable {
+                        Toggle("Add to Contacts", isOn: $toContacts.value)
                     }
                 }
             }
@@ -958,8 +965,12 @@ private struct RenameSheet: View {
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Save") {
                     busy.value = true
+                    let typed = name.value.trimmingCharacters(in: .whitespaces)
+                    let who = model.person?.str("who") ?? ""
+                    let add = addable && toContacts.value && !typed.isEmpty
                     Task {
-                        await model.rename(name.value.trimmingCharacters(in: .whitespaces))
+                        await model.rename(typed)
+                        if add { model.addContact(who, name: typed, edit: false) }
                         busy.value = false
                         dismiss()
                     }
@@ -970,6 +981,9 @@ private struct RenameSheet: View {
             .padding([.horizontal, .bottom], 20)
         }
         .frame(width: 420)
-        .onAppear { name.value = model.person?.str("display") ?? "" }
+        .onAppear {
+            name.value = model.person?.str("display") ?? ""
+            focused = true
+        }
     }
 }

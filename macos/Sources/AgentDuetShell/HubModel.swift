@@ -296,8 +296,8 @@ import Foundation
 
     /// A new contact for this number, opened in Contacts' editor — or, without Contacts access,
     /// a card Contacts asks to add. Only a failure is worth saying: what opens is the outcome.
-    func addContact(_ who: String, name: String = "") {
-        if ContactsAdd.addAndEdit(number: who, name: name) { return }
+    func addContact(_ who: String, name: String = "", edit: Bool = true) {
+        if ContactsAdd.addAndEdit(number: who, name: name, edit: edit) { return }
         Task {
             let r = await api.post("/api/contacts/add", ["who": who])
             if r["ok"] as? Bool == false { notice = .init(ok: false, text: r.str("message")) }

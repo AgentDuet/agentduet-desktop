@@ -175,7 +175,9 @@ enum PhoneMatch {
 /// closing it without a name leaves a card with the number only. The owner asked for the editor
 /// over the confirm dialog; that is the trade.
 enum ContactsAdd {
-    static func addAndEdit(number: String, name: String) -> Bool {
+    /// `edit` opens the card in the editor; false opens it to look at — a name already typed in
+    /// the hub's Rename sheet needs no editing.
+    static func addAndEdit(number: String, name: String, edit: Bool = true) -> Bool {
         guard ContactsWatch.access() == "allowed" else { return false }
         let c = CNMutableContact()
         let parts = name.split(separator: " ", maxSplits: 1).map(String.init)
@@ -186,7 +188,7 @@ enum ContactsAdd {
         let save = CNSaveRequest()
         save.add(c, toContainerWithIdentifier: nil)
         do { try CNContactStore().execute(save) } catch { return false }
-        guard let url = URL(string: "addressbook://\(c.identifier)?edit") else { return false }
+        guard let url = URL(string: "addressbook://\(c.identifier)" + (edit ? "?edit" : "")) else { return false }
         return NSWorkspace.shared.open(url)
     }
 }
