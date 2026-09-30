@@ -462,16 +462,27 @@ def add_knowledge(fact: str, file: str = "", section: str = "") -> str:
     return (f"Added to {where}\n  - {fact}\nReadable by: {_readers_of(target)}"
             + (f"\n{note}" if note else ""))
 def who_is(asker: str) -> str:
-    """Show what the secretary knows about a person."""
-    if not people.exists(asker):
+    """The owner's own notes about a person, and their running summary."""
+    # A NAME AS WELL AS A NUMBER, and THE BRIEF BESIDE THE NOTES (2026-09-30): asked for "the
+    # summary for Kok Choong", the assistant chose this tool, looked up the words "Kok Choong"
+    # as an identity, and answered "no profile" over a brief that existed. On the recorder the
+    # brief is most of what is known about someone.
+    from . import brief, names
+    who = names.resolve(asker) or asker
+    rec = brief.load(who)
+    summary = (f"\n\nSummary (a running brief, as of {rec.get('updated', '')[:16].replace('T', ' ')}):\n"
+               + rec["summary"]) if rec.get("summary") else ""
+    if not people.exists(who):
+        if summary:
+            return f"{_caller_label(who)} — no notes written about them.{summary}"
         return (f"No profile for {asker}. Create one with add_person so the secretary "
                 f"adapts its tone and access for them.")
-    secs = people.sections(asker)
-    out = [f"{asker}"]
+    secs = people.sections(who)
+    out = [f"{who}"]
     for name in ("Who", "Comms", "Folders", "Always escalate", "Observed"):
         if secs.get(name):
             out.append(f"\n{name}:\n{secs[name]}")
-    return "\n".join(out)
+    return "\n".join(out) + summary
 def list_people() -> str:
     """Everyone who has been in touch, and whether the secretary has a profile for them.
 
@@ -714,7 +725,7 @@ def list_calls(days: str = "7") -> str:
                    f"({'transcript ready' if done else 'no transcript yet'})")
     return "\n".join(out) if out else f"No calls recorded in the last {days} days."
 def read_brief(who: str) -> str:
-    """What you know about a person: their running brief — who they are, what is open, last contact."""
+    """A person's summary: who they are, what is open with them, and the last contact."""
     from . import brief, names
     target = names.resolve(who)
     if not target:

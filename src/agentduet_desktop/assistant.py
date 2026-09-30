@@ -159,7 +159,8 @@ def _tool_docs(registry: dict | None = None) -> str:
 #: treated as input from an unknown author for as long as they are in the context.
 #: `list_appointments` too: its titles are a model's reading of what the caller said.
 #: `read_brief` too: a brief is a model's reading of what callers said.
-TAINTING = {"read_call", "read_messages", "list_appointments", "read_brief"}
+#: `who_is` too, since it returns the brief beside the owner's own notes.
+TAINTING = {"read_call", "read_messages", "list_appointments", "read_brief", "who_is"}
 
 #: WRITES THAT PUBLISH AN UNATTRIBUTED CLAIM. `knowledge/` is one flat, PUBLIC folder — it is
 #: what the agent tells everyone, and what the owner reads and trusts. Promoting "Pauline said

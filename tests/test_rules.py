@@ -6636,6 +6636,12 @@ def test_briefs_are_about_the_right_person() -> None:
         ok("and the corrected brief is saved and shown", out.startswith("Corrected.") and
            brief.load(cen).get("summary", "").startswith("Who: Cen"))
         ok("a name resolves to the one person it fits", names.resolve("Kok Choong") == kc)
+        with mock.patch.object(tools.people, "exists", lambda w: False):
+            said = tools.who_is("Cen")
+        ok("asked about someone by name, who_is shows their summary, not 'no profile'",
+           "Summary (a running brief" in said and "Who: Cen." in said, said)
+    ok("and the summary tool says it is one", "summary" in (tools.read_brief.__doc__ or "").lower())
+    ok("who_is counts as a stranger's words now that it carries the brief", "who_is" in _a.TAINTING)
     ok("the assistant can read a brief, and it counts as a stranger's words",
        "read_brief" in tools.RECORDER_TOOLS and "read_brief" in _a.TAINTING)
     ok("it can correct one, which needs the owner after a stranger's words",
