@@ -1309,6 +1309,14 @@ class OwnerChat:
                     narrowed = await self._answer_from_results(message, history)
                     if narrowed:
                         out = narrowed
+                # AN EMPTY REPLY AFTER A REAL TOOL RESPONSE (2026-09-30): gemma-4-e4b ran
+                # list_appointments, got five appointments back, and wrote nothing — and an empty
+                # string reached the owner as the answer. The narrow prompt is the fallback the
+                # other path always had.
+                elif used and not out.strip():
+                    logger.warning("native reply was empty after %s — answering from the results",
+                                   ", ".join(used))
+                    out = await self._answer_from_results(message, history) or out
                 if not used and self.CLAIMED.search(out):
                     out += ("\n\n[nothing actually happened — no tool ran this turn, so nothing "
                             "was saved, sent or changed. Ask again to have it done.]")

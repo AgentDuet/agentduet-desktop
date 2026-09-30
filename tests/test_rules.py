@@ -6465,6 +6465,10 @@ def test_unread_badge() -> None:
     ok("only what the person did is news: calls in, their messages",
        'not c.get("outgoing")' in web and 'm.get("them")' in web)
     ok("the first time, everyone starts as seen", "if seen is None:" in web)
+    swift_hub = (src.parent.parent / "macos/Sources/AgentDuetShell/HubModel.swift").read_text()
+    seen_fn = swift_hub.split("private func markSeen()")[1].split("func pick(")[0]
+    ok("the native hub marks seen by a call's filed time, which is what the daemon counts",
+       '$0.str("at")' in seen_fn and "started" not in seen_fn.split("let newest")[0].split("//")[0])
     ok("the daemon keeps it, so it survives a restart", 'SEEN = paths.RUN / "seen.json"' in web)
     ok("opening a person marks up to what was on screen, not now",
        "post('/api/seen', {who: p.who, at: newest" in hub)
@@ -6545,6 +6549,10 @@ def test_appointments_are_a_tool() -> None:
        soon in out and "Lunch at the office" in out and "+6594378817" in out and "upcoming" in out, out)
     ok("it sits with the recorder's tools, beside list_calls", "list_appointments" in tools.RECORDER_TOOLS)
     ok("and its result counts as a stranger's words", "list_appointments" in _a.TAINTING)
+    body = (pathlib.Path(__file__).parent.parent / "src/agentduet_desktop/assistant.py").read_text()
+    ok("an empty native reply after a tool falls back to the narrow answer",
+       "elif used and not out.strip():" in body
+       and "await self._answer_from_results(message, history) or out" in body)
 
 
 def test_cards_stay_after_open() -> None:
