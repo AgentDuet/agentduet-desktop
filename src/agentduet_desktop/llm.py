@@ -165,6 +165,34 @@ class _Local:
             finally:
                 gate.release(ticket)
 
+    def chat(self, messages: list[dict], tools: list[dict]) -> str:
+        """One reply to a real conversation with real tool declarations, through `gate` as
+        `complete` is. For a model whose own chat template renders tools (Gemma 4): see
+        `OwnerChat._native` for why the flattened prompt failed it.
+
+        STOPS AT `<|tool_response>`. After a call the model's next token opens the response
+        block, and left running it writes the tool's result itself — a made-up answer arriving
+        in exactly the shape of a real one.
+        """
+        from . import gate, models
+        prio = gate.current()
+        while True:
+            ticket = gate.acquire(prio)
+            try:
+                engine, msg = models.load(self.model)
+                if engine is None:
+                    raise RuntimeError(msg)
+                gate.before(engine, prio)
+                try:
+                    out = self._generate(engine, messages, tools=tools, stop=["<|tool_response>"])
+                except Exception as exc:
+                    raise RuntimeError(_local_failure(exc, self.model)) from exc
+                return _thought_answer(out["choices"][0]["message"]["content"] or "", self.model, False)
+            except gate.Preempted:
+                logger.info("model: a priority-%d job gave way and will run again", prio)
+            finally:
+                gate.release(ticket)
+
     def prewarm(self, prompt: str) -> None:
         """Read `prompt` now, while idle, so the next question that starts with it is fast.
 
@@ -237,10 +265,13 @@ class _Local:
         return {"choices": [{"message": {"content": "".join(parts)}}]}
 
     def _generate(self, engine, msgs, think: bool = False, max_tokens: int | None = None,
-                  stream: bool = False):
+                  stream: bool = False, tools: list[dict] | None = None,
+                  stop: list[str] | None = None):
         return engine.create_chat_completion(
             messages=msgs,
             stream=stream,
+            **({"tools": tools} if tools else {}),
+            **({"stop": stop} if stop else {}),
             # TEMPERATURE 0 IS WRONG FOR REASONING, and this is not a preference. Qwen warns
             # that greedy decoding sends its thinking mode into endless repetition, and that is
             # exactly what was measured: at temperature 0 the 8B exhausted 2,048 tokens with no

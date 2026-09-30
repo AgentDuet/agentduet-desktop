@@ -414,6 +414,54 @@ def _loose_args(text: str) -> dict:
     return args
 
 
+#: THE PROMPT'S OWN CALLING CONVENTION, which a model with native tools must not be taught: its
+#: chat template declares the tools and it answers in the syntax it was trained on.
+_JSON_PROTOCOL = """You have tools. To use one, reply with ONLY this JSON and nothing else:
+  {"tool": "<name>", "args": {...}}
+After you see the result, either call another tool or answer in plain text.
+To answer directly, just write the answer — no JSON."""
+_NATIVE_PROTOCOL = """You have tools, declared to you. Call one whenever the answer is in the record,
+then answer from what it returned. Never say you checked, searched or looked unless you called a
+tool this turn — call it instead of saying so."""
+
+#: Python annotation -> the type word a tool declaration carries.
+_SCHEMA_TYPES = {int: "integer", float: "number", bool: "boolean", str: "string"}
+
+
+def native_models(model: str) -> bool:
+    """Models the owner chat drives with real messages and declared tools rather than the
+    flattened prompt: Gemma 4, whose GGUF template renders tools, calls and responses itself.
+    Every other model keeps the JSON convention until it is measured the same way."""
+    return model.lower().startswith("gemma-4")
+
+
+def _tool_schemas(registry: dict) -> list[dict]:
+    """The registry as OpenAI-style tool declarations, which llama.cpp hands to the template.
+
+    Types come from the function's own annotations; a parameter with no default is required.
+    """
+    import inspect
+    out = []
+    for name, (fn, params) in registry.items():
+        sig = inspect.signature(fn)
+        props, required = {}, []
+        for key, desc in params.items():
+            p = sig.parameters.get(key)
+            # A STRING under `from __future__ import annotations`, as in tools.py — so "int",
+            # not int. Reading only the class declared every parameter a string.
+            ann = p.annotation if p else str
+            kind = _SCHEMA_TYPES.get(ann) or {t.__name__: v for t, v in _SCHEMA_TYPES.items()}.get(
+                str(ann).split("|")[0].strip(), "string")
+            props[key] = {"type": kind, "description": desc}
+            if p is not None and p.default is inspect.Parameter.empty:
+                required.append(key)
+        doc = ((fn.__doc__ or "").strip().splitlines() or [name])[0]
+        out.append({"type": "function", "function": {
+            "name": name, "description": doc,
+            "parameters": {"type": "object", "properties": props, "required": required}}})
+    return out
+
+
 #: THE OWNER TELLING US TO SEND WHAT WAS JUST DRAFTED.
 #:
 #: This is the context split, taken to its limit. The worry it answers: an assistant that has
@@ -757,6 +805,11 @@ class OwnerChat:
             owner.identity_block(),
             date.today().strftime("%A %d %B %Y"), date.today().isoformat(),
             _subjects(), _tool_docs(self.registry))
+        # For `_native`: the same instructions minus the JSON convention and the tool list,
+        # which the template declares instead.
+        self.native_system = self.system.replace(_JSON_PROTOCOL, _NATIVE_PROTOCOL).split("\n\nTOOLS:\n")[0]
+        self.tool_schemas = _tool_schemas(self.registry)
+        self._call_args: list[tuple[str, dict]] = []
         self.history: list[str] = []
         self.shown: list[dict] = self._load()      # what the page renders, oldest first
         # Reconstruct the model's own history from the visible turns, so a restart does not
@@ -972,7 +1025,76 @@ class OwnerChat:
         """The start every prompt shares until the history changes: what `_prewarm` reads."""
         return self._head() + "\n\n" + "\n".join(self.history)
 
+    def _native(self) -> bool:
+        """Real messages and declared tools for this model, rather than one flattened prompt.
+
+        WHY (2026-09-30). Everything used to reach the model as ONE user message — the
+        instructions, `OWNER:`/`ASSISTANT:`/`TOOL_RESULT:` lines, and "reply with ONLY this JSON".
+        gemma-4-e4b was trained on its own tool syntax and drifted every way that allows: its
+        native `<|tool_call>` instead of our JSON, `{"tool_name": "lookup"}`, "I need to run a
+        tool" after the tool had run, and "I have checked the records" with nothing called.
+        Its GGUF template declares tools and renders calls and results itself, so it is driven
+        that way; the loop, its gates and its filters are unchanged.
+        """
+        from . import llm
+        return (getattr(self, "native_override", None) if getattr(self, "native_override", None)
+                is not None else isinstance(self.client, llm._Local) and native_models(self.model))
+
+    def _native_messages(self, history: list[str], context: str) -> list[dict]:
+        """The loop's history lines as the conversation they stand for.
+
+        `ASSISTANT: called X` and the `TOOL_RESULT:` after it become a call and its response;
+        this turn's calls get the arguments actually used (`_call_args`), earlier ones none. A
+        result with no call before it is one of the loop's own nudges, so it goes back as a
+        note from the owner's side. The live context joins this turn's question rather than
+        the system turn, which stays the same from turn to turn for the prompt cache.
+        """
+        from . import recall
+        mem = recall.for_prompt()
+        msgs = [{"role": "system", "content": self.native_system + ("\n\n" + mem if mem else "")}]
+        start = getattr(self, "_turn_start", len(history))
+        pending = list(getattr(self, "_call_args", []))
+
+        def add(lines: list[str], current: bool) -> None:
+            open_call = None
+            for line in lines:
+                if line.startswith("ASSISTANT: called "):
+                    name = line[len("ASSISTANT: called "):].strip()
+                    args = {}
+                    if current:
+                        hit = next((k for k, (n, _) in enumerate(pending) if n == name), None)
+                        if hit is not None:
+                            args = pending.pop(hit)[1]
+                    open_call = (f"call{len(msgs)}", name)
+                    msgs.append({"role": "assistant", "content": "", "tool_calls": [{
+                        "id": open_call[0], "type": "function",
+                        "function": {"name": name, "arguments": args if isinstance(args, dict) else {}}}]})
+                elif line.startswith("TOOL_RESULT: "):
+                    body = line[len("TOOL_RESULT: "):]
+                    if open_call:
+                        msgs.append({"role": "tool", "tool_call_id": open_call[0],
+                                     "name": open_call[1], "content": body})
+                        open_call = None
+                    else:
+                        msgs.append({"role": "user", "content": f"(note) {body}"})
+                elif line.startswith("ASSISTANT: "):
+                    msgs.append({"role": "assistant", "content": line[len("ASSISTANT: "):]})
+                    open_call = None
+                else:
+                    msgs.append({"role": "user", "content": line.removeprefix("OWNER: ")})
+                    open_call = None
+
+        add(history[:start], False)
+        first_now = len(msgs)
+        add(history[start:], True)
+        if context and first_now < len(msgs) and msgs[first_now]["role"] == "user":
+            msgs[first_now]["content"] = context.strip() + "\n\n" + msgs[first_now]["content"]
+        return msgs
+
     async def _ask(self, history: list[str], context: str = "") -> str:
+        if self._native():
+            return await asyncio.to_thread(self.client.chat, self._native_messages(history, context),
+                                           self.tool_schemas)
         # STABLE FIRST, CHANGING LAST (2026-09-25). The engine re-reads a prompt only from its
         # first change: 4,000 tokens cold took 10.8 s on the M5, the same start plus 100 new
         # tokens 0.39 s. So the instructions and the earlier conversation go first, and the
@@ -1139,6 +1261,7 @@ class OwnerChat:
                 self.tainted = True
         history = self.history + [f"OWNER: {message}"]
         self._turn_start = len(self.history)
+        self._call_args = []
         queued: list[tuple[str, dict]] = []      # what this turn queued for the owner's approval
         self._about = viewing
         used: list[str] = []
@@ -1165,21 +1288,23 @@ class OwnerChat:
                     nudged = True
                     history += [f"ASSISTANT: {out}",
                                 "TOOL_RESULT: You described what you intend to do but called no "
-                                "tool, so nothing happened. Do it now — emit the tool JSON. "
+                                "tool, so nothing happened. Do it now — call the tool. "
                                 "Afterwards report only what you actually did."]
                     continue
                 if not nudged and not used and self.LOOKED.search(out):
                     nudged = True
                     history += [f"ASSISTANT: {out}",
                                 "TOOL_RESULT: You said you checked, but no tool ran this turn, so "
-                                "nothing was looked at. Call the tool now — emit the tool JSON — "
+                                "nothing was looked at. Call the tool now "
                                 "and answer only from what it returns."]
                     continue
                 # A TOOL ALREADY RAN, so the answer comes from what it returned rather
                 # than from another pass over the instructions.
                 if queued:
                     out = _queued_reply(queued)
-                elif used:
+                # NOT ON THE NATIVE PATH: there the reply was written after a real tool response,
+                # in the conversation it belongs to, which is what the narrow prompt stood in for.
+                elif used and not self._native():
                     narrowed = await self._answer_from_results(message, history)
                     if narrowed:
                         out = narrowed
@@ -1221,6 +1346,7 @@ class OwnerChat:
             # Every call in the reply, in the order given. One-at-a-time silently discarded
             # the rest of a batched reply.
             for name, args in action:
+                self._call_args.append((name, args))
                 entry = self.registry.get(name)
                 if not entry:
                     history.append(f"TOOL_RESULT: no such tool '{name}'")
