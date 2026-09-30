@@ -461,8 +461,8 @@ private struct ProposalCard: View {
         "edit_skill": ("Change how you work", "edits a skill", "Do It"),
         "forget_skill": ("Stop following this", "removes a skill", "Do It"),
         "switch_skill": ("Switch this off", "keeps it but stops following it", "Do It"),
-        "add_to_calendar": ("Open this calendar event", "opens Google Calendar prefilled; you save it", "Open It"),
-        "draft_email": ("Open this email draft", "opens your mail client prefilled; you send it", "Open It"),
+        "add_to_calendar": ("Open this calendar event", "", "Open It"),
+        "draft_email": ("Open this email draft", "", "Open It"),
     ]
 
     var body: some View {
@@ -473,7 +473,10 @@ private struct ProposalCard: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).bold()
             Text(body(tool, a)).textSelection(.enabled)
-            Text("\(kind) · \(proposal.str("asked").isEmpty ? "proposed after reading a call" : "you asked: “\(proposal.str("asked"))”")\(proposal.bool("opened") ? " · opened" : "")")
+            // No hint for a card that only opens something: what it opens is the outcome.
+            Text([kind,
+                  proposal.str("asked").isEmpty ? "proposed after reading a call" : "you asked: “\(proposal.str("asked"))”",
+                  proposal.bool("opened") ? "opened" : ""].filter { !$0.isEmpty }.joined(separator: " · "))
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
                 Button(proposal.bool("opened") ? "Open Again" : verb0) { model.decide(proposal, approve: true) }

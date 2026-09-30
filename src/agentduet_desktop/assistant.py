@@ -295,13 +295,10 @@ def _queued_reply(queued: list[tuple[str, dict]]) -> str:
             if address and address != to:
                 to = f"{to} ({address})"
             lines.append(f"I've prepared an email{' to ' + to if to else ''}"
-                         f"{': ' + str(a.get('subject')) if a.get('subject') else ''}. "
-                         "Press Open below to see it in your mail client — nothing is sent until "
-                         "you press Send there.")
+                         f"{': ' + str(a.get('subject')) if a.get('subject') else ''}.")
         elif name == "add_to_calendar":
             lines.append(f"I've prepared a calendar event: {a.get('title') or 'untitled'}"
-                         f"{', ' + str(a.get('start')) if a.get('start') else ''}. Press Open "
-                         "below to see it in Google Calendar — it is saved only when you save it.")
+                         f"{', ' + str(a.get('start')) if a.get('start') else ''}.")
         elif name.endswith("_skill"):
             lines.append("I've proposed a change to how I work. Approve it below if you want it.")
         else:
