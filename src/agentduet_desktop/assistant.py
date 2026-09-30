@@ -372,13 +372,35 @@ def _loose_call(text: str) -> list:
     that merely mentions a tool in a sentence does not match, since the name must open the line
     and be followed by a colon.
     """
+    native = _native_calls(text)
+    if native:
+        return native
     line = text.strip().splitlines()[0].strip() if text.strip() else ""
     m = re.match(r"^([a-z_][a-z0-9_]*)\s*:\s*(.*)$", line)
     if not m or m.group(1) not in assistant_tools():
         return []
+    return [(m.group(1), _loose_args(m.group(2)))]
+
+
+#: GEMMA 4'S OWN TOOL-CALL SYNTAX, which it falls back to despite the JSON the prompt asks for:
+#: `<|tool_call>call:list_calls{days:7}<tool_call|>`, strings fenced as `<|"|>…<|"|>`.
+#: On 2026-09-30 gemma-4-e4b answered "Pick up the appointments again and what those are" with
+#: exactly that line; nothing parsed it, so the owner was shown the raw call as the answer.
+RAW_CALL_MARK = "<|tool_call>"
+_GEMMA_CALL = re.compile(r"<\|tool_call>\s*call:([a-z_][a-z0-9_]*)\s*\{(.*?)\}\s*<tool_call\|>", re.S)
+
+
+def _native_calls(text: str) -> list:
+    """Tool calls written in a model's native syntax rather than our JSON. Same safety as
+    `_loose_call`: the name must be a registered tool, and each tool checks its own arguments."""
+    return [(name, _loose_args(body.replace('<|"|>', '"')))
+            for name, body in _GEMMA_CALL.findall(text) if name in assistant_tools()]
+
+
+def _loose_args(text: str) -> dict:
     args = {}
     for key, quoted, bare in re.findall(
-            r"([a-z_][a-z0-9_]*)\s*[:=]?\s*(?:\"([^\"]*)\"|([^,\s]+))", m.group(2)):
+            r"([a-z_][a-z0-9_]*)\s*[:=]?\s*(?:\"([^\"]*)\"|([^,\s}]+))", text):
         if quoted:
             args[key] = quoted
         else:
@@ -389,7 +411,7 @@ def _loose_call(text: str) -> list:
             # errored, the model was handed the error, and it truthfully reported finding
             # nothing. An hour went into blaming the prompt for a type.
             args[key] = int(bare) if bare.lstrip("-").isdigit() else bare
-    return [(m.group(1), args)]
+    return args
 
 
 #: THE OWNER TELLING US TO SEND WHAT WAS JUST DRAFTED.
@@ -746,6 +768,12 @@ class OwnerChat:
         # themselves are KEPT and still rendered: the owner's thinking is worth preserving even
         # when the model is no longer to be reminded of it.
         for turn in self._since_break(self.KEEP // 2):
+            # A RAW TOOL CALL IS NOT AN ANSWER. Replayed, it reads to the model as a call it
+            # already made, and with no result after it the model invents one: on 2026-09-30 the
+            # turn after an unparsed `<|tool_call>…list_calls…` said "I have checked the records"
+            # with no tool run.
+            if RAW_CALL_MARK in str(turn.get("a", "")):
+                continue
             self.history += [f"OWNER: {turn['q']}", f"ASSISTANT: {turn['a']}"]
         self.history = self._trim(self.history)
         # A transcript already in the replayed context still taints this conversation, so the
@@ -986,6 +1014,13 @@ class OwnerChat:
         r"(added|updated|saved|stored|recorded|noted|written|sent|replied|granted|revoked|"
         r"resolved|closed|booked|cancelled|removed|deleted)\b", re.I)
 
+    # THE SAME LIE ABOUT A READ: "I have checked the records for calls and messages from the last
+    # 7 days, but there are no appointments" (2026-09-30), with no tool run. Worse than admitting
+    # it did not look — the owner takes "nothing there" as an answer.
+    LOOKED = re.compile(
+        r"\bI(?:'ve| have)?\s+(?:just\s+)?"
+        r"(checked|looked|searched|reviewed|scanned|gone through|went through)\b", re.I)
+
     async def turn(self, message: str, viewing: str = "", label: str = "",
                    via: str = "") -> dict:
         """One owner turn, then the background work it leaves (see `_after_turn`)."""
@@ -1133,6 +1168,13 @@ class OwnerChat:
                                 "tool, so nothing happened. Do it now — emit the tool JSON. "
                                 "Afterwards report only what you actually did."]
                     continue
+                if not nudged and not used and self.LOOKED.search(out):
+                    nudged = True
+                    history += [f"ASSISTANT: {out}",
+                                "TOOL_RESULT: You said you checked, but no tool ran this turn, so "
+                                "nothing was looked at. Call the tool now — emit the tool JSON — "
+                                "and answer only from what it returns."]
+                    continue
                 # A TOOL ALREADY RAN, so the answer comes from what it returned rather
                 # than from another pass over the instructions.
                 if queued:
@@ -1144,6 +1186,15 @@ class OwnerChat:
                 if not used and self.CLAIMED.search(out):
                     out += ("\n\n[nothing actually happened — no tool ran this turn, so nothing "
                             "was saved, sent or changed. Ask again to have it done.]")
+                elif not used and self.LOOKED.search(out):
+                    out += ("\n\n[nothing was actually checked — no tool ran this turn, so this "
+                            "is not a search result. Ask again.]")
+                if RAW_CALL_MARK in out:
+                    # A call in the model's own syntax that did not parse — an unknown or withheld
+                    # tool. Never shown or kept raw: see the replay note in __init__.
+                    logger.warning("discarded an unparsed tool call: %r", out[:120])
+                    out = ("That came back as a call to a tool I cannot run, so nothing was looked "
+                           "up. Ask again.")
                 out = self._undo_echo(out, self._last_answer())
                 if _is_prompt_echo(out, self.system):
                     logger.warning("discarded a reply copied from the prompt: %r", out[:80])
