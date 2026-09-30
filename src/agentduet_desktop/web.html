@@ -739,19 +739,21 @@
                       'Open it'],
     draft_email:     ['Open this email draft', 'opens your mail client prefilled; you send it',
                       'Open it'],
+    add_contact:     ['Add to Contacts', 'opens a new contact; you add it', 'Open it'],
   };
   function propHtml(p){
     const a = p.args || {};
     const [title, kind, verb0] = PROP_KINDS[p.tool]
       || ['Add to your shared notes', a.file || 'knowledge', 'Add it'];
     // A CARD THAT ONLY OPENS SOMETHING STAYS after it is used (issue #9), and says so.
-    const reopen = p.tool === 'add_to_calendar' || p.tool === 'draft_email';
+    const reopen = ['add_to_calendar', 'draft_email', 'add_contact'].includes(p.tool);
     const verb = p.opened ? 'Open again' : verb0;
     const body = p.tool === 'add_skill' ? `${a.name || ''} — ${a.how || ''}`
       : p.tool === 'edit_skill' ? `${a.name || ''}: ${a.old || ''} → ${a.new || '(deleted)'}`
       : p.tool && p.tool.endsWith('_skill') ? (a.name || '')
       : p.tool === 'add_to_calendar' ? `${a.title || ''} — ${a.start || ''}${a.end ? ' to ' + a.end : ''}`
       : p.tool === 'draft_email' ? `${a.to || ''} — ${a.subject || '(no subject)'}`
+      : p.tool === 'add_contact' ? `${a.name || ''} — ${a.number || ''}`
       : (a.fact || a.new || a.old || '');
     const asked = p.asked ? `you asked: “${p.asked}”` : 'proposed after reading a call';
     return `

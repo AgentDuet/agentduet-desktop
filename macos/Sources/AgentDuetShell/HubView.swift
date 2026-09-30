@@ -588,16 +588,18 @@ private struct ProposalCard: View {
         "switch_skill": ("Switch this off", "keeps it but stops following it", "Do It"),
         "add_to_calendar": ("Open this calendar event", "", "Open It"),
         "draft_email": ("Open this email draft", "", "Open It"),
+        "add_contact": ("Add to Contacts", "", "Open It"),
     ]
 
     var body: some View {
         let tool = proposal.str("tool"), a = proposal.obj("args")
         let (title, kind, verb0) = Self.kinds[tool] ?? ("Add to your shared notes", a.str("file").isEmpty ? "knowledge" : a.str("file"), "Add It")
         // A CARD THAT ONLY OPENS SOMETHING STAYS after it is used (issue #9), and says so.
-        let reopen = tool == "add_to_calendar" || tool == "draft_email"
+        let reopen = ["add_to_calendar", "draft_email", "add_contact"].contains(tool)
         VStack(alignment: .leading, spacing: 6) {
             Text(title).bold()
             if tool == "draft_email" { EmailFields(proposal: proposal); Divider() }
+            else if tool == "add_contact" { ContactFields(args: a); Divider() }
             else { Text(body(tool, a)).textSelection(.enabled) }
             if !kind.isEmpty { Text(kind).font(.caption).foregroundStyle(.secondary) }
             HStack {
@@ -619,6 +621,25 @@ private struct ProposalCard: View {
         case "draft_email": return "\(a.str("to")) — \(a.str("subject").isEmpty ? "(no subject)" : a.str("subject"))"
         default: return [a.str("fact"), a.str("new"), a.str("old")].first { !$0.isEmpty } ?? ""
         }
+    }
+}
+
+/// A new contact as Contacts will open it: Name and Number.
+private struct ContactFields: View {
+    let args: JSON
+
+    var body: some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 4) {
+            GridRow {
+                Text("Name").foregroundStyle(.secondary).gridColumnAlignment(.leading)
+                Text(args.str("name").isEmpty ? "—" : args.str("name"))
+            }
+            GridRow {
+                Text("Number").foregroundStyle(.secondary)
+                Text(args.str("number"))
+            }
+        }
+        .textSelection(.enabled)
     }
 }
 
@@ -768,6 +789,13 @@ private struct Conversation: View {
         if !card.isEmpty, let url = URL(string: "addressbook://" + card) {
             Button { NSWorkspace.shared.open(url) } label: { Image(systemName: "person.crop.square") }
                 .buttonStyle(.borderless).foregroundStyle(.secondary).help("Open in Contacts")
+        } else if card.isEmpty, person.str("name_from") != "contacts", HubModel.isNumber(person.str("who")) {
+            // NOT IN CONTACTS: a card to add, with the number and any name we have. Contacts asks
+            // before it adds anything, so this needs no Contacts permission.
+            Button { model.addContact(person.str("who")) } label: {
+                Image(systemName: "person.crop.circle.badge.plus")
+            }
+            .buttonStyle(.borderless).foregroundStyle(.secondary).help("Add to Contacts")
         }
     }
 }

@@ -178,7 +178,7 @@ TAINTING = {"read_call", "read_messages"}
 # already open in Gmail it is a draft the owner half-believes they asked for.
 NEEDS_OWNER = {"add_knowledge", "edit_knowledge",
                "add_skill", "edit_skill", "forget_skill", "switch_skill",
-               "add_to_calendar", "draft_email"}
+               "add_to_calendar", "draft_email", "add_contact"}
 
 
 #: A REPLY THAT HAS STOPPED SAYING ANYTHING. Near-greedy decoding with no repetition penalty
@@ -312,6 +312,9 @@ def _queued_reply(queued: list[tuple[str, dict]]) -> str:
         elif name == "add_to_calendar":
             lines.append(f"I've prepared a calendar event: {a.get('title') or 'untitled'}"
                          f"{', ' + str(a.get('start')) if a.get('start') else ''}.")
+        elif name == "add_contact":
+            who = str(a.get("name") or "").strip() or str(a.get("number") or "").strip()
+            lines.append(f"I've prepared a new contact: {who}.")
         elif name.endswith("_skill"):
             lines.append("I've proposed a change to how I work. Approve it below if you want it.")
         else:
@@ -324,7 +327,7 @@ def _queued_reply(queued: list[tuple[str, dict]]) -> str:
 #: still has to press Save or Send there, and may close the window first — so the card is kept,
 #: marked opened, and can be pressed again. Only Dismiss removes it. Every OTHER proposal is a
 #: write, done once, and goes when it is approved.
-REOPENABLE = {"add_to_calendar", "draft_email"}
+REOPENABLE = {"add_to_calendar", "draft_email", "add_contact"}
 
 
 def resolve(pid: str, approve: bool) -> str:
@@ -1201,7 +1204,7 @@ class OwnerChat:
                     # kind, because "NOT saved … a change to the shared notes" is a lie about
                     # a calendar link, and a wrong explanation of a refusal is how a model
                     # learns to retry the wrong way round.
-                    if name in ("add_to_calendar", "draft_email"):
+                    if name in ("add_to_calendar", "draft_email", "add_contact"):
                         result = ("NOT opened. This conversation has read a stranger's words, "
                                   "so putting a window on the owner's screen needs the owner. "
                                   "It is queued for them to approve. Tell them what you "

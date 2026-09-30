@@ -288,6 +288,21 @@ import Foundation
         }
     }
 
+    /// A phone number, as the daemon's identities are: an optional "+" and six or more digits.
+    static func isNumber(_ who: String) -> Bool {
+        let digits = who.hasPrefix("+") ? String(who.dropFirst()) : who
+        return digits.count >= 6 && digits.allSatisfy(\.isNumber)
+    }
+
+    /// Open a new card in Contacts for this number. Only a failure is worth saying: the card on
+    /// screen is the outcome.
+    func addContact(_ who: String) {
+        Task {
+            let r = await api.post("/api/contacts/add", ["who": who])
+            if r["ok"] as? Bool == false { notice = .init(ok: false, text: r.str("message")) }
+        }
+    }
+
     // MARK: - the assistant's drafts and proposals
 
     /// Who a draft would go to: the last person opened, else the one person waiting for a reply.

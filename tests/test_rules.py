@@ -4056,6 +4056,26 @@ def test_a_link_tool_cannot_choose_a_destination() -> None:
         eq(f"{bad!r} is left out of the link", links.mailto_url(bad, "Hi"), "mailto:?subject=Hi")
     ok("and the owner is told to add the address",
        "no recipient" in links.draft_email.__code__.co_consts.__repr__())
+    # ADD TO CONTACTS is a card opened, not a contact written (2026-09-30): fields in, one card out.
+    card = links.vcard("Cen Lee", "+6598554074")
+    ok("a new contact is one vCard with the name and the number",
+       "FN:Cen Lee" in card and "N:Lee;Cen;;;" in card and "TEL;TYPE=CELL:+6598554074" in card
+       and card.count("BEGIN:VCARD") == 1)
+    sneaky = links.vcard("A;B,C\nEMAIL:evil@x.example", "+65 9855 4074")
+    ok("a name cannot add a field: it is escaped into its own value",
+       "\nEMAIL" not in sneaky and "\r\nEMAIL" not in sneaky and "A\\;B\\,C" in sneaky, sneaky)
+    for bad in ("12345\nEMAIL:evil@x.example", "call me", "+65"):
+        try:
+            links.vcard("x", bad)
+            ok(f"{bad!r} is refused as a number", False)
+        except ValueError:
+            ok(f"{bad!r} is refused as a number", True)
+    ok("adding a contact needs the owner once a stranger has spoken, and can be reopened",
+       "add_contact" in _a.NEEDS_OWNER and "add_contact" in _a.REOPENABLE)
+    hv_src = (pathlib.Path(__file__).parent.parent
+              / "macos/Sources/AgentDuetShell/HubView.swift").read_text()
+    ok("the header offers Add to Contacts only for a number not already there",
+       'else if card.isEmpty, person.str("name_from") != "contacts", HubModel.isNumber(' in hv_src)
     from agentduet_desktop.assistant import _queued_reply
     r = _queued_reply([("draft_email", {"to": "Kok Choong", "subject": "Lunch"})])
     ok("a queued draft is announced by code, not left to the model",
