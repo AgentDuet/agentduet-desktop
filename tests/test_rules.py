@@ -3493,6 +3493,17 @@ def test_a_suggestion_is_judged_once_and_never_guessed() -> None:
             ("", "an empty answer")):
         eq(f"dropped: {why}", sg._judge("them: hi\nyou: hi", _Says(said)), {})
 
+    # "TOMORROW" IS THE CALL'S TOMORROW (2026-09-30): an item is judged again whenever its
+    # transcript is redone, and judged against today a 25 September lunch moved to 1 October.
+    class _Hears(_Says):
+        prompt = ""
+        def complete(self, prompt, think=False):
+            _Hears.prompt = prompt
+            return "{}"
+    sg._judge("them: lunch tomorrow at 12?", _Hears(""), "2026-09-25T09:44:31")
+    ok("the model is told the day the conversation took place",
+       "took place on Friday 25 September 2026" in _Hears.prompt, _Hears.prompt[:200])
+
     # AND A GOOD ONE SURVIVES, including one wrapped in the prose a weak model adds however
     # plainly it is told not to — throwing that away would drop real answers.
     for said, why in ((f'{{"title": "Delivery", "start": "{soon} 10:00"}}', "bare JSON"),
@@ -6500,6 +6511,28 @@ def test_unread_badge() -> None:
     ok("and one with no labels stays a block", "if (!turns.length) return `<div class=\"text\">" in hub)
 
 
+def test_appointments_are_a_tool() -> None:
+    """The assistant reads the appointments the cards show, rather than guessing from call rows."""
+    print("\n  -- appointments: the same verdicts the cards show, and stranger-written --")
+    import unittest.mock as mock
+    from datetime import datetime, timedelta
+    from agentduet_desktop import assistant as _a, calls, carry, suggest, tools
+    soon = (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d") + " 12:00"
+    at = datetime.now().isoformat(timespec="seconds")
+    seen = {"them: lunch?": {"title": "Lunch at the office", "start": soon, "end": "", "when": ""}}
+    with mock.patch.object(calls, "by_person", lambda: {"+6594378817": [{"at": at, "call_id": "c1"}]}), \
+         mock.patch.object(carry, "call_audio", lambda r, c: (TMP, ["x.wav"])), \
+         mock.patch.object(carry, "transcript_of", lambda n, f: "them: lunch?"), \
+         mock.patch.object(tools, "rows", lambda: []), \
+         mock.patch.object(suggest, "for_texts",
+                           lambda texts: {"k": seen[t] for t in texts if t in seen}):
+        out = tools.list_appointments()
+    ok("an appointment agreed on a call is listed with when, what and who",
+       soon in out and "Lunch at the office" in out and "+6594378817" in out and "upcoming" in out, out)
+    ok("it sits with the recorder's tools, beside list_calls", "list_appointments" in tools.RECORDER_TOOLS)
+    ok("and its result counts as a stranger's words", "list_appointments" in _a.TAINTING)
+
+
 def test_cards_stay_after_open() -> None:
     """A calendar or email card stays after it is opened; only Dismiss removes it (issue #9)."""
     print("\n  -- calendar and email cards stay after they are opened --")
@@ -6637,6 +6670,7 @@ def main() -> None:
     test_policy()
     test_memory()
     test_knowledge_writes()
+    test_appointments_are_a_tool()
     # EVERY TEST MUST BE CALLED. They are invoked by hand above, so a new `test_*`
     # function is dead until someone adds a line — and a dead test is worse than no
     # test, because the count still goes up and the suite still says it passed. I

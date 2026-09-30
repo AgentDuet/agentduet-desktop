@@ -159,7 +159,7 @@ def resolve(key: str, action: str) -> str:
 PROMPT = """Read this conversation and decide whether it names a specific appointment: a \
 meeting, a call back, a delivery, a visit, a lunch — with a date and a time.
 
-Today is %s.
+This conversation took place on %s. Today is %s.
 
 Answer with one line of JSON and nothing else.
 
@@ -180,10 +180,20 @@ CONVERSATION:
 %s"""
 
 
-def _judge(text: str, model_client) -> dict:
-    """Ask the model about one item. Returns validated fields, or {} for nothing to offer."""
+def _judge(text: str, model_client, at: str = "") -> dict:
+    """Ask the model about one item. Returns validated fields, or {} for nothing to offer.
+
+    `at` is WHEN THE CONVERSATION HAPPENED. "Lunch tomorrow" is relative to that day, not to the
+    day it is judged — and an item is judged again whenever its transcript is redone, so a
+    25 September call read on the 30th put its lunch on 1 October (2026-09-30).
+    """
     from . import links
-    raw = model_client.complete(PROMPT % (date.today().strftime("%A %d %B %Y"),
+    try:
+        said = datetime.fromisoformat(at).date() if at else date.today()
+    except ValueError:
+        said = date.today()
+    raw = model_client.complete(PROMPT % (said.strftime("%A %d %B %Y"),
+                                          date.today().strftime("%A %d %B %Y"),
                                           text[:MAX_CHARS]))
     body = (raw or "").strip()
     # THE JSON OUT OF THE MIDDLE OF WHATEVER IT SAID. A weak model wraps the object in prose or
@@ -277,7 +287,7 @@ def analyse_once() -> int:
             # BEHIND THE OWNER'S QUESTIONS, and never during a call — see `gate`.
             from . import gate
             with gate.priority(gate.SUGGEST):
-                verdict = _judge(text, client)
+                verdict = _judge(text, client, at)
         except Exception as exc:                  # one bad item must not stop the queue
             logger.warning("could not judge an item: %s", exc)
             continue
