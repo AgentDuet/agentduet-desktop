@@ -11,6 +11,9 @@ import Foundation
 /// THE ADDRESS BOOK STAYS IN MEMORY. The daemon writes the numbers it wants named
 /// (`run/contacts-wanted.json`); this writes names for THOSE numbers only (`run/contacts.json`),
 /// so what lands on disk is who has already called or written, never the owner's contacts.
+/// For each of those it also writes the contact's email addresses — so the assistant can draft
+/// an email to someone who called — and the contact's identifier, so the hub can open that card
+/// in Contacts.
 ///
 /// Looked up again when the wanted list changes, when Contacts changes (a sync counts), and when
 /// access changes. Polled every three seconds for the first two, like MicWatch: one file date
@@ -76,24 +79,30 @@ final class ContactsWatch {
         busy = true
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
-            let (names, read) = access == "allowed" ? Self.resolve(wanted) : ([:], 0)
+            let (people, read) = access == "allowed" ? Self.resolve(wanted) : ([:], 0)
+            let names = people.mapValues(\.name)
+            let rows = people.mapValues { ["name": $0.name, "emails": $0.emails, "id": $0.id] as [String: Any] }
             // `read` is how many numbers Contacts gave us — a count, not the numbers — so "your
             // caller is not in Contacts" can be told apart from "Contacts could not be read".
             self.write(["access": access, "at": Date().timeIntervalSince1970, "names": names,
-                        "read": read])
+                        "people": rows, "read": read])
             DispatchQueue.main.async { self.busy = false; then?() }
         }
     }
 
+    struct Match { let name: String; let emails: [String]; let id: String }
+
     /// Every number in Contacts, then each wanted number matched against them.
-    static func resolve(_ wanted: [String]) -> (names: [String: String], read: Int) {
+    static func resolve(_ wanted: [String]) -> (people: [String: Match], read: Int) {
         guard !wanted.isEmpty else { return ([:], 0) }
         let keys: [CNKeyDescriptor] = [
             CNContactFormatter.descriptorForRequiredKeys(for: .fullName),
             CNContactPhoneNumbersKey as CNKeyDescriptor,
             CNContactOrganizationNameKey as CNKeyDescriptor,
+            CNContactEmailAddressesKey as CNKeyDescriptor,
         ]
         var book: [(digits: String, name: String)] = []
+        var byName: [String: Match] = [:]
         let request = CNContactFetchRequest(keysToFetch: keys)
         try? CNContactStore().enumerateContacts(with: request) { contact, _ in
             let person = CNContactFormatter.string(from: contact, style: .fullName) ?? ""
@@ -103,10 +112,18 @@ final class ContactsWatch {
                 let digits = PhoneMatch.digits(number.value.stringValue)
                 if !digits.isEmpty { book.append((digits, name)) }
             }
+            // PhoneMatch answers with a NAME, and only when one name owns the number, so a name
+            // is enough to find the card again. Two cards under one name leave no card at all.
+            byName[name] = byName[name] == nil
+                ? Match(name: name, emails: contact.emailAddresses.map { $0.value as String },
+                        id: contact.identifier)
+                : Match(name: name, emails: [], id: "")
         }
-        var out: [String: String] = [:]
+        var out: [String: Match] = [:]
         for w in wanted {
-            if let name = PhoneMatch.best(PhoneMatch.digits(w), in: book) { out[w] = name }
+            if let name = PhoneMatch.best(PhoneMatch.digits(w), in: book) {
+                out[w] = byName[name] ?? Match(name: name, emails: [], id: "")
+            }
         }
         return (out, book.count)
     }

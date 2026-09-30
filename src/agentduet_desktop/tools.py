@@ -1124,7 +1124,8 @@ ASSISTANT_SHARED = {
         "notes": "anything to put in the description",
         "location": "where it is, if anywhere"}),
     "draft_email": (draft_email, {
-        "to": "one email address",
+        "to": "an email address, or the person's name or number as the hub shows it — "
+              "their address is taken from Contacts",
         "subject": "the subject line",
         "body": "the message — plain text, and short: a link cannot carry a transcript"}),
     "list_skills": (list_skills, {}),

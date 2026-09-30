@@ -214,13 +214,30 @@ def add_to_calendar(title: str, start: str, end: str = "", notes: str = "",
             "It is not in the calendar until you press Save there.")
 
 
+def recipient(to: str) -> tuple[str, list[str]]:
+    """The address a draft goes to, and any other addresses the same card holds.
+
+    `to` may be an address, or — since the owner knows people by name and callers arrive as
+    numbers — a name or a number, looked up in Contacts (2026-09-30). The first address on the
+    card is used and the rest are reported, never added: the owner can switch in the mail
+    client, and a draft to two addresses is a decision the owner did not make.
+    """
+    typed = _line(to, 200)
+    if ADDRESS.match(typed):
+        return typed, []
+    from . import names
+    found = [e for e in names.emails_for(typed) if ADDRESS.match(_line(e, 200))]
+    return (found[0], found[1:]) if found else ("", [])
+
+
 def draft_email(to: str, subject: str = "", body: str = "") -> str:
     """Open an email draft, prefilled, in the owner's mail client. Nothing is sent."""
     ok, why = available()
     if not ok:
         return f"Cannot open a link here: {why}."
+    address, others = recipient(to)
     try:
-        url = mailto_url(to, subject, body)
+        url = mailto_url(address, subject, body)
     except ValueError as exc:
         return f"Not opened: {exc}"
     try:
@@ -228,9 +245,10 @@ def draft_email(to: str, subject: str = "", body: str = "") -> str:
     except OSError as exc:
         logger.warning("could not open a mail draft: %s", exc)
         return f"Could not open the mail client: {exc}"
-    if not ADDRESS.match(_line(to, 200)):
+    if not address:
         who = _line(to, 80)
         return (f"Opened a draft with no recipient — add {who + chr(39) + 's' if who else 'the'} "
                 "email address in your mail client. Nothing is sent until you press Send.")
-    return (f"Opened a draft to {_line(to, 200)}. Nothing is sent until you press Send "
+    also = f" Contacts also has {', '.join(others)}." if others else ""
+    return (f"Opened a draft to {address}.{also} Nothing is sent until you press Send "
             "in your mail client.")

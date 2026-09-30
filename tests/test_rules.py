@@ -348,8 +348,12 @@ def test_carry_mode() -> None:
 
     # It records to the INSTANCE. The install directory is replaced wholesale on upgrade, so a
     # recording written there is deleted by the next update, silently.
-    ok("recordings land in the instance, not the install",
-       str(carry.recordings()).startswith(str(paths.RUN)), str(carry.recordings()))
+    # The owner may choose any folder (the real instance's is read here), so what is asserted is
+    # the rule itself: never inside the package.
+    install = pathlib.Path(carry.__file__).resolve().parent
+    ok("recordings never land in the install",
+       install not in carry.recordings().resolve().parents
+       and carry.recordings().resolve() != install, str(carry.recordings()))
 
     # The WAV header must match what the SDK sends. A mismatch does not convert anything — it
     # mislabels the bytes, and the file plays at the wrong speed. Cost hours on the voice path.
@@ -4923,6 +4927,27 @@ def test_a_caller_is_named_by_the_owner_then_contacts_then_the_message() -> None
             eq("and list_calls shows name and number", tools._caller_label(num),
                "Cen Lee (+6596918851)")
             ok("a call is found by the name it is shown by", tools._is_them("cen", num, None))
+            other = "+6522223333"
+            (run / "contacts.json").write_text(_json.dumps({"access": "allowed",
+                "names": {num: "Cen Lee", other: "Lee Two"},
+                "people": {num: {"name": "Cen Lee", "emails": ["cen@example.com", "c@work.com"],
+                                 "id": "ABC:ABPerson"},
+                           other: {"name": "Lee Two", "emails": [], "id": "DEF:ABPerson"}}}))
+            from agentduet_desktop import links
+            eq("an email is found by the name the hub shows", links.recipient("cen lee"),
+               ("cen@example.com", ["c@work.com"]))
+            eq("and by the number", links.recipient(num)[0], "cen@example.com")
+            eq("and by part of the name", links.recipient("Cen")[0], "cen@example.com")
+            eq("but a part two people share gives none", links.recipient("Lee"), ("", []))
+            eq("an address passes through untouched", links.recipient("x@y.com"), ("x@y.com", []))
+            eq("a card with no email gives no recipient", links.recipient("Lee Two"), ("", []))
+            eq("a name nobody who called has is not searched for", links.recipient("Stranger"),
+               ("", []))
+            names.set_typed(other, "Cen Lee")
+            eq("two people shown as one name give no recipient, not a guess",
+               links.recipient("Cen Lee"), ("", []))
+            names.set_typed(other, "")
+            eq("the hub is told which card to open", names.contact(num).get("id"), "ABC:ABPerson")
             names.want([num, wa, uid, "", "short1"])
             eq("only NUMBERS are sent to be looked up, never an account uid",
                _json.loads((run / "contacts-wanted.json").read_text()), sorted([num, wa]))

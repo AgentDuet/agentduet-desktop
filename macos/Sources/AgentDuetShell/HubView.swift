@@ -520,6 +520,15 @@ private struct Conversation: View {
                                 Button { editing.value = true } label: { Image(systemName: "pencil") }
                                     .buttonStyle(.borderless).foregroundStyle(.secondary).help("Rename")
                             }
+                            // THE CARD THE NAME CAME FROM, opened in Contacts — the only app that
+                            // edits it. `addressbook://` takes a contact's identifier.
+                            let card = person.str("contact_id")
+                            if !card.isEmpty, let url = URL(string: "addressbook://" + card) {
+                                Button { NSWorkspace.shared.open(url) } label: {
+                                    Image(systemName: "person.crop.square")
+                                }
+                                .buttonStyle(.borderless).foregroundStyle(.secondary).help("Open in Contacts")
+                            }
                         }
                         Text(HubModel.subtitle(person)).foregroundStyle(.secondary).textSelection(.enabled)
                     }

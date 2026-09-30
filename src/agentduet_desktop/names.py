@@ -15,7 +15,8 @@ or account uid; a name decides only what is displayed and what a search matches.
 THE ADDRESS BOOK DOES NOT LAND ON DISK. The daemon writes the numbers it wants names for
 (`run/contacts-wanted.json`) and the shell writes back names for THOSE numbers only. So what is
 stored is who has already called or written — which this app holds anyway — and not a copy of
-the owner's contacts.
+the owner's contacts. With each name come that card's email addresses, for `draft_email`,
+and its identifier, for the hub's "Open in Contacts".
 """
 from __future__ import annotations
 
@@ -72,6 +73,45 @@ def contacts_state() -> dict:
 def from_contacts() -> dict:
     names = contacts_state().get("names")
     return names if isinstance(names, dict) else {}
+
+
+def contact(who: str) -> dict:
+    """The Contacts card the shell matched to `who`: {name, emails, id}, or {} for none."""
+    people = contacts_state().get("people")
+    row = people.get(who) if isinstance(people, dict) else None
+    return row if isinstance(row, dict) else {}
+
+
+def emails_for(who: str) -> list[str]:
+    """Email addresses Contacts holds for `who` — a number, or a name the hub shows.
+
+    ONLY PEOPLE WHO HAVE CALLED OR WRITTEN, because only they are in `contacts.json` (see the
+    module docstring): a name that matches nobody here answers [], not a search of the address
+    book. A name that matches more than one person also answers [] — a draft to the wrong one of
+    two people called Lee is worse than a draft with the address left for the owner to fill in.
+    """
+    who = (who or "").strip()
+    if not who:
+        return []
+    if is_number(who):
+        found = [who]
+    else:
+        people = contacts_state().get("people")
+        identities = set(people) if isinstance(people, dict) else set()
+        identities |= set(typed())
+        want_name = " ".join(who.split()).lower()
+        shown = {i: {name_for(i).lower(), (contact(i).get("name") or "").lower()} - {""}
+                 for i in identities}
+        found = [i for i, ns in shown.items() if want_name in ns]
+        # "Kok Choong" for "Ong Kok Choong": every word given is a word of the name. Still one
+        # person or none, below.
+        if not found:
+            words = set(want_name.split())
+            found = [i for i, ns in shown.items() if any(words <= set(n.split()) for n in ns)]
+    # One PERSON, counted by card: two numbers on the same card are still one person.
+    if len({contact(i).get("id") or i for i in found}) != 1:
+        return []
+    return [e for e in contact(found[0]).get("emails") or [] if isinstance(e, str) and e.strip()]
 
 
 def _sessions() -> dict:
