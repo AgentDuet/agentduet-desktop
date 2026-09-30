@@ -18,6 +18,10 @@ struct HubView: View {
             }
         }
         .frame(minWidth: 820, minHeight: 520)
+        // A CALL INTERRUPTS A RECORDING, and holds it paused until the call ends. (The player
+        // lives only while this window does — closing it stops playback — so this is enough.)
+        .onAppear { model.player.setBlocked(phone.busy) }
+        .onChange(of: phone.busy) { model.player.setBlocked($0) }
         // CONTACTS' LOOK, AGENTDUET'S CONTROLS (Stanley, 2026-09-29): whether you can be heard,
         // answering here, and Settings.
         // TWO CONTROLS, EACH IN ITS OWN PILL, as Contacts groups its toolbar: answering here
@@ -649,7 +653,8 @@ private struct Conversation: View {
                         Group {
                             if let c = item.call {
                                 CallCard(model: model, call: c,
-                                         captions: phone.live[c.str("call_id")]?.captions ?? [])
+                                         captions: phone.live[c.str("call_id")]?.captions ?? [],
+                                         player: model.player)
                             } else if let m = item.message { MessageRows(model: model, message: m) }
                         }
                         .id(item.id)
@@ -743,13 +748,28 @@ private struct CallCard: View {
     /// This call's live captions, which stand in until its kept transcript lands.
     var captions: [PhoneModel.Caption] = []
 
+    @ObservedObject var player: CallPlayer
+
     var body: some View {
+        let mine = player.callID == call.str("call_id")
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
+            HStack(spacing: 8) {
+                if !call.str("audio").isEmpty {
+                    Button { player.toggle(callID: call.str("call_id"), path: call.str("audio")) } label: {
+                        Image(systemName: mine && player.playing ? "pause.circle.fill" : "play.circle.fill")
+                            .font(.system(size: 20))
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(player.blocked)
+                    .help(player.blocked ? "Not during a call" : mine && player.playing ? "Pause" : "Play")
+                }
                 Text(HubModel.when(call.str("started").isEmpty ? call.str("at") : call.str("started")))
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Text(HubModel.callMeta(call)).font(.caption).foregroundStyle(.secondary)
+                let at = player.place(of: call.str("call_id"))
+                Text(mine || at > 0 ? "\(HubModel.clock(at)) / \(HubModel.clock(call.num("seconds")))"
+                                    : HubModel.callMeta(call))
+                    .font(.caption).monospacedDigit().foregroundStyle(.secondary)
             }
             if call.str("transcript").isEmpty, !captions.isEmpty {
                 ForEach(captions) { c in Balloon(text: c.text, mine: c.mine, caption: "") }
