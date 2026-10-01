@@ -6690,6 +6690,14 @@ def test_briefs_are_about_the_right_person() -> None:
        and brief._languages("you: 你好\nthem: hello") == "")
     ok("a filler the speech engine misread is not a language",
        brief._languages("them: 嗯。 Okay, sounds good, see you on Friday then.\nthem: 啊, bye.") == "")
+    ok("nor a mixed turn that is mostly English",
+       brief._languages("them: OK, 没问题, we can do Friday at nine, see you there") == "")
+    ok("a short turn misheard into a script is not enough", brief._languages("them: 你好吗") == "")
+    ok("a whole Vietnamese turn counts, by words",
+       brief._languages("them: Dạ em chào anh, em muốn hỏi về lịch hẹn ngày mai lúc mười giờ ạ")
+       == " In this call they spoke some Vietnamese.")
+    ok("French accents are not Vietnamese",
+       brief._languages("them: Je voudrais réserver une table pour deux personnes à huit heures du soir") == "")
     ok("nor is one stray word in a long English call",
        brief._languages("them: We can meet at the office on Friday at nine, and then lunch, "
                         "maybe the new place near the station, 好吗") == "")
