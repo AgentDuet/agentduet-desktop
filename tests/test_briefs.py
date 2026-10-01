@@ -54,11 +54,23 @@ SCENARIOS = [
     ], [
         ("About: they drive", lambda t: bool(re.search(r"\bdriv", about(t)))),
         ("About: the peanut allergy", lambda t: "peanut" in about(t) or "allerg" in about(t)),
-        ("About: they mix in Mandarin", lambda t: "mandarin" in about(t) or "chinese" in about(t)),
+        ("About: one Chinese turn is not enough", lambda t: "chinese" not in about(t)
+                                                            and "mandarin" not in about(t)),
         ("About: no invented relation", lambda t: not any(r in about(t) for r in RELATIONS)),
-        ("About: not the trip itself", lambda t: "jurong" not in about(t)),
+        ("About: not the trip itself", lambda t: "jurong" not in about(t) and "friday" not in about(t)),
         ("Open: Friday 2 Oct at nine", lambda t: bool(re.search(r"\b0?2(nd)? oct", opened(t)))
                                                   and ("nine" in opened(t) or "9" in opened(t))),
+    ]),
+    ("mandarin", "Wei", [
+        ("2026-09-28T14:00:00",
+         "them: 喂，你好，我想确认一下我们明天的会议时间\nyou: Yes, tomorrow at ten.\n"
+         "them: 好的，十点钟我会准时到你的办公室\nyou: Great."),
+        ("2026-09-30T14:00:00",
+         "them: 我今天可能会晚到十五分钟，路上有点堵车\nyou: No problem, see you soon."),
+    ], [
+        ("About: speaks Chinese, from the tally", lambda t: "speaks chinese" in about(t)),
+        ("About: not a one-off delay", lambda t: "late" not in about(t) and "traffic" not in about(t)),
+        ("About: no invented relation", lambda t: not any(r in about(t) for r in RELATIONS)),
     ]),
     ("quiet", "Raj", [
         ("2026-09-29T11:00:00",
@@ -76,7 +88,7 @@ SCENARIOS = [
          "recital every Thursday evening.\nyou: Understood.\n"
          "them: And if we do lunch, I'm vegetarian.\nyou: Noted."),
     ], [
-        ("About: works at Tan and Co", lambda t: "tan" in about(t)),
+        ("About: works at Tan and Co", lambda t: bool(re.search(r"\btan\b", about(t)))),
         ("About: no Thursdays after six", lambda t: "thursday" in about(t)),
         ("About: vegetarian", lambda t: "vegetarian" in about(t)),
         ("no name in the summary", lambda t: "joanne" not in t.lower()),

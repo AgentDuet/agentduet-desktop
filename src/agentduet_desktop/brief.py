@@ -53,15 +53,18 @@ THIS BRIEF IS ABOUT: {person}. Never write about anyone else as if they were thi
 NEVER WRITE THEIR NAME OR NUMBER: it is shown beside it, and changes when {owner} renames them.
 
 ABOUT is LASTING facts about the person that would help the next time {owner} deals with them —
-for example an allergy, that they drive, where they work, the language they speak or mix in. A
+for example an allergy, that they drive, where they work, what they usually call about. A
 lasting fact counts even when it came up while making a plan: an allergy mentioned while choosing
 lunch, or "I'll drive" while planning a trip.
-NOT plans, appointments or what a call was about — those are kept elsewhere.
+NOT plans, appointments, one-off events or what a call was about — those are kept elsewhere.
+A fact is still true next month: "They drive" is a fact; "they will drive to the client on
+Friday" is a plan, and "they will be late today" is an event — neither goes here. Keep the name
+of the place they work if it was said.
 
 - KEEP every fact already in ABOUT unless the new information changes it. The newer one wins, and
   {owner}'s word outranks theirs.
 - Say who they are to {owner} (a customer, a friend) ONLY if it was said — never guess it.
-- If they spoke a language other than English, say which.
+- Never write which language they speak: that is kept separately, from what code counts.
 - Use only what is below. Do not guess.
 - At most {words} words, as short plain sentences.
 
@@ -149,7 +152,8 @@ def _upcoming(items: list[dict]) -> list[dict]:
 
 def _render(rec: dict) -> str:
     """The three parts as the card and the assistant read them. Code writes this, not a model."""
-    lines = ["About: " + (rec.get("about") or "Nothing yet."), "Open:"]
+    about = " ".join(x for x in (rec.get("about") or "", _language_line(rec)) if x).strip()
+    lines = ["About: " + (about or "Nothing yet."), "Open:"]
     for it in _upcoming(rec.get("open") or []):
         when = datetime.fromisoformat(it["when"])
         day = f"{when:%A} {when.day} {when:%B}" + (f", {when:%H:%M}" if len(it["when"]) > 10 else "")
@@ -388,8 +392,8 @@ _FILLERS = re.compile(r"[嗯啊哦呃嘛吧呀哈喔噢唉诶欸咯啦呢]")
 _PUNCT = re.compile(r"[\s\W_]+", re.U)
 
 
-def _turn_language(turn: str) -> str:
-    """The language a turn is spoken in, if it is one of _SCRIPTS — or ""."""
+def _turn_language(turn: str) -> tuple[str, int]:
+    """(the language a turn is spoken in, how much of it) if it is one of _SCRIPTS — or ("", 0)."""
     turn = _FILLERS.sub("", turn)
     for name, pat in _SCRIPTS:
         if name == "Vietnamese":
@@ -404,19 +408,78 @@ def _turn_language(turn: str) -> str:
         share = VIETNAMESE_SHARE if name == "Vietnamese" else LANGUAGE_SHARE
         enough = (total if name == "Vietnamese" else units) >= LANGUAGE_MIN
         if enough and units / max(1, total) >= share:
-            return name
-    return ""
+            return name, (total if name == "Vietnamese" else units)
+    return "", 0
 
 
-def _languages(text: str) -> str:
-    """"In this call they spoke some Chinese." when one of their turns was in it, or ""."""
-    found = []
+def _language_turns(text: str) -> dict[str, list[int]]:
+    """{language: [size of each of the caller's turns spoken in it]} for one call."""
+    out: dict[str, list[int]] = {}
     for line in (text or "").splitlines():
         if line.startswith("them:"):
-            name = _turn_language(line[len("them:"):])
-            if name and name not in found:
-                found.append(name)
-    return f" In this call they spoke some {' and '.join(found)}." if found else ""
+            name, size = _turn_language(line[len("them:"):])
+            if name:
+                out.setdefault(name, []).append(size)
+    return out
+
+
+#: THE LANGUAGE IS CODE'S, NOT THE MODEL'S (Stanley, 2026-10-01). A tally per person, across
+#: calls, and a sentence only past a threshold — so one misheard sentence never lands, and one
+#: that slips through is diluted by the next calls rather than repeated by the model.
+#: Shown with LANGUAGE_SHOW_TURNS turns AND (LANGUAGE_SHOW_CALLS calls OR one turn of
+#: LANGUAGE_LONG); said firmly ("Speaks X.") with LANGUAGE_FIRM_TURNS turns over the calls.
+LANGUAGE_SHOW_TURNS = 2
+LANGUAGE_SHOW_CALLS = 2
+LANGUAGE_LONG = 20
+LANGUAGE_FIRM_TURNS = 3
+
+
+def _tally_languages(rec: dict, calls: list[tuple[str, str]]) -> None:
+    """Add these calls' qualifying turns to the person's tally."""
+    seen = rec.setdefault("languages", {})
+    for at, text in calls:
+        for name, sizes in _language_turns(text).items():
+            t = seen.setdefault(name, {"turns": 0, "calls": 0, "longest": 0, "last": ""})
+            t["turns"] += len(sizes)
+            t["calls"] += 1
+            t["longest"] = max(t["longest"], max(sizes))
+            t["last"] = max(t["last"], at)
+
+
+def _language_line(rec: dict) -> str:
+    """The language sentence for About, from the tally and the owner's corrections, or ""."""
+    off = set(rec.get("languages_off") or [])
+    forced = [n for n in rec.get("languages_on") or [] if n not in off]
+    firm, some = list(forced), []
+    for name, t in sorted((rec.get("languages") or {}).items()):
+        if name in off or name in forced:
+            continue
+        shown = t["turns"] >= LANGUAGE_SHOW_TURNS and (t["calls"] >= LANGUAGE_SHOW_CALLS
+                                                       or t["longest"] >= LANGUAGE_LONG)
+        if not shown:
+            continue
+        (firm if t["calls"] >= 2 and t["turns"] >= LANGUAGE_FIRM_TURNS else some).append(name)
+    out = []
+    if firm:
+        out.append(f"Speaks {' and '.join(firm)}.")
+    if some:
+        out.append(f"Has spoken some {' and '.join(some)} on calls.")
+    return " ".join(out)
+
+
+_NEGATION = re.compile(r"\b(not|no|never|don't|doesn't|dont|doesnt|isn't|cannot|can't)\b", re.I)
+
+
+def _language_correction(rec: dict, said: str) -> None:
+    """An owner's correction naming a language turns it off (with a negation) or on."""
+    for name, _ in _SCRIPTS:
+        if name.lower() in said.lower() or (name == "Chinese" and re.search(r"mandarin|cantonese", said, re.I)):
+            on, off = set(rec.get("languages_on") or []), set(rec.get("languages_off") or [])
+            if _NEGATION.search(said):
+                off.add(name); on.discard(name)
+            else:
+                on.add(name); off.discard(name)
+            rec["languages_on"], rec["languages_off"] = sorted(on), sorted(off)
 
 
 def _week(at: str) -> str:
@@ -466,8 +529,7 @@ def update(who: str) -> bool:
     # put "lunch tomorrow" said on the 25th on the 25th in some runs and the 26th in others, at
     # temperature 0. So each call says what "today" and "tomorrow" meant in it.
     items = [(at, f"{_day(at)} — a call with them. In this call \"today\" means {_day(at)} and "
-                  f"\"tomorrow\" means {_day(at, 1)}. The week after it: {_week(at)}."
-                  f"{_languages(text)}\n"
+                  f"\"tomorrow\" means {_day(at, 1)}. The week after it: {_week(at)}.\n"
                   + tools.untrusted(text))
              for at, text in calls if text]
     items += [(at, f"{_day(at)} — {owner.name() or 'the owner'} said to the assistant (\"tomorrow\" "
@@ -478,6 +540,7 @@ def update(who: str) -> bool:
     if done is None:
         return True
     rec["about"], rec["open"] = done
+    _tally_languages(rec, [(at, t) for at, t in calls if t])
     newest = items[-1][0]
     rec["last"] = {"at": newest,
                    "how": "a call" if any(at == newest for at, t in calls if t) else "a message"}
@@ -517,6 +580,7 @@ def correct(who: str, correction: str) -> str:
     if done is None:
         return "The model returned nothing, so the brief is unchanged."
     rec["about"], rec["open"] = done
+    _language_correction(rec, said)
     rec.pop("summary", None)
     rec["updated"] = _now().isoformat(timespec="seconds")
     _save(who, rec)
