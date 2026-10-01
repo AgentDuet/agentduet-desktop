@@ -6664,7 +6664,10 @@ def test_briefs_are_about_the_right_person() -> None:
        "NEVER WRITE THEIR NAME OR NUMBER IN THE BRIEF" in bsrc and "rename:" not in web_src)
     ok("and the assistant is told whose it is, alongside", "WHAT YOU KNOW ABOUT {label}" in bsrc)
     ok("About describes them from the conversations, not just who they are",
-       "  About: what the conversations show about them" in bsrc and "  Who:" not in bsrc)
+       "  About: LASTING facts about the person" in bsrc and "  Who:" not in bsrc
+       and "EVEN WHEN it came up while making a plan" in bsrc and "never\n        guess it" in bsrc)
+    ok("each call is given the week's dates, so a weekday is never counted by the model",
+       "The week after it: {_week(at)}" in bsrc)
     ok("the card labels About, and still reads an older Who", '["About", "Who", "Open", "Last contact"]' in hub_src)
     ok("in a long history the summary is a click away, from the slim header",
        'Label("Summary", systemImage: "text.alignleft")' in hub_src and ".popover(isPresented: $showingSummary.value" in hub_src)
