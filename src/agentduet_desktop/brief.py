@@ -40,54 +40,78 @@ CALLS_PER_UPDATE = 3
 #: Characters of one transcript given to an update.
 CALL_CHARS = 4000
 
-PROMPT = """Today is {today}.
+#: TWO PASSES, ONE JOB EACH (2026-10-01). One prompt kept all three parts and they competed: an
+#: allergy that came up while choosing lunch went into the plan, a trip went into About, and every
+#: rewording traded one for the other (4-5 of 16 checks failing in tests/test_briefs.py, whatever
+#: the wording). About is lasting and grows slowly; Open comes and goes and is all dates — so each
+#: is its own question, and "Last contact" is not asked at all: code knows it exactly.
 
-You keep a short brief about one person {owner} talks to. {owner}'s assistant reads
-it before answering questions about this person.
+ABOUT_PROMPT = """You keep the ABOUT part of a brief about one person {owner} talks to. {owner}'s
+assistant reads it before answering questions about them.
 
 THIS BRIEF IS ABOUT: {person}. Never write about anyone else as if they were this person.
-NEVER WRITE THEIR NAME OR NUMBER IN THE BRIEF: it is shown beside it, and changes when
-{owner} renames them. Describe them instead, under About.
+NEVER WRITE THEIR NAME OR NUMBER: it is shown beside it, and changes when {owner} renames them.
 
-Update the brief with the new information below.
-- Where the new information and the brief disagree, the NEWER one wins.
-- Where {owner} and the other person disagree about the same thing, {owner}'s word wins.
-- Keep the date beside anything that has one: appointments, promises, deadlines. Work out
-  "tomorrow" or "Friday" from the date of the call it was said in, and write the date. Never
-  add a weekday or a date that was not said or cannot be worked out that way.
-- KEEP every open item already in the brief unless the new information changes, cancels or
-  completes it. A call about one thing says nothing about the others.
-- KEEP everything already under About too. A call that says nothing new about the person
-  leaves About exactly as it was.
-- Drop an item only when the new information says it is finished or no longer true.
-- Use only the brief and the new information. Do not guess.
-- A CORRECTION from {owner} outranks everything: remove or change what it says is wrong,
-  even in the current brief, and keep the rest.
-- Never record what the assistant did or will do (running a tool, drafting) as an open item.
-- If the brief would run past {words} words, keep what will still matter in a month and drop
-  small talk first.
-- At most {words} words, in three short parts:
-  About: LASTING facts about the person that would help the next time {owner} deals with
-        them — for example an allergy, that they drive, where they work, the language they
-        speak or mix in. A lasting fact belongs here EVEN WHEN it came up while making a plan:
-        an allergy mentioned while choosing lunch, or "I'll drive" while planning a trip, still
-        goes here. If they spoke a language other than English, say which. The plan itself
-        and its appointments go under Open, not here.
-        Say who they are to {owner} (a customer, a friend) ONLY if a call said so — never
-        guess it.
-  Open: EVERY appointment, meeting, promise or follow-up either side mentioned that has not
-        happened yet as of today, each with its date and time. One per line. A request to
-        call back, or a promise to call, is a follow-up.
-  Last contact: the date of the NEWEST call or message below, and what was said in it.
+ABOUT is LASTING facts about the person that would help the next time {owner} deals with them —
+for example an allergy, that they drive, where they work, the language they speak or mix in. A
+lasting fact counts even when it came up while making a plan: an allergy mentioned while choosing
+lunch, or "I'll drive" while planning a trip.
+NOT plans, appointments or what a call was about — those are kept elsewhere.
 
-Reply with the brief only. Never repeat these rules.
+- KEEP every fact already in ABOUT unless the new information changes it. The newer one wins, and
+  {owner}'s word outranks theirs.
+- Say who they are to {owner} (a customer, a friend) ONLY if it was said — never guess it.
+- If they spoke a language other than English, say which.
+- Use only what is below. Do not guess.
+- At most {words} words, as short plain sentences.
 
-CURRENT BRIEF (as of {asof}):
+Reply with the ABOUT text only, never these rules. If nothing at all is known, reply: NONE
+
+CURRENT ABOUT:
 {current}
 
 NEW INFORMATION, oldest first:
 {new}
 """
+
+OPEN_PROMPT = """You keep the list of OPEN items for one person {owner} talks to: every
+appointment, meeting, visit, delivery, promise or follow-up either side mentioned that has not
+happened yet. A request to call back, or a promise to call, is a follow-up.
+NOT facts about the person — those are kept elsewhere.
+
+- One item per line, exactly:  YYYY-MM-DD HH:MM — what
+  or, when no time was said:   YYYY-MM-DD — what
+- Work out each date from the dates written beside the call it was said in. Never invent a date
+  or a time.
+- KEEP every item already in the list unless the new information changes, cancels or completes
+  it. A call about one thing says nothing about the others.
+- Never list what the assistant did or will do (running a tool, drafting).
+- Never list the call or message itself: it has already happened. Only what it arranged.
+
+Reply with the lines only, never these rules. If there are none, reply: NONE
+
+CURRENT LIST:
+{current}
+
+NEW INFORMATION, oldest first:
+{new}
+"""
+
+#: A CORRECTION IS NOT A CONTACT (2026-10-01): given as the newest dated item it came back as
+#: "Last contact: … CORRECTION from Stanley: name". So it has its own section, in both passes.
+CORRECTION = """
+CORRECTION FROM {owner} — not a conversation. Apply it: change or remove whatever it says is
+wrong, keep everything else, and never mention the correction itself.
+{correction}
+"""
+
+#: An Open line as the pass writes it. Anything else is not an item.
+_OPEN_LINE = re.compile(r"^\s*[-*•]?\s*(\d{4}-\d{2}-\d{2})(?:[ T](\d{1,2}:\d{2}))?\s*[—–-]+\s*(.+?)\s*$")
+
+
+def _now() -> datetime:
+    """Now. One place, so a test can set the clock the summary is judged by."""
+    return datetime.now()
 
 
 def _dir():
@@ -99,10 +123,72 @@ def _file(who: str):
 
 
 def load(who: str) -> dict:
+    """The record, with `summary` rendered NOW from its parts — so an appointment that has
+    passed is gone from it without anything rewriting the file."""
     try:
-        return json.loads(_file(who).read_text(encoding="utf-8"))
+        rec = json.loads(_file(who).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+    if "about" in rec or "open" in rec:
+        rec["summary"] = _render(rec)
+    return rec
+
+
+def _upcoming(items: list[dict]) -> list[dict]:
+    """Open items not yet past, soonest first. A date with no time lasts the whole day."""
+    now, out = _now(), []
+    for it in items:
+        try:
+            when = datetime.fromisoformat(it["when"])
+        except (KeyError, ValueError):
+            continue
+        if (when if len(it["when"]) > 10 else when.replace(hour=23, minute=59)) >= now:
+            out.append(it)
+    return sorted(out, key=lambda it: it["when"])
+
+
+def _render(rec: dict) -> str:
+    """The three parts as the card and the assistant read them. Code writes this, not a model."""
+    lines = ["About: " + (rec.get("about") or "Nothing yet."), "Open:"]
+    for it in _upcoming(rec.get("open") or []):
+        when = datetime.fromisoformat(it["when"])
+        day = f"{when:%A} {when.day} {when:%B}" + (f", {when:%H:%M}" if len(it["when"]) > 10 else "")
+        lines.append(f"{day} — {it['what']}")
+    if len(lines) == 2:
+        lines[-1] = "Open: None."
+    # An older one-pass brief has no `last`: how far it read is when the last contact was.
+    last = rec.get("last") or {}
+    if not last.get("at"):
+        call, chat = rec.get("through_call", ""), rec.get("through_chat", "")
+        if call or chat:
+            last = {"at": max(call, chat), "how": "a call" if call >= chat else "a message"}
+    if last.get("at"):
+        lines.append(f"Last contact: {_day(last['at'])}, {last.get('how', 'a call')}.")
+    return "\n".join(lines)
+
+
+def _parse_open(text: str) -> list[dict]:
+    """The pass's lines as items. A line in any other shape is dropped, never guessed at."""
+    out = []
+    for line in (text or "").splitlines():
+        m = _OPEN_LINE.match(line)
+        if not m:
+            continue
+        date, time, what = m.groups()
+        when = f"{date} {time.zfill(5)}" if time else date
+        try:
+            datetime.fromisoformat(when)
+        except ValueError:
+            continue
+        out.append({"when": when, "what": what.strip().rstrip(".")})
+    return out
+
+
+def _sections(summary: str) -> tuple[str, str]:
+    """An older one-pass summary as (about, open text), for the first two-pass update."""
+    about = re.search(r"(?:About|Who):\s*(.*?)(?=\n\s*Open:|$)", summary or "", re.S)
+    opened = re.search(r"Open:\s*(.*?)(?=\n\s*Last contact:|$)", summary or "", re.S)
+    return ((about.group(1).strip() if about else ""), (opened.group(1).strip() if opened else ""))
 
 
 def _save(who: str, rec: dict) -> None:
@@ -195,28 +281,100 @@ def _person(who: str) -> str:
         f"a person known only by their number, {who} — do not give them a name"
 
 
-#: A CORRECTION IS NOT A CONTACT (2026-10-01). Given as the newest dated item, the owner's
-#: correction "name" came back as "Last contact: Thursday 01 October, CORRECTION from Stanley:
-#: name" on both briefs it fixed. So it goes in its own section, after the information, with
-#: its own rule.
-CORRECTION = """
-CORRECTION FROM {owner} — this is not a contact or a conversation. Apply it to the brief:
-change or remove whatever it says is wrong, keep everything else, and leave "Last contact" as it
-was unless the correction is about it. Never mention the correction itself.
-{correction}
-"""
+def _current(rec: dict) -> tuple[str, str]:
+    """(about, open lines) as the passes read them — from the parts, or an older summary."""
+    if "about" in rec or "open" in rec:
+        lines = "\n".join(f"{it['when']} — {it['what']}" for it in rec.get("open") or [])
+        return rec.get("about") or "", lines
+    return _sections(rec.get("summary", ""))
 
 
-def _prompt(who: str, rec: dict, items: list[str], correction: str = "") -> str:
-    from . import budget, owner
+#: WHAT THE MODEL MAY NOT INVENT, checked by code (2026-10-01). Told twice in its prompt not to
+#: guess, it still wrote "Customer." about an accountant nobody called a customer, and put "if we
+#: do lunch" on Monday 5 October.
+_RELATIONS = ("customer", "client", "colleague", "coworker", "co-worker", "supplier", "vendor",
+              "friend", "partner", "boss", "manager", "employee", "staff")
+_WEEKDAYS_ZH = ("一", "二", "三", "四", "五", "六", "日")
+
+
+def _said_relations(about: str, said: str) -> str:
+    """About without any sentence naming a relationship the conversations never named."""
+    low = said.lower()
+    keep = [s for s in re.split(r"(?<=[.!?])\s+", about.strip())
+            if not any(r in s.lower() and r not in low for r in _RELATIONS)]
+    return " ".join(keep).strip()
+
+
+def _dated_by(item: dict, sources: list[tuple[str, str]]) -> bool:
+    """Whether an Open item's date can be traced to what was said in a call or message."""
+    try:
+        when = datetime.fromisoformat(item["when"]).date()
+    except (KeyError, ValueError):
+        return False
+    for at, text in sources:
+        try:
+            said_on = datetime.fromisoformat(at).date()
+        except ValueError:
+            continue
+        low = text.lower()
+        offset = (when - said_on).days
+        if (when.strftime("%A").lower() in low
+                or (offset == 0 and re.search(r"\b(today|tonight|this (morning|afternoon|evening))\b", low))
+                or (offset == 1 and "tomorrow" in low)
+                or re.search(rf"\b{when.day}(st|nd|rd|th)?\b", low) and when.strftime("%b").lower() in low
+                or f"星期{_WEEKDAYS_ZH[when.weekday()]}" in text or f"周{_WEEKDAYS_ZH[when.weekday()]}" in text
+                or (offset == 1 and ("明天" in text or "明日" in text))
+                or (offset == 0 and "今天" in text)):
+            return True
+    return False
+
+
+def _passes(who: str, rec: dict, items: list[str], correction: str = "",
+            sources: list[tuple[str, str]] | None = None) -> tuple[str, list[dict]] | None:
+    """Both passes. (about, open items), or None when the model returned nothing for either."""
+    from . import budget, llm, owner
     name = owner.name() or "the owner"
-    out = PROMPT.format(today=datetime.now().strftime("%A %d %B %Y"),
-                        owner=name, person=_person(who),
-                        words=budget.split()["person_words"],
-                        asof=rec.get("updated", "never"),
-                        current=rec.get("summary") or "(none yet)",
-                        new="\n\n".join(items) if items else "(nothing new)")
-    return out + (CORRECTION.format(owner=name, correction=correction) if correction else "")
+    about_now, open_now = _current(rec)
+    new = "\n\n".join(items) if items else "(nothing new)"
+    fix = CORRECTION.format(owner=name, correction=correction) if correction else ""
+    client = llm.client()
+    about = client.complete(ABOUT_PROMPT.format(
+        owner=name, person=_person(who), words=max(40, budget.split()["person_words"] * 2 // 3),
+        current=about_now or "(nothing yet)", new=new) + fix).strip()
+    opened = client.complete(OPEN_PROMPT.format(
+        owner=name, current=open_now or "(none)", new=new) + fix).strip()
+    if not about and not opened:
+        return None
+    about = "" if about.upper().rstrip(".") == "NONE" else about
+    # A PASS THAT RETURNED NOTHING USABLE KEEPS WHAT WAS THERE: an empty or rule-shaped reply is
+    # not "they have no plans".
+    items_out = _parse_open(opened) if opened.upper().rstrip(".") != "NONE" else []
+    if opened and not items_out and opened.upper().rstrip(".") != "NONE":
+        items_out = rec.get("open") or []
+    if sources is not None:
+        # NEW ITEMS NEED A DATE SOMEONE SAID; items already kept, and a correction's, stand.
+        before = {(it["when"], it["what"]) for it in rec.get("open") or []}
+        items_out = [it for it in items_out
+                     if (it["when"], it["what"]) in before or _dated_by(it, sources)]
+        said = "\n".join(text for _, text in sources)
+        about = _said_relations(about, said + "\n" + (rec.get("about") or "")) if about else about
+    return (about or rec.get("about", "")), items_out
+
+
+#: Scripts a caller's words can be in, and the language each says. CODE SEES THIS, so the model
+#: only has to keep it (2026-10-01): asked to "say which language they spoke", it never did —
+#: a caller's Mandarin went unremarked in every run, with every wording.
+_SCRIPTS = (("Chinese", re.compile(r"[\u4e00-\u9fff]")), ("Japanese", re.compile(r"[\u3040-\u30ff]")),
+            ("Korean", re.compile(r"[\uac00-\ud7af]")), ("Thai", re.compile(r"[\u0e00-\u0e7f]")),
+            ("Tamil", re.compile(r"[\u0b80-\u0bff]")), ("Hindi", re.compile(r"[\u0900-\u097f]")),
+            ("Vietnamese", re.compile(r"[ạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹđ]", re.I)))
+
+
+def _languages(text: str) -> str:
+    """"In this call they spoke some Chinese." for the other party's lines, or ""."""
+    theirs = "\n".join(l for l in (text or "").splitlines() if l.startswith("them:"))
+    found = [name for name, pat in _SCRIPTS if pat.search(theirs)]
+    return f" In this call they spoke some {' and '.join(found)}." if found else ""
 
 
 def _week(at: str) -> str:
@@ -266,16 +424,23 @@ def update(who: str) -> bool:
     # put "lunch tomorrow" said on the 25th on the 25th in some runs and the 26th in others, at
     # temperature 0. So each call says what "today" and "tomorrow" meant in it.
     items = [(at, f"{_day(at)} — a call with them. In this call \"today\" means {_day(at)} and "
-                  f"\"tomorrow\" means {_day(at, 1)}. The week after it: {_week(at)}.\n"
+                  f"\"tomorrow\" means {_day(at, 1)}. The week after it: {_week(at)}."
+                  f"{_languages(text)}\n"
                   + tools.untrusted(text))
              for at, text in calls if text]
     items += [(at, f"{_day(at)} — {owner.name() or 'the owner'} said to the assistant (\"tomorrow\" "
                    f"means {_day(at, 1)}): {q}") for at, q in chat]
     items.sort()
-    summary = llm.client().complete(_prompt(who, rec, [x for _, x in items])).strip()
-    if not summary:
+    done = _passes(who, rec, [x for _, x in items],
+                   sources=[(at, t) for at, t in calls if t] + [(at, q) for at, q in chat])
+    if done is None:
         return True
-    rec.update(summary=summary, updated=datetime.now().isoformat(timespec="seconds"))
+    rec["about"], rec["open"] = done
+    newest = items[-1][0]
+    rec["last"] = {"at": newest,
+                   "how": "a call" if any(at == newest for at, t in calls if t) else "a message"}
+    rec.pop("summary", None)
+    rec["updated"] = _now().isoformat(timespec="seconds")
     if calls:
         rec["through_call"] = calls[-1][0]
     if chat:
@@ -306,13 +471,15 @@ def correct(who: str, correction: str) -> str:
     # assistant's cached conversation around a PERSON job, and a rewrite at QUESTION priority
     # would overwrite it mid-turn.
     with gate.priority(gate.PERSON):
-        summary = llm.client().complete(_prompt(who, rec, [], correction=said)).strip()
-    if not summary:
+        done = _passes(who, rec, [], correction=said)
+    if done is None:
         return "The model returned nothing, so the brief is unchanged."
-    rec.update(summary=summary, updated=datetime.now().isoformat(timespec="seconds"))
+    rec["about"], rec["open"] = done
+    rec.pop("summary", None)
+    rec["updated"] = _now().isoformat(timespec="seconds")
     _save(who, rec)
     logger.info("brief for %s corrected by the owner", who)
-    return "Corrected. The brief now reads:\n" + summary
+    return "Corrected. The brief now reads:\n" + load(who)["summary"]
 
 
 def request(who: str) -> None:
