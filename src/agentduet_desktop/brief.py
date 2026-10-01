@@ -367,30 +367,55 @@ def _passes(who: str, rec: dict, items: list[str], correction: str = "",
 _SCRIPTS = (("Chinese", re.compile(r"[\u4e00-\u9fff]")), ("Japanese", re.compile(r"[\u3040-\u30ff]")),
             ("Korean", re.compile(r"[\uac00-\ud7af]")), ("Thai", re.compile(r"[\u0e00-\u0e7f]")),
             ("Tamil", re.compile(r"[\u0b80-\u0bff]")), ("Hindi", re.compile(r"[\u0900-\u097f]")),
-            ("Vietnamese", re.compile(r"[ạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹđ]", re.I)))
+            # Letters ONLY Vietnamese uses — not French or Spanish é, à, ñ, so they cannot trip it.
+            ("Vietnamese", re.compile(r"[ăắằẳẵặâấầẩẫậđêếềểễệôốồổỗộơớờởỡợưứừửữựảạẻẹẽỉịĩỏọủụũỷỵỹ]", re.I)))
 
 
-#: A LANGUAGE MUST BE A REAL SHARE OF WHAT THEY SAID, not a stray word (Stanley, 2026-10-01).
-#: The speech engine misreads short sounds — an English "mm" or "ah" can come back as 嗯 or 啊,
-#: a "Hi" as Cantonese — and once About holds "speaks Chinese" every later update keeps it. So
-#: fillers never count, and a script needs LANGUAGE_SHARE of their words and LANGUAGE_MIN of them.
-LANGUAGE_SHARE = 0.2
-LANGUAGE_MIN = 6
+#: A LANGUAGE MUST BE SPOKEN, NOT GLIMPSED (Stanley, 2026-10-01). The speech engine misreads short
+#: sounds — an English "mm" or "ah" can come back as 嗯 or 啊, a "Hi" as Cantonese — and once
+#: About holds "speaks Chinese" every later update keeps it. A misread is a short piece inside an
+#: English turn; someone who really speaks a language says at least one whole turn in it. So a
+#: language counts only for a TURN that is LANGUAGE_SHARE in it, with LANGUAGE_MIN of it —
+#: characters for scripts written without spaces (Chinese, Japanese, Thai, Korean…), words for
+#: Vietnamese. Fillers never count. A code-switcher who mixes inside every turn is missed: the
+#: cautious direction.
+LANGUAGE_SHARE = 0.8
+LANGUAGE_MIN = 10
+#: Vietnamese is measured by WORDS carrying a Vietnamese-only letter, and many of its words carry
+#: no mark at all ("em", "anh", "mai") — a sentence wholly in Vietnamese scores about half.
+VIETNAMESE_SHARE = 0.3
 _FILLERS = re.compile(r"[嗯啊哦呃嘛吧呀哈喔噢唉诶欸咯啦呢]")
+_PUNCT = re.compile(r"[\s\W_]+", re.U)
+
+
+def _turn_language(turn: str) -> str:
+    """The language a turn is spoken in, if it is one of _SCRIPTS — or ""."""
+    turn = _FILLERS.sub("", turn)
+    for name, pat in _SCRIPTS:
+        if name == "Vietnamese":
+            words = [w for w in re.split(r"\s+", turn) if re.search(r"\w", w)]
+            units = sum(1 for w in words if pat.search(w))
+            total = len(words)
+        else:
+            letters = _PUNCT.sub("", turn)
+            units = len(pat.findall(letters))
+            # Latin words count as one unit each against the script's characters.
+            total = units + len(re.findall(r"[A-Za-z]+", turn))
+        share = VIETNAMESE_SHARE if name == "Vietnamese" else LANGUAGE_SHARE
+        enough = (total if name == "Vietnamese" else units) >= LANGUAGE_MIN
+        if enough and units / max(1, total) >= share:
+            return name
+    return ""
 
 
 def _languages(text: str) -> str:
-    """"In this call they spoke some Chinese." when it was a real share of their lines, or ""."""
-    theirs = "\n".join(l[len("them:"):] for l in (text or "").splitlines() if l.startswith("them:"))
-    theirs = _FILLERS.sub("", theirs)
-    latin = len(re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", theirs))
+    """"In this call they spoke some Chinese." when one of their turns was in it, or ""."""
     found = []
-    for name, pat in _SCRIPTS:
-        # CJK, Thai and the like are counted by character; a Vietnamese word by its accent.
-        units = len(pat.findall(theirs)) if name != "Vietnamese" else \
-            len(re.findall(r"\w*" + pat.pattern + r"\w*", theirs, re.I))
-        if units >= LANGUAGE_MIN and units / max(1, units + latin) >= LANGUAGE_SHARE:
-            found.append(name)
+    for line in (text or "").splitlines():
+        if line.startswith("them:"):
+            name = _turn_language(line[len("them:"):])
+            if name and name not in found:
+                found.append(name)
     return f" In this call they spoke some {' and '.join(found)}." if found else ""
 
 
