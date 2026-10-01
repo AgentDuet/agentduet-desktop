@@ -880,10 +880,11 @@ private struct SummaryBody: View {
         .textSelection(.enabled)
     }
 
-    /// "Who:", "Open:" and "Last contact:" as labels, the rest as the text.
+    /// "About:", "Open:" and "Last contact:" as labels, the rest as the text. "Who:" too: a
+    /// summary written before About replaced it keeps that label until its next update.
     @ViewBuilder static func line(_ s: String) -> some View {
         if let colon = s.firstIndex(of: ":"),
-           ["Who", "Open", "Last contact"].contains(String(s[..<colon]).trimmingCharacters(in: .whitespaces)) {
+           ["About", "Who", "Open", "Last contact"].contains(String(s[..<colon]).trimmingCharacters(in: .whitespaces)) {
             (Text(String(s[...colon])).bold() + Text(String(s[s.index(after: colon)...])))
         } else {
             Text(s)
