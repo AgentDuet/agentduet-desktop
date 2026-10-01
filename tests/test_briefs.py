@@ -1,6 +1,6 @@
 """Person summaries against the REAL local model, from scripted calls — no call needed.
 
-    PYTHONPATH=src .venv-build/bin/python tests/test_briefs.py [--runs N] [--compare] [--show]
+    PYTHONPATH=src .venv-build/bin/python tests/test_briefs.py [--runs N] [--show]
 
 Each scenario hands `brief.update` written-out conversations in a transcript's `them:`/`you:`
 shape, one call at a time as they would arrive, and checks the summary the model writes
@@ -10,9 +10,13 @@ one red line (as in test_behaviour.py).
 THE OWNER'S DATA IS NEVER WRITTEN: the model and its files come from the real instance, but
 every brief is saved to a throwaway folder, and calls, chat and names are scripted.
 
-`--compare` also runs the PREVIOUS About rule (2026-10-01 morning: a list of slots) on the same
-calls, which is how the current one was chosen: a list of slots made the model fill them — it
-called a caller "a colleague" that nothing said.
+HISTORY. The one-pass version (a single prompt writing all three parts) plateaued at 4-5 of 16
+checks failing whatever the wording: a list of slots made the model invent "a colleague"; a
+"Nothing yet" line emptied About with an allergy in front of it. That is why the summary is two
+passes now (About, Open) with Last contact written by code.
+
+THE CLOCK IS SET to an hour after each scenario's last call, because code drops an appointment
+once it has passed, and the scripted ones are in September.
 """
 from __future__ import annotations
 
@@ -22,25 +26,9 @@ import sys
 import tempfile
 import unittest.mock as mock
 from collections import defaultdict
+from datetime import datetime, timedelta
 
 from agentduet_desktop import brief, llm, names, owner
-
-CURRENT_ABOUT = brief.PROMPT[brief.PROMPT.index("  About: "):brief.PROMPT.index("  Open: ")]
-PREVIOUS_ABOUT = '''  About: what the conversations show about them — who they are to {owner} (colleague,
-        customer, supplier, friend), where they work and their role if it was said, what
-        they usually call about, and how to deal with them (the language they use or mix,
-        times they prefer, anything they asked for). Only what was said; never their name.
-'''
-PRIORITY = [l for l in brief.PROMPT.splitlines(keepends=True) if "still matter in a month" in l
-            or "small talk first" in l]
-
-
-def previous_prompt() -> str:
-    p = brief.PROMPT.replace(CURRENT_ABOUT, PREVIOUS_ABOUT)
-    for line in PRIORITY:
-        p = p.replace(line, "")
-    return p
-
 
 def about(text: str) -> str:
     return text.lower().split("about:")[-1].split("open:")[0]
@@ -92,17 +80,19 @@ SCENARIOS = [
         ("About: no Thursdays after six", lambda t: "thursday" in about(t)),
         ("About: vegetarian", lambda t: "vegetarian" in about(t)),
         ("no name in the summary", lambda t: "joanne" not in t.lower()),
+        ("About: no invented relation", lambda t: not any(r in about(t) for r in RELATIONS)),
+        ("Open: not the call itself", lambda t: "call" not in opened(t)),
     ]),
 ]
 
 
-def run_once(prompt: str, show: bool) -> dict[str, bool]:
+def run_once(show: bool) -> dict[str, bool]:
     results = {}
     for key, name, calls, checks in SCENARIOS:
         who = "+659111" + str(abs(hash(key)) % 10000).zfill(4)
         tmp = pathlib.Path(tempfile.mkdtemp(prefix="briefs-"))
         with mock.patch.object(brief, "_dir", lambda: tmp), \
-             mock.patch.object(brief, "PROMPT", prompt), \
+             mock.patch.object(brief, "_now", lambda c=calls: datetime.fromisoformat(c[-1][0]) + timedelta(hours=1)), \
              mock.patch.object(brief, "_chat_after", lambda w, after: []), \
              mock.patch.object(names, "name_for", lambda w, seen=None, n=name, me=who: n if w == me else ""), \
              mock.patch.object(owner, "name", lambda: "Stanley"):
@@ -120,11 +110,11 @@ def run_once(prompt: str, show: bool) -> dict[str, bool]:
     return results
 
 
-def tally(label: str, prompt: str, runs: int, show: bool) -> dict[str, int]:
-    print(f"\n== {label} — {runs} run(s)")
+def tally(runs: int, show: bool) -> dict[str, int]:
+    print(f"\n== {runs} run(s)")
     counts: dict[str, int] = defaultdict(int)
     for _ in range(runs):
-        for check, passed in run_once(prompt, show).items():
+        for check, passed in run_once(show).items():
             counts[check] += passed
     return counts
 
@@ -135,11 +125,10 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     runs = int(args[args.index("--runs") + 1]) if "--runs" in args else 1
     show = "--show" in args
-    now = tally("the current rule", brief.PROMPT, runs, show)
-    before = tally("the previous rule", previous_prompt(), runs, show) if "--compare" in args else None
-    print(f"\n{'check':<44} {'current':>8}" + (f" {'previous':>9}" if before else ""))
+    now = tally(runs, show)
+    print(f"\n{'check':<44} {'passed':>8}")
     for check in now:
-        print(f"{check:<44} {now[check]:>5}/{runs}" + (f" {before[check]:>6}/{runs}" if before else ""))
+        print(f"{check:<44} {now[check]:>5}/{runs}")
     failed = sum(runs - v for v in now.values())
-    print(f"\n  current rule: {failed} check(s) failed across {runs} run(s)")
+    print(f"\n  {failed} check(s) failed across {runs} run(s)")
     sys.exit(1 if failed else 0)

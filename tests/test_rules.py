@@ -6369,30 +6369,35 @@ def test_jobs_and_briefs() -> None:
         asked = []
         class Fake:
             def complete(self, prompt):
-                asked.append(prompt); return "Who: a customer.\nOpen: Friday 3pm.\nLast contact: 20 Sep."
+                asked.append(prompt)
+                return ("2026-09-25 15:00 — booking" if "OPEN items" in prompt
+                        else "Books appointments by phone.")
         with _m.patch.object(_p, "RUN", tmp), \
              _m.patch("agentduet_desktop.calls.recent", lambda: rows), \
              _m.patch.object(brief, "_transcript", lambda r: texts.get(r.get("call_id"))), \
              _m.patch.object(brief, "_chat_after", lambda who, after: []), \
              _m.patch.object(llm, "configured", lambda: True), \
-             _m.patch.object(llm, "client", lambda *a, **k: Fake()):
+             _m.patch.object(llm, "client", lambda *a, **k: Fake()), \
+             _m.patch.object(brief, "_now", lambda: datetime(2026, 9, 21, 9, 0)):
             ok("a new call is folded in", brief.update("+6511112222"))
             ok("and the call's words go to the model marked as a caller's",
                tools.UNTRUSTED_MARK in asked[-1])
             ok("relative dates are worked out in code, not left to the model",
                '"tomorrow" means Monday 21 September 2026' in asked[-1])
-            ok("the prompt says newer wins, and the owner outranks the caller",
-               "the NEWER one wins" in asked[-1] and "word wins" in asked[-1])
+            ok("the About pass says newer wins, and the owner outranks the caller",
+               any("The newer one wins" in a and "outranks theirs" in a for a in asked))
+            ok("About and Open are asked separately, one job each",
+               len(asked) == 2 and sum("OPEN items" in a for a in asked) == 1)
             ok("nothing new: the model is not asked", not brief.update("+6511112222"))
-            eq("so it was asked exactly once", len(asked), 1)
-            ok("the brief reaches the assistant marked as a caller's words",
+            eq("so it was asked exactly once per pass", len(asked), 2)
+            ok("the brief reaches the assistant marked as a caller's words, rendered by code",
                tools.UNTRUSTED_MARK in brief.for_prompt("+6511112222")
-               and "Friday 3pm" in brief.for_prompt("+6511112222"))
+               and "Friday 25 September, 15:00 — booking" in brief.for_prompt("+6511112222"))
             rows.append({"caller": "+6511112222", "at": "2026-09-21T10:00:00", "call_id": "c2",
                          "note": "missed"})
             texts["c2"] = ""
             ok("a missed call only moves the watermark", not brief.update("+6511112222"))
-            eq("without asking the model", len(asked), 1)
+            eq("without asking the model", len(asked), 2)
             eq("and the sweep then finds nothing to do", brief.sweep(), 0)
         with _m.patch("agentduet_desktop.carry.call_audio", lambda names, cid: (tmp, [])):
             eq("a call with no audio at all is nothing said, not still coming",
@@ -6612,8 +6617,9 @@ def test_briefs_are_about_the_right_person() -> None:
     seen = {}
     class _Model:
         def complete(self, prompt, think=False):
-            seen["prompt"] = prompt
-            return "Who: Cen.\nOpen: none.\nLast contact: 30 Sep."
+            seen.setdefault("prompts", []).append(prompt)
+            seen["prompt"] = "\n".join(seen["prompts"])
+            return "NONE" if "OPEN items" in prompt else "A friend from the badminton club."
     shown = {cen: "Cen", kc: "Ong Kok Choong"}
     with mock.patch.object(brief.paths, "RUN", run), \
          mock.patch.object(_a.OwnerChat, "STORE", chat), \
@@ -6632,17 +6638,16 @@ def test_briefs_are_about_the_right_person() -> None:
         seen.clear()
         out = brief.correct(cen, "Cen is not Kok Choong; the 2:30 meeting was on 30 September")
         cp = seen.get("prompt", "")
-        ok("a correction goes in as the owner's, in its own section",
-           "CORRECTION FROM Stanley" in cp and cp.rstrip().endswith("on 30 September"), cp[-300:])
-        ok("and is not a contact: Last contact is left alone",
-           'leave "Last contact" as it\nwas' in cp and "(nothing new)" in cp, cp[-400:])
-        ok("and the corrected brief is saved and shown", out.startswith("Corrected.") and
-           brief.load(cen).get("summary", "").startswith("Who: Cen"))
+        ok("a correction goes to both passes as the owner's, in its own section",
+           cp.count("CORRECTION FROM Stanley") == 2 and cp.rstrip().endswith("on 30 September"), cp[-300:])
+        ok("and is not a conversation", "never mention the correction itself" in cp and "(nothing new)" in cp)
+        ok("and the corrected brief is saved and shown, rendered by code", out.startswith("Corrected.") and
+           brief.load(cen).get("summary", "").startswith("About: A friend from the badminton club."))
         ok("a name resolves to the one person it fits", names.resolve("Kok Choong") == kc)
         with mock.patch.object(tools.people, "exists", lambda w: False):
             said = tools.who_is("Cen")
         ok("asked about someone by name, who_is shows their summary, not 'no profile'",
-           "Summary (a running brief" in said and "Who: Cen." in said, said)
+           "Summary (a running brief" in said and "About: A friend" in said, said)
     ok("and the summary tool says it is one", "summary" in (tools.read_brief.__doc__ or "").lower())
     rsrc = (pathlib.Path(__file__).parent.parent / "src/agentduet_desktop/recall.py").read_text()
     ok("the assistant's memory is folded from the owner's words only, never its own replies",
@@ -6661,11 +6666,28 @@ def test_briefs_are_about_the_right_person() -> None:
        'web.post("/api/summary/correct", api_summary_correct)' in web_src and "_brief.correct, who, said" in web_src)
     bsrc = (root / "src/agentduet_desktop/brief.py").read_text()
     ok("a summary never carries their name, so a rename cannot leave it stale",
-       "NEVER WRITE THEIR NAME OR NUMBER IN THE BRIEF" in bsrc and "rename:" not in web_src)
+       "NEVER WRITE THEIR NAME OR NUMBER:" in bsrc and "rename:" not in web_src)
     ok("and the assistant is told whose it is, alongside", "WHAT YOU KNOW ABOUT {label}" in bsrc)
-    ok("About describes them from the conversations, not just who they are",
-       "  About: LASTING facts about the person" in bsrc and "  Who:" not in bsrc
-       and "EVEN WHEN it came up while making a plan" in bsrc and "never\n        guess it" in bsrc)
+    ok("About is lasting facts, even ones that came up in a plan, and never a guess",
+       "ABOUT is LASTING facts about the person" in bsrc and "  Who:" not in bsrc
+       and "counts even when it came up while making a plan" in bsrc and "never guess it" in bsrc)
+    from datetime import datetime as _dt
+    with mock.patch.object(brief, "_now", lambda: _dt(2026, 10, 1, 12, 0)):
+        shown_now = brief._render({"about": "Drives.", "open": [
+            {"when": "2026-09-30 14:00", "what": "parcel"}, {"when": "2026-10-01", "what": "today, no time"},
+            {"when": "2026-10-02 09:00", "what": "pick-up"}], "last": {"at": "2026-09-30T15:00:00", "how": "a call"}})
+    ok("code drops a past appointment, keeps today's and what is ahead, and writes Last contact",
+       "parcel" not in shown_now and "today, no time" in shown_now and "Friday 2 October, 09:00 — pick-up" in shown_now
+       and shown_now.endswith("Last contact: Wednesday 30 September 2026, a call."), shown_now)
+    ok("a relationship nobody named is dropped from About",
+       brief._said_relations("A customer from Acme. Is vegetarian.", "them: hi, it's Joanne") == "Is vegetarian.")
+    ok("a new appointment needs a date someone said",
+       brief._dated_by({"when": "2026-10-02 09:00"}, [("2026-09-28T10:00:00", "them: Friday at nine")])
+       and not brief._dated_by({"when": "2026-10-05"}, [("2026-09-29T09:00:00", "them: if we do lunch")])
+       and brief._dated_by({"when": "2026-09-30"}, [("2026-09-29T11:00:00", "them: it comes tomorrow")]))
+    ok("the language a caller wrote in is seen by code, not left to the model",
+       brief._languages("them: 我们星期五还是九点吗？") == " In this call they spoke some Chinese."
+       and brief._languages("you: 你好\nthem: hello") == "")
     ok("each call is given the week's dates, so a weekday is never counted by the model",
        "The week after it: {_week(at)}" in bsrc)
     ok("the card labels About, and still reads an older Who", '["About", "Who", "Open", "Last contact"]' in hub_src)
