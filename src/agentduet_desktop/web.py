@@ -460,9 +460,18 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         who = str(body.get("who") or "").strip()
         if not who:
             return web.json_response({"error": "who"}, status=400)
+        before = _names.name_for(who)
         kept = _names.set_typed(who, str(body.get("name") or ""))
-        return web.json_response({"ok": True, "name": _names.name_for(who),
-                                  "typed": kept})
+        now = _names.name_for(who)
+        # A RENAME CORRECTS THE SUMMARY (2026-10-01): one written as "Unnamed person" kept saying
+        # it until their next call. Through the model, as a correction, in the background at the
+        # brief's own priority — the reply here does not wait for it.
+        if now and now != before:
+            from . import brief as _brief, gate, jobs
+            if _brief.load(who).get("summary"):
+                jobs.request("rename:" + who, gate.PERSON,
+                             lambda: _brief.correct(who, f"Their name is {now}."))
+        return web.json_response({"ok": True, "name": now, "typed": kept})
 
     async def api_setup_login_item(request):
         """Record whether this machine should start the app at login, and make it so.

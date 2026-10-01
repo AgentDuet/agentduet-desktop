@@ -711,6 +711,9 @@ private struct Conversation: View {
     @StateObject private var editing = Local(false)
     /// The big header has scrolled away, so the small one stands in at the top.
     @StateObject private var compact = Local(false)
+    /// The summary, from the slim header, and the sheet that corrects it.
+    @StateObject private var showingSummary = Local(false)
+    @StateObject private var correcting = Local(false)
 
     var body: some View {
         let items = model.items(person)
@@ -736,7 +739,11 @@ private struct Conversation: View {
                     })
                     .padding(.top, 24).padding(.bottom, 6)
                     if !person.str("summary").isEmpty {
-                        SummaryCard(model: model, person: person)
+                        SummaryBody(person: person) { correcting.value = true }
+                            .padding(14)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color(nsColor: .windowBackgroundColor).opacity(0.6)))
                     }
                     ForEach(items) { item in
                         Group {
@@ -779,6 +786,20 @@ private struct Conversation: View {
                             }
                             buttons(calls)
                             Spacer()
+                            if !person.str("summary").isEmpty {
+                                Button { showingSummary.value = true } label: {
+                                    Label("Summary", systemImage: "text.alignleft")
+                                }
+                                .help("Summary")
+                                .popover(isPresented: $showingSummary.value, arrowEdge: .bottom) {
+                                    SummaryBody(person: person) {
+                                        showingSummary.value = false
+                                        correcting.value = true
+                                    }
+                                    .padding(16)
+                                    .frame(width: 400)
+                                }
+                            }
                         }
                         .padding(.horizontal, 16).padding(.vertical, 8)
                         Divider()
@@ -805,6 +826,7 @@ private struct Conversation: View {
             }
         }
         .sheet(isPresented: $editing.value) { RenameSheet(model: model) }
+        .sheet(isPresented: $correcting.value) { CorrectSheet(model: model, who: person.str("who")) }
     }
 
     private func setCompact(_ on: Bool) {
@@ -831,24 +853,24 @@ private struct Conversation: View {
 
 // MARK: - the summary
 
-/// WHAT THE APP KNOWS ABOUT THEM (2026-10-01): the running brief, on the person's own page, as the
-/// notes sit on a Contacts card. Correct… folds the owner's words in through the model; nobody
-/// edits the text itself.
-private struct SummaryCard: View {
-    @ObservedObject var model: HubModel
+/// WHAT THE APP KNOWS ABOUT THEM (2026-10-01): the running brief, as the notes sit on a Contacts
+/// card. Correct… folds the owner's words in through the model; nobody edits the text itself.
+/// One body, shown twice: as a card at the top of the page, and in a popover from the slim header
+/// — the page opens at the newest call, so in a long history the card is where the owner is not.
+private struct SummaryBody: View {
     let person: JSON
-    @StateObject private var correcting = Local(false)
+    let correct: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Summary").font(.headline)
                 Spacer()
-                Button("Correct…") { correcting.value = true }
+                Button("Correct…") { correct() }
             }
             ForEach(Array(person.str("summary").split(separator: "\n", omittingEmptySubsequences: true)
                             .enumerated()), id: \.offset) { _, line in
-                Self.line(String(line))
+                Self.line(String(line)).fixedSize(horizontal: false, vertical: true)
             }
             if !person.str("summary_at").isEmpty {
                 Text("Updated \(HubModel.when(person.str("summary_at")))")
@@ -856,13 +878,6 @@ private struct SummaryCard: View {
             }
         }
         .textSelection(.enabled)
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(Color(nsColor: .windowBackgroundColor).opacity(0.6)))
-        .sheet(isPresented: $correcting.value) {
-            CorrectSheet(model: model, who: person.str("who"))
-        }
     }
 
     /// "Who:", "Open:" and "Last contact:" as labels, the rest as the text.

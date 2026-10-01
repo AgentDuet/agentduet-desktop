@@ -6659,6 +6659,10 @@ def test_briefs_are_about_the_right_person() -> None:
        'p["summary"], p["summary_at"] = rec.get("summary", ""), rec.get("updated", "")' in web_src)
     ok("the owner corrects it from the card, through the model",
        'web.post("/api/summary/correct", api_summary_correct)' in web_src and "_brief.correct, who, said" in web_src)
+    ok("a rename corrects the summary, in the background",
+       'jobs.request("rename:" + who, gate.PERSON' in web_src and 'f"Their name is {now}."' in web_src)
+    ok("in a long history the summary is a click away, from the slim header",
+       'Label("Summary", systemImage: "text.alignleft")' in hub_src and ".popover(isPresented: $showingSummary.value" in hub_src)
     ok("the card shows only when there is a summary, and offers Correct…",
        'if !person.str("summary").isEmpty {' in hub_src and 'Button("Correct…")' in hub_src)
     ok("Start Fresh is a developer's control, in Advanced, never in the hub",
