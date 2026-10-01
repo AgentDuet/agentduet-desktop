@@ -6668,6 +6668,8 @@ def test_briefs_are_about_the_right_person() -> None:
     ok("a summary never carries their name, so a rename cannot leave it stale",
        "NEVER WRITE THEIR NAME OR NUMBER:" in bsrc and "rename:" not in web_src)
     ok("and the assistant is told whose it is, alongside", "WHAT YOU KNOW ABOUT {label}" in bsrc)
+    ok("the About pass is told languages are not its job",
+       "Never write which language they speak: that is kept separately" in bsrc)
     ok("About is lasting facts, even ones that came up in a plan, and never a guess",
        "ABOUT is LASTING facts about the person" in bsrc and "  Who:" not in bsrc
        and "counts even when it came up while making a plan" in bsrc and "never guess it" in bsrc)
@@ -6685,22 +6687,30 @@ def test_briefs_are_about_the_right_person() -> None:
        brief._dated_by({"when": "2026-10-02 09:00"}, [("2026-09-28T10:00:00", "them: Friday at nine")])
        and not brief._dated_by({"when": "2026-10-05"}, [("2026-09-29T09:00:00", "them: if we do lunch")])
        and brief._dated_by({"when": "2026-09-30"}, [("2026-09-29T11:00:00", "them: it comes tomorrow")]))
-    ok("the language a caller wrote in is seen by code, not left to the model",
-       brief._languages("them: 我们星期五还是九点吗？") == " In this call they spoke some Chinese."
-       and brief._languages("you: 你好\nthem: hello") == "")
+    lt = brief._language_turns
+    ok("a whole turn in a language counts, by characters for Chinese",
+       lt("them: 我们星期五还是九点吗？") == {"Chinese": [10]} and lt("you: 我们星期五还是九点吗？") == {})
     ok("a filler the speech engine misread is not a language",
-       brief._languages("them: 嗯。 Okay, sounds good, see you on Friday then.\nthem: 啊, bye.") == "")
+       lt("them: 嗯。 Okay, sounds good, see you on Friday then.\nthem: 啊, bye.") == {})
     ok("nor a mixed turn that is mostly English",
-       brief._languages("them: OK, 没问题, we can do Friday at nine, see you there") == "")
-    ok("a short turn misheard into a script is not enough", brief._languages("them: 你好吗") == "")
+       lt("them: OK, 没问题, we can do Friday at nine, see you there") == {})
+    ok("a short turn misheard into a script is not enough", lt("them: 你好吗") == {})
     ok("a whole Vietnamese turn counts, by words",
-       brief._languages("them: Dạ em chào anh, em muốn hỏi về lịch hẹn ngày mai lúc mười giờ ạ")
-       == " In this call they spoke some Vietnamese.")
+       "Vietnamese" in lt("them: Dạ em chào anh, em muốn hỏi về lịch hẹn ngày mai lúc mười giờ ạ"))
     ok("French accents are not Vietnamese",
-       brief._languages("them: Je voudrais réserver une table pour deux personnes à huit heures du soir") == "")
-    ok("nor is one stray word in a long English call",
-       brief._languages("them: We can meet at the office on Friday at nine, and then lunch, "
-                        "maybe the new place near the station, 好吗") == "")
+       lt("them: Je voudrais réserver une table pour deux personnes à huit heures du soir") == {})
+    rec = {}
+    brief._tally_languages(rec, [("2026-09-30T15:00:00", "them: 我们星期五还是九点吗？")])
+    eq("one turn on one call is tallied but not shown", brief._language_line(rec), "")
+    brief._tally_languages(rec, [("2026-10-01T15:00:00",
+                                  "them: 我明天下午三点到你的办公室可以吗\nthem: 好的，我会带上合同过来的")])
+    eq("three turns over two calls: said firmly", brief._language_line(rec), "Speaks Chinese.")
+    ok("and code writes it into About, not the model",
+       brief._render({**rec, "about": "Drives."}).startswith("About: Drives. Speaks Chinese."))
+    brief._language_correction(rec, "She doesn't speak Chinese")
+    eq("the owner's correction turns it off, and the tally cannot undo that", brief._language_line(rec), "")
+    brief._tally_languages(rec, [("2026-10-02T15:00:00", "them: 我们下个星期再见面吧谢谢你")])
+    eq("not even with more turns", brief._language_line(rec), "")
     ok("each call is given the week's dates, so a weekday is never counted by the model",
        "The week after it: {_week(at)}" in bsrc)
     ok("the card labels About, and still reads an older Who", '["About", "Who", "Open", "Last contact"]' in hub_src)
