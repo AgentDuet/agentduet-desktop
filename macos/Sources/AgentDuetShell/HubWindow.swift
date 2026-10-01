@@ -30,6 +30,7 @@ import SwiftUI
             model.openSettings = { [weak self] in self?.openSettings?($0) }
             let phone = PhoneModel(api: api)
             phone.onRing = { [weak self] in self?.bringForward() }
+            model.onLine = { [weak phone] who in phone?.live.values.contains { $0.who == who } ?? false }
             let hosting = NSHostingController(rootView: HubView(model: model, phone: phone))
             // THE TOOLBAR IS SWIFTUI'S, and reaches a window we built only when the hosting
             // controller passes it through (macOS 14 and later).

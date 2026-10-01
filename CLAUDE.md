@@ -664,7 +664,8 @@ derived from no longer exists, it is the only place that says so.
       **Correction recorded with it:** Apple's engine DOES give timestamps — `attributeOptions:
       [.audioTimeRange]`, verified 2026-09-25 — and our helper asked for none. The 2026-09-09
       quarantine cited "Apple's helper prints bare text"; that was our helper, not Apple.
-- [ ] **Live captions — BUILT 2026-09-25, NOT YET SEEN ON A REAL CALL.** While a call is on, the
+- [ ] **Live captions — BUILT 2026-09-25, SEEN WORKING ON A REAL CALL 2026-10-01** (Stanley, in a
+      meeting-room demo: the live transcript appeared on the caller's page during the call). While a call is on, the
       person's row reads "● On a call" (a first-time caller is listed for the length of the call),
       and their history ends in a card of balloons: the other party left, the owner right. A
       PREVIEW (`live.py`): the after-call pass still writes the record, and the card is dropped
