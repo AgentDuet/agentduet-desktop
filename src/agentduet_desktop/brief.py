@@ -370,10 +370,27 @@ _SCRIPTS = (("Chinese", re.compile(r"[\u4e00-\u9fff]")), ("Japanese", re.compile
             ("Vietnamese", re.compile(r"[ạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹđ]", re.I)))
 
 
+#: A LANGUAGE MUST BE A REAL SHARE OF WHAT THEY SAID, not a stray word (Stanley, 2026-10-01).
+#: The speech engine misreads short sounds — an English "mm" or "ah" can come back as 嗯 or 啊,
+#: a "Hi" as Cantonese — and once About holds "speaks Chinese" every later update keeps it. So
+#: fillers never count, and a script needs LANGUAGE_SHARE of their words and LANGUAGE_MIN of them.
+LANGUAGE_SHARE = 0.2
+LANGUAGE_MIN = 6
+_FILLERS = re.compile(r"[嗯啊哦呃嘛吧呀哈喔噢唉诶欸咯啦呢]")
+
+
 def _languages(text: str) -> str:
-    """"In this call they spoke some Chinese." for the other party's lines, or ""."""
-    theirs = "\n".join(l for l in (text or "").splitlines() if l.startswith("them:"))
-    found = [name for name, pat in _SCRIPTS if pat.search(theirs)]
+    """"In this call they spoke some Chinese." when it was a real share of their lines, or ""."""
+    theirs = "\n".join(l[len("them:"):] for l in (text or "").splitlines() if l.startswith("them:"))
+    theirs = _FILLERS.sub("", theirs)
+    latin = len(re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", theirs))
+    found = []
+    for name, pat in _SCRIPTS:
+        # CJK, Thai and the like are counted by character; a Vietnamese word by its accent.
+        units = len(pat.findall(theirs)) if name != "Vietnamese" else \
+            len(re.findall(r"\w*" + pat.pattern + r"\w*", theirs, re.I))
+        if units >= LANGUAGE_MIN and units / max(1, units + latin) >= LANGUAGE_SHARE:
+            found.append(name)
     return f" In this call they spoke some {' and '.join(found)}." if found else ""
 
 

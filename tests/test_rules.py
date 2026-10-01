@@ -6688,6 +6688,11 @@ def test_briefs_are_about_the_right_person() -> None:
     ok("the language a caller wrote in is seen by code, not left to the model",
        brief._languages("them: 我们星期五还是九点吗？") == " In this call they spoke some Chinese."
        and brief._languages("you: 你好\nthem: hello") == "")
+    ok("a filler the speech engine misread is not a language",
+       brief._languages("them: 嗯。 Okay, sounds good, see you on Friday then.\nthem: 啊, bye.") == "")
+    ok("nor is one stray word in a long English call",
+       brief._languages("them: We can meet at the office on Friday at nine, and then lunch, "
+                        "maybe the new place near the station, 好吗") == "")
     ok("each call is given the week's dates, so a weekday is never counted by the model",
        "The week after it: {_week(at)}" in bsrc)
     ok("the card labels About, and still reads an older Who", '["About", "Who", "Open", "Last contact"]' in hub_src)
