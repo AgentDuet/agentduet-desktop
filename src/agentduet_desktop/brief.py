@@ -47,7 +47,7 @@ it before answering questions about this person.
 
 THIS BRIEF IS ABOUT: {person}. Never write about anyone else as if they were this person.
 NEVER WRITE THEIR NAME OR NUMBER IN THE BRIEF: it is shown beside it, and changes when
-{owner} renames them. Describe them instead — who they are to {owner}, what they do.
+{owner} renames them. Describe them instead, under About.
 
 Update the brief with the new information below.
 - Where the new information and the brief disagree, the NEWER one wins.
@@ -63,7 +63,10 @@ Update the brief with the new information below.
   even in the current brief, and keep the rest.
 - Never record what the assistant did or will do (running a tool, drafting) as an open item.
 - At most {words} words, in three short parts:
-  Who: who they are to {owner} and what they do — without their name.
+  About: what the conversations show about them — who they are to {owner} (colleague,
+        customer, supplier, friend), where they work and their role if it was said, what
+        they usually call about, and how to deal with them (the language they use or mix,
+        times they prefer, anything they asked for). Only what was said; never their name.
   Open: EVERY appointment, meeting, promise or follow-up either side mentioned that has not
         happened yet as of today, each with its date and time. One per line. A request to
         call back, or a promise to call, is a follow-up.
