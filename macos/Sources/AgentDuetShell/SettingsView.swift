@@ -410,6 +410,12 @@ private struct AdvancedPane: View {
                         Button("Edit…") { editing.value = .speech }
                     }
                 }
+                // A DEVELOPER'S RESET, not an owner's (Stanley, 2026-10-01): "start fresh" was judged
+                // too hard a concept for the hub. It drops what the assistant replays of the chat,
+                // and the flag a caller's words set; the log and the memory stay.
+                LabeledContent("Assistant's conversation") {
+                    Button("Start Fresh") { model.startFresh() }
+                }
                 if model.thinkingPossible {
                     Toggle(isOn: Binding(get: { model.thinking }, set: { model.setThinking($0) })) {
                         Text("Thinking mode")

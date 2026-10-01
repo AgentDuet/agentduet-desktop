@@ -735,6 +735,9 @@ private struct Conversation: View {
                             .onChange(of: bottom) { setCompact($0 < 0) }
                     })
                     .padding(.top, 24).padding(.bottom, 6)
+                    if !person.str("summary").isEmpty {
+                        SummaryCard(model: model, person: person)
+                    }
                     ForEach(items) { item in
                         Group {
                             if let c = item.call {
@@ -826,6 +829,97 @@ private struct Conversation: View {
 
 
 
+// MARK: - the summary
+
+/// WHAT THE APP KNOWS ABOUT THEM (2026-10-01): the running brief, on the person's own page, as the
+/// notes sit on a Contacts card. Correct… folds the owner's words in through the model; nobody
+/// edits the text itself.
+private struct SummaryCard: View {
+    @ObservedObject var model: HubModel
+    let person: JSON
+    @StateObject private var correcting = Local(false)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Summary").font(.headline)
+                Spacer()
+                Button("Correct…") { correcting.value = true }
+            }
+            ForEach(Array(person.str("summary").split(separator: "\n", omittingEmptySubsequences: true)
+                            .enumerated()), id: \.offset) { _, line in
+                Self.line(String(line))
+            }
+            if !person.str("summary_at").isEmpty {
+                Text("Updated \(HubModel.when(person.str("summary_at")))")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .textSelection(.enabled)
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(Color(nsColor: .windowBackgroundColor).opacity(0.6)))
+        .sheet(isPresented: $correcting.value) {
+            CorrectSheet(model: model, who: person.str("who"))
+        }
+    }
+
+    /// "Who:", "Open:" and "Last contact:" as labels, the rest as the text.
+    @ViewBuilder static func line(_ s: String) -> some View {
+        if let colon = s.firstIndex(of: ":"),
+           ["Who", "Open", "Last contact"].contains(String(s[..<colon]).trimmingCharacters(in: .whitespaces)) {
+            (Text(String(s[...colon])).bold() + Text(String(s[s.index(after: colon)...])))
+        } else {
+            Text(s)
+        }
+    }
+}
+
+private struct CorrectSheet: View {
+    @ObservedObject var model: HubModel
+    let who: String
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var text = Local("")
+    @StateObject private var busy = Local(false)
+    @StateObject private var failed = Local("")
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Form {
+                Section {
+                    TextField("What's wrong?", text: $text.value, prompt: Text(""), axis: .vertical)
+                        .lineLimit(3...6)
+                        .focused($focused)
+                } footer: {
+                    if !failed.value.isEmpty { Text(failed.value).foregroundStyle(.red) }
+                }
+            }
+            .formStyle(.grouped)
+            HStack {
+                if busy.value { ProgressView().controlSize(.small) }
+                Spacer()
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Correct") {
+                    busy.value = true
+                    failed.value = ""
+                    Task {
+                        let error = await model.correctSummary(who, text.value)
+                        busy.value = false
+                        if let error { failed.value = error } else { dismiss() }
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(busy.value || text.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding([.horizontal, .bottom], 20)
+        }
+        .frame(width: 460)
+        .onAppear { focused = true }
+    }
+}
+
 // MARK: - a call
 
 private struct CallCard: View {
@@ -912,6 +1006,9 @@ private struct Balloon: View {
     var body: some View {
         VStack(alignment: mine ? .trailing : .leading, spacing: 3) {
             Text(text)
+                // WRAP, NEVER CUT: in a scrolling list SwiftUI sometimes gave a balloon one line
+                // and an ellipsis ("…meet u…", 2026-10-01). It may always grow taller.
+                .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
                 .padding(.horizontal, 12).padding(.vertical, 7)
                 .foregroundStyle(held ? Color.secondary : Color.primary)

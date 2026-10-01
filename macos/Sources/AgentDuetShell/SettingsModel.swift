@@ -306,6 +306,15 @@ import Foundation
     }
 
     func runSetup() { host?.runSetup() }
+
+    func startFresh() {
+        Task {
+            let r = await api.post("/api/chat_new")
+            notice[.advanced] = r["turns"] == nil
+                ? Notice(ok: false, text: r.str("message").isEmpty ? "The assistant did not answer." : r.str("message"))
+                : Notice(ok: true, text: "The assistant starts fresh.")
+        }
+    }
     func exportLogs() { host?.exportLogs() }
 
     // MARK: - About

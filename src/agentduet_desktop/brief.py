@@ -183,14 +183,28 @@ def _person(who: str) -> str:
         f"a person known only by their number, {who} — do not give them a name"
 
 
-def _prompt(who: str, rec: dict, items: list[str]) -> str:
+#: A CORRECTION IS NOT A CONTACT (2026-10-01). Given as the newest dated item, the owner's
+#: correction "name" came back as "Last contact: Thursday 01 October, CORRECTION from Stanley:
+#: name" on both briefs it fixed. So it goes in its own section, after the information, with
+#: its own rule.
+CORRECTION = """
+CORRECTION FROM {owner} — this is not a contact or a conversation. Apply it to the brief:
+change or remove whatever it says is wrong, keep everything else, and leave "Last contact" as it
+was unless the correction is about it. Never mention the correction itself.
+{correction}
+"""
+
+
+def _prompt(who: str, rec: dict, items: list[str], correction: str = "") -> str:
     from . import budget, owner
-    return PROMPT.format(today=datetime.now().strftime("%A %d %B %Y"),
-                         owner=owner.name() or "the owner", person=_person(who),
-                         words=budget.split()["person_words"],
-                         asof=rec.get("updated", "never"),
-                         current=rec.get("summary") or "(none yet)",
-                         new="\n\n".join(items))
+    name = owner.name() or "the owner"
+    out = PROMPT.format(today=datetime.now().strftime("%A %d %B %Y"),
+                        owner=name, person=_person(who),
+                        words=budget.split()["person_words"],
+                        asof=rec.get("updated", "never"),
+                        current=rec.get("summary") or "(none yet)",
+                        new="\n\n".join(items) if items else "(nothing new)")
+    return out + (CORRECTION.format(owner=name, correction=correction) if correction else "")
 
 
 def _day(at: str, plus: int = 0) -> str:
@@ -259,13 +273,11 @@ def correct(who: str, correction: str) -> str:
     said = " ".join((correction or "").split())[:600]
     if not said:
         return "Nothing to correct."
-    item = (f"{_day(datetime.now().isoformat())} — CORRECTION from {owner.name() or 'the owner'}: "
-            f"{said}")
     # AS THE BRIEF'S OWN JOB, not as the question it was asked in: `gate` saves and restores the
     # assistant's cached conversation around a PERSON job, and a rewrite at QUESTION priority
     # would overwrite it mid-turn.
     with gate.priority(gate.PERSON):
-        summary = llm.client().complete(_prompt(who, rec, [item])).strip()
+        summary = llm.client().complete(_prompt(who, rec, [], correction=said)).strip()
     if not summary:
         return "The model returned nothing, so the brief is unchanged."
     rec.update(summary=summary, updated=datetime.now().isoformat(timespec="seconds"))

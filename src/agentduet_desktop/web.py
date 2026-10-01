@@ -423,6 +423,21 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         return web.Response(body=data, content_type="application/zip",
                             headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
+    async def api_summary_correct(request):
+        """Correct… on a person's Summary card: the owner's words, folded in by the model.
+
+        No approval card: the owner typed it, on the person's own page. The assistant's
+        `correct_brief` needs one only because a caller's words may be in its context.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        body = await request.json()
+        who, said = str(body.get("who") or ""), str(body.get("correction") or "")
+        from . import brief as _brief
+        msg = await asyncio.to_thread(_brief.correct, who, said)
+        return web.json_response({"ok": msg.startswith("Corrected"), "message": msg,
+                                  "summary": _brief.load(who).get("summary", "")})
+
     async def api_contact_add(request):
         """The header's Add to Contacts: a card with this person's number, and the name the hub
         shows them by if it is not just the number. Contacts asks the owner before adding it."""
@@ -1093,6 +1108,11 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             p["display"] = _names.name_for(p["who"], seen)
             p["name_from"] = _names.source_of(p["who"]) if p["display"] else ""
             p["contact_id"] = _names.contact(p["who"]).get("id") or ""
+            # THE SUMMARY on their page (2026-10-01): the running brief, shown where the owner
+            # already looks at them — a file read, so it costs the poll nothing.
+            from . import brief as _brief
+            rec = _brief.load(p["who"])
+            p["summary"], p["summary_at"] = rec.get("summary", ""), rec.get("updated", "")
             p["messages"].sort(key=lambda m: m["at"])
             latest = [p["last"]] + [m["at"] for m in p["messages"]]
             p["last"] = max([x for x in latest if x] or [""])
@@ -2050,6 +2070,7 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/setup/login-item", api_setup_login_item),
         web.post("/api/name", api_name),
         web.post("/api/contacts/add", api_contact_add),
+        web.post("/api/summary/correct", api_summary_correct),
         web.get("/api/logs", api_logs),
         web.get("/logo.png", logo),
         # Browsers ask for this unprompted, and the console filled with a 404 on every page load.
