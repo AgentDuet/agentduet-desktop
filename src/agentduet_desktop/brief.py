@@ -57,16 +57,24 @@ Update the brief with the new information below.
   add a weekday or a date that was not said or cannot be worked out that way.
 - KEEP every open item already in the brief unless the new information changes, cancels or
   completes it. A call about one thing says nothing about the others.
+- KEEP everything already under About too. A call that says nothing new about the person
+  leaves About exactly as it was.
 - Drop an item only when the new information says it is finished or no longer true.
 - Use only the brief and the new information. Do not guess.
 - A CORRECTION from {owner} outranks everything: remove or change what it says is wrong,
   even in the current brief, and keep the rest.
 - Never record what the assistant did or will do (running a tool, drafting) as an open item.
+- If the brief would run past {words} words, keep what will still matter in a month and drop
+  small talk first.
 - At most {words} words, in three short parts:
-  About: what the conversations show about them — who they are to {owner} (colleague,
-        customer, supplier, friend), where they work and their role if it was said, what
-        they usually call about, and how to deal with them (the language they use or mix,
-        times they prefer, anything they asked for). Only what was said; never their name.
+  About: LASTING facts about the person that would help the next time {owner} deals with
+        them — for example an allergy, that they drive, where they work, the language they
+        speak or mix in. A lasting fact belongs here EVEN WHEN it came up while making a plan:
+        an allergy mentioned while choosing lunch, or "I'll drive" while planning a trip, still
+        goes here. If they spoke a language other than English, say which. The plan itself
+        and its appointments go under Open, not here.
+        Say who they are to {owner} (a customer, a friend) ONLY if a call said so — never
+        guess it.
   Open: EVERY appointment, meeting, promise or follow-up either side mentioned that has not
         happened yet as of today, each with its date and time. One per line. A request to
         call back, or a promise to call, is a follow-up.
@@ -211,6 +219,22 @@ def _prompt(who: str, rec: dict, items: list[str], correction: str = "") -> str:
     return out + (CORRECTION.format(owner=name, correction=correction) if correction else "")
 
 
+def _week(at: str) -> str:
+    """The seven days after a call, by name: "Thursday is 1 October, Friday is 2 October, …".
+
+    THE WEEKDAY IS WORKED OUT HERE TOO (2026-10-01): told "today" and "tomorrow", Gemma still
+    put a Friday said on Monday 28 September on "Friday 1 October" — a weekday miscount, at
+    temperature 0, every run.
+    """
+    from datetime import timedelta
+    try:
+        start = datetime.fromisoformat(at)
+    except ValueError:
+        return ""
+    days = [start + timedelta(days=n) for n in range(1, 8)]
+    return ", ".join(f"{d:%A} is {d.day} {d:%B}" for d in days)
+
+
 def _day(at: str, plus: int = 0) -> str:
     """"Friday 25 September 2026" for an ISO timestamp, `plus` days on."""
     from datetime import timedelta
@@ -242,7 +266,8 @@ def update(who: str) -> bool:
     # put "lunch tomorrow" said on the 25th on the 25th in some runs and the 26th in others, at
     # temperature 0. So each call says what "today" and "tomorrow" meant in it.
     items = [(at, f"{_day(at)} — a call with them. In this call \"today\" means {_day(at)} and "
-                  f"\"tomorrow\" means {_day(at, 1)}.\n" + tools.untrusted(text))
+                  f"\"tomorrow\" means {_day(at, 1)}. The week after it: {_week(at)}.\n"
+                  + tools.untrusted(text))
              for at, text in calls if text]
     items += [(at, f"{_day(at)} — {owner.name() or 'the owner'} said to the assistant (\"tomorrow\" "
                    f"means {_day(at, 1)}): {q}") for at, q in chat]
