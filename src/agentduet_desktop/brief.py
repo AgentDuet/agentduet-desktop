@@ -45,8 +45,9 @@ PROMPT = """Today is {today}.
 You keep a short brief about one person {owner} talks to. {owner}'s assistant reads
 it before answering questions about this person.
 
-THIS BRIEF IS ABOUT: {person}. Never call them by any other name, and never write about
-anyone else as if they were this person.
+THIS BRIEF IS ABOUT: {person}. Never write about anyone else as if they were this person.
+NEVER WRITE THEIR NAME OR NUMBER IN THE BRIEF: it is shown beside it, and changes when
+{owner} renames them. Describe them instead — who they are to {owner}, what they do.
 
 Update the brief with the new information below.
 - Where the new information and the brief disagree, the NEWER one wins.
@@ -62,7 +63,7 @@ Update the brief with the new information below.
   even in the current brief, and keep the rest.
 - Never record what the assistant did or will do (running a tool, drafting) as an open item.
 - At most {words} words, in three short parts:
-  Who: who they are and how they relate to {owner}.
+  Who: who they are to {owner} and what they do — without their name.
   Open: EVERY appointment, meeting, promise or follow-up either side mentioned that has not
         happened yet as of today, each with its date and time. One per line. A request to
         call back, or a promise to call, is a follow-up.
@@ -313,7 +314,11 @@ def for_prompt(who: str) -> str:
     rec = load(who)
     parts = []
     if rec.get("summary"):
-        parts.append(f"WHAT YOU KNOW ABOUT THEM (a running brief, as of {rec.get('updated', '')}):\n"
+        # THE NAME ALONGSIDE, NOT INSIDE: the brief never carries it (see PROMPT), so the
+        # assistant is told here whose it is.
+        from . import names
+        label = names.display(who)
+        parts.append(f"WHAT YOU KNOW ABOUT {label} (a running brief, as of {rec.get('updated', '')}):\n"
                      + tools.untrusted(rec["summary"]))
     calls, _ = _calls_after(who, rec.get("through_call", ""))
     for at, text in calls[-2:]:
