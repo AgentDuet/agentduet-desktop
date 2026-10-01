@@ -33,6 +33,8 @@ import Foundation
     @Published private(set) var turns: [JSON] = []
     /// What the assistant proposes and is waiting on the owner to approve.
     @Published private(set) var proposals: [JSON] = []
+    /// Whether someone is on a call now, or one that has just ended — the phone's to say.
+    var onLine: (String) -> Bool = { _ in false }
     /// A call's recording, played from its card.
     let player = CallPlayer()
     /// The message box's text, and the question the assistant is answering right now.
@@ -77,7 +79,11 @@ import Foundation
             turns = history["turns"] as? [JSON] ?? turns
             proposals = pending["proposals"] as? [JSON] ?? proposals
         }
-        if picked != Self.assistant, !people.contains(where: { $0.str("who") == picked }) {
+        // A CALLER ON THE LINE IS NOT YET IN THE LIST — a first-time caller is filed when the call
+        // ends — so "not in the list" must not send the page back to the assistant while their
+        // call is live or just ended (2026-10-01: in a demo it snapped back every five seconds).
+        if picked != Self.assistant, !people.contains(where: { $0.str("who") == picked }),
+           !(picked.map { onLine($0) } ?? false) {
             picked = Self.assistant
         }
         markSeen()

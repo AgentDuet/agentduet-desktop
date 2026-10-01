@@ -6718,6 +6718,10 @@ def test_briefs_are_about_the_right_person() -> None:
        'Label("Summary", systemImage: "text.alignleft")' in hub_src and ".popover(isPresented: $showingSummary.value" in hub_src)
     ok("the card shows only when there is a summary, and offers Correct…",
        'if !person.str("summary").isEmpty {' in hub_src and 'Button("Correct…")' in hub_src)
+    model_src = (root / "macos/Sources/AgentDuetShell/HubModel.swift").read_text()
+    ok("a caller on the line keeps their page, though not yet in the list",
+       "!(picked.map { onLine($0) } ?? false)" in model_src
+       and "model.onLine = " in (root / "macos/Sources/AgentDuetShell/HubWindow.swift").read_text())
     ok("Start Fresh is a developer's control, in Advanced, never in the hub",
        'Button("Start Fresh")' in (root / "macos/Sources/AgentDuetShell/SettingsView.swift").read_text()
        and "Start Fresh" not in hub_src)
