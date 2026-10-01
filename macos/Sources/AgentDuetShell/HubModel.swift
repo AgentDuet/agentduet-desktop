@@ -349,6 +349,14 @@ import Foundation
     }
 
     /// Edit's Save. Empty removes the typed name, so the Contacts name or the number shows again.
+    /// Correct… on the Summary card. The model rewrites the summary around the owner's words, so
+    /// this takes seconds; nil on success, else what went wrong.
+    func correctSummary(_ who: String, _ correction: String) async -> String? {
+        let r = await api.post("/api/summary/correct", ["who": who, "correction": correction])
+        await load()
+        return r["ok"] as? Bool == true ? nil : (r.str("message").isEmpty ? "The summary was not changed." : r.str("message"))
+    }
+
     func rename(_ name: String) async {
         guard let who = picked else { return }
         _ = await api.post("/api/name", ["who": who, "name": name])

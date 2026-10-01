@@ -6631,8 +6631,11 @@ def test_briefs_are_about_the_right_person() -> None:
         ok("only the owner's words go in, never the assistant's", "I need to run a tool" not in got)
         seen.clear()
         out = brief.correct(cen, "Cen is not Kok Choong; the 2:30 meeting was on 30 September")
-        ok("a correction goes in as the owner's, strongest fact",
-           "CORRECTION from Stanley: Cen is not Kok Choong" in seen.get("prompt", ""), seen.get("prompt", "")[-300:])
+        cp = seen.get("prompt", "")
+        ok("a correction goes in as the owner's, in its own section",
+           "CORRECTION FROM Stanley" in cp and cp.rstrip().endswith("on 30 September"), cp[-300:])
+        ok("and is not a contact: Last contact is left alone",
+           'leave "Last contact" as it\nwas' in cp and "(nothing new)" in cp, cp[-400:])
         ok("and the corrected brief is saved and shown", out.startswith("Corrected.") and
            brief.load(cen).get("summary", "").startswith("Who: Cen"))
         ok("a name resolves to the one person it fits", names.resolve("Kok Choong") == kc)
@@ -6649,6 +6652,18 @@ def test_briefs_are_about_the_right_person() -> None:
     ok("who_is counts as a stranger's words now that it carries the brief", "who_is" in _a.TAINTING)
     ok("the assistant can read a brief, and it counts as a stranger's words",
        "read_brief" in tools.RECORDER_TOOLS and "read_brief" in _a.TAINTING)
+    root = pathlib.Path(__file__).parent.parent
+    web_src = (root / "src/agentduet_desktop/web.py").read_text()
+    hub_src = (root / "macos/Sources/AgentDuetShell/HubView.swift").read_text()
+    ok("each person comes with their summary, for their page",
+       'p["summary"], p["summary_at"] = rec.get("summary", ""), rec.get("updated", "")' in web_src)
+    ok("the owner corrects it from the card, through the model",
+       'web.post("/api/summary/correct", api_summary_correct)' in web_src and "_brief.correct, who, said" in web_src)
+    ok("the card shows only when there is a summary, and offers Correct…",
+       'if !person.str("summary").isEmpty {' in hub_src and 'Button("Correct…")' in hub_src)
+    ok("Start Fresh is a developer's control, in Advanced, never in the hub",
+       'Button("Start Fresh")' in (root / "macos/Sources/AgentDuetShell/SettingsView.swift").read_text()
+       and "Start Fresh" not in hub_src)
     ok("it can correct one, which needs the owner after a stranger's words",
        "correct_brief" in tools.RECORDER_TOOLS and "correct_brief" in _a.NEEDS_OWNER)
 
