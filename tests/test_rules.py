@@ -7033,6 +7033,63 @@ def _json_loads(s):
     return _j.loads(s)
 
 
+def test_search() -> None:
+    """Search what was said: pieces, the index, meaning + keywords, and the floor (search.py)."""
+    print("\n  -- search what was said on calls --")
+    import numpy as _np
+    import unittest.mock as _m
+    from agentduet_desktop import assistant as _a, carry, calls as _c, search, tools as _t
+    body = "\n".join(f"{'them' if i % 2 == 0 else 'you'}: turn {i}" for i in range(7))
+    got = search.pieces(body)
+    eq("seven turns, three a piece, one shared", [p.count("\n") + 1 for p in got], [3, 3, 3])
+    ok("each piece starts where the last ended", got[1].startswith("them: turn 2"))
+    long_ = search.pieces("them: " + "word " * 400)
+    ok("a long turn is cut, no line longer than the limit",
+       len(long_) >= 2 and all(len(l) <= search.MAX_CHARS for p in long_ for l in p.split("\n")))
+    ok("a continuation line joins its turn", search.pieces("them: one\nand more\nyou: two") ==
+       ["them: one and more\nyou: two"])
+
+    # A STAND-IN for the model: a text "means" the topics whose word it contains.
+    topics = ["invoice", "lunch", "airport"]
+    def fake_embed(texts):
+        v = _np.array([[1.0 if any(w in t.lower() for w in (k, k + "s")) else 0.0 for k in topics]
+                       + [0.2] for t in texts], dtype=_np.float32)
+        v = _np.pad(v, ((0, 0), (0, search.DIMS - v.shape[1])))
+        return v / _np.linalg.norm(v, axis=1, keepdims=True)
+    d = pathlib.Path(tempfile.mkdtemp())
+    texts = {"c1": "them: The invoice is overdue, call 91234567.\nyou: I'll chase it.",
+             "c2": "them: Lunch on Friday?\nyou: Yes.", "c3": "them: My flight lands at the airport at six."}
+    rows = [{"call_id": k, "caller": f"+659000000{i}", "at": f"2026-10-0{i + 1}T10:00:00",
+             "recordings": [f"{k}.wav"]} for i, k in enumerate(texts)]
+    for k, t in texts.items():
+        (d / f"{k}.txt").write_text(t)
+    with _m.patch.object(search, "DB", d / "search.db"), _m.patch.object(search, "ready", lambda: True), \
+         _m.patch.object(search, "embed", fake_embed), \
+         _m.patch.object(_c, "recent", lambda *a: rows), \
+         _m.patch.object(carry, "call_audio", lambda r, c: (d, r)):
+        eq("every transcript is indexed", search.index_once(), 3)
+        eq("and nothing twice", search.index_once(), 0)
+        r = search.search("91234567")
+        ok("an exact number is found by its words", r and r[0]["call_id"] == "c1" and r[0]["how"] in ("words", "both"))
+        r = search.search("unpaid invoices")
+        ok("a meaning is found", r and r[0]["call_id"] == "c1")
+        ok("one person only, when asked", all(h["person"] == "+6590000001"
+                                              for h in search.search("lunch", "+6590000001")))
+        with _m.patch.object(search, "MIN_SIMILARITY", 0.9):
+            ok("below the floor, a meaning is no answer", search.search("weather report") == [])
+        (d / "c2.txt").write_text("them: Dinner instead, at the airport hotel.\nyou: Fine.")
+        import os as _os
+        _os.utime(d / "c2.txt", (1, 2))
+        eq("a changed transcript is indexed again", search.index_once(), 1)
+        ok("and answers with its new words", search.search("airport hotel")[0]["call_id"] in ("c2", "c3"))
+        with _m.patch.object(search, "embed", lambda texts: None):
+            r = search.search("overdue")
+            ok("with the model unavailable (a call is on), the words still answer",
+               r and r[0]["how"] == "words" and r[0]["call_id"] == "c1")
+    ok("the assistant can search", "search_calls" in _t.RECORDER_TOOLS)
+    ok("and what it finds is marked as a caller's words", "search_calls" in _a.TAINTING)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -7046,6 +7103,7 @@ def main() -> None:
     test_jobs_and_briefs()
     test_calls_index()
     test_model_slot()
+    test_search()
     test_assistant_memory()
     test_budget_split()
     test_unread_badge()

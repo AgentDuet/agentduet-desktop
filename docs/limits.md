@@ -24,7 +24,7 @@ what is coming.
 | `run/calls.jsonl` + its index `run/calls.db` | ~250 bytes + index | **Measured** on an M5. The hub's list, every 5 s, reads one row per PERSON: 0.5 ms at 10,000 calls · 2 ms at 100,000 · 6 ms at 365,000 (9,125 people). One person's calls: 0.5 ms at any size. Building the index from an existing log, once: 0.1 s · 1.7 s · 8 s. (The whole-file read it replaced: 27 ms · 167 ms · 0.7 s, every poll.) The list's payload grows with people: ~1 MB at 9,000 people. |
 | `run/queries.jsonl` (messages), read whole by `tools.rows()` | one line per message | the same shape as above |
 | Person summaries (`run/briefs/`) | one file per person | never |
-| Transcript search index (PLANNED, not built) | ~15 pieces × ~1.5 KB ≈ 25 KB | Fine to ~1 million pieces (~60,000 calls, ~1.5 GB); past that, a nearest-neighbour index rather than comparing against every piece. It is derived, so it can always be rebuilt or trimmed. |
+| Transcript search index (`run/search.db`, built 2026-10-03) | ~15 pieces × (512-byte vector + text) | **Measured** on 14 real calls (36 pieces): indexed in 0.7 s; a search 5–6 ms; a pass with nothing new 3 ms. Every search compares against every piece, so it grows with pieces: fine to ~1 million (~60,000 calls); past that, a nearest-neighbour index. Derived from the transcripts, so it can always be rebuilt or trimmed. |
 
 ### Fixed costs per machine
 
@@ -32,6 +32,7 @@ what is coming.
 |---|---|---|
 | Gemma 4 E4B (the assistant, summaries) | 4.8 GB on disk, ~5.6 GB resident | one at a time, `gate.py` |
 | Qwen3-ASR 1.7B (speech) | 2.4 GB on disk, ~2.5 GB resident | |
+| Search model (EmbeddingGemma 300M) | 313 MB on disk, ~0.6 GB while loaded | in the same slot; unloaded after 5 idle minutes |
 | Decision model | 1.7 GB on disk, ~0.5 GB while it runs | in a child process, ended when idle 2 min or speech needs the room |
 | **Peak** | Gemma + the larger of speech and the decision model | `slot.py` (2026-10-03): Gemma stays loaded; speech and the decision model share one slot and unload lazily (idle 10 / 2 min, or when the other claims it). Was all three at once. |
 | Transcription speed | **measured** 9.3 s for a 222 s call (M5) | ~24x realtime |

@@ -1257,8 +1257,9 @@ async def worker() -> None:
         # A NEW TRANSCRIPT IS SOMETHING TO JUDGE: hand it to the suggestion pass straight away,
         # rather than letting it wait out its own poll.
         if merged:
-            from . import suggest
+            from . import search, suggest
             suggest.wake()
+            search.wake()
         # AND A PERSON'S BRIEF. The sweep asks only for people with a call newer than their
         # brief, so it is a no-op when nothing changed — and after a restart it catches up.
         try:

@@ -1,4 +1,5 @@
-"""One memory slot for the occasional models: speech (Qwen3-ASR) or the decision model, never both.
+"""One memory slot for the occasional models: speech (Qwen3-ASR), the decision model, or the
+search model (EmbeddingGemma) — one at a time.
 
 WHY (Stanley, 2026-10-03). Three models want memory on a Mac that may have 16 GB: Gemma (~5.6 GB,
 the assistant and summaries), Qwen3-ASR (~2.5 GB) and the decision model (~0.5 GB working, 1.7 GB
@@ -31,11 +32,11 @@ from typing import Callable
 
 logger = logging.getLogger("secretary.slot")
 
-ASR, DECIDER = "asr", "decider"
+ASR, DECIDER, EMBED = "asr", "decider", "embed"
 
 #: Seconds unused before the reaper unloads. Speech is kept longer: a call's pieces, the after-call
 #: pass and the next call tend to come together, and reloading it costs more.
-IDLE = {ASR: 600, DECIDER: 120}
+IDLE = {ASR: 600, DECIDER: 120, EMBED: 300}
 
 #: How often the reaper looks.
 REAP_EVERY = 30
@@ -75,8 +76,9 @@ def claim(kind: str) -> bool:
     _start_reaper()
     with _lock:
         other = _occupant if _occupant and _occupant != kind else ""
-        if other == ASR and kind == DECIDER and _call_on():
-            logger.info("slot: the decision model waits — a call is using speech")
+        # DURING A CALL NOTHING PUSHES SPEECH OUT: not the decision model, not search.
+        if other == ASR and kind != ASR and _call_on():
+            logger.info("slot: %s waits — a call is using speech", kind)
             return False
         _occupant, _last = kind, time.time()
     if other:

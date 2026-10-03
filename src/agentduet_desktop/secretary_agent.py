@@ -954,6 +954,12 @@ async def main() -> None:
             # waits seconds for it. On a thread — gigabytes are read — and never awaited.
             asyncio.create_task(asyncio.to_thread(_llm.preload))
 
+        # SEARCH (search.py): its model in the background, and the indexer that keeps up with
+        # transcripts. Needs no assistant model — it is its own, small one.
+        from . import search as _search
+        _search.fetch_in_background()
+        asyncio.create_task(_search.worker())
+
     # AGENTDUET AI HAS NO LINE: it reads the recordings AgentDuet Recorder leaves in the folder
     # (ingest.py), and never waits for, or opens, a channel.
     if not edition.calls():
