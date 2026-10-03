@@ -33,6 +33,7 @@ import Foundation
     private var startedPick = false
     private var startedSpeech = false
     private var startedDecider = false
+    private var startedSearch = false
     #endif
 
     /// The settings model's changes, passed on as this one's.
@@ -86,7 +87,7 @@ import Foundation
     // MARK: - quick setup
 
     #if !RECORDER
-    /// ALL THREE DOWNLOADS START WHEN THIS STEP IS ON SCREEN, not at Finish: 7 GB is minutes, and they
+    /// ALL FOUR DOWNLOADS START WHEN THIS STEP IS ON SCREEN, not at Finish: ~9 GB is minutes, and they
     /// run in the daemon, so leaving setup does not stop them. A refusal is retried at Finish.
     func startDownloads() {
         let pick = settings.pick
@@ -102,6 +103,13 @@ import Foundation
             startedDecider = true
             Task {
                 _ = await api.post("/api/setup/decider")
+                await settings.poll()
+            }
+        }
+        if !startedSearch, !settings.searchModel.bool("ready"), !settings.searchModel.bool("running") {
+            startedSearch = true
+            Task {
+                _ = await api.post("/api/setup/search")
                 await settings.poll()
             }
         }

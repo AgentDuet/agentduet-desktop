@@ -616,6 +616,10 @@ private struct Downloads: View {
             if dec.bool("running"), !dec.bool("ready") {
                 bar("Decision model", dec.num("got_mb"), dec.num("mb"))
             }
+            let sea = model.panel.obj("search")
+            if sea.bool("running"), !sea.bool("ready") {
+                bar("Search model", sea.num("got_mb"), sea.num("mb"))
+            }
         }
     }
     private func bar(_ name: String, _ done: Double, _ total: Double) -> some View {

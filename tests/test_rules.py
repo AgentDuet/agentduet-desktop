@@ -7106,6 +7106,11 @@ def test_search() -> None:
            r and r[0]["source"] == "+6590000009" and r[0]["at"] == "2026-10-03T09:00:00")
         ok("a call hit says which call", any(h["kind"] == "call" and h["call_id"] == "c1"
                                             for h in search.search("invoices")))
+    sw = pathlib.Path(__file__).parent.parent / "macos/Sources/AgentDuetShell"
+    ok("its download is setup's fourth bar, and the hub's while it downloads",
+       'LabeledContent("Search model") { searchBar(s) }' in (sw / "SetupView.swift").read_text()
+       and 'bar("Search model"' in (sw / "HubView.swift").read_text()
+       and '"/api/setup/search"' in (sw / "SetupModel.swift").read_text())
     ok("the assistant can search", "search_conversations" in _t.RECORDER_TOOLS)
     ok("and what it finds is marked as a caller's words", "search_conversations" in _a.TAINTING)
 
