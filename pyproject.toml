@@ -55,7 +55,11 @@ ui = ["pywebview>=5.0"]
 # The native libraries total 7.7 MB, so the binary cost is small. They must be added to the
 # PyInstaller spec BY HAND — `--collect-all` fails silently for exactly this shape, as wasmtime
 # already taught us: the build succeeds and the binary dies at first use.
-local = ["llama-cpp-python>=0.3"]
+local = ["llama-cpp-python>=0.3",
+         # THE DECISION MODEL (decider.py): ONNX Runtime on the CPU, and the tokenizer it reads
+         # the prompt with. Here rather than its own extra because it serves the same feature —
+         # the summaries a local model writes. ~90 MB installed.
+         "onnxruntime>=1.20", "tokenizers>=0.20"]
 
 [project.scripts]
 agentduet-desktop = "agentduet_desktop.cli:main"

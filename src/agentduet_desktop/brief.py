@@ -301,8 +301,56 @@ _RELATIONS = ("customer", "client", "colleague", "coworker", "co-worker", "suppl
 _WEEKDAYS_ZH = ("一", "二", "三", "四", "五", "六", "日")
 
 
+#: Which relationship each word names. A word not here (partner, manager…) is too ambiguous to
+#: check against a category, so it stands only when SOME relationship was stated.
+_RELATION_KIND = {"customer": "customer", "client": "customer", "colleague": "colleague",
+                  "coworker": "colleague", "co-worker": "colleague", "supplier": "supplier",
+                  "vendor": "supplier", "friend": "friend"}
+_RELATION_SENTENCE = {"customer": "A customer.", "colleague": "A colleague.",
+                      "supplier": "A supplier.", "friend": "A friend."}
+#: A relationship the decision model found is WRITTEN into About only above this confidence; below
+#: it, it only stops a sentence that names it from being dropped. Measured: right answers came at
+#: 0.25-0.72, so the bar is for adding a claim, not for keeping one the model already made.
+RELATION_ADD = 0.5
+
+
+def _stated_relation(said: str) -> tuple[str, float] | None:
+    """(relationship the conversations state, confidence) from the decision model — "not said"
+    included — or None when the model is not available, so the word rule decides instead."""
+    from . import decider, owner
+    if not decider.ready():
+        decider.fetch_in_background()
+        return None
+    name = owner.name() or "the owner"
+    q = decider.choice(
+        f"Going only by what was SAID in these conversations, what is the caller to {name}? "
+        f"Choose 'not said' unless they make the relationship clear.",
+        {"not said": "the conversations do not make the relationship clear",
+         "customer": f"the caller buys from {name} or his company",
+         "colleague": f"the caller works with {name}",
+         "supplier": f"the caller sells to, or provides a service to, {name}",
+         "friend": "a personal friend or family member"})
+    got = (decider.ask(said, {"relation": q}) or {}).get("relation")
+    return (got["choice"], float(got.get("confidence", 0))) if got else None
+
+
+def _keep_relations(about: str, relation: str | None) -> str:
+    """About with only the relationship that was stated: a sentence naming another kind goes, and
+    with none stated every relationship sentence goes."""
+    keep = []
+    for sent in re.split(r"(?<=[.!?])\s+", about.strip()):
+        low = sent.lower()
+        named = [r for r in _RELATIONS if re.search(rf"\b{re.escape(r)}s?\b", low)]
+        if named and (relation is None or any(_RELATION_KIND.get(r, relation) != relation for r in named)):
+            continue
+        keep.append(sent)
+    return " ".join(keep).strip()
+
+
 def _said_relations(about: str, said: str) -> str:
-    """About without any sentence naming a relationship the conversations never named."""
+    """THE FALLBACK, when the decision model is not here: About without any sentence naming a
+    relationship word the conversations never used. Cruder — a word can be said without stating a
+    relationship ("drive us to the client") — which is what the model replaced."""
     low = said.lower()
     keep = [s for s in re.split(r"(?<=[.!?])\s+", about.strip())
             if not any(r in s.lower() and r not in low for r in _RELATIONS)]
@@ -361,7 +409,19 @@ def _passes(who: str, rec: dict, items: list[str], correction: str = "",
         items_out = [it for it in items_out
                      if (it["when"], it["what"]) in before or _dated_by(it, sources)]
         said = "\n".join(text for _, text in sources)
-        about = _said_relations(about, said + "\n" + (rec.get("about") or "")) if about else about
+        found = _stated_relation(said)
+        if found is None:
+            about = _said_relations(about, said + "\n" + (rec.get("about") or "")) if about else about
+        else:
+            label, conf = found
+            # REMEMBERED: a call that does not restate a relationship does not unsay it.
+            if label != "not said":
+                rec["relation"] = {"label": label, "confidence": round(conf, 3), "at": _now().isoformat(timespec="seconds")}
+            known = (rec.get("relation") or {})
+            about = _keep_relations(about, known.get("label"))
+            if (known.get("label") and known.get("confidence", 0) >= RELATION_ADD
+                    and not any(re.search(rf"\b{re.escape(r)}s?\b", about.lower()) for r in _RELATIONS)):
+                about = (_RELATION_SENTENCE[known["label"]] + " " + about).strip()
     return (about or rec.get("about", "")), items_out
 
 
@@ -468,6 +528,21 @@ def _language_line(rec: dict) -> str:
 
 
 _NEGATION = re.compile(r"\b(not|no|never|don't|doesn't|dont|doesnt|isn't|cannot|can't)\b", re.I)
+
+
+def _relation_correction(rec: dict, said: str) -> None:
+    """The owner naming a relationship sets it ("she's a customer") or, negated just before the
+    word, clears it ("not a colleague"). In "a customer, not a colleague" each word is judged by
+    its own few words before it, so the customer is set and the colleague cleared."""
+    low = said.lower()
+    for word, kind in _RELATION_KIND.items():
+        for m in re.finditer(rf"\b{re.escape(word)}s?\b", low):
+            before = " ".join(low[: m.start()].split()[-3:])
+            if _NEGATION.search(before):
+                if (rec.get("relation") or {}).get("label") == kind:
+                    rec.pop("relation", None)
+            else:
+                rec["relation"] = {"label": kind, "confidence": 1.0, "by": "owner"}
 
 
 def _language_correction(rec: dict, said: str) -> None:
@@ -581,6 +656,7 @@ def correct(who: str, correction: str) -> str:
         return "The model returned nothing, so the brief is unchanged."
     rec["about"], rec["open"] = done
     _language_correction(rec, said)
+    _relation_correction(rec, said)
     rec.pop("summary", None)
     rec["updated"] = _now().isoformat(timespec="seconds")
     _save(who, rec)
