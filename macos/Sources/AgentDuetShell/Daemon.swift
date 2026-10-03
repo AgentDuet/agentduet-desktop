@@ -94,6 +94,12 @@ final class Daemon {
         p.executableURL = bin
         // --no-window: THIS is the window. The daemon must not try to open one of its own.
         p.arguments = ["run", "--no-window"]
+        // WHERE THIS SHELL IS, for the daemon's login-item switch (loginitem.py): only the app
+        // itself can register with SMAppService, and a daemon running from source, or in a
+        // bundle named for another edition, cannot find it by looking beside itself.
+        var env = ProcessInfo.processInfo.environment
+        if let me = Bundle.main.executablePath { env["AGENTDUET_SHELL"] = me }
+        p.environment = env
         // NOT nullDevice — see `startLog`. The one failure this dialog exists to explain is
         // reported here and nowhere else.
         let captured = startLogHandle()
