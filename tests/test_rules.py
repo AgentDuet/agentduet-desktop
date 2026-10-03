@@ -5270,7 +5270,8 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
        'Text(model.section.title).font(.title2.bold())' in sv and 'Button("Done") { model.done?() }' in sv
        and ".keyboardShortcut(.cancelAction)" in sv)
     ok("the app comes back in front after a permission prompt, not Terminal",
-       "static func comeBack()" in app and swift["SettingsModel.swift"].count("AppDelegate.comeBack()") == 1
+       # TWO in SettingsModel: the microphone's, and Documents' once macOS has answered (2026-10-03).
+       "static func comeBack()" in app and swift["SettingsModel.swift"].count("AppDelegate.comeBack()") == 2
        and "AppDelegate.comeBack()" in swift["HubModel.swift"] and "Self.comeBack()" in app)
     ok("a quit request is not refused while Settings is open",
        "andEventID: AEEventID(kAEQuitApplication)" in app and "settingsWindow.close()\n        NSApp.terminate(nil)" in app)
