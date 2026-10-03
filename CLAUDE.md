@@ -625,6 +625,8 @@ Break one of these and the secretary is a different product.
 - **`docs/platform.md`** — what we know about Nexus, wss-edge and the SDK, and how we learned
   each thing. **Reference about somebody else's system**, which is why it is separate: it cannot
   be read off our code, and it is the most expensive knowledge here to re-derive.
+- **`docs/limits.md`** — what grows per call, where each part stops, and what a shared system of
+  ~500 users would break. Measured numbers are marked; update it when a limit moves.
 - **The checklist below** — what is not built, who owns it, what would unblock it.
 
 **The checklist keeps lying, and that is the thing to watch.** Five items in it have claimed
@@ -855,6 +857,11 @@ derived from no longer exists, it is the only place that says so.
 
 - [ ] **Per-service on/off toggles.** The design's overview switches each of the four services
       independently. We have one `## Calls` mode and a `## Record calls` boolean.
+
+- [ ] **The hub, summaries and assistant see only the newest 200 calls** (`calls.recent()`'s
+      default; found 2026-10-03, see `docs/limits.md`). About 10 days for a busy owner, after
+      which older people silently drop off the list. Needs an index by person, not a bigger
+      number.
 
 **Reaching out — links now, APIs when a link cannot carry it**
 
