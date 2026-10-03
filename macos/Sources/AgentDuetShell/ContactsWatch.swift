@@ -28,6 +28,9 @@ final class ContactsWatch {
     private var lastAccess = ""
     private var dirty = true
     private var busy = false
+    /// HELD, not made per call: a store created inside `ask` was freed before macOS could show its
+    /// prompt, so Allow did nothing at all — no prompt, no answer (2026-10-03).
+    private let store = CNContactStore()
 
     init(home: URL) {
         wantedFile = home.appendingPathComponent("run/contacts-wanted.json")
@@ -57,7 +60,7 @@ final class ContactsWatch {
     /// and telling it first (then writing on a background queue) had it read the old "not
     /// asked" and keep showing Allow over a grant that had worked.
     func ask(done: @escaping (Bool) -> Void) {
-        CNContactStore().requestAccess(for: .contacts) { ok, _ in
+        store.requestAccess(for: .contacts) { ok, _ in
             DispatchQueue.main.async {
                 self.dirty = true
                 self.tick(force: true) { done(ok) }
