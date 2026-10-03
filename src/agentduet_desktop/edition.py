@@ -90,6 +90,12 @@ def home_name() -> str:
 
 
 def port() -> int:
-    """The owner site's default port. AgentDuet AI runs BESIDE the recorder, so it cannot share
-    8899; the full product and the recorder are never installed together, so they do."""
-    return 8897 if name() == AI_ONLY else 8899
+    """The owner site's default port; 0 means any free one, which macOS picks.
+
+    AGENTDUET AI TAKES ANY (2026-10-03): nothing needs its number. The shell finds the daemon by
+    the address it writes (`run/site-url`), and a fixed port exists only for sign-in, whose
+    callback the AgentDuet server checks — and this app never signs in. So it can never clash
+    with the recorder, or with anything else. The two apps with a line keep 8899 until the
+    server is confirmed to accept any loopback port.
+    """
+    return 0 if name() == AI_ONLY else 8899
