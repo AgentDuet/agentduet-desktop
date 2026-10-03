@@ -127,12 +127,14 @@ private struct AccountPane: View {
                 }
                 // LEARNED, NOT TYPED (Stanley, 2026-09-29): the number is mined from the first
                 // call, so it is shown here and not edited — and until then there is no row.
-                if !model.yourNumber.isEmpty {
+                if Edition.calls && !model.yourNumber.isEmpty {
                     LabeledContent("Your number") {
                         Text(model.yourNumber).textSelection(.enabled)
                     }
                 }
             }
+            // AGENTDUET AI HAS NO CONNECTION: it reads the recorder's folder, and signs in to nothing.
+            if Edition.calls {
             Section {
                 LabeledContent("Status") {
                     HStack(spacing: 6) {
@@ -165,6 +167,7 @@ private struct AccountPane: View {
                 Text("AgentDuet Connection")
             } footer: {
                 NoticeFooter(notice: model.notice[.account])
+            }
             }
         }
         // LEAVING A FIELD SAVES IT, as Return does — there is no Save button to forget.

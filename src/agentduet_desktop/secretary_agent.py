@@ -834,7 +834,7 @@ async def main() -> None:
                          "Not starting a second one: one connector has one client, and two "
                          "would race for every call. Stop the other one first "
                          "(`agentduet-desktop stop`), or set SECRETARY_WEB_PORT.",
-                         os.getenv("SECRETARY_WEB_PORT", "8899"))
+                         os.getenv("SECRETARY_WEB_PORT") or web.PORT)
             raise SystemExit(1)
         logger.warning("Owner site did not start (%s: %s) — carrying on. Inbound is unaffected; "
                        "reach this daemon through the mcp, or `agentduet-desktop status`.",
@@ -950,6 +950,16 @@ async def main() -> None:
         from . import decider as _dec, llm as _llm
         if _llm.configured():
             _dec.fetch_in_background()
+
+    # AGENTDUET AI HAS NO LINE: it reads the recordings AgentDuet Recorder leaves in the folder
+    # (ingest.py), and never waits for, or opens, a channel.
+    if not edition.calls():
+        from . import ingest as _ing
+        asyncio.create_task(_ing.worker())
+        status.set_channel("off", "AgentDuet AI has no phone line")
+        logger.info("AgentDuet AI: no phone line; reading recordings from the AgentDuet folder")
+        while True:
+            await asyncio.sleep(3600)
 
     if not connector_ready():
         logger.info("No AgentDuet connector yet — running the owner's view only. "

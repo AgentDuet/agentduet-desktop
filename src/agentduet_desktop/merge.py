@@ -200,16 +200,30 @@ def write_txt(stem: str, body: str | None = None, row: dict | None = None) -> No
         tmp.unlink(missing_ok=True)
 
 
-def once(settled=None, text=None) -> int:
+def once(settled=None, text=None, audio_too: bool = True) -> int:
     """Merge every call whose legs are settled. Returns how many were written.
 
     `settled` says when a leg is ready (default: finished recording, see `recorded`); `text`,
     when given, writes the call's transcript after its audio — the full edition's speech pass.
+    `audio_too=False` is AgentDuet AI's: the recording and its header are the recorder's, so
+    only the transcript is written, below the header already there.
     """
     done = 0
     for stem in ready(settled or recorded):
         wavs = sorted(w for w in carry.legs().glob("*.wav")
                       if carry.stem_of(w.name) == stem)
+        if not audio_too:
+            if text is not None:
+                text(stem, wavs)
+                done += 1
+            # THE SPLIT LEGS ARE OURS, copies of the recorder's file: kept only to transcribe.
+            for w in wavs:
+                w.unlink(missing_ok=True)
+            try:
+                (carry.legs() / f"{stem}{MERGE_SUFFIX}").write_text("")
+            except OSError as exc:
+                logger.warning("merge %s: could not mark it done (%s)", stem, exc)
+            continue
         # WAIT FOR THE ROW that says who the call was with, briefly — see ROW_WAIT_SECONDS.
         row = _row(stem)
         if row is None and wavs and time.time() - max(w.stat().st_mtime for w in wavs) < ROW_WAIT_SECONDS:

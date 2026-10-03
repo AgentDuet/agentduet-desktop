@@ -59,8 +59,9 @@ import Foundation
         nameWas = cur.str("name")
         name = cur.str("name").isEmpty ? cur.str("os_name") : cur.str("name")
         signIn.prefill()
-        // SIGNED IN ALREADY: the first step has nothing left to ask.
-        if settings.signedIn { step = .permissions }
+        // SIGNED IN ALREADY: the first step has nothing left to ask. AGENTDUET AI has no line,
+        // so it has no sign-in step at all.
+        if settings.signedIn || !Edition.calls { step = .permissions }
         let state = await api.get("/api/state")
         onAir = ["live", "connecting", "retrying"].contains(state.obj("channel").str("channel"))
     }

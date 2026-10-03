@@ -46,7 +46,7 @@ jobs:
           # suite died on an ImportError mid-run from a3d051a on.
           pip install numpy
 
-      # Five suites, each run even if an earlier one fails. A single `&&` chain would report the
+      # Six suites, each run even if an earlier one fails. A single `&&` chain would report the
       # first failure and hide the rest, which turns one red run into several round trips.
       - name: Rules (model-free)
         run: python tests/test_rules.py
@@ -69,3 +69,9 @@ jobs:
       - name: Recorder edition (no AI in it, and it still runs)
         if: ${{ !cancelled() }}
         run: python tests/test_recorder.py
+
+      # AgentDuet AI: reads the recorder's calls from the folder, writes only their transcripts,
+      # and runs with no phone line.
+      - name: AI edition (the recorder's calls in, transcripts out, no line)
+        if: ${{ !cancelled() }}
+        run: python tests/test_ai_edition.py

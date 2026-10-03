@@ -26,6 +26,11 @@ if [ "$EDITION" = "recorder" ]; then
   BUNDLE_ID="${BUNDLE_ID:-com.b3networks.agentduet-recorder}"
   PRODUCT="AgentDuet Recorder"
   DOCS_WHY="AgentDuet Recorder keeps your call recordings in Documents › AgentDuet."
+elif [ "$EDITION" = "ai" ]; then
+  APP_NAME="${APP_NAME:-AgentDuet AI}"
+  BUNDLE_ID="${BUNDLE_ID:-com.b3networks.agentduet-ai}"
+  PRODUCT="AgentDuet AI"
+  DOCS_WHY="AgentDuet AI reads the calls AgentDuet Recorder keeps in Documents › AgentDuet, to transcribe them."
 else
   APP_NAME="${APP_NAME:-AgentDuet Desktop}"
   BUNDLE_ID="${BUNDLE_ID:-com.b3networks.agentduet-desktop}"

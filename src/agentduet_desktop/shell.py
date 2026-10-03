@@ -163,7 +163,8 @@ def site_url(timeout: float = 20.0) -> str | None:
     """
     import os
 
-    port = os.getenv("SECRETARY_WEB_PORT", "8899")
+    from . import edition
+    port = os.getenv("SECRETARY_WEB_PORT") or str(edition.port())
     recorded = paths.RUN / "site-url"
     tok = paths.RUN / "web-token"
     deadline = time.monotonic() + timeout

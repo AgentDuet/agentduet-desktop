@@ -40,6 +40,10 @@ if [ "$EDITION" = "recorder" ]; then
   NAME="AgentDuet Recorder Dev"; BUNDLE="com.b3networks.agentduet-recorder.dev"
   SWIFT_FLAGS=(-Xswiftc -DRECORDER --product AgentDuetShell --build-path .build-recorder)
   BUILT=macos/.build-recorder/release/AgentDuetShell
+elif [ "$EDITION" = "ai" ]; then
+  NAME="AgentDuet AI Dev"; BUNDLE="com.b3networks.agentduet-ai.dev"
+  SWIFT_FLAGS=(-Xswiftc -DAI_ONLY --build-path .build-ai)
+  BUILT=macos/.build-ai/release/AgentDuetShell
 else
   NAME="AgentDuet Dev"; BUNDLE="com.b3networks.agentduet-desktop.dev"
   SWIFT_FLAGS=()
@@ -51,14 +55,23 @@ fi
 # would show THAT code — the confusion this script exists to remove.
 # Apps FIRST (each stops the daemon it started), then any daemon left over. "if running", because
 # a bare `quit app` launches an app that is not running just to quit it.
-# BOTH EDITIONS: they share port 8899, so whichever is up must go before the other starts.
-for a in "AgentDuet Desktop" "AgentDuet Dev" "AgentDuet Recorder" "AgentDuet Recorder Dev"; do
+# WHAT THIS ONE CLASHES WITH. The full app and the recorder share port 8899 (and a phone line),
+# so either replaces the other. AgentDuet AI runs BESIDE the recorder — its own port, no line —
+# so it replaces only its own.
+if [ "$EDITION" = "ai" ]; then
+  APPS=("AgentDuet AI" "AgentDuet AI Dev"); STOP=(ai)
+else
+  APPS=("AgentDuet Desktop" "AgentDuet Dev" "AgentDuet Recorder" "AgentDuet Recorder Dev")
+  STOP=(full recorder)
+fi
+for a in "${APPS[@]}"; do
   osascript -e "if application \"$a\" is running then tell application \"$a\" to quit" \
     2>/dev/null || true
 done
-# The recorder's only if it has an instance: importing the package seeds one where none is.
-for e in full recorder; do
-  [ "$e" = "recorder" ] && [ ! -d "$HOME/.agentduet-recorder" ] && continue
+# An edition's daemon only if it has an instance: importing the package seeds one where none is.
+for e in "${STOP[@]}"; do
+  case "$e" in recorder) h=.agentduet-recorder ;; ai) h=.agentduet-ai ;; *) h=.agentduet-desktop ;; esac
+  [ "$e" != "full" ] && [ ! -d "$HOME/$h" ] && continue
   AGENTDUET_EDITION=$e PYTHONPATH=src "$VENV/bin/python" -m agentduet_desktop.cli stop \
     2>/dev/null || true
 done
@@ -108,5 +121,5 @@ if [ -n "$IDENTITY" ]; then echo "  signed: Developer ID"; else echo "  signed: 
 
 open "$APP"
 echo "  $NAME is up — the native window, daemon from source"
-_home=.agentduet-desktop; [ "$EDITION" = "recorder" ] && _home=.agentduet-recorder
+case "$EDITION" in recorder) _home=.agentduet-recorder ;; ai) _home=.agentduet-ai ;; *) _home=.agentduet-desktop ;; esac
 echo "  log: ${AGENTDUET_HOME:-$HOME/$_home}/run/daemon-start.log"

@@ -53,3 +53,4 @@ _build.py
 _edition.py
 macos/.build-recorder/
 /build-recorder/
+macos/.build-ai/

@@ -99,6 +99,20 @@ every carry, recording, Contacts or sign-in fix twice. Instead:
   - `macos-shell.yml` builds the recorder shell and checks its strings on every Swift push.
 - **To try it here: `EDITION=recorder ./dev-app.sh`.**
 
+**AGENTDUET AI IS THE THIRD EDITION** (`ai`, 2026-10-03): the AI half with no phone line, run
+BESIDE AgentDuet Recorder.
+- **What it reads:** the recorder's calls, and nothing else. A call is a `.wav` with its
+  header'd `.txt` in the AgentDuet folder; the folder is chosen in its setup and Settings.
+- **How it reads them:** `ingest.py` polls the folder and files each call in its own
+  `calls.jsonl`. It splits the stereo recording into the two sides for the ordinary
+  transcription queue, then writes only the transcript, below the header. The `.wav` is never
+  written.
+- **What it lacks:** sign-in, a connection and calls (`edition.calls()` is false; Swift
+  `-D AI_ONLY`).
+- **What it has of its own:** `~/.agentduet-ai`, port 8897, `com.b3networks.agentduet-ai`.
+- **How to run it:** `EDITION=ai ./dev-app.sh`, which leaves the recorder running.
+- **Proven by** `tests/test_ai_edition.py`.
+
 **A CALL'S `.txt` IS A CONTRACT BETWEEN TWO APPS** (2026-10-03), so a separate AI app can enrich
 what the recorder recorded without either knowing the other. It starts with a header of
 `key: value` lines (`Call:`, `Direction:`, `Started:`, `Length:`, `Recording:`), then a blank
