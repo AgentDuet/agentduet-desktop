@@ -923,7 +923,18 @@ def _gpu_layers(model: str) -> tuple[int, str]:
     return 0, "CPU — no GPU detected"
 
 
+#: ONE LOAD AT A TIME. The daemon loads the model at startup (llm.preload) while a first question
+#: may be loading it too; without this both would read gigabytes, and two copies would be resident.
+_load_lock = threading.RLock()
+
+
 def load(model: str, context: int = 8192):
+    """Bring a model into memory. Returns (engine, message). One caller at a time."""
+    with _load_lock:
+        return _load(model, context)
+
+
+def _load(model: str, context: int = 8192):
     """Bring a model into memory. Returns (engine, message).
 
     `context` is 8192 rather than llama_cpp's smaller default deliberately: a call transcript

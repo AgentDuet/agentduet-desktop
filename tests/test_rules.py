@@ -6961,6 +6961,78 @@ def test_calls_index() -> None:
     ok("and the Mac hub names who is open", 'query: ["open": picked ?? ""]' in hub)
 
 
+def test_model_slot() -> None:
+    """Speech and the decision model share one memory slot; Gemma is not in it (slot.py)."""
+    print("\n  -- one slot for speech and the decision model --")
+    import io as _io
+    import sys as _sys
+    import time as _time
+    import unittest.mock as _m
+    from agentduet_desktop import decider as _d, slot
+    gone = []
+    with _m.patch.object(slot, "_unloaders", {slot.ASR: lambda: gone.append("asr"),
+                                              slot.DECIDER: lambda: gone.append("decider")}), \
+         _m.patch.object(slot, "_occupant", ""), _m.patch.object(slot, "_start_reaper", lambda: None), \
+         _m.patch.object(slot, "_call_on", lambda: False):
+        ok("the first claim unloads nothing", slot.claim(slot.ASR) and gone == [])
+        ok("claiming it again is free", slot.claim(slot.ASR) and gone == [])
+        ok("the other model claiming it unloads speech first",
+           slot.claim(slot.DECIDER) and gone == ["asr"] and slot.occupant() == slot.DECIDER)
+        slot.claim(slot.ASR)
+        eq("and back again", gone, ["asr", "decider"])
+        with _m.patch.object(slot, "_call_on", lambda: True):
+            ok("DURING A CALL the decision model may not push speech out",
+               not slot.claim(slot.DECIDER) and slot.occupant() == slot.ASR and gone == ["asr", "decider"])
+            ok("nor may the reaper", slot.reap(slot._last + slot.IDLE[slot.ASR] + 1) == "")
+        ok("not idle long enough: kept", slot.reap(slot._last + 5) == "" and slot.occupant() == slot.ASR)
+        ok("idle long enough: unloaded, LAZILY",
+           slot.reap(slot._last + slot.IDLE[slot.ASR] + 1) == slot.ASR and slot.occupant() == ""
+           and gone[-1] == "asr")
+        slot.claim(slot.DECIDER)
+        t0 = slot._last
+        _time.sleep(0.01); slot.touch(slot.DECIDER)
+        ok("a use starts the idle clock again", slot._last > t0)
+    with _m.patch.object(slot, "_unloaders", {slot.ASR: lambda: 1 / 0}), \
+         _m.patch.object(slot, "_occupant", slot.ASR), _m.patch.object(slot, "_start_reaper", lambda: None), \
+         _m.patch.object(slot, "_call_on", lambda: False):
+        ok("an unloader that fails does not take the caller down", slot.claim(slot.DECIDER))
+
+    # THE DECISION MODEL'S WORKER answers line after line, and the slot can end it.
+    class FakeEngine:
+        def ask(self, state, q):
+            return {"yes": 0.9 if "yes" in state else 0.1}
+    with _m.patch.object(_d, "_Engine", FakeEngine), \
+         _m.patch.object(_sys, "stdin", _io.StringIO('{"state": "yes", "questions": {"a": {}}}\n'
+                                                    '{"state": "no", "questions": {"a": {}}}\n')), \
+         _m.patch.object(_sys, "stdout", _io.StringIO()) as out:
+        _d.serve_stdin()
+        lines = out.getvalue().splitlines()
+    eq("one answer per request, from one process", [_json_loads(l)["a"]["yes"] for l in lines], [0.9, 0.1])
+    worker = ("import sys, json\n"
+              "for line in sys.stdin:\n"
+              "    print(json.dumps({'n': len(line)}), flush=True)\n")
+    with _m.patch.object(_d, "ready", lambda: True), \
+         _m.patch.object(_d, "_worker", lambda: [_sys.executable, "-c", worker]), \
+         _m.patch.object(_d.paths, "RUN", TMP), _m.patch.object(slot, "_start_reaper", lambda: None), \
+         _m.patch.object(slot, "_call_on", lambda: False), _m.patch.object(slot, "_occupant", ""):
+        a1 = _d.ask("s", {"q": {}})
+        first = _d._proc
+        a2 = _d.ask("s", {"q": {}})
+        ok("the worker stays between questions", a1 and a2 and _d._proc is first
+           and first.poll() is None)
+        _d._stop_worker()
+        ok("and the slot ends it", _d._proc is None and first.wait(timeout=5) is not None)
+        with _m.patch.object(_d, "TIMEOUT", 0.5), \
+             _m.patch.object(_d, "_worker", lambda: [_sys.executable, "-c", "import time; time.sleep(30)"]):
+            ok("a worker that hangs is answered None, and ended", _d.ask("s", {"q": {}}) is None
+               and _d._proc is None)
+
+
+def _json_loads(s):
+    import json as _j
+    return _j.loads(s)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -6973,6 +7045,7 @@ def main() -> None:
     test_model_gate()
     test_jobs_and_briefs()
     test_calls_index()
+    test_model_slot()
     test_assistant_memory()
     test_budget_split()
     test_unread_badge()
