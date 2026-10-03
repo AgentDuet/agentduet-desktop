@@ -136,7 +136,7 @@ with mock.patch.object(carry, "recordings", lambda: FOLDER):
           head == "Call: Cen Lee (+6598554074)\nDirection: incoming\nStarted: 2026-10-03 14:05:12\n"
                   f"Length: 0:02\nRecording: {rec}.wav", head)
     check("and the transcript is below it, in speaking order",
-          body == "them: is lunch still on\nyou: yes, twelve", body)
+          body == "[0:00] them: is lunch still on\n[0:01] you: yes, twelve", body)
     check("the recording is not written", digest(FOLDER / f"{rec}.wav") == before)
     check("the split copies are gone", not list(carry.legs().glob(f"{rec}-*.wav")))
     check("and it is not done twice", transcribe.merge_ready() == [])

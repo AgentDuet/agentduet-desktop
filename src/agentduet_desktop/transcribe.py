@@ -1467,14 +1467,18 @@ def _merge_text(stem: str, wavs: list[pathlib.Path]) -> None:
     if ordered and turns:
         turns.sort(key=lambda x: x[0])
         parts: list[str] = []
-        for _at, leg, said in turns:
+        last = ""
+        for at, leg, said in turns:
             # MERGE A RUN BY THE SAME PARTY. Segments are shorter than turns on purpose, so a
             # sentence arrives in pieces; three bubbles from one speaker in a row reads worse
             # than one.
-            if parts and parts[-1].startswith(labels[leg] + ":"):
+            if parts and last == leg:
                 parts[-1] += " " + said
             else:
-                parts.append(f"{labels[leg]}: {said}")
+                # EACH TURN SAYS WHEN IT BEGAN (2026-10-03), in the recording's own time — the
+                # stereo merge padded the later leg by the same offset, so the two agree.
+                parts.append(f"{carry.stamp(at)} {labels[leg]}: {said}")
+                last = leg
     else:
         logger.info("merge %s: no timings for one or both legs — grouping by party", stem)
         parts = [f"{labels[leg]}: {_text(legs[leg])}" for leg in labels if leg in legs]

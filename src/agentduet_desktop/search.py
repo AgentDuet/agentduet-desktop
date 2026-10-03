@@ -1,4 +1,5 @@
-"""Search what was said on calls — by meaning and by keyword, on this machine (2026-10-03).
+"""Search what was said — on calls and in messages — by meaning and by keyword, on this machine
+(2026-10-03).
 
 TWO HALVES, MERGED:
   - MEANING. EmbeddingGemma 300M turns each piece of a transcript into 256 numbers; a question is
@@ -142,22 +143,29 @@ def embed(texts: list[str]) -> "list[list[float]] | None":
 
 # ---- the index ---------------------------------------------------------------------------------
 
+#: BUMPED WHEN THE LAYOUT CHANGES: the index is derived, so a different one is simply rebuilt.
+SCHEMA = 2
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS pieces (
     id INTEGER PRIMARY KEY,
-    call_id TEXT NOT NULL,
+    kind TEXT NOT NULL,         -- 'call' or 'message'
+    source TEXT NOT NULL,       -- the call's id, or the person a message thread is with
     person TEXT NOT NULL,
-    at TEXT NOT NULL,
-    idx INTEGER NOT NULL,
+    at TEXT NOT NULL,           -- the call's time, or the first message's in this piece
+    idx INTEGER NOT NULL,       -- the piece's place in its source
+    turn INTEGER NOT NULL,      -- the first turn (call) or message (thread) the piece covers
+    t REAL,                     -- a call piece's start, seconds into the recording; NULL if unknown
     text TEXT NOT NULL,
-    vec BLOB                    -- DIMS float16; NULL until embedded
+    vec BLOB                    -- DIMS float16
 );
-CREATE INDEX IF NOT EXISTS pieces_call ON pieces (call_id);
+CREATE INDEX IF NOT EXISTS pieces_source ON pieces (kind, source);
 CREATE INDEX IF NOT EXISTS pieces_person ON pieces (person);
 CREATE VIRTUAL TABLE IF NOT EXISTS pieces_fts USING fts5(text, content='pieces', content_rowid='id',
                                                         tokenize='trigram');
--- What each call was indexed from: the transcript's size and time, so a changed one is redone.
-CREATE TABLE IF NOT EXISTS indexed (call_id TEXT PRIMARY KEY, stamp TEXT NOT NULL);
+-- What each source was indexed from (`kind:source`), so a changed one is redone.
+CREATE TABLE IF NOT EXISTS indexed (key TEXT PRIMARY KEY, stamp TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 """
 
 
@@ -165,33 +173,39 @@ def _connect() -> sqlite3.Connection:
     con = sqlite3.connect(str(DB), timeout=10)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")
-    con.executescript(_SCHEMA)
+    try:
+        got = con.execute("SELECT value FROM meta WHERE key='schema'").fetchone()
+    except sqlite3.OperationalError:
+        got = None
+    if not got or got[0] != str(SCHEMA):
+        for t in ("pieces_fts", "pieces", "indexed", "meta"):
+            con.execute(f"DROP TABLE IF EXISTS {t}")
+        con.executescript(_SCHEMA)
+        con.execute("INSERT INTO meta VALUES ('schema', ?)", (str(SCHEMA),))
+        con.commit()
     return con
 
 
-def pieces(body: str) -> list[str]:
-    """A transcript's body as overlapping pieces of up to TURNS turns."""
-    turns = []
-    for line in body.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        if turns and not re.match(r"^(them|you):", line):
-            turns[-1] += " " + line                 # a continuation of the turn before
-        else:
-            turns.append(line)
-    cut = []
-    for t in turns:                                # one long turn becomes several
-        while len(t) > MAX_CHARS:
-            at = t.rfind(" ", 0, MAX_CHARS)
-            at = at if at > MAX_CHARS // 2 else MAX_CHARS
-            cut.append(t[:at])
-            t = t[at:].strip()
-        cut.append(t)
-    if len(cut) <= TURNS:
-        return ["\n".join(cut)] if cut else []
-    step = TURNS - OVERLAP
-    return ["\n".join(cut[i:i + TURNS]) for i in range(0, len(cut) - OVERLAP, step)]
+def pieces(turns: list[tuple]) -> list[tuple[str, int, "float | None"]]:
+    """Turns (time or None, who, text) as overlapping pieces of up to TURNS turns:
+    (text, first turn's index, first turn's time). The text carries who said it, not when."""
+    lines: list[tuple[int, "float | None", str]] = []      # (turn index, time, line)
+    for i, (at, who, text) in enumerate(turns):
+        line = f"{who}: {text}"
+        while len(line) > MAX_CHARS:                       # one long turn becomes several
+            cut = line.rfind(" ", 0, MAX_CHARS)
+            cut = cut if cut > MAX_CHARS // 2 else MAX_CHARS
+            lines.append((i, at, line[:cut]))
+            line = line[cut:].strip()
+        lines.append((i, at, line))
+    if not lines:
+        return []
+    if len(lines) <= TURNS:
+        windows = [lines]
+    else:
+        step = TURNS - OVERLAP
+        windows = [lines[i:i + TURNS] for i in range(0, len(lines) - OVERLAP, step)]
+    return [("\n".join(l for _, _, l in w), w[0][0], w[0][1]) for w in windows]
 
 
 def _transcript_file(row: dict) -> tuple["object | None", str]:
@@ -209,69 +223,108 @@ def _transcript_file(row: dict) -> tuple["object | None", str]:
     return None, ""
 
 
-def index_once(limit: int = 200) -> int:
-    """(Re)index calls whose transcripts are new or changed, up to `limit` of them. Returns how
-    many. Nothing while the model may not run (a call is on): they wait for the next pass."""
-    from . import calls
-    if not ready():
-        return 0
+def _threads() -> dict[str, list[dict]]:
+    """Messages by person, oldest first — WhatsApp and DDUET, and the owner's own replies — the
+    same rows the hub shows (web_ai.threads_extras)."""
+    from . import tools
+    out: dict[str, list[dict]] = {}
+    for r in tools.rows():
+        who = r.get("asker") or ""
+        owner_sent = r.get("outcome") == "owner_reply"
+        if not who or (not owner_sent and r.get("network") not in ("WA", "DDUET")):
+            continue
+        out.setdefault(who, []).append(r)
+    for v in out.values():
+        v.sort(key=lambda r: r.get("at", ""))
+    return out
+
+
+def _sources(limit: int) -> list[tuple]:
+    """What needs (re)indexing: (kind, source, person, at, turns, stamp), at most `limit`."""
+    from . import calls, carry
     with _db_lock:
         con = _connect()
         try:
-            done = {r["call_id"]: r["stamp"] for r in con.execute("SELECT call_id, stamp FROM indexed")}
+            done = {r["key"]: r["stamp"] for r in con.execute("SELECT key, stamp FROM indexed")}
         finally:
             con.close()
-    from . import carry
     todo = []
     for row in calls.recent(None):
         cid = row.get("call_id", "")
         if not cid:
             continue
         path, stamp = _transcript_file(row)
-        if path is None or done.get(cid) == stamp:
+        if path is None or done.get("call:" + cid) == stamp:
             continue
-        body = carry.read_body(path)
-        if body:
-            todo.append((row, body, stamp))
+        turns = carry.parse_turns(carry.read_body(path))
+        if turns:
+            todo.append(("call", cid, calls.person_of(row), row.get("at", ""), turns, stamp, None))
+        if len(todo) >= limit:
+            return todo
+    for who, rows in _threads().items():
+        stamp = f"{len(rows)}:{rows[-1].get('at', '')}"
+        if done.get("message:" + who) == stamp:
+            continue
+        # A MESSAGE IS ONE OR TWO TURNS: theirs, and ours where it was answered. Each turn keeps
+        # its message's time, which is what the page scrolls to.
+        turns, ats = [], []
+        for r in rows:
+            if r.get("outcome") != "owner_reply" and r.get("question"):
+                turns.append((None, "them", r["question"])); ats.append(r.get("at", ""))
+            if r.get("answer"):
+                turns.append((None, "you", r["answer"])); ats.append(r.get("at", ""))
+        if turns:
+            todo.append(("message", who, who, rows[0].get("at", ""), turns, stamp, ats))
         if len(todo) >= limit:
             break
+    return todo
+
+
+def index_once(limit: int = 200) -> int:
+    """(Re)index the calls and message threads that are new or changed, up to `limit` of them.
+    Returns how many. Nothing while the model may not run (a call is on): they wait."""
+    if not ready():
+        return 0
     n = 0
-    for row, body, stamp in todo:
-        parts = pieces(body)
-        vecs = embed([DOC.format(p) for p in parts]) if parts else []
+    for kind, source, person, at, turns, stamp, ats in _sources(limit):
+        parts = pieces(turns)
+        vecs = embed([DOC.format(p) for p, _, _ in parts]) if parts else []
         if vecs is None:
             break                                  # a call came on, or the model is gone
-        cid = row["call_id"]
         with _db_lock:
             con = _connect()
             try:
-                for (pid,) in con.execute("SELECT id FROM pieces WHERE call_id = ?", (cid,)).fetchall():
-                    con.execute("INSERT INTO pieces_fts(pieces_fts, rowid, text) "
-                                "SELECT 'delete', id, text FROM pieces WHERE id = ?", (pid,))
-                con.execute("DELETE FROM pieces WHERE call_id = ?", (cid,))
-                for i, (text, v) in enumerate(zip(parts, vecs)):
+                old = con.execute("SELECT id, text FROM pieces WHERE kind = ? AND source = ?",
+                                  (kind, source)).fetchall()
+                for r in old:
+                    con.execute("INSERT INTO pieces_fts(pieces_fts, rowid, text) VALUES ('delete', ?, ?)",
+                                (r["id"], r["text"]))
+                con.execute("DELETE FROM pieces WHERE kind = ? AND source = ?", (kind, source))
+                for i, ((text, turn, t), v) in enumerate(zip(parts, vecs)):
                     cur = con.execute(
-                        "INSERT INTO pieces (call_id, person, at, idx, text, vec) VALUES (?,?,?,?,?,?)",
-                        (cid, calls.person_of(row), row.get("at", ""), i, text,
+                        "INSERT INTO pieces (kind, source, person, at, idx, turn, t, text, vec) "
+                        "VALUES (?,?,?,?,?,?,?,?,?)",
+                        (kind, source, person, ats[turn] if ats else at, i, turn, t, text,
                          v.astype("float16").tobytes()))
                     con.execute("INSERT INTO pieces_fts(rowid, text) VALUES (?, ?)", (cur.lastrowid, text))
-                con.execute("INSERT OR REPLACE INTO indexed VALUES (?, ?)", (cid, stamp))
+                con.execute("INSERT OR REPLACE INTO indexed VALUES (?, ?)", (f"{kind}:{source}", stamp))
                 con.commit()
             finally:
                 con.close()
         n += 1
     if n:
-        logger.info("search: indexed %d call(s)", n)
+        logger.info("search: indexed %d conversation(s)", n)
     return n
 
 
 # ---- asking ------------------------------------------------------------------------------------
 
 def search(q: str, who: str = "", k: int = 8) -> list[dict]:
-    """The pieces that best answer `q`, best first: {call_id, person, at, text, how}.
-
-    `how` says which half found it: "meaning", "words", or "both". With the model unavailable
-    (a call is on, or it is not downloaded) the keyword half answers alone.
+    """The pieces that best answer `q`, best first, from calls and messages alike:
+    {kind, source, person, at, turn, t, text, how}. `kind` is "call" (source = the call's id, `t`
+    seconds into its recording when known) or "message" (source = the person; `at` is the
+    message's time). `how` says which half found it: "meaning", "words", or "both". With the model
+    unavailable (a call is on, or it is not downloaded) the keyword half answers alone.
     """
     import numpy as np
     q = (q or "").strip()
@@ -281,8 +334,8 @@ def search(q: str, who: str = "", k: int = 8) -> list[dict]:
         con = _connect()
         try:
             where, args = ("WHERE person = ?", (who,)) if who else ("", ())
-            rows = con.execute(f"SELECT id, call_id, person, at, text, vec FROM pieces {where}",
-                               args).fetchall()
+            rows = con.execute("SELECT id, kind, source, person, at, turn, t, text, vec "
+                               f"FROM pieces {where}", args).fetchall()
             words: list[int] = []
             if len(q) >= 3:                       # the trigram index needs three characters
                 phrase = '"' + q.replace('"', '""') + '"'
@@ -314,8 +367,10 @@ def search(q: str, who: str = "", k: int = 8) -> list[dict]:
     for pid in sorted(score, key=score.get, reverse=True)[:k]:
         r = by_id[pid]
         how = "both" if pid in meaning and pid in words else ("meaning" if pid in meaning else "words")
-        out.append({"call_id": r["call_id"], "person": r["person"], "at": r["at"],
-                    "text": r["text"], "how": how})
+        out.append({"kind": r["kind"], "source": r["source"], "person": r["person"], "at": r["at"],
+                    "turn": r["turn"], "t": r["t"], "text": r["text"], "how": how,
+                    # the call's id, as the hub has used it
+                    "call_id": r["source"] if r["kind"] == "call" else ""})
     return out
 
 

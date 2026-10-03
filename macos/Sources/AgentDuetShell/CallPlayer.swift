@@ -49,6 +49,20 @@ import Foundation
         resume()
     }
 
+    /// Play this call's recording from `seconds` — a turn of its transcript was clicked.
+    func play(callID: String, path: String, from seconds: Double) {
+        places[callID] = seconds
+        if self.callID == callID, let player {
+            player.currentTime = seconds
+            position = seconds
+            if !player.isPlaying { resume() }
+            return
+        }
+        if self.callID != nil { pause() }
+        self.callID = nil                           // so toggle loads it, at the place just set
+        toggle(callID: callID, path: path)
+    }
+
     /// Where this call's recording is, played or paused.
     func place(of callID: String) -> Double {
         self.callID == callID ? position : places[callID] ?? 0

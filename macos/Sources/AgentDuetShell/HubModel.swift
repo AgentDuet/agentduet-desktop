@@ -21,6 +21,8 @@ import Foundation
         let id: Int
         let mine: Bool
         var text: String
+        /// Seconds into the call's recording, where the transcript says (`[0:12] them: …`).
+        var at: Double? = nil
     }
 
     /// NOT A PERSON, so pinned above the list rather than sorted into it.
@@ -56,6 +58,9 @@ import Foundation
     @Published private(set) var hits: [JSON] = []
     /// A call to scroll to once its person's page has it — a search result that was opened.
     @Published var focusCall: String?
+    /// The turn of that call (search.py's `turn`), or the message's time for a message hit.
+    @Published var focusTurn: Int?
+    @Published var focusMessage: String?
     private var searchTask: Task<Void, Never>?
 
     /// SEARCH WHAT WAS SAID, a moment after typing stops: three characters at least, which is
@@ -74,7 +79,14 @@ import Foundation
     }
 
     func openHit(_ h: JSON) {
-        focusCall = h.str("call_id")
+        if h.str("kind") == "message" {
+            focusCall = nil; focusTurn = nil
+            focusMessage = h.str("at")
+        } else {
+            focusMessage = nil
+            focusCall = h.str("call_id")
+            focusTurn = h["turn"] as? Int ?? (h["turn"] as? NSNumber)?.intValue
+        }
         pick(h.str("person"))
     }
     #endif
@@ -196,11 +208,18 @@ import Foundation
     static func turns(_ transcript: String) -> [Turn] {
         var out: [Turn] = []
         for line in transcript.split(separator: "\n", omittingEmptySubsequences: false) {
-            let s = String(line)
+            // A TURN'S TIME leads its line since 2026-10-03: `[0:12] them: …`, `[1:05:30] you: …`.
+            var s = String(line)
+            var at: Double?
+            if s.hasPrefix("["), let close = s.firstIndex(of: "]") {
+                let parts = s[s.index(after: s.startIndex)..<close].split(separator: ":").compactMap { Double($0) }
+                if parts.count >= 2 { at = parts.reduce(0) { $0 * 60 + $1 } }
+                s = s[s.index(after: close)...].trimmingCharacters(in: .whitespaces)
+            }
             if s.hasPrefix("you:") || s.hasPrefix("them:") {
                 let mine = s.hasPrefix("you:")
                 let text = s.dropFirst(mine ? 4 : 5).trimmingCharacters(in: .whitespaces)
-                out.append(Turn(id: out.count, mine: mine, text: text))
+                out.append(Turn(id: out.count, mine: mine, text: text, at: at))
             } else if !out.isEmpty, !s.trimmingCharacters(in: .whitespaces).isEmpty {
                 out[out.count - 1].text += "\n" + s
             }
