@@ -72,6 +72,15 @@ SCENARIOS = [
         ("About: not a one-off delay", lambda t: "late" not in about(t) and "traffic" not in about(t)),
         ("About: no invented relation", lambda t: not any(r in about(t) for r in RELATIONS)),
     ]),
+    ("buyer", "Amir", [
+        ("2026-09-29T16:00:00",
+         "them: Hi, I bought the 500 minutes plan from your company last month.\n"
+         "you: Yes, how can I help?\nthem: I want to upgrade it to the 1000 plan.\n"
+         "you: Sure, I'll send you the form."),
+    ], [
+        ("About: a customer, though nobody said the word", lambda t: "customer" in about(t)),
+        ("no name in the summary", lambda t: "amir" not in t.lower()),
+    ]),
     ("quiet", "Raj", [
         ("2026-09-29T11:00:00",
          "them: Hello, calling about the parcel.\nyou: Yes?\n"

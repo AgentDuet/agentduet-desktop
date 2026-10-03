@@ -927,6 +927,13 @@ async def main() -> None:
     from . import live as _live
     asyncio.create_task(_live.worker())
 
+    # THE DECISION MODEL the summary checks relationships with (decider.py). Only where a local
+    # model is set up — a summary needs one anyway — and in the background: nothing waits on it,
+    # and until it lands the summary uses its word rule.
+    from . import decider as _dec, llm as _llm
+    if _llm.configured():
+        _dec.fetch_in_background()
+
     if not connector_ready():
         logger.info("No AgentDuet connector yet — running the owner's view only. "
                     "Sign in, or set AGENTDUET_API_KEY and AGENTDUET_CONNECTOR_UUID. "

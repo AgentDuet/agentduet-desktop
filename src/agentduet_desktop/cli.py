@@ -132,6 +132,15 @@ def cmd_status(args) -> int:
         for _n, _got, _total in _models.downloading():
             print(f"  fetching : {_n} — {_got} of {_total} MB"
                   f" ({(_got / _total * 100) if _total else 0:.0f}%)")
+    # THE DECISION MODEL'S RUNTIME — imported, not found, so a binary that bundled the package
+    # without its native library says so here instead of falling back quietly on a tester's Mac.
+    try:
+        import onnxruntime, tokenizers                             # noqa: F401,E401
+        from . import decider as _dec
+        _d = "available, model downloaded" if _dec.ready() else "available, model not downloaded"
+    except Exception as exc:
+        _d = f"NOT available — {type(exc).__name__}: {exc}"
+    print(f"  decider  : {_d}")
 
     # WHAT HAPPENS TO A CALL, before what the call machinery can do. Which mode is active
     # changes the answer to "why did nobody answer my test call?" more than any line below it,
@@ -296,6 +305,12 @@ def cmd_tools(args) -> int:
     return 0
 
 
+def cmd_decide(args) -> int:
+    """Hidden: the decision model's one-shot worker — JSON in, answers out (see decider.py)."""
+    from . import decider
+    return decider.serve_stdin()
+
+
 def cmd_connect(args) -> int:
     from . import hosts
     print(hosts.connect(apply=not args.show, install=args.install))
@@ -341,6 +356,10 @@ def main(argv: list[str] | None = None) -> int:
     mo.add_argument("action", nargs="?", choices=["list", "download"], default="list")
     mo.add_argument("name", nargs="?", default="")
     mo.set_defaults(fn=cmd_models)
+
+    # HIDDEN: run by the daemon as a child process, never by a person, so not in --help.
+    de = sub.add_parser("decide")
+    de.set_defaults(fn=cmd_decide)
 
     un = sub.add_parser("uninstall", help="undo what installing this left behind")
     # SEPARATE FLAGS, because these are different decisions. Models are re-downloadable disk;

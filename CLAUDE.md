@@ -939,6 +939,17 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       and chat). The pick does not use the measurement yet (see "Confirm the pick" above). The fixed instructions
       are 1,677 tokens (4.3 s cold) and worth trimming. Design: `docs/design.md`, *The
       assistant's context*.
+- [ ] **A DECISION MODEL checks who someone is to the owner — BUILT 2026-10-03, not yet in a release.**
+      `decider.py`: Strands Decider 2B (Apache-2.0) as the q8 ONNX conversion on ONNX Runtime's CPU
+      provider, pinned to one revision, 1.7 GB, fetched in the background where a local model is
+      set up. It picks one of given options with a calibrated probability rather than writing
+      text. Measured in a scratch harness: who-they-are 7/8 scripted where the word rule got 2/8,
+      16/16 real calls with nothing invented; worse than code at dates (3/5) and languages (12/16),
+      which stay code's. Runs in a CHILD PROCESS per batch (`agentduet-desktop decide`) so its
+      memory is certainly returned — in-process, 0.5 GB stayed allocated after release. ~1.7 s a
+      run, load included. **Open:** the fact-or-plan sort (7/9 scripted) is not wired yet; the
+      frozen `.app` has not run it (CI's `status` gate checks the runtime imports); and ~90 MB of
+      ONNX Runtime + tokenizers joins the `[local]` extra.
 - [ ] **Confirm the lead family on QUALITY.** Gemma 4 leads on speed, measured 2026-09-23 on the
       M5: E4B read a 1.6k-token call and wrote the reply in 8.7 s, against 15.2 s for Qwen3.5 9B and
       13.8 s for today's Qwen3 8B. Quality is unmeasured — a blind comparison on our own calls can

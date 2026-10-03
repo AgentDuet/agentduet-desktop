@@ -38,6 +38,10 @@ from agentduet_desktop import secretary_tools, tools
 # Redirect stores BEFORE any test writes. Module-level constants, so this must happen here
 # rather than inside a fixture.
 schedule.STORE = TMP / "schedule.json"
+# THE DECISION MODEL IS OFF FOR THE WHOLE SUITE: these tests read the real instance, where it may be
+# downloaded, and a model must not decide a rule test. Its own test turns it back on with a stub.
+from agentduet_desktop import decider as _decider
+_decider.ready = lambda: False
 capabilities.STORE = TMP / "capabilities.json"
 memory.STORE = TMP / "conversations.json"
 # Knowledge WRITES land on disk, so the root and the permissions file move too. Without this
@@ -6729,6 +6733,65 @@ def test_briefs_are_about_the_right_person() -> None:
        "correct_brief" in tools.RECORDER_TOOLS and "correct_brief" in _a.NEEDS_OWNER)
 
 
+def test_the_decider_checks_relationships() -> None:
+    """Who someone is to the owner: the decision model decides, remembered, with a fallback."""
+    print("\n  -- the decision model: relationships, remembered, corrected, and its fallback --")
+    import unittest.mock as mock
+    from agentduet_desktop import brief, decider
+    ask = {}
+    def answer(label, conf):
+        return lambda state, qs: (ask.update(state=state, qs=qs)
+                                  or {"relation": {"choice": label, "confidence": conf}})
+    said = [("2026-10-01T10:00:00", "them: I bought the 500 plan from your company last month.")]
+    with mock.patch.object(decider, "ready", lambda: True):
+        rec = {}
+        with mock.patch.object(decider, "ask", answer("customer", 0.72)):
+            about = brief._said_relations  # noqa (the fallback stays importable)
+            out = brief._keep_relations("A customer. Drives.", "customer")
+            eq("a sentence naming the stated relationship is kept", out, "A customer. Drives.")
+            got = brief._stated_relation(said[0][1])
+        eq("the model's answer comes back with its confidence", got, ("customer", 0.72))
+        ok("it is asked one choice, 'not said' among the options",
+           "not said" in ask["qs"]["relation"]["options"] and ask["qs"]["relation"]["kind"] == "choice")
+        eq("a relationship nobody stated is dropped", brief._keep_relations("A colleague. Drives.", None), "Drives.")
+        eq("as is one of another kind", brief._keep_relations("A colleague. Drives.", "customer"), "Drives.")
+        eq("'client' counts as customer", brief._keep_relations("A long-time client.", "customer"), "A long-time client.")
+        class Fake:
+            def __init__(self, about): self.about = about
+            def complete(self, prompt, think=False):
+                return "NONE" if "OPEN items" in prompt else self.about
+        with mock.patch("agentduet_desktop.llm.client", lambda *a: Fake("Drives.")), \
+             mock.patch.object(brief, "_person", lambda w: "Someone"), \
+             mock.patch.object(decider, "ask", answer("customer", 0.72)):
+            about, _ = brief._passes("+6511112222", rec, ["x"], sources=said)
+        eq("a confident relationship is written in when the model left it out", about, "A customer. Drives.")
+        eq("and remembered", rec["relation"]["label"], "customer")
+        with mock.patch("agentduet_desktop.llm.client", lambda *a: Fake("A customer. Drives.")), \
+             mock.patch.object(brief, "_person", lambda w: "Someone"), \
+             mock.patch.object(decider, "ask", answer("not said", 0.6)):
+            about, _ = brief._passes("+6511112222", rec, ["x"], sources=[("2026-10-02T10:00:00", "them: hi")])
+        eq("a later call that does not restate it does not unsay it", about, "A customer. Drives.")
+        brief._relation_correction(rec, "She is a supplier from Acme, not a customer")
+        eq("the owner's correction sets the relationship, word by word", rec["relation"]["label"], "supplier")
+        brief._relation_correction(rec, "she is not a supplier")
+        ok("and a negated one clears it", "relation" not in rec)
+    with mock.patch.object(decider, "ready", lambda: False), \
+         mock.patch.object(decider, "fetch_in_background", lambda: None):
+        eq("without the model the word rule decides", brief._stated_relation("anything"), None)
+    text, names, spans = decider._render_question(decider.choice("Who?", {"a": "first", "b": ""}))
+    eq("the prompt is upstream's layout, exactly", text,
+       '<question type="choice">\nSelect exactly one option.\nWho?\n<options>\n1. a \u2014 first\n2. b'
+       '\n</options>\n</question>\n<answer>')
+    eq("each option is read from its own line", [text[s:e] for s, e in spans], ["1. a \u2014 first", "2. b"])
+    ok("the model is pinned to one revision", len(decider.REVISION) == 40 and decider.MB > 1700)
+    root = pathlib.Path(__file__).parent.parent
+    ok("it runs in a child process, so its memory comes back",
+       '[sys.executable, "decide"]' in (root / "src/agentduet_desktop/decider.py").read_text()
+       and 'sub.add_parser("decide")' in (root / "src/agentduet_desktop/cli.py").read_text())
+    ok("CI fails a binary that cannot run it",
+       'decider  : available' in (root / ".github/workflows/build.yml").read_text())
+
+
 def test_cards_stay_after_open() -> None:
     """A calendar or email card stays after it is opened; only Dismiss removes it (issue #9)."""
     print("\n  -- calendar and email cards stay after they are opened --")
@@ -6869,6 +6932,7 @@ def main() -> None:
     test_appointments_are_a_tool()
     test_logs_can_be_exported()
     test_briefs_are_about_the_right_person()
+    test_the_decider_checks_relationships()
     # EVERY TEST MUST BE CALLED. They are invoked by hand above, so a new `test_*`
     # function is dead until someone adds a line — and a dead test is worse than no
     # test, because the count still goes up and the suite still says it passed. I
