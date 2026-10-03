@@ -126,9 +126,10 @@ def request(base, token, path, body=None, limit=400):
 #: written and none is waited for.
 MERGE_CHECK = """
 import _absent, wave
-from agentduet_desktop import carry, merge
+from agentduet_desktop import calls, carry, merge
 carry.legs().mkdir(parents=True, exist_ok=True)
 stem = "20261003T100000-cR"
+calls.record("cR", "+6591234567", "carried", outgoing=True, started=1759456800.0)
 for leg, start in (("caller", "100.0"), ("callee", "100.5")):
     w = carry.legs() / f"{stem}-{leg}.wav"
     with wave.open(str(w), "wb") as f:
@@ -144,7 +145,13 @@ out = carry.merged_wav(stem)
 with wave.open(str(out), "rb") as f:
     assert f.getnchannels() == 2, f.getnchannels()
     assert f.getnframes() == int(carry.SAMPLE_RATE * 1.5), f.getnframes()
-assert not carry.merged_txt(stem).exists(), "a transcript appeared in the recorder"
+text = carry.merged_txt(stem).read_text()
+head, body = carry.split_txt(text)
+assert head.startswith("Call: +6591234567") and "Direction: outgoing" in head, text
+assert "Length: 0:02" in head and f"Recording: {stem}.wav" in head, text
+assert body == "", "a transcript appeared in the recorder: " + body
+assert not list(carry.recordings().glob(".*.part")), "a half-written file was left"
+assert carry.transcript_of([f"{stem}.wav"], carry.recordings()) == ""
 assert merge.once() == 0, "merged twice"
 print("ok")
 """
@@ -252,7 +259,8 @@ def main() -> int:
     print("\n-- a call's two legs merge into one file, with no speech engine --")
     out = subprocess.run([sys.executable, "-c", MERGE_CHECK], capture_output=True, text=True,
                          env=env(tree, work / "user" / "merge"))
-    check("merged once, both sides aligned, no transcript", out.stdout.strip() == "ok",
+    check("merged once, both sides aligned, the call's details and no transcript",
+          out.stdout.strip() == "ok",
           (out.stdout + out.stderr)[-800:])
 
     print("\n-- the recorder daemon boots, and its routes answer --")

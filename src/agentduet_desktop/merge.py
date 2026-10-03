@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import pathlib
+import time
 import wave
 
 from . import carry
@@ -120,6 +122,84 @@ def recorded(wav: pathlib.Path) -> bool:
     return not any(carry.legs().glob(f"{stem}-*.wav.part"))
 
 
+# ---- the call's .txt: its header is written here ------------------------------------------
+
+#: How long a merged call waits for its row in calls.jsonl, which names who it was with. The row
+#: is written as the call ends, so it is normally there; this only covers a merge that runs
+#: first, and a call whose row never came (a crash), which then gets "unknown" rather than none.
+ROW_WAIT_SECONDS = 600
+
+
+def _row(stem: str) -> dict | None:
+    from . import calls
+    call_id = stem.split("-", 1)[1] if "-" in stem else stem
+    return next((r for r in calls.recent(2000) if r.get("call_id") == call_id), None)
+
+
+def _length(path: pathlib.Path) -> str:
+    try:
+        with wave.open(str(path), "rb") as w:
+            s = round(w.getnframes() / float(w.getframerate() or 1))
+    except (OSError, EOFError, wave.Error):
+        return ""
+    return f"{s // 60}:{s % 60:02d}"
+
+
+def header(stem: str, row: dict | None) -> str:
+    """The call's details, for the top of its `.txt` — see carry.HEADER_FIRST for the format.
+
+    THE NUMBER IS THE KEY, the name only a label: a name changes in Contacts and this header
+    does not follow it, so nothing may match a person by it.
+    """
+    from . import names
+    row = row or {}
+    who = (row.get("caller") or "").strip()
+    if who in ("", "?"):
+        call = "unknown"
+    else:
+        name = names.name_for(who)
+        call = f"{name} ({who})" if name and name != who else who
+    started = (row.get("started") or row.get("at") or "").replace("T", " ")
+    lines = [f"{carry.HEADER_FIRST} {call}"]
+    if row:
+        lines.append(f"Direction: {'outgoing' if row.get('outgoing') else 'incoming'}")
+    if started:
+        lines.append(f"Started: {started}")
+    wav = carry.merged_wav(stem)
+    if length := _length(wav):
+        lines.append(f"Length: {length}")
+    lines.append(f"Recording: {wav.name}")
+    return "\n".join(lines)
+
+
+def write_txt(stem: str, body: str | None = None, row: dict | None = None) -> None:
+    """Write a call's `.txt`: its header, then `body` — or the body already there when None.
+
+    WRITTEN WHOLE, BY RENAME. Another app may be watching this folder and read the file the
+    moment it appears; written in place it could be caught empty or cut short, and a reader that
+    found no header would write its own without one. A rename is one step, so the file is either
+    the old one or the new one. The header already on disk is kept when there is no row to build
+    one from, so a later body write cannot erase details the recorder wrote.
+    """
+    path = carry.merged_txt(stem)
+    old_head, old_body = ("", "")
+    if path.is_file():
+        try:
+            old_head, old_body = carry.split_txt(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError):
+            pass
+    head = header(stem, row) if row is not None or not old_head else old_head
+    text = head + "\n\n" + ((old_body if body is None else body).strip())
+    tmp = path.with_name(f".{path.name}.part")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(text.rstrip() + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError as exc:
+        logger.warning("merge %s: could not write %s (%s)", stem, path.name, exc)
+        tmp.unlink(missing_ok=True)
+
+
 def once(settled=None, text=None) -> int:
     """Merge every call whose legs are settled. Returns how many were written.
 
@@ -130,7 +210,12 @@ def once(settled=None, text=None) -> int:
     for stem in ready(settled or recorded):
         wavs = sorted(w for w in carry.legs().glob("*.wav")
                       if carry.stem_of(w.name) == stem)
+        # WAIT FOR THE ROW that says who the call was with, briefly — see ROW_WAIT_SECONDS.
+        row = _row(stem)
+        if row is None and wavs and time.time() - max(w.stat().st_mtime for w in wavs) < ROW_WAIT_SECONDS:
+            continue
         if audio(stem, wavs):
+            write_txt(stem, row=row or {})
             if text is not None:
                 text(stem, wavs)
             done += 1

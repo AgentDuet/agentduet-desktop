@@ -594,7 +594,8 @@ def list_calls(days: str = "7") -> str:
         except ValueError:
             pass
         folder, names = carry.call_audio(r.get("recordings", []), r.get("call_id", ""))
-        done = any((folder / n).with_suffix(".txt").is_file() for n in names)
+        # A BODY, not a file: the recorder writes the header before anything is transcribed.
+        done = any(carry.read_body((folder / n).with_suffix(".txt")) for n in names)
         out.append(f"- {at}  {_caller_label(r.get('caller') or '')}  "
                    f"({'transcript ready' if done else 'no transcript yet'})")
     return "\n".join(out) if out else f"No calls recorded in the last {days} days."
@@ -699,7 +700,7 @@ def read_call(who: str = "", when: str = "") -> str:
                     # from anything said. Only the body is the stranger's, so only the body is marked;
                     # marking the header too would let a transcript forge a plausible one.
                     hits.append(f"--- {r.get('at','')} with {_caller_label(r.get('caller') or '')} ---\n"
-                                + untrusted(t.read_text()[:4000]))
+                                + untrusted(carry.read_body(t)[:4000]))
                 except OSError:
                     pass
                 break

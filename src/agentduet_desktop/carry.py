@@ -96,6 +96,33 @@ def merged_txt(stem: str) -> pathlib.Path:
     return recordings() / f"{stem}.txt"
 
 
+#: THE CALL'S DETAILS head its `.txt` (2026-10-03): who, which way, when, how long, which audio —
+#: "key: value" lines, then a blank line, then the transcript. The RECORDER writes the header
+#: (`merge.write_txt`) and never reads past it; the AI side writes the body and keeps the header
+#: as it found it. A file is recognised as having one by its first line. Files from before this
+#: are all body, which is how they read.
+HEADER_FIRST = "Call:"
+
+
+def split_txt(text: str) -> tuple[str, str]:
+    """(header, body) of a call's `.txt`; ("", everything) for one written before headers."""
+    lines = text.splitlines()
+    if not lines or not lines[0].startswith(HEADER_FIRST):
+        return "", text.strip()
+    for i, line in enumerate(lines):
+        if not line.strip():
+            return "\n".join(lines[:i]), "\n".join(lines[i + 1:]).strip()
+    return "\n".join(lines), ""
+
+
+def read_body(path: pathlib.Path) -> str:
+    """The transcript in a call's `.txt`, without its header. "" when unreadable or absent."""
+    try:
+        return split_txt(path.read_text(encoding="utf-8"))[1]
+    except (OSError, UnicodeDecodeError):
+        return ""
+
+
 def transcript_of(names: list[str], folder: pathlib.Path) -> str:
     """The labelled transcript for one call, or "" while it is still being made.
 
@@ -118,6 +145,11 @@ def transcript_of(names: list[str], folder: pathlib.Path) -> str:
     waiting. Found 2026-09-09 by extracting this function and testing it by running it; the
     grep-based assertion it replaced could not see it.
     """
+    # THE RECORDER SHOWS NO TRANSCRIPT, even one another app wrote into the file: it records
+    # calls, and what was said is the AI side's to show (edition.py).
+    from . import edition
+    if not edition.ai():
+        return ""
     # THE OTHER PARTY FIRST. There is no timing to order legs by — that is what the merged
     # transcript is for — so this is sorted, and plain sorting puts `-callee` (the owner's own
     # side) above `-caller`. Their words are the ones carrying the information, and an inbound
@@ -127,10 +159,7 @@ def transcript_of(names: list[str], folder: pathlib.Path) -> str:
         t = (folder / n).with_suffix(".txt")
         if not t.is_file():
             continue
-        try:
-            body = t.read_text().strip()
-        except OSError:
-            continue
+        body = read_body(t)
         if not body:
             continue
         stem = pathlib.Path(n).stem

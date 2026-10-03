@@ -1451,10 +1451,9 @@ def _merge_text(stem: str, wavs: list[pathlib.Path]) -> None:
     else:
         logger.info("merge %s: no timings for one or both legs — grouping by party", stem)
         parts = [f"{labels[leg]}: {_text(legs[leg])}" for leg in labels if leg in legs]
-    try:
-        carry.merged_txt(stem).write_text("\n".join(parts) + "\n")
-    except OSError as exc:
-        logger.warning("merge %s: could not write the transcript (%s)", stem, exc)
+    # THE BODY ONLY: the header above it is the recorder's (merge.write_txt keeps it).
+    from . import merge
+    merge.write_txt(stem, "\n".join(parts))
 
 
 def merge_once() -> int:
