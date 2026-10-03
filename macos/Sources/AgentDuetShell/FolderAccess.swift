@@ -75,7 +75,7 @@ enum FolderAccess {
         // the folder the panel is showing, so the owner allows Documents in one click.
         panel.directoryURL = start ?? realHome.appendingPathComponent("Documents")
         panel.prompt = "Allow"
-        panel.message = "Location to store AgentDuet recordings and transcripts"
+        panel.message = "Location to store AgentDuet \(Edition.kept)"
         let finish: (NSApplication.ModalResponse) -> Void = { r in done(r == .OK ? panel.url : nil) }
         if let window { panel.beginSheetModal(for: window, completionHandler: finish) }
         else { finish(panel.runModal()) }

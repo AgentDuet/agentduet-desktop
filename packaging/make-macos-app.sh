@@ -9,13 +9,29 @@
 # reviewable, and CI is the only machine that runs them.
 #
 # Usage:  packaging/make-macos-app.sh <swift-binary> <daemon-binary> <output-dir>
+#
+# EDITION=recorder assembles the recorder (see src/agentduet_desktop/edition.py): its own name
+# and bundle id, so it installs beside the full app and keeps its own macOS permissions, no
+# speech helper, and usage strings that name no transcript. APP_NAME and BUNDLE_ID override
+# either edition's — the place a partner's branding goes.
 set -euo pipefail
 
 SHELL_BIN="${1:?swift binary}"
 DAEMON_BIN="${2:?pyinstaller binary}"
 OUT_DIR="${3:-dist-bin}"
 
-APP="$OUT_DIR/AgentDuet Desktop.app"
+EDITION="${EDITION:-full}"
+if [ "$EDITION" = "recorder" ]; then
+  APP_NAME="${APP_NAME:-AgentDuet Recorder}"
+  BUNDLE_ID="${BUNDLE_ID:-com.b3networks.agentduet-recorder}"
+  DOCS_WHY="AgentDuet keeps your call recordings in Documents › AgentDuet."
+else
+  APP_NAME="${APP_NAME:-AgentDuet Desktop}"
+  BUNDLE_ID="${BUNDLE_ID:-com.b3networks.agentduet-desktop}"
+  DOCS_WHY="AgentDuet keeps your call recordings and transcripts in Documents › AgentDuet."
+fi
+
+APP="$OUT_DIR/$APP_NAME.app"
 # FROM THE PACKAGE, not pyproject.toml. pyproject's `version` is `{attr = "agentduet_desktop.__version__"}`
 # — a pointer, not a number — so reading it there stamped every bundle with the literal text
 # `agentduet_desktop.__version__`, in Finder's Get Info and in the window's user agent.
@@ -40,7 +56,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 # The shell is the app. `CFBundleExecutable` must match this name exactly.
-cp "$SHELL_BIN" "$APP/Contents/MacOS/AgentDuet Desktop"
+cp "$SHELL_BIN" "$APP/Contents/MacOS/$APP_NAME"
 # The daemon rides ALONGSIDE it, which is where Daemon.swift looks. Contents/MacOS rather than
 # Resources because it is an executable, and codesign treats the two directories differently —
 # a Mach-O under Resources is a signing error, not a preference.
@@ -75,14 +91,15 @@ fi
 # comes out of the same `swift build` and a third argument that is almost always "the obvious
 # sibling" is a third argument to get wrong. Absent, transcribe.py falls back to Whisper — which
 # is also what happens in the pywebview build, where no Swift is compiled at all.
+# NEVER IN THE RECORDER, which has no speech engine — even when a full build left one beside it.
 _stt="$(dirname "$SHELL_BIN")/AgentDuetSTT"
-if [ -f "$_stt" ]; then
+if [ -f "$_stt" ] && [ "$EDITION" != "recorder" ]; then
   cp "$_stt" "$APP/Contents/MacOS/agentduet-stt"
   chmod +x "$APP/Contents/MacOS/agentduet-stt"
   echo "  $APP/Contents/MacOS/agentduet-stt"
 fi
 
-chmod +x "$APP/Contents/MacOS/AgentDuet Desktop" "$APP/Contents/MacOS/agentduet-desktop"
+chmod +x "$APP/Contents/MacOS/$APP_NAME" "$APP/Contents/MacOS/agentduet-desktop"
 
 # ---- the icon ------------------------------------------------------------------------------
 #
@@ -132,10 +149,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>AgentDuet Desktop</string>
-  <key>CFBundleDisplayName</key><string>AgentDuet Desktop</string>
-  <key>CFBundleIdentifier</key><string>com.b3networks.agentduet-desktop</string>
-  <key>CFBundleExecutable</key><string>AgentDuet Desktop</string>
+  <key>CFBundleName</key><string>${APP_NAME}</string>
+  <key>CFBundleDisplayName</key><string>${APP_NAME}</string>
+  <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
+  <key>CFBundleExecutable</key><string>${APP_NAME}</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <!-- Named WITHOUT the extension, which is what CFBundleIconFile expects; macOS appends
        .icns. A missing file here is not an error at build time and shows as the generic
@@ -155,14 +172,14 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSUIElement</key><true/>
   <!-- NO NSMicrophoneUsageDescription since 2026-09-30: answering in the app is quarantined
        (mobile MITM), and the app does not ask for the microphone. Without the string macOS KILLS
-       an app that asks, which is why every place that could ask checks `Quarantine.answerHere`.
+       an app that asks, which is why every place that could ask checks Quarantine.answerHere.
        Restore it with the audio-input entitlement to bring the in-app phone back. -->
   <!-- NAMES FOR CALLERS, from Contacts (ContactsWatch.swift). Optional in setup; without this
        string macOS kills the app the first time it asks. -->
   <key>NSContactsUsageDescription</key><string>AgentDuet shows the names of people who call you, from your contacts.</string>
   <!-- RECORDINGS AND TRANSCRIPTS live in ~/Documents/AgentDuet, which macOS protects. Setup
        asks for it on its Permissions step; this is the reason macOS shows in its prompt. -->
-  <key>NSDocumentsFolderUsageDescription</key><string>AgentDuet keeps your call recordings and transcripts in Documents › AgentDuet.</string>
+  <key>NSDocumentsFolderUsageDescription</key><string>${DOCS_WHY}</string>
   <!-- The window loads http://127.0.0.1. Loopback is the ONE exemption ATS grants by name;
        without this key a debug build can still be refused, and NSAllowsArbitraryLoads would
        buy the same thing by switching the policy off everywhere. -->

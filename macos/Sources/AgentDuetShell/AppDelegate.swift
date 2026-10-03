@@ -168,9 +168,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             // A TEMPLATE image, so macOS tints it for a light or dark menu bar. A coloured
             // icon looks wrong in one of the two and there is no way to supply both.
             let symbol = NSImage(systemSymbolName: "phone.badge.waveform",
-                                 accessibilityDescription: "AgentDuet Desktop")
+                                 accessibilityDescription: Edition.appName)
                 ?? NSImage(systemSymbolName: "phone.fill",
-                           accessibilityDescription: "AgentDuet Desktop")
+                           accessibilityDescription: Edition.appName)
             if let symbol {
                 symbol.isTemplate = true
                 button.image = symbol
@@ -202,7 +202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                                keyEquivalent: "")
         menu.addItem(loginItem)
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit AgentDuet Desktop",
+        menu.addItem(withTitle: "Quit \(Edition.appName)",
                      action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         // Items whose action lives on THIS object need it as their target; the Quit item is a
         // responder-chain message and finds NSApp on its own.
@@ -475,7 +475,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             // reserves the space for them under `html.native`.
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
-        window.title = "AgentDuet Desktop"
+        window.title = Edition.appName
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.backgroundColor = pageBackground
@@ -661,7 +661,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     /// inside the webview. Those are menu-driven on this platform, so an app that skips the Edit
     /// menu ships a text field the owner cannot paste an API key into.
     private func buildMenu() {
-        let name = "AgentDuet Desktop"
+        let name = Edition.appName
         let main = NSMenu()
 
         let appItem = NSMenuItem()
@@ -744,7 +744,7 @@ extension AppDelegate: SettingsHost {
         panel.allowsMultipleSelection = false
         panel.directoryURL = start
         panel.prompt = "Choose"
-        panel.message = "Location to store AgentDuet recordings and transcripts"
+        panel.message = "Location to store AgentDuet \(Edition.kept)"
         let finish: (NSApplication.ModalResponse) -> Void = { r in done(r == .OK ? panel.url : nil) }
         if let over { panel.beginSheetModal(for: over, completionHandler: finish) }
         else { finish(panel.runModal()) }
@@ -794,7 +794,7 @@ extension AppDelegate: SettingsHost {
             panel.nameFieldStringValue = "AgentDuet Logs \(stamp).zip"
             panel.allowedContentTypes = [.zip]
             // WHAT IS IN IT, said where the owner decides to send it.
-            panel.message = "The logs include phone numbers and caller names. Recordings, transcripts and passwords are not included."
+            panel.message = "The logs include phone numbers and caller names. \(Edition.notInLogs)"
             NSApp.activate(ignoringOtherApps: true)
             guard panel.runModal() == .OK, let dest = panel.url else { return }
             do { try data.write(to: dest) } catch {

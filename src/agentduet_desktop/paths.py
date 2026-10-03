@@ -28,6 +28,8 @@ import pathlib
 import shutil
 import sys
 
+from . import edition as _edition
+
 #: The install directory. Code and shipped assets only.
 INSTALL = pathlib.Path(__file__).parent
 
@@ -51,6 +53,11 @@ def home() -> pathlib.Path:
     """
     if explicit := os.getenv("AGENTDUET_HOME"):
         return pathlib.Path(explicit)
+    # THE RECORDER EDITION KEEPS ITS OWN, so the two products never share an instance: a
+    # recorder must not inherit an agent's knowledge, and the full product must not find an
+    # instance seeded without any. The shell resolves the same name (Daemon.swift).
+    if _edition.name() == _edition.RECORDER:
+        return pathlib.Path.home() / ".agentduet-recorder"
     return pathlib.Path.home() / ".agentduet-desktop"
 
 
@@ -90,7 +97,9 @@ INDEX = HOME / "index"
 # folder so the package's importable modules and the owner's starting config are never confused
 # for each other — before the split they sat side by side, and a stale seed was migrated into a
 # fresh instance because nothing distinguished "template" from "leftover instance data".
-TEMPLATES = INSTALL / "templates"
+#: THE RECORDER EDITION SEEDS ITS OWN, which says nothing of an agent, a model or a transcript —
+#: and has no knowledge, people, permissions or capabilities to seed at all (see edition.py).
+TEMPLATES = INSTALL / ("templates-recorder" if _edition.name() == _edition.RECORDER else "templates")
 #: Working capabilities to copy from or read. NEVER installed — a new owner should not inherit
 #: someone else's business.
 EXAMPLES = INSTALL / "examples"

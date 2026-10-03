@@ -12,7 +12,11 @@ struct SetupView: View {
                 switch model.step {
                 case .signIn: SignInStep(model: model)
                 case .permissions: PermissionsStep(model: model)
+                #if RECORDER
+                case .quick: EmptyView()        // the recorder has nothing to name or download
+                #else
                 case .quick: QuickStep(model: model)
+                #endif
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -56,8 +60,13 @@ private struct SignInStep: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 18) {
+                #if RECORDER
+                StepHeader(title: "Welcome to AgentDuet",
+                           subtitle: "Your calls, recorded on this Mac. Please sign in to link your line.")
+                #else
                 StepHeader(title: "Welcome to AgentDuet",
                            subtitle: "On-device AI for your calls. Please sign in to link your desktop AI hub.")
+                #endif
                 SignInPanel(model: model.signIn)
                 Button("Set Up Without Signing In") { model.skipSignIn() }.buttonStyle(.link)
             }
@@ -77,7 +86,7 @@ private struct PermissionsStep: View {
             Form {
                 Section {
                     PermissionRow(title: "Documents folder (Required)",
-                                  detail: "Your call recordings and transcripts are kept in Documents › AgentDuet.",
+                                  detail: Self.documentsDetail,
                                   state: s.documentsState, allow: s.allowDocuments,
                                   openSettings: { s.openPrivacy("privacy") })
                     if !Quarantine.answerHere {
@@ -104,8 +113,17 @@ private struct PermissionsStep: View {
     }
 }
 
+extension PermissionsStep {
+    #if RECORDER
+    static let documentsDetail = "Your call recordings are kept in Documents › AgentDuet."
+    #else
+    static let documentsDetail = "Your call recordings and transcripts are kept in Documents › AgentDuet."
+    #endif
+}
+
 // MARK: - quick setup
 
+#if !RECORDER
 private struct QuickStep: View {
     @ObservedObject var model: SetupModel
     var body: some View {
@@ -169,6 +187,8 @@ private struct QuickStep: View {
     }
 }
 
+#endif
+
 // MARK: - the buttons
 
 private struct BottomBar: View {
@@ -190,9 +210,17 @@ private struct BottomBar: View {
             case .signIn:
                 EmptyView()
             case .permissions:
+                #if RECORDER
+                // THE LAST STEP in the recorder: there is no model to name or fetch.
+                if model.finishing { ProgressView().controlSize(.small) }
+                Button("Done") { model.finish() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!model.documentsAllowed || model.finishing)
+                #else
                 Button("Continue") { model.toQuick() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!model.documentsAllowed)
+                #endif
             case .quick:
                 Button("Back") { model.step = .permissions }
                 if model.finishing { ProgressView().controlSize(.small) }

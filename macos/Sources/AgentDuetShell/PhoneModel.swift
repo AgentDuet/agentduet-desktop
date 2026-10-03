@@ -35,11 +35,15 @@ enum Quarantine {
     @Published var error = ""
     /// The last answer failed because microphone access is off.
     @Published private(set) var needsMicSetting = false
-    /// Live captions by call id: who, when it began, whether it ended, and the captions so far.
+    /// Calls on now, by call id: who, when it began, whether it ended.
     @Published private(set) var live: [String: LiveCall] = [:]
+    struct LiveCall { var who: String; var started: Double; var ended: Bool }
 
+    #if !RECORDER
+    /// Live captions by call id — the full edition's speech engine. The recorder has none.
+    @Published private(set) var captions: [String: [Caption]] = [:]
     struct Caption: Identifiable { let id: Int; let mine: Bool; let at: Double; let text: String }
-    struct LiveCall { var who: String; var started: Double; var ended: Bool; var captions: [Caption] }
+    #endif
 
     /// A call is ringing, or on — here or carried through — so nothing else may play.
     var busy: Bool { state != "idle" || live.values.contains { !$0.ended } }
@@ -114,18 +118,23 @@ enum Quarantine {
         case "live_calls":
             live = [:]
             for c in m["calls"] as? [JSON] ?? [] {
-                live[c.str("call")] = LiveCall(who: c.str("who"), started: c.num("started"), ended: false,
-                                               captions: (c["captions"] as? [JSON] ?? []).enumerated().map(Self.caption))
+                live[c.str("call")] = LiveCall(who: c.str("who"), started: c.num("started"), ended: false)
+                #if !RECORDER
+                captions[c.str("call")] = (c["captions"] as? [JSON] ?? []).enumerated().map(Self.caption)
+                #endif
             }
         case "live_start":
-            live[m.str("call")] = LiveCall(who: m.str("who"), started: m.num("started"), ended: false, captions: [])
+            live[m.str("call")] = LiveCall(who: m.str("who"), started: m.num("started"), ended: false)
         case "live_end":
             live[m.str("call")]?.ended = true
+        #if !RECORDER
         case "caption":
-            if var c = live[m.str("call")] {
-                c.captions.append(Self.caption((c.captions.count, m)))
-                live[m.str("call")] = c
+            if live[m.str("call")] != nil {
+                var c = captions[m.str("call")] ?? []
+                c.append(Self.caption((c.count, m)))
+                captions[m.str("call")] = c
             }
+        #endif
         default:
             state = m.str("type").isEmpty ? "idle" : m.str("type")
             from = m.str("from")
@@ -140,9 +149,11 @@ enum Quarantine {
         }
     }
 
+    #if !RECORDER
     private static func caption(_ item: (Int, JSON)) -> Caption {
         Caption(id: item.0, mine: item.1.str("leg") == "callee", at: item.1.num("at"), text: item.1.str("text"))
     }
+    #endif
 
     private func reset() {
         state = "idle"; mine = false; muted = false

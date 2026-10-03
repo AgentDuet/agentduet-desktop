@@ -28,9 +28,11 @@ import Foundation
     var onQuit: (() -> Void)?
 
     private var nameWas = ""
+    #if !RECORDER
     private var startedPick = false
     private var startedSpeech = false
     private var startedDecider = false
+    #endif
 
     init(api: DaemonAPI, rerun: Bool) {
         settings = SettingsModel(api: api)
@@ -65,13 +67,16 @@ import Foundation
 
     var documentsAllowed: Bool { settings.documentsState == "allowed" }
 
+    #if !RECORDER
     func toQuick() {
         step = .quick
         startDownloads()
     }
+    #endif
 
     // MARK: - quick setup
 
+    #if !RECORDER
     /// ALL THREE DOWNLOADS START WHEN THIS STEP IS ON SCREEN, not at Finish: 7 GB is minutes, and they
     /// run in the daemon, so leaving setup does not stop them. A refusal is retried at Finish.
     func startDownloads() {
@@ -101,19 +106,25 @@ import Foundation
             }
         }
     }
+    #endif
 
     func finish() {
         finishing = true
         Task {
             defer { finishing = false }
+            // THE NAME IS QUICK SETUP'S, which the recorder does not show — so it saves none.
+            #if !RECORDER
             let typed = name.trimmingCharacters(in: .whitespaces)
             if !typed.isEmpty && typed != nameWas {
                 _ = await api.post("/api/setup/setting", ["field": "name", "value": typed])
             }
+            #endif
             // A RE-RUN JUST GOES BACK. Handover is the installer's last act; on an instance
             // already set up it would be a daemon restart for no reason.
             if rerun { onFinish?(); return }
+            #if !RECORDER
             startDownloads()
+            #endif
             // BEFORE HANDOVER, which may stand this daemon down for the installed copy.
             _ = await api.post("/api/setup/login-item", ["want": atLogin])
             let r = await api.post("/api/handover")

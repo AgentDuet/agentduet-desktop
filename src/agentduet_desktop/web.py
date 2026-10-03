@@ -127,17 +127,24 @@ def make_app(token: str) -> web.Application:
         """
         return pathlib.Path(path).read_text(encoding="utf-8")
 
+    def _page(name: str) -> web.Response:
+        """One of the HTML pages — or 404 where this build has none. The recorder edition ships
+        no pages (edition.AI_DATA): its windows are native, and the frozen hub holds the
+        assistant."""
+        if not (HERE / name).is_file():
+            return web.Response(status=404, text="not found")
+        return web.Response(text=_asset(HERE / name), content_type="text/html")
+
     async def index(request):
         if not authed(request):
             return web.Response(status=401, text="bad or missing token")
-        page = "setup.html" if needs_setup() else "web.html"
-        return web.Response(text=_asset(HERE / page), content_type="text/html")
+        return _page("setup.html" if needs_setup() else "web.html")
 
     async def setup_page(request):
         """The first-run WIZARD. Reachable later too — it reconciles rather than duplicating."""
         if not authed(request):
             return web.Response(status=401, text="bad or missing token")
-        return web.Response(text=_asset(HERE / "setup.html"), content_type="text/html")
+        return _page("setup.html")
 
     async def settings_page(request):
         """Changing things afterwards: direct fields, no steps, no welcome.
@@ -148,7 +155,7 @@ def make_app(token: str) -> web.Application:
         """
         if not authed(request):
             return web.Response(status=401, text="bad or missing token")
-        return web.Response(text=_asset(HERE / "settings.html"), content_type="text/html")
+        return _page("settings.html")
 
     async def app_css(request):
         """The house style, shared by every page.

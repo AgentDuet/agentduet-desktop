@@ -15,10 +15,26 @@
 # Build:  pyinstaller packaging/agentduet-desktop.spec --noconfirm
 # Result: dist/agentduet-desktop (dist/agentduet-desktop.exe on Windows)
 
+import fnmatch
+import os
 import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+
+# THE EDITION (2026-10-03): AGENTDUET_EDITION=recorder builds the recorder alone, with no AI in
+# it — not switched off, ABSENT: every module in edition.AI_MODULES, every library in
+# AI_LIBRARIES and every file in AI_DATA is left out, so a reviewer can verify it by listing
+# the bundle. Anything else builds the full product. The lists are read from the package itself
+# so the build and tests/test_recorder.py cannot disagree about what "no AI" means.
+sys.path.insert(0, str(Path(SPECPATH).parent / "src"))
+from agentduet_desktop import edition as _edition_mod                     # noqa: E402
+RECORDER = os.environ.get("AGENTDUET_EDITION", "").strip().lower() == _edition_mod.RECORDER
+# STAMPED INTO THE PACKAGE, like the build id below, and written for BOTH editions: a stale
+# `_edition.py` from a recorder build would otherwise turn the next full build into a recorder.
+(Path(SPECPATH).parent / "src" / "agentduet_desktop" / "_edition.py").write_text(
+    f'NAME = "{_edition_mod.RECORDER if RECORDER else _edition_mod.FULL}"\n')
+print(f"NOTE: building the {'RECORDER' if RECORDER else 'full'} edition")
 
 # Stamp the build id into the package before collecting it. "0.1.0a2" is true of every binary
 # built today, and the first question about any bug report is which one — so `--version` needs
@@ -47,6 +63,8 @@ if _sha:
 
 datas = collect_data_files("agentduet_desktop",
                            includes=["*.html", "*.css",
+                                     # The recorder's own instance template (edition.py).
+                                     "templates-recorder/**/*",
                                      # The brand mark, served at /logo.png and used as the
                                      # favicon. Without this the frozen build serves a 404 where
                                      # every page shows its logo — which looks like a broken
@@ -65,6 +83,15 @@ datas = collect_data_files("agentduet_desktop",
                                      # The JS engine a customer tool runs inside. 1.3 MB, one
                                      # artifact for every platform.
                                      "wasm/**/*"])
+
+if RECORDER:
+    # Matched against the path INSIDE the package, which is what AI_DATA's globs are written as.
+    def _ai_data(src: str, dest: str) -> bool:
+        rel = Path(src).as_posix().split("/agentduet_desktop/", 1)[-1]
+        return any(fnmatch.fnmatch(rel, g) or fnmatch.fnmatch(rel, g.replace("/**/*", "/*"))
+                   or (g.endswith("/**/*") and rel.startswith(g[:-4]))
+                   for g in _edition_mod.AI_DATA)
+    datas = [d for d in datas if not _ai_data(*d)]
 
 # THE CA ROOTS, NAMED ON PURPOSE — and this is load-bearing, not tidiness.
 #
@@ -97,16 +124,19 @@ datas += collect_data_files("certifi")
 # describes, in the one naming convention it did not anticipate.
 _wasm_binaries = []
 try:
+    if RECORDER:
+        raise ImportError("the recorder edition has no tool sandbox")
     import wasmtime as _wt
     _wt_root = Path(_wt.__file__).parent
     for _pattern in ("_libwasmtime.*", "_wasmtime.dll"):
         for _lib in _wt_root.rglob(_pattern):
             _wasm_binaries.append((str(_lib), f"wasmtime/{_lib.parent.name}"))
 except Exception as _exc:
-    print(f"WARNING: wasmtime not collected ({_exc}) — customer tools will fail at runtime")
+    print(f"{'NOTE' if RECORDER else 'WARNING'}: wasmtime not collected ({_exc})"
+          + ("" if RECORDER else " — customer tools will fail at runtime"))
 # ZERO IS ALWAYS WRONG, exactly as for the speech engine below. A runtime that was never
 # collected is invisible until a customer tool runs, and the glob that missed it looked correct.
-if not _wasm_binaries:
+if not _wasm_binaries and not RECORDER:
     print("WARNING: no wasmtime runtime collected — customer tools will fail at runtime")
 
 # THE LOCAL LLM ENGINE, ADDED BY HAND FOR THE SAME REASON AS WASMTIME.
@@ -124,6 +154,8 @@ if not _wasm_binaries:
 # this build, hosted providers work, and calls are carried and recorded with no model at all.
 _llama_binaries = []
 try:
+    if RECORDER:
+        raise ImportError("the recorder edition has no local model")
     import llama_cpp as _lc
     _lc_root = Path(_lc.__file__).parent
     for _pat in ("*.so", "*.dylib", "*.dll"):
@@ -188,6 +220,8 @@ hiddenimports = [
 # returned nothing at all.
 _stt_libs = []
 try:
+    if RECORDER:
+        raise ImportError("the recorder edition has no speech engine")
     from PyInstaller.utils.hooks import collect_dynamic_libs as _cdl
     _stt_libs = _cdl("pywhispercpp")
     # AND THE AUDITWHEEL SIBLING, which is the LINUX layout and collected NOTHING without this.
@@ -214,7 +248,21 @@ try:
               "without it falls back to the CPU and `backend()` will say so")
     print(f"NOTE: collected {len(_stt_libs)} speech engine libraries: {sorted(_names)}")
 except Exception as _exc:
-    print(f"WARNING: speech libraries not collected ({_exc}) — transcription will fail")
+    print(f"{'NOTE' if RECORDER else 'WARNING'}: speech libraries not collected ({_exc})"
+          + ("" if RECORDER else " — transcription will fail"))
+
+excludes = ["tkinter", "test", "unittest"]   # nothing here draws a GUI
+if RECORDER:
+    # OUR AI MODULES AND THE AI LIBRARIES, OUT. `excludes` stops PyInstaller following an import
+    # into them, and the hidden imports are filtered so nothing asks for one by name either.
+    _ai = {f"agentduet_desktop.{m}" for m in _edition_mod.AI_MODULES}
+    hiddenimports = [h for h in hiddenimports
+                     if h not in _ai
+                     and not any(h == lib or h.startswith(lib + ".")
+                                 for lib in _edition_mod.AI_LIBRARIES)
+                     and h.split(".")[0] not in ("pywhispercpp", "_pywhispercpp", "llama_cpp",
+                                                 "diskcache", "jinja2", "yaml", "httpx")]
+    excludes += sorted(_ai) + list(_edition_mod.AI_LIBRARIES) + ["pywhispercpp", "_pywhispercpp"]
 
 a = Analysis(
     [str(Path(SPECPATH).parent / "entry.py")],
@@ -222,7 +270,7 @@ a = Analysis(
     datas=datas,
     binaries=_wasm_binaries + _stt_libs + _llama_binaries,
     hiddenimports=hiddenimports,
-    excludes=["tkinter", "test", "unittest"],   # nothing here draws a GUI
+    excludes=excludes,
     noarchive=False,
 )
 pyz = PYZ(a.pure)
@@ -320,3 +368,9 @@ else:
         onefile=True,
         upx=False,
     )
+
+# THE SOURCE TREE GOES BACK TO THE FULL EDITION once the bundle is built. `_edition.py` is read
+# from src/ by everything that runs from source — `./dev-app.sh`, the test suites — so a recorder
+# build that left it saying "recorder" would quietly turn the next dev session into one.
+(Path(SPECPATH).parent / "src" / "agentduet_desktop" / "_edition.py").write_text(
+    f'NAME = "{_edition_mod.FULL}"\n')

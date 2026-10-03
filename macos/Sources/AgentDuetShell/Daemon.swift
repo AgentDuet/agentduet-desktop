@@ -29,13 +29,14 @@ final class Daemon {
 
     // MARK: - where things are
 
-    /// `$AGENTDUET_HOME`, default `~/.agentduet-desktop` — the same resolution as `paths.home()`.
+    /// `$AGENTDUET_HOME`, default `~/.agentduet-desktop` — the same resolution as `paths.home()`,
+    /// including the recorder edition's own folder.
     var instanceHome: URL {
         if let explicit = ProcessInfo.processInfo.environment["AGENTDUET_HOME"], !explicit.isEmpty {
             return URL(fileURLWithPath: explicit)
         }
         return FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".agentduet-desktop")
+            .appendingPathComponent(Edition.recorder ? ".agentduet-recorder" : ".agentduet-desktop")
     }
 
     private var siteURLFile: URL { instanceHome.appendingPathComponent("run/site-url") }

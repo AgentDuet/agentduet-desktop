@@ -13,6 +13,15 @@ on:
         type: choice
         options: [native, pyinstaller]
         default: native
+      # THE RECORDER EDITION (src/agentduet_desktop/edition.py): the recorder with NO AI in it,
+      # for a partner whose review treats transcription as AI. macOS only — it is a native app,
+      # and it ships no HTML pages for another platform to show. A tag push leaves this empty,
+      # which is the full edition: releases are unchanged.
+      edition:
+        description: "full (everything) or recorder (call recording only, no AI in the bundle)"
+        type: choice
+        options: [full, recorder]
+        default: full
   push:
     tags: ["v*"]
 
@@ -21,42 +30,43 @@ jobs:
     strategy:
       fail-fast: false          # a Windows failure must not hide a working Mac build
       matrix:
-        include:
-          # macos-26, NOT macos-14, and the reason is the SDK rather than the hardware.
-          # AgentDuetSTT calls SpeechAnalyzer/SpeechTranscriber, which are macOS 26 APIs. The
-          # `@available(macOS 26.0, *)` guard in that code governs RUNTIME — it still has to
-          # COMPILE, and macos-14 is Sonoma, whose SDK has no such symbols. The build failed
-          # there with "cannot find SpeechTranscriber in scope" while succeeding on a developer
-          # Mac running 26.6.2, which is exactly the shape of bug a CI runner exists to catch.
-          # The deployment target stays macOS 13 (Package.swift), so the binary still runs on
-          # older Macs and reports "needs macOS 26" rather than crashing.
-          - os: macos-26        # Apple silicon, and the only image with the macOS 26 SDK
-            name: macos-arm64
-          # NO INTEL MAC BUILD — removed 2026-08-04, deliberately.
-          #
-          # It was `macos-13`, which GitHub has retired, so the job never STARTED. A queued job
-          # keeps its whole run open, so every build read as "still running" while the arm64 and
-          # Linux binaries had been finished for ages — three runs were held open that way, and
-          # the artifacts sat there looking unavailable.
-          #
-          # `timeout-minutes` cannot fix it: that limits execution, and this never executes. Only
-          # a label that exists would, and rather than swap in `macos-15-intel` untested and risk
-          # the same silent hang, Intel is dropped until someone actually needs it.
-          #
-          # Consequence to be honest about: a colleague on a pre-2020 Mac cannot run our build.
-          # Check the chip before sending them anything.
-          - os: ubuntu-latest
-            name: linux-x86_64
-          # WINDOWS, x86-64 ONLY — and that is forced rather than chosen. `pywhispercpp` ships
-          # `win32` and `win_amd64` wheels and NO `win_arm64`, so a native ARM build has no
-          # speech engine. An ARM machine runs the x64 binary under Prism emulation instead,
-          # which is fine for function and useless for timing.
-          #
-          # Everything else the build needs is available here: llama-cpp-python has cp312
-          # win_amd64 wheels on its own index (the `else` branch below already fetches from
-          # there), and pywebview, wasmtime, the SDK and mcp are pure Python.
-          - os: windows-latest
-            name: windows-x86_64
+        # THE PLATFORMS, and why each is what it is (the list itself is the expression below):
+        #
+        # macos-26, NOT macos-14, and the reason is the SDK rather than the hardware.
+        # AgentDuetSTT calls SpeechAnalyzer/SpeechTranscriber, which are macOS 26 APIs. The
+        # `@available(macOS 26.0, *)` guard in that code governs RUNTIME — it still has to
+        # COMPILE, and macos-14 is Sonoma, whose SDK has no such symbols. The build failed
+        # there with "cannot find SpeechTranscriber in scope" while succeeding on a developer
+        # Mac running 26.6.2, which is exactly the shape of bug a CI runner exists to catch.
+        # The deployment target stays macOS 13 (Package.swift), so the binary still runs on
+        # older Macs and reports "needs macOS 26" rather than crashing.
+        # NO INTEL MAC BUILD — removed 2026-08-04, deliberately.
+        #
+        # It was `macos-13`, which GitHub has retired, so the job never STARTED. A queued job
+        # keeps its whole run open, so every build read as "still running" while the arm64 and
+        # Linux binaries had been finished for ages — three runs were held open that way, and
+        # the artifacts sat there looking unavailable.
+        #
+        # `timeout-minutes` cannot fix it: that limits execution, and this never executes. Only
+        # a label that exists would, and rather than swap in `macos-15-intel` untested and risk
+        # the same silent hang, Intel is dropped until someone actually needs it.
+        #
+        # Consequence to be honest about: a colleague on a pre-2020 Mac cannot run our build.
+        # Check the chip before sending them anything.
+        # WINDOWS, x86-64 ONLY — and that is forced rather than chosen. `pywhispercpp` ships
+        # `win32` and `win_amd64` wheels and NO `win_arm64`, so a native ARM build has no
+        # speech engine. An ARM machine runs the x64 binary under Prism emulation instead,
+        # which is fine for function and useless for timing.
+        #
+        # Everything else the build needs is available here: llama-cpp-python has cp312
+        # win_amd64 wheels on its own index (the `else` branch below already fetches from
+        # there), and pywebview, wasmtime, the SDK and mcp are pure Python.
+        #
+        # THE RECORDER BUILDS ON macOS ONLY, so the list is computed from the edition. Not
+        # `exclude`: GitHub applies it before `include`, so it cannot remove an included entry.
+        include: ${{ fromJSON(inputs.edition == 'recorder'
+          && '[{"os":"macos-26","name":"macos-arm64"}]'
+          || '[{"os":"macos-26","name":"macos-arm64"},{"os":"ubuntu-latest","name":"linux-x86_64"},{"os":"windows-latest","name":"windows-x86_64"}]') }}
     runs-on: ${{ matrix.os }}
     # BASH ON ALL THREE, or nothing here runs on Windows: GitHub defaults `run:` to PowerShell
     # there, and every step in this file is a bash script. Git Bash is preinstalled on the
@@ -73,6 +83,11 @@ jobs:
     # working, unsigned DMG exactly as before.
     env:
       APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
+      # ONE NAME PER EDITION, used by every step below so the signing, DMG and notarization
+      # path is shared rather than copied. `inputs.edition` is empty on a tag push → full.
+      EDITION: ${{ inputs.edition || 'full' }}
+      APP_NAME: ${{ inputs.edition == 'recorder' && 'AgentDuet Recorder' || 'AgentDuet Desktop' }}
+      ARTIFACT: ${{ inputs.edition == 'recorder' && 'agentduet-recorder' || 'agentduet-desktop' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -86,7 +101,17 @@ jobs:
       # and reusable workflows, not `git clone`. Dropping DDUET for WhatsApp removed the need
       # for that wheel, and with it the thing that stopped this repo being published at all.
 
+      # THE RECORDER INSTALLS NO AI AT ALL — not a provider, not a speech engine, not a model
+      # runtime. The spec leaves them out of the bundle regardless; not having them on the build
+      # machine is the stronger claim, and the audit step below checks the result either way.
+      - name: Install (recorder)
+        if: env.EDITION == 'recorder'
+        run: |
+          pip install "agentduet>=1.1.0b1"
+          pip install ".[ui]" pyinstaller
+
       - name: Install
+        if: env.EDITION != 'recorder'
         run: |
           # >=1.1.0b1, not >=1.0.0: the daemon imports SendDduetMessage at module level
           # and PyPI still serves 1.0.0 as latest, so the old pin built a binary whose
@@ -150,7 +175,50 @@ jobs:
           fi
 
       - name: Build the binary
-        run: pyinstaller --noconfirm --distpath dist-bin packaging/agentduet-desktop.spec
+        # AGENTDUET_EDITION is read by the spec; see the top of agentduet-desktop.spec.
+        run: AGENTDUET_EDITION="$EDITION" pyinstaller --noconfirm --distpath dist-bin packaging/agentduet-desktop.spec
+
+      # THE RECORDER'S SMOKE TEST. The full one below asserts providers, voice, the engine and
+      # the decider — every one of which the recorder must NOT have. So it asserts what it must:
+      # that it says it is the recorder, that the daemon boots, and that it reaches the internet
+      # over TLS (the a9 lesson). With no model download to prove TLS with, the update check is
+      # the real handshake: GitHub, over the same urllib path.
+      - name: Smoke test (recorder)
+        if: env.EDITION == 'recorder'
+        env:
+          AGENTDUET_HOME: ${{ runner.temp }}/recorder-smoke
+        run: |
+          BIN=./dist-bin/agentduet-desktop/agentduet-desktop
+          "$BIN" status | tee status.txt
+          grep -q "edition  : recorder" status.txt \
+            || { echo "::error::the binary does not say it is the recorder"; exit 1; }
+          if grep -qE "^  (model|providers|engine|decider|voice|tools) *:" status.txt; then
+            echo "::error::the recorder reports an AI component"; exit 1
+          fi
+          "$BIN" run --headless --no-channel > run.log 2>&1 &
+          for i in $(seq 1 30); do
+            grep -q "Owner site: http" run.log 2>/dev/null && break
+            sleep 1
+          done
+          grep -q "Owner site: http" run.log 2>/dev/null || {
+            echo "::error::the daemon did not start — full output follows"; cat run.log; exit 1; }
+          echo "daemon booted and bound the owner site"
+          URL=$(cat "$AGENTDUET_HOME/run/site-url")
+          BASE="${URL%%/?t=*}"; TOKEN="${URL##*t=}"
+          curl -sf -X POST "$BASE/api/about/check?t=$TOKEN" | tee check.json
+          "$BIN" stop || true
+          if python3 -c "import json,sys; u=json.load(open('check.json'))['update']; \
+              sys.exit(0 if u.get('reachable') is True else 1)"; then
+            echo "TLS works: the recorder reached GitHub"
+          elif grep -qiE "ssl|certificate verif|CERTIFICATE_VERIFY" run.log; then
+            echo "::error::the frozen recorder cannot verify TLS — certifi is not packaged, or entry.py did not find cacert.pem"
+            cat run.log; exit 1
+          else
+            # NOT A TLS FAILURE, so not this gate's to fail: GitHub rate-limits a shared runner's
+            # address, which answers 403 after a handshake that worked.
+            echo "::warning::GitHub did not answer the update check, for a reason other than TLS"
+            grep -i "github" run.log || true
+          fi
 
       # Proves the binary RUNS, not merely that it linked. PyInstaller happily produces a
       # binary that dies at first import because a lazy import was never collected — that has
@@ -161,6 +229,7 @@ jobs:
       # adapter looks healthy and fails later in someone else's hands. The first macOS build
       # passed this step while having no Gemini, no Anthropic and no working voice.
       - name: Smoke test
+        if: env.EDITION != 'recorder'
         env:
           AGENTDUET_HOME: ${{ runner.temp }}/dduet-smoke
           # Presence-only check in voice.available(); never used to call anything. Without it
@@ -277,7 +346,14 @@ jobs:
       - name: Build the native shell (macOS)
         if: runner.os == 'macOS' && inputs.shell != 'pyinstaller'
         working-directory: macos
-        run: swift build -c release -Xswiftc -warnings-as-errors
+        run: |
+          # THE RECORDER IS COMPILED WITHOUT ITS AI VIEWS (-D RECORDER), and only the shell is
+          # built: the speech helper is the full edition's.
+          if [ "$EDITION" = "recorder" ]; then
+            swift build -c release -Xswiftc -warnings-as-errors -Xswiftc -DRECORDER --product AgentDuetShell
+          else
+            swift build -c release -Xswiftc -warnings-as-errors
+          fi
 
       - name: Wrap it around the daemon (macOS)
         if: runner.os == 'macOS' && inputs.shell != 'pyinstaller'
@@ -286,6 +362,8 @@ jobs:
           # writing, and since the onedir switch its INPUT is that same bundle — so passing
           # dist-bin as both would delete the daemon it is about to copy. Staging keeps the
           # final path unchanged, so signing, the DMG and notarization need no branch.
+          # The PyInstaller bundle keeps its own fixed name; the app it becomes is named by the
+          # edition (APP_NAME, read by make-macos-app.sh along with EDITION).
           mv "dist-bin/AgentDuet Desktop.app" "dist-bin/pyinstaller-stage.app"
           packaging/make-macos-app.sh \
             macos/.build/release/AgentDuetShell "dist-bin/pyinstaller-stage.app" dist-bin
@@ -293,7 +371,13 @@ jobs:
           # THE .app, NOT dist-bin/agentduet-desktop. Since macOS went --onedir the daemon loads
           # Python from Contents/Frameworks, so it has to be assembled from the bundle
           # PyInstaller built; the COLLECT directory launches and then cannot find libpython.
-          plutil -lint "dist-bin/AgentDuet Desktop.app/Contents/Info.plist"
+          plutil -lint "dist-bin/$APP_NAME.app/Contents/Info.plist"
+
+      # WHAT A PARTNER'S REVIEW WILL CHECK, checked first: the shipped bundle's modules,
+      # libraries, data and the shell's strings, against edition.py's lists.
+      - name: Audit the recorder (no AI in the bundle)
+        if: runner.os == 'macOS' && env.EDITION == 'recorder'
+        run: python packaging/audit-recorder.py "dist-bin/$APP_NAME.app"
 
       # ---- signing, and only when there is a certificate to sign with -----------------------
 
@@ -319,7 +403,7 @@ jobs:
       - name: Sign the app (macOS)
         if: runner.os == 'macOS' && env.APPLE_CERT_P12 != ''
         run: |
-          APP="dist-bin/AgentDuet Desktop.app"
+          APP="dist-bin/$APP_NAME.app"
           # Ask the keychain which identity it holds instead of rebuilding its name from the team
           # id. The name embeds the legal entity ("Developer ID Application: B3 Networks Pte Ltd
           # (TEAMID)") and a rename would break the build for a reason nobody would guess. The
@@ -356,7 +440,7 @@ jobs:
           # the speech engine took this from 58 MB to ~155 MB and the step began failing with
           # "No space left on device" — having already mounted the volume and started copying,
           # so it reads as a disk problem on the runner rather than an undersized image.
-          APP="dist-bin/AgentDuet Desktop.app"
+          APP="dist-bin/$APP_NAME.app"
           MB=$(du -sm "$APP" | cut -f1)
           # STAGE THE VOLUME, don't hand hdiutil the .app directly. A drag install needs somewhere to
           # drag TO: without an /Applications alias in the window, INSTALL.md's "drag AgentDuet Desktop to
@@ -367,12 +451,12 @@ jobs:
           # signature properly, which is the difference between a notarizable app and one that fails
           # verification for a reason the message will not name.
           STAGE=$(mktemp -d)
-          ditto "$APP" "$STAGE/AgentDuet Desktop.app"
+          ditto "$APP" "$STAGE/$APP_NAME.app"
           ln -s /Applications "$STAGE/Applications"
           echo "app is ${MB} MB; creating a $((MB + 200)) MB image"
-          hdiutil create -volname "AgentDuet Desktop" \
+          hdiutil create -volname "$APP_NAME" \
             -srcfolder "$STAGE" -size $((MB + 200))m \
-            -ov -format UDZO "agentduet-desktop-${{ matrix.name }}.dmg"
+            -ov -format UDZO "$ARTIFACT-${{ matrix.name }}.dmg"
           rm -rf "$STAGE"
 
       # Notarization is Apple scanning the signed build and recording that it did. STAPLING is
@@ -386,7 +470,7 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
         run: |
-          DMG="agentduet-desktop-${{ matrix.name }}.dmg"
+          DMG="$ARTIFACT-${{ matrix.name }}.dmg"
           IDENTITY=$(security find-identity -v -p codesigning build.keychain \
                      | awk '/Developer ID Application/ {print $2; exit}')
           # The disk image is signed too. Notarization accepts it either way, but an unsigned
@@ -424,8 +508,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: runner.os == 'macOS'
         with:
-          name: agentduet-desktop-${{ matrix.name }}
-          path: agentduet-desktop-${{ matrix.name }}.dmg
+          name: ${{ env.ARTIFACT }}-${{ matrix.name }}
+          path: ${{ env.ARTIFACT }}-${{ matrix.name }}.dmg
           if-no-files-found: error
 
       # A GLOB, because Windows emits `agentduet-desktop.exe` and Linux `agentduet-desktop`.
