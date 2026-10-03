@@ -6,14 +6,14 @@ say what they are built from. Revisit when either changes.
 
 ## One owner, one Mac
 
-### Already a limit today
+### Fixed 2026-10-03: the newest-200 cap
 
-**The hub, the summaries and the assistant see only the newest 200 calls.** `calls.recent()`
-defaults to 200, and `calls.by_person()` (the hub's people list, `names`, `suggest`) and most
-assistant tools read through it. At 20 calls a day that is about 10 days. Anyone whose last call
-is older silently drops off the list, though their recordings and `.txt` files are still on disk.
-`merge._row` looks back 2,000. This is the first limit an active owner hits. It needs an index by
-person (or paging), not a bigger number.
+The hub, the summaries and the assistant used to read only the newest 200 calls (about ten days
+for a busy owner), and anyone quieter silently dropped off the list. The call log now has a
+SQLite index (`run/calls.db`, rebuilt from `calls.jsonl` whenever it is missing), and every
+reader asks it for what it needs: one person's calls, everyone by their newest call, the calls
+since a date. Only `suggest` still looks at the newest 200, on purpose: a suggestion is about
+what is coming.
 
 ### Grows with every call
 
@@ -21,7 +21,7 @@ person (or paging), not a bigger number.
 |---|---|---|
 | Recording (24 kHz, 16-bit, stereo = 96 KB/s) | ~17 MB per 3 minutes | **Disk, first.** 10,000 calls ≈ 170 GB. Needs an owner-chosen retention setting, never a silent one. |
 | Transcript `.txt` | a few KB | never |
-| `run/calls.jsonl`, read whole on every hub poll (5 s) | ~250 bytes | **Measured** on an M5: 1,000 calls 7 ms · 10,000 → 27 ms · 100,000 → 167 ms · 365,000 → 0.7 s per read. Fine to ~100,000 calls; past that, an index or SQLite. |
+| `run/calls.jsonl` + its index `run/calls.db` | ~250 bytes + index | **Measured** on an M5. The hub's list, every 5 s, reads one row per PERSON: 0.5 ms at 10,000 calls · 2 ms at 100,000 · 6 ms at 365,000 (9,125 people). One person's calls: 0.5 ms at any size. Building the index from an existing log, once: 0.1 s · 1.7 s · 8 s. (The whole-file read it replaced: 27 ms · 167 ms · 0.7 s, every poll.) The list's payload grows with people: ~1 MB at 9,000 people. |
 | `run/queries.jsonl` (messages), read whole by `tools.rows()` | one line per message | the same shape as above |
 | Person summaries (`run/briefs/`) | one file per person | never |
 | Transcript search index (PLANNED, not built) | ~15 pieces × ~1.5 KB ≈ 25 KB | Fine to ~1 million pieces (~60,000 calls, ~1.5 GB); past that, a nearest-neighbour index rather than comparing against every piece. It is derived, so it can always be rebuilt or trimmed. |
@@ -56,7 +56,7 @@ of audio a day.**
 | **Access control** | loopback + a per-machine token in a file only the owner can read | On a shared host every user can reach every loopback port; the token file's permissions are the only wall. A shared service needs per-user authentication, not a machine token. |
 | **Phone lines** | one connector per install | 500 connectors, or a multi-tenant one; provisioning is already a release blocker for one (CLAUDE.md). |
 | **Data separation** | one instance folder per owner | must hold per user in every store: recordings, transcripts, summaries, the assistant's memory, any search index. |
-| **The call log** | one file, read whole | per user it is the table above; one shared log would be 3.6 M rows a year → a database. |
+| **The call log** | one file, indexed in SQLite per instance | per user it is the table above; one shared store would be 3.6 M rows a year → a server database. |
 
 **What carries over** if that system is built: the editions' split (recorder vs AI), the `.txt`
 contract between them, the daemon's `/api/*` as the boundary to any UI, and the measurements

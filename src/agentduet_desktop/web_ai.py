@@ -114,7 +114,7 @@ def panel_extras(out: dict) -> None:
                     "pick": _pick_payload()}
 
 
-def threads_extras(people: list[dict]) -> None:
+def threads_extras(people: list[dict], open_who: str | None = None) -> None:
     """Messages, suggestions, held replies and summaries, for `/api/threads`."""
     from . import asker_actions, brief, suggest
     # MESSAGES, from the query log. A person can be here with no call at all — someone who
@@ -167,12 +167,17 @@ def threads_extras(people: list[dict]) -> None:
     # a suggestion would cite words that are not on the screen.
     for p_ in people:
         keys = {}
+        # ONLY CALLS READ IN FULL: the others are the list's light entries, with no transcript
+        # (web.api_threads, `open`), and nothing on their cards is shown.
         for c in p_["calls"]:
-            keys[id(c)] = c["transcript"]
+            if "transcript" in c:
+                keys[id(c)] = c["transcript"]
         for m in p_["messages"]:
             keys[id(m)] = "\n".join(x for x in (m["them"], m["us"]) if x)
         found = suggest.for_texts(list(keys.values()))
         for row in (*p_["calls"], *p_["messages"]):
+            if id(row) not in keys:
+                continue
             key = suggest.digest(keys[id(row)])
             hit = found.get(key)
             row["suggest"] = {**hit, "key": key} if hit else None
@@ -194,7 +199,11 @@ def threads_extras(people: list[dict]) -> None:
                 m["held"] = True
     # THE SUMMARY on their page (2026-10-01): the running brief, shown where the owner
     # already looks at them — a file read, so it costs the poll nothing.
+    # ONLY THE OPEN PERSON'S when the hub says who is open: one file per person on every poll
+    # grew with the list, and only the page that is showing draws one.
     for p in people:
+        if open_who is not None and p["who"] != open_who:
+            continue
         rec = brief.load(p["who"])
         p["summary"], p["summary_at"] = rec.get("summary", ""), rec.get("updated", "")
 

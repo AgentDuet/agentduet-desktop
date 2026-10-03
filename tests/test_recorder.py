@@ -37,6 +37,7 @@ from agentduet_desktop import edition  # noqa: E402  (the list of what to delete
 #: the frozen HTML pages reach on the recorder path; an AI route here would be a bug in the list.
 ROUTES = [
     ("/api/state", None), ("/api/panel", None), ("/api/threads", None),
+    ("/api/threads?open=%2B6590000000", None),
     ("/api/setup/current", None), ("/api/permissions", None), ("/api/about", None),
     ("/api/ui", None), ("/api/install", None), ("/api/connector/signin", None),
     ("/api/setup/setting", {"field": "name", "value": "Pat"}),

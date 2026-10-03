@@ -40,11 +40,14 @@ struct DaemonAPI {
     func page(_ path: String, _ extra: [URLQueryItem] = []) -> URL {
         var c = URLComponents(url: base.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         c.queryItems = [URLQueryItem(name: "t", value: token)] + extra
+        // A "+" IS A SPACE in a query string to the server, and URLComponents leaves it bare — so
+        // "+6598554074" arrived as " 6598554074". Every phone number starts with one.
+        c.percentEncodedQuery = c.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
         return c.url!
     }
 
-    func get(_ path: String) async -> JSON {
-        await send(URLRequest(url: page(path)))
+    func get(_ path: String, query: [String: String] = [:]) async -> JSON {
+        await send(URLRequest(url: page(path, query.map { URLQueryItem(name: $0.key, value: $0.value) })))
     }
 
     func post(_ path: String, _ body: JSON = [:], query: [String: String] = [:]) async -> JSON {

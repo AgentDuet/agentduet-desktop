@@ -858,10 +858,10 @@ derived from no longer exists, it is the only place that says so.
 - [ ] **Per-service on/off toggles.** The design's overview switches each of the four services
       independently. We have one `## Calls` mode and a `## Record calls` boolean.
 
-- [ ] **The hub, summaries and assistant see only the newest 200 calls** (`calls.recent()`'s
-      default; found 2026-10-03, see `docs/limits.md`). About 10 days for a busy owner, after
-      which older people silently drop off the list. Needs an index by person, not a bigger
-      number.
+- [x] ~~**The hub, summaries and assistant see only the newest 200 calls.**~~ **FIXED 2026-10-03**
+      with a SQLite index over `calls.jsonl` (`run/calls.db`, rebuilt from the file whenever it
+      is missing). The hub asks for the open person in full and everyone else as counts, so its
+      poll grows with people, not calls. Numbers in `docs/limits.md`.
 
 **Reaching out — links now, APIs when a link cannot carry it**
 

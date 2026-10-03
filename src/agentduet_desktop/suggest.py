@@ -259,10 +259,10 @@ def candidates() -> list[tuple[str, str]]:
         # at ten?" / "Yes, that works" says nothing on its own from either side alone.
         both = "\n".join(p for p in (r.get("question", ""), r.get("answer", "")) if p)
         items.append((both, r.get("at", "")))
-    for who_rows in calls.by_person().values():
-        for r in who_rows:
-            af, names = carry.call_audio(r.get("recordings", []), r.get("call_id", ""))
-            items.append((carry.transcript_of(names, af), r.get("at", "")))
+    # THE NEWEST CALLS ONLY: a suggestion is about what is coming, and `_recent` keeps a window.
+    for r in calls.recent():
+        af, names = carry.call_audio(r.get("recordings", []), r.get("call_id", ""))
+        items.append((carry.transcript_of(names, af), r.get("at", "")))
     return _recent(items)
 
 

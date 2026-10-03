@@ -73,7 +73,9 @@ import Foundation
     func stop() { timer?.invalidate(); timer = nil; player.stop() }
 
     func load() async {
-        async let t = api.get("/api/threads")
+        // ONE PERSON IN FULL: the one open. Everyone else comes back light — enough for the list
+        // — so the poll does not grow with every call ever made (web.api_threads, `open`).
+        async let t = api.get("/api/threads", query: ["open": picked ?? ""])
         async let p = api.get("/api/panel")
         let (threads, panel) = await (t, p)
         people = threads["people"] as? [JSON] ?? []
@@ -127,7 +129,9 @@ import Foundation
     }
 
     static func counts(_ p: JSON) -> String {
-        let c = (p["calls"] as? [JSON] ?? []).count, m = (p["messages"] as? [JSON] ?? []).count
+        // A LIST LINE carries its count (`call_count`): only the open person's calls are sent.
+        let c = p["call_count"] != nil ? Int(p.num("call_count")) : (p["calls"] as? [JSON] ?? []).count
+        let m = (p["messages"] as? [JSON] ?? []).count
         var bits: [String] = []
         if c > 0 { bits.append("\(c) call\(c == 1 ? "" : "s")") }
         if m > 0 { bits.append("\(m) message\(m == 1 ? "" : "s")") }
@@ -267,7 +271,11 @@ import Foundation
         #if !RECORDER
         if who != picked { drawerOpen = false }
         #endif
+        let changed = who != picked
         picked = who
+        // THEIR CALLS IN FULL NOW, not at the next poll: until then the page has only the list's
+        // light entries for them.
+        if changed { Task { await load() } }
         if let who, who != Self.assistant { lastPerson = who }
         notice = nil
         markSeen()
