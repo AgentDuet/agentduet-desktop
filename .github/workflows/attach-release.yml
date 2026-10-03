@@ -25,7 +25,8 @@ on:
       platforms:
         description: "Which verified builds to attach (comma-separated: macos,linux,windows)"
         required: false
-        default: "macos,linux,windows"
+        # macOS only since beta 7 (Stanley, 2026-10-03): Windows and Linux are not built.
+        default: "macos"
 
 jobs:
   attach:

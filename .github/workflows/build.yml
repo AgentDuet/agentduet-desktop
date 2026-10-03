@@ -22,8 +22,9 @@ on:
         type: choice
         options: [full, recorder, ai]
         default: full
+  # ONE RELEASE PER APP: the tag's prefix says which app it builds (see EDITION below).
   push:
-    tags: ["v*"]
+    tags: ["v*", "recorder-v*", "ai-v*"]
 
 jobs:
   build:
@@ -62,11 +63,12 @@ jobs:
         # win_amd64 wheels on its own index (the `else` branch below already fetches from
         # there), and pywebview, wasmtime, the SDK and mcp are pure Python.
         #
-        # THE RECORDER BUILDS ON macOS ONLY, so the list is computed from the edition. Not
-        # `exclude`: GitHub applies it before `include`, so it cannot remove an included entry.
-        include: ${{ fromJSON((inputs.edition == 'recorder' || inputs.edition == 'ai')
-          && '[{"os":"macos-26","name":"macos-arm64"}]'
-          || '[{"os":"macos-26","name":"macos-arm64"},{"os":"ubuntu-latest","name":"linux-x86_64"},{"os":"windows-latest","name":"windows-x86_64"}]') }}
+        # macOS ONLY, for every app, since beta 7 (Stanley, 2026-10-03): Windows and Linux are
+        # not built. The notes above are kept for the day they come back; the two entries are
+        # {"os":"ubuntu-latest","name":"linux-x86_64"} and {"os":"windows-latest","name":"windows-x86_64"}.
+        include:
+          - os: macos-26
+            name: macos-arm64
     runs-on: ${{ matrix.os }}
     # BASH ON ALL THREE, or nothing here runs on Windows: GitHub defaults `run:` to PowerShell
     # there, and every step in this file is a bash script. Git Bash is preinstalled on the
@@ -85,9 +87,10 @@ jobs:
       APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
       # ONE NAME PER EDITION, used by every step below so the signing, DMG and notarization
       # path is shared rather than copied. `inputs.edition` is empty on a tag push → full.
-      EDITION: ${{ inputs.edition || 'full' }}
-      APP_NAME: ${{ inputs.edition == 'recorder' && 'AgentDuet Recorder' || inputs.edition == 'ai' && 'AgentDuet AI' || 'AgentDuet Desktop' }}
-      ARTIFACT: ${{ inputs.edition == 'recorder' && 'agentduet-recorder' || inputs.edition == 'ai' && 'agentduet-ai' || 'agentduet-desktop' }}
+      # FROM THE INPUT on a dispatch, FROM THE TAG'S PREFIX on a tag push (recorder-v…, ai-v…).
+      EDITION: ${{ inputs.edition || (startsWith(github.ref_name, 'recorder-v') && 'recorder') || (startsWith(github.ref_name, 'ai-v') && 'ai') || 'full' }}
+      APP_NAME: ${{ (inputs.edition == 'recorder' || startsWith(github.ref_name, 'recorder-v')) && 'AgentDuet Recorder' || (inputs.edition == 'ai' || startsWith(github.ref_name, 'ai-v')) && 'AgentDuet AI' || 'AgentDuet Desktop' }}
+      ARTIFACT: ${{ (inputs.edition == 'recorder' || startsWith(github.ref_name, 'recorder-v')) && 'agentduet-recorder' || (inputs.edition == 'ai' || startsWith(github.ref_name, 'ai-v')) && 'agentduet-ai' || 'agentduet-desktop' }}
     steps:
       - uses: actions/checkout@v4
 

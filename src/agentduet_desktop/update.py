@@ -45,7 +45,23 @@ logger = logging.getLogger("dduet.update")
 
 #: NOT `/releases/latest` — see trap 1 in the module docstring. Five is more than enough to find
 #: the newest: they arrive newest-first, and the only reason to look past the first is a draft.
-FEED = "https://api.github.com/repos/AgentDuet/agentduet-desktop/releases?per_page=5"
+FEED = "https://api.github.com/repos/AgentDuet/agentduet-desktop/releases?per_page=30"
+
+#: ONE RELEASE PER APP (2026-10-03): `v0.1.0b7` is AgentDuet, `recorder-v0.1.0b7` AgentDuet
+#: Recorder, `ai-v0.1.0b7` AgentDuet AI. Each app looks only at its own, so a recorder is never
+#: told about — or linked to a page offering — another app. Thirty a page, since three apps'
+#: releases now share the list.
+PREFIX = {"recorder": "recorder-", "ai": "ai-"}
+
+
+def _own(tag: str) -> str | None:
+    """The version part of a tag that is THIS app's, or None for another app's tag."""
+    from . import edition
+    prefix = PREFIX.get(edition.name(), "")
+    tag = (tag or "").strip()
+    if prefix:
+        return tag[len(prefix):] if tag.startswith(prefix) else None
+    return None if any(tag.startswith(p) for p in PREFIX.values()) else tag
 
 #: Where the answer lives between checks. `run/` is derived instance state, which is exactly
 #: what this is — and a plain file rather than an endpoint so the macOS shell can read it
@@ -190,7 +206,10 @@ def check() -> dict:
     for row in rows:
         if row.get("draft"):
             continue                        # not published; nobody can install it
-        order = _order(row.get("tag_name", ""))
+        own = _own(row.get("tag_name", ""))
+        if own is None:
+            continue                        # another app's release
+        order = _order(own)
         if order and (best_order is None or order > best_order):
             best, best_order = row, order
 
@@ -202,7 +221,7 @@ def check() -> dict:
         logger.info("no release could be ordered against %s", __version__)
         return _save(answer)
 
-    tag = str(best.get("tag_name", ""))
+    tag = _own(str(best.get("tag_name", ""))) or ""
     answer.update(version=tag.lstrip("v"), url=str(best.get("html_url", "")),
                   published=str(best.get("published_at", "")))
     built, out = _built_at(), _published(best)

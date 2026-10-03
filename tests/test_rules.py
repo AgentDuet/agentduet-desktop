@@ -3954,6 +3954,19 @@ def test_the_update_check_is_quiet_and_cannot_lie() -> None:
     # ORDER, including the part a plain string compare gets wrong: a prerelease comes BEFORE
     # the release of the same triple.
     ok("a14 is newer than a13", up._order("v0.1.0a14") > up._order("0.1.0a13"))
+    # ONE RELEASE PER APP (2026-10-03): each looks only at its own tags.
+    from agentduet_desktop import edition as _ed
+    with mock.patch.object(_ed, "name", lambda: "full"):
+        ok("the full app takes plain tags and no other app's",
+           up._own("v0.1.0b7") == "v0.1.0b7" and up._own("recorder-v0.1.0b7") is None
+           and up._own("ai-v0.1.0b7") is None)
+    with mock.patch.object(_ed, "name", lambda: "recorder"):
+        ok("the recorder takes only recorder- tags",
+           up._own("recorder-v0.1.0b7") == "v0.1.0b7" and up._own("v0.1.0b9") is None
+           and up._own("ai-v0.1.0b9") is None)
+    with mock.patch.object(_ed, "name", lambda: "ai"):
+        ok("and AgentDuet AI only ai- tags",
+           up._own("ai-v0.1.0b7") == "v0.1.0b7" and up._own("recorder-v0.1.0b9") is None)
     ok("0.1.0 is newer than 0.1.0rc1", up._order("0.1.0") > up._order("0.1.0rc1"))
     ok("0.2.0 is newer than 0.1.9", up._order("v0.2.0") > up._order("v0.1.9"))
     ok("a10 is newer than a9 (not a string compare)", up._order("0.1.0a10") > up._order("0.1.0a9"))
