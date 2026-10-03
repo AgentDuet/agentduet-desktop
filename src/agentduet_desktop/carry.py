@@ -181,6 +181,10 @@ def call_audio(names: list[str], call_id: str = "") -> tuple[pathlib.Path, list[
 #: into the answering agent for a five-letter string made two recorder endpoints import it.
 ANSWERED = "answered"
 
+#: A WAV header with no frames. Written when a call produced no audio at all — which is what an
+#: unbridged call looks like — and there is nothing to transcribe in one.
+EMPTY_WAV_BYTES = 64
+
 #: WAV parameters. These describe what the SDK hands us, so they are not free choices: the
 #: audio arrives as 24 kHz mono 16-bit PCM (`CallAudioConfig(sample_rate=...)` in the daemon).
 #: Writing a different header does not convert anything — it mislabels the bytes, and the file
@@ -540,9 +544,12 @@ async def handle(sm, noti) -> None:
         _calls.record(call_id, other, "carried", outgoing=outgoing, note=outcome, started=taken,
                       recordings=sorted(
             str(p.name) for p in legs().glob(f"*{call_id}*.wav")))
-        # TRANSCRIBE IT NOW, not at the next poll: the legs are closed and on disk.
-        from . import transcribe
-        transcribe.wake()
+        # TRANSCRIBE IT NOW, not at the next poll: the legs are closed and on disk. (The
+        # recorder edition has no transcription; its merge worker picks the call up on its own.)
+        from . import edition
+        if edition.ai():
+            from . import transcribe
+            transcribe.wake()
         # THE TRANSCRIPT IS NOT THIS FUNCTION'S JOB. Carrying a call ends when the audio is
         # closed on disk; a `.wav` with no sibling `.txt` is the queue, and the worker in
         # `transcribe` picks it up within a poll. That keeps the call path free of a network
@@ -556,9 +563,16 @@ async def _live_start(call_id: str, other: str):
     None when captions cannot run (the speech engine is not Qwen, or its model is not here), and
     never raises: a preview must not be able to cost the call or its recording.
     """
-    from . import calls as _calls, live
+    from . import calls as _calls, edition, oncall
     try:
-        await live.start(call_id, _calls.person_of({"caller": other}))
+        who = _calls.person_of({"caller": other})
+        # THE RECORDER EDITION marks the call and stops: captions are speech recognition, and
+        # it has none.
+        if not edition.ai():
+            await oncall.start(call_id, who)
+            return None
+        from . import live
+        await live.start(call_id, who)
         if not live.enabled():
             return None
         return live.Leg(call_id, "caller"), live.Leg(call_id, "callee")
@@ -569,8 +583,12 @@ async def _live_start(call_id: str, other: str):
 
 
 async def _live_end(call_id: str) -> None:
-    from . import live
+    from . import edition, oncall
     try:
+        if not edition.ai():
+            await oncall.end(call_id)
+            return
+        from . import live
         await live.end(call_id)
     except Exception as exc:
         logger.warning("call %s: could not close live captions (%s)", call_id, exc)
@@ -612,8 +630,10 @@ async def _answer_here(call, call_id: str, other: str, done: asyncio.Event,
         _calls.record(call_id, other, "carried", note="answered in the app", started=started,
                       recordings=sorted(
             str(p.name) for p in legs().glob(f"*{call_id}*.wav")))
-        from . import transcribe
-        transcribe.wake()
+        from . import edition
+        if edition.ai():
+            from . import transcribe
+            transcribe.wake()
 
 
 def register(sm) -> bool:

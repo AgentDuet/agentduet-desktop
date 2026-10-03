@@ -81,10 +81,74 @@ def cmd_stop(args) -> int:
 
 
 def cmd_status(args) -> int:
-    from . import llm
+    from . import edition
     pid = _running_pid()
+    print(f"  edition  : {edition.name()}")
     print(f"  instance : {paths.HOME}")
     print(f"  daemon   : {'running, pid ' + str(pid) if pid else 'stopped'}")
+    if edition.ai():
+        _status_ai_head()
+    # WHAT HAPPENS TO A CALL, before what the call machinery can do. Which mode is active
+    # changes the answer to "why did nobody answer my test call?" more than any line below it,
+    # and reading `voice: available` while the agent is deliberately not answering is the kind
+    # of true-but-misleading report that sends someone debugging the wrong thing.
+    # WHICH BACKEND, before anything about what it can do. An instance pointed at a sandbox
+    # looks identical to a production one in every other line here, and a sign-in against the
+    # wrong environment silently replaces the connector a production DID routes to.
+    from . import connector as _conn
+    print(f"  backend  : {_conn.environment()}")
+
+    from . import owner as owner_settings
+    if owner_settings.calls() == owner_settings.CALLS_CARRY:
+        from . import carry
+        # ONE FILE PER CALL, since 2026-09-09. This said "both legs recorded to
+        # <recordings>", which is now wrong twice over: the legs are working files under
+        # run/legs, and the owner's folder holds one merged stereo recording per call. A
+        # status line naming the wrong shape sends someone looking for files that are not
+        # there and reports a defect that does not exist.
+        print(f"  calls    : CARRIED onward, one recording per call in {carry.recordings()}")
+        if edition.ai():
+            from . import transcribe
+            print(f"  transcript: {transcribe.describe()}")
+            if waiting := len(transcribe.pending()):
+                print(f"  queued   : {waiting} recording(s) waiting to be transcribed")
+            # WHY THERE ARE NO SUGGESTIONS, which the screen deliberately does not say.
+            from . import suggest as _sg
+            print(f"  suggest  : {_sg.summary()}")
+    else:
+        print("  calls    : answered by the agent")
+
+    # ONLY WHEN THERE IS SOMETHING TO SAY. Read from the cache the daemon's worker writes —
+    # `status` must not make a network call, and a line reading "up to date" on a machine that
+    # has never reached GitHub would be the confident wrong answer this check exists to avoid.
+    from . import update as _upd
+    if notice := _upd.summary():
+        print(f"  update   : {notice} {_upd.state().get('url', '')}")
+
+    if edition.ai():
+        _status_ai_tail()
+
+    # THE OWNER VIEW'S SURFACE. Same class as the lines above: pywebview absent means the view
+    # silently opens in a browser instead of a window, which looks like a design choice rather
+    # than a build that shipped without the dependency.
+    from . import shell as _shell
+    _w, _wwhy = _shell.window_support()
+    print(f"  window   : {'native' if _w else 'browser — ' + _wwhy}")
+
+    if edition.ai():
+        # An assistant is OPTIONAL, and this line says so by omission: nothing is printed when
+        # there is none. It used to read "assistant: NONE found — nothing can drive this
+        # secretary", which was true while the mcp was the only owner surface and became false
+        # the moment setup stopped asking for one.
+        from . import hosts
+        for label, state in hosts.registration():
+            print(f"  assistant: {label} — {state}")
+    return 0
+
+
+def _status_ai_head() -> None:
+    """The full edition's model, knowledge and engine lines. The recorder has none of these."""
+    from . import llm
     print(f"  model    : {llm.describe()}")
     caps = paths.CAPABILITIES
     print(f"  config   : settings{'' if paths.SETTINGS.is_file() else ' MISSING'}, "
@@ -142,41 +206,9 @@ def cmd_status(args) -> int:
         _d = f"NOT available — {type(exc).__name__}: {exc}"
     print(f"  decider  : {_d}")
 
-    # WHAT HAPPENS TO A CALL, before what the call machinery can do. Which mode is active
-    # changes the answer to "why did nobody answer my test call?" more than any line below it,
-    # and reading `voice: available` while the agent is deliberately not answering is the kind
-    # of true-but-misleading report that sends someone debugging the wrong thing.
-    # WHICH BACKEND, before anything about what it can do. An instance pointed at a sandbox
-    # looks identical to a production one in every other line here, and a sign-in against the
-    # wrong environment silently replaces the connector a production DID routes to.
-    from . import connector as _conn
-    print(f"  backend  : {_conn.environment()}")
 
-    from . import owner as owner_settings
-    if owner_settings.calls() == owner_settings.CALLS_CARRY:
-        from . import carry, transcribe
-        # ONE FILE PER CALL, since 2026-09-09. This said "both legs recorded to
-        # <recordings>", which is now wrong twice over: the legs are working files under
-        # run/legs, and the owner's folder holds one merged stereo recording per call. A
-        # status line naming the wrong shape sends someone looking for files that are not
-        # there and reports a defect that does not exist.
-        print(f"  calls    : CARRIED onward, one recording per call in {carry.recordings()}")
-        print(f"  transcript: {transcribe.describe()}")
-        if waiting := len(transcribe.pending()):
-            print(f"  queued   : {waiting} recording(s) waiting to be transcribed")
-        # WHY THERE ARE NO SUGGESTIONS, which the screen deliberately does not say.
-        from . import suggest as _sg
-        print(f"  suggest  : {_sg.summary()}")
-    else:
-        print("  calls    : answered by the agent")
-
-    # ONLY WHEN THERE IS SOMETHING TO SAY. Read from the cache the daemon's worker writes —
-    # `status` must not make a network call, and a line reading "up to date" on a machine that
-    # has never reached GitHub would be the confident wrong answer this check exists to avoid.
-    from . import update as _upd
-    if notice := _upd.summary():
-        print(f"  update   : {notice} {_upd.state().get('url', '')}")
-
+def _status_ai_tail() -> None:
+    """The full edition's voice and tool-sandbox lines."""
     from . import voice
     ok, why = voice.available()
     print(f"  voice    : {'available' if ok else 'NOT available — ' + why}")
@@ -192,23 +224,6 @@ def cmd_status(args) -> int:
         print(f"  tools    : {'available' if good else 'NOT available — ' + str(r)[:60]}")
     except Exception as exc:
         print(f"  tools    : NOT available — {type(exc).__name__}: {str(exc)[:70]}")
-
-    # THE OWNER VIEW'S SURFACE. Same class as the lines above: pywebview absent means the view
-    # silently opens in a browser instead of a window, which looks like a design choice rather
-    # than a build that shipped without the dependency.
-    from . import shell as _shell
-    _w, _wwhy = _shell.window_support()
-    print(f"  window   : {'native' if _w else 'browser — ' + _wwhy}")
-
-    # An assistant is OPTIONAL, and this line says so by omission: nothing is printed when there
-    # is none. It used to read "assistant: NONE found — nothing can drive this secretary", which
-    # was true while the mcp was the only owner surface and became false the moment setup stopped
-    # asking for one. Telling a small vendor their working secretary cannot be driven, because
-    # they have not installed a coding tool they have never heard of, is a bug in the report.
-    from . import hosts
-    for label, state in hosts.registration():
-        print(f"  assistant: {label} — {state}")
-    return 0
 
 
 def cmd_install(args) -> int:
@@ -323,10 +338,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--version", action="version", version=version_string())
     sub = p.add_subparsers(dest="cmd", required=False)
 
-    i = sub.add_parser("init", help="set up this machine (interview)")
-    i.add_argument("--non-interactive", action="store_true",
-                   help="create the instance only; ask nothing")
-    i.set_defaults(fn=cmd_init)
+    from . import edition
+    if edition.ai():
+        # THE CONSOLE INTERVIEW is model-driven, so the recorder edition does not have it: it is
+        # set up in its window, and has nothing to ask a console for.
+        i = sub.add_parser("init", help="set up this machine (interview)")
+        i.add_argument("--non-interactive", action="store_true",
+                       help="create the instance only; ask nothing")
+        i.set_defaults(fn=cmd_init)
 
     r = sub.add_parser("run", help="start the daemon in the foreground")
     r.add_argument("--no-channel", action="store_true",
@@ -352,14 +371,6 @@ def main(argv: list[str] | None = None) -> int:
                      help="point the command back at an older installed version")
     ins.set_defaults(fn=cmd_install)
 
-    mo = sub.add_parser("models", help="local models: list them, or download one")
-    mo.add_argument("action", nargs="?", choices=["list", "download"], default="list")
-    mo.add_argument("name", nargs="?", default="")
-    mo.set_defaults(fn=cmd_models)
-
-    # HIDDEN: run by the daemon as a child process, never by a person, so not in --help.
-    de = sub.add_parser("decide")
-    de.set_defaults(fn=cmd_decide)
 
     un = sub.add_parser("uninstall", help="undo what installing this left behind")
     # SEPARATE FLAGS, because these are different decisions. Models are re-downloadable disk;
@@ -373,20 +384,32 @@ def main(argv: list[str] | None = None) -> int:
                     help="say what would be removed and change nothing")
     un.set_defaults(fn=cmd_uninstall)
 
-    m = sub.add_parser("mcp", help="run as an MCP server on stdio (what an assistant launches)")
-    m.set_defaults(fn=cmd_mcp)
+    if edition.ai():
+        # THE AI HALF'S COMMANDS. None of them exists in the recorder edition (see edition.py).
+        mo = sub.add_parser("models", help="local models: list them, or download one")
+        mo.add_argument("action", nargs="?", choices=["list", "download"], default="list")
+        mo.add_argument("name", nargs="?", default="")
+        mo.set_defaults(fn=cmd_models)
 
-    t = sub.add_parser("tools", help="see and approve the tools your assistant has written")
-    t.add_argument("action", choices=["list", "show", "approve", "remove"])
-    t.add_argument("name", nargs="?", default="")
-    t.set_defaults(fn=cmd_tools)
+        # HIDDEN: run by the daemon as a child process, never by a person, so not in --help.
+        de = sub.add_parser("decide")
+        de.set_defaults(fn=cmd_decide)
 
-    c = sub.add_parser("connect", help="register this secretary with the AI assistants you have")
-    c.add_argument("--show", action="store_true",
-                   help="print what would be done, change nothing")
-    c.add_argument("--install", default="", choices=["", "goose"],
-                   help="install an assistant first (currently: goose)")
-    c.set_defaults(fn=cmd_connect)
+        m = sub.add_parser("mcp", help="run as an MCP server on stdio (what an assistant launches)")
+        m.set_defaults(fn=cmd_mcp)
+
+        t = sub.add_parser("tools", help="see and approve the tools your assistant has written")
+        t.add_argument("action", choices=["list", "show", "approve", "remove"])
+        t.add_argument("name", nargs="?", default="")
+        t.set_defaults(fn=cmd_tools)
+
+        c = sub.add_parser("connect",
+                           help="register this secretary with the AI assistants you have")
+        c.add_argument("--show", action="store_true",
+                       help="print what would be done, change nothing")
+        c.add_argument("--install", default="", choices=["", "goose"],
+                       help="install an assistant first (currently: goose)")
+        c.set_defaults(fn=cmd_connect)
 
     # Double-clicked from a file manager there are no arguments and often no terminal, so a
     # usage message would be a window that flashes and vanishes. No arguments therefore means

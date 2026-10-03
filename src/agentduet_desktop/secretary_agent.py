@@ -363,10 +363,7 @@ def remember_session(asker: str, subscriber: str, *, network: str = "WA",
 
 async def run_channel() -> None:
     """One attempt at the AgentDuet channel. Raises if it cannot connect, so main() can retry."""
-    # Bound ONCE here, at the top. Kept a lazy import (it reaches the adapters), but it must be
-    # bound before first use: a `from . import voice` further down made `voice` local to this
-    # whole function, so the CallAudioConfig line above it raised UnboundLocalError.
-    from . import voice
+    from . import edition
     # 24 kHz, NOT the SDK's 16 kHz default. The Qwen adapter declares
     # output_audio_format="pcm24" and emits 24 kHz mono; negotiating 16 kHz meant every sample
     # was played 1.5x too slowly with the pitch dropped about a fifth. Symptom on a real call:
@@ -433,7 +430,6 @@ async def run_channel() -> None:
             if not send.success:
                 logger.error("reply failed: %s (%s)", send.error_code, send.error_content)
 
-        @sm.on_incoming_message
         async def on_message(msg: IncomingMessage):
             if msg.network not in (Network.WA, Network.DDUET):
                 # SAY SO. This used to `return` in silence, which meant a message on another
@@ -683,18 +679,27 @@ async def run_channel() -> None:
         # secretary, which is the mode that has been in production. Deciding here rather than
         # inside either module keeps the exclusivity visible in one place — two modules each
         # registering "only if the other did not" is how both end up attached.
+        #
+        # THE RECORDER EDITION carries calls and nothing else: no agent to answer one, and no
+        # message handling at all — a message is the secretary's or the assistant's, never the
+        # recorder's. So it asks the connector for no messages rather than receiving and dropping
+        # them.
+        messages_on = edition.ai()
+        if messages_on:
+            sm.on_incoming_message(on_message)
         from . import owner as owner_settings
         if owner_settings.calls() == owner_settings.CALLS_CARRY:
             from . import carry
             calls_on = carry.register(sm)
             status.set_voice(False)        # no agent speaks in this mode; do not claim one does
         else:
+            from . import voice
             calls_on = voice.register(sm, owner_name())
             status.set_voice(calls_on)
 
         builder = (TriggerConditionsBuilder()
-                   .inbound_message(True)
-                   .outbound_message(True))
+                   .inbound_message(messages_on)
+                   .outbound_message(messages_on))
         if calls_on:
             builder = builder.inbound_call(InboundCallMode.ALL)
             # AND THE CALLS THIS LINE PLACES. Without this the connector never announces them,
@@ -717,8 +722,8 @@ async def run_channel() -> None:
         # failure than the one it guards against.
         try:
             await sm.setup_trigger_conditions(builder.build())
-            logger.info("trigger conditions set: inbound_message=True, outbound_message=True, "
-                        "inbound_call=%s, outbound_call=%s",
+            logger.info("trigger conditions set: inbound_message=%s, outbound_message=%s, "
+                        "inbound_call=%s, outbound_call=%s", messages_on, messages_on,
                         "ALL" if calls_on else "off", calls_on)
         except Exception as exc:
             logger.warning(
@@ -726,7 +731,8 @@ async def run_channel() -> None:
                 "connector already has. If nothing arrives, that is the first thing to check.",
                 type(exc).__name__, exc)
 
-        asyncio.create_task(drain_outbox())
+        if messages_on:
+            asyncio.create_task(drain_outbox())
         # THE TRANSCRIPTION WORKER IS NOT STARTED HERE. It used to be, with a comment claiming
         # it was "started unconditionally" — and this function is reached only after `main`
         # waits for a connector, and is then re-entered by the reconnect loop below it. So the
@@ -904,8 +910,16 @@ async def main() -> None:
     # connector the owner may have signed out of. Started here rather than in `run_channel`
     # because that is re-entered on every reconnect: one worker per drop, all draining the same
     # directory, against a queue whose whole design is one file at a time.
-    from . import transcribe as _t
-    asyncio.create_task(_t.worker())
+    # THE RECORDER EDITION has no transcription, so its queue only merges each call's two legs
+    # into the one file the owner keeps (merge.py) — the same step the full edition does after
+    # the words.
+    from . import edition
+    if edition.ai():
+        from . import transcribe as _t
+        asyncio.create_task(_t.worker())
+    else:
+        from . import merge as _m
+        asyncio.create_task(_m.worker())
 
     # IS THERE A NEWER BUILD? Started here for the same reason as the queue above — after the
     # site is bound, on the daemon's own loop, and regardless of the connector. It sleeps first
@@ -919,20 +933,23 @@ async def main() -> None:
     # the daemon's own loop, after the site binds, regardless of the connector — the queue is
     # derived from what is already on disk, so it is a no-op on an install with no model and
     # nothing to read.
-    from . import suggest as _sg
-    asyncio.create_task(_sg.worker())
+    #
+    # NONE OF THESE THREE IN THE RECORDER EDITION, which contains no speech engine and no model.
+    if edition.ai():
+        from . import suggest as _sg
+        asyncio.create_task(_sg.worker())
 
-    # LIVE CAPTIONS for a call in progress — a preview; the queue above still writes the record.
-    # Idle until a call is carried, and a no-op unless the speech engine is Qwen.
-    from . import live as _live
-    asyncio.create_task(_live.worker())
+        # LIVE CAPTIONS for a call in progress — a preview; the queue above still writes the
+        # record. Idle until a call is carried, and a no-op unless the speech engine is Qwen.
+        from . import live as _live
+        asyncio.create_task(_live.worker())
 
-    # THE DECISION MODEL the summary checks relationships with (decider.py). Only where a local
-    # model is set up — a summary needs one anyway — and in the background: nothing waits on it,
-    # and until it lands the summary uses its word rule.
-    from . import decider as _dec, llm as _llm
-    if _llm.configured():
-        _dec.fetch_in_background()
+        # THE DECISION MODEL the summary checks relationships with (decider.py). Only where a
+        # local model is set up — a summary needs one anyway — and in the background: nothing
+        # waits on it, and until it lands the summary uses its word rule.
+        from . import decider as _dec, llm as _llm
+        if _llm.configured():
+            _dec.fetch_in_background()
 
     if not connector_ready():
         logger.info("No AgentDuet connector yet — running the owner's view only. "

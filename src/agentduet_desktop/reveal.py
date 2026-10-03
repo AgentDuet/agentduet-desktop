@@ -27,9 +27,9 @@ logger = logging.getLogger("dduet.reveal")
 
 def folders() -> dict:
     """The folders an owner may be shown, by key. The ONLY paths this module will open."""
-    from . import carry, voice
+    from . import carry
     root = carry.recordings()
-    return {"recordings": root, "answered": root / voice.ANSWERED}
+    return {"recordings": root, "answered": root / carry.ANSWERED}
 
 
 def available() -> tuple[bool, str]:

@@ -213,6 +213,11 @@ def calls() -> str:
     starts recording two humans, so it has to be chosen explicitly and in a file the owner can
     see — never inferred, and never the fallback for a heading someone mistyped.
     """
+    # THE RECORDER EDITION ONLY CARRIES: it has no agent to answer with (see edition.py), so
+    # no setting can ask it to.
+    from . import edition
+    if not edition.ai():
+        return CALLS_CARRY
     first = _first_line(_strip_guidance(_sections().get("Calls", ""))).strip().lower()
     return CALLS_CARRY if first.startswith(CALLS_CARRY) else CALLS_ANSWER
 
