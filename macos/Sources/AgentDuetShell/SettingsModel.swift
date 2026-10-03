@@ -35,7 +35,7 @@ import Foundation
             switch self {
             case .account: return "Account"
             // THE RECORDER RECORDS AND NOTHING MORE: no transcription to name.
-            case .calls: return Edition.recorder ? "Recording" : "Record & Transcribe"
+            case .calls: return Edition.recorder ? "Recording" : Edition.aiOnly ? "Recordings" : "Record & Transcribe"
             case .permissions: return "Permissions"
             case .advanced: return "Advanced"
             case .about: return "About"

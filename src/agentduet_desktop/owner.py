@@ -216,8 +216,8 @@ def calls() -> str:
     # THE RECORDER EDITION ONLY CARRIES: it has no agent to answer with (see edition.py), so
     # no setting can ask it to.
     from . import edition
-    if not edition.ai():
-        return CALLS_CARRY
+    if edition.name() != edition.FULL:
+        return CALLS_CARRY             # nobody is answered in AgentDuet AI either: it has no line
     first = _first_line(_strip_guidance(_sections().get("Calls", ""))).strip().lower()
     return CALLS_CARRY if first.startswith(CALLS_CARRY) else CALLS_ANSWER
 

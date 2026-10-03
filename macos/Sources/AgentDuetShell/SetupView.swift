@@ -89,6 +89,18 @@ private struct PermissionsStep: View {
                                   detail: Self.documentsDetail,
                                   state: s.documentsState, allow: s.allowDocuments,
                                   openSettings: { s.openPrivacy("privacy") })
+                    // WHERE AGENTDUET RECORDER KEEPS THE CALLS, which is where this app reads them:
+                    // Documents › AgentDuet unless the recorder was pointed elsewhere.
+                    if Edition.aiOnly && s.documentsState == "allowed" {
+                        LabeledContent("Recordings folder") {
+                            HStack {
+                                Text(s.storage.isEmpty ? "None"
+                                     : FileManager.default.displayName(atPath: s.storage))
+                                    .help(s.storage)
+                                Button("Change…") { s.changeFolder() }
+                            }
+                        }
+                    }
                     if !Quarantine.answerHere {
                         PermissionRow(title: "Microphone (Optional)", detail: "To answer calls in this window.",
                                       state: s.mic, allow: s.allowMic,
@@ -116,6 +128,8 @@ private struct PermissionsStep: View {
 extension PermissionsStep {
     #if RECORDER
     static let documentsDetail = "Your call recordings are kept in Documents › AgentDuet."
+    #elseif AI_ONLY
+    static let documentsDetail = "Where AgentDuet Recorder keeps your calls, to transcribe them."
     #else
     static let documentsDetail = "Your call recordings and transcripts are kept in Documents › AgentDuet."
     #endif

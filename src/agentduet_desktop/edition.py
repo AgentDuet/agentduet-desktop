@@ -20,6 +20,10 @@ from __future__ import annotations
 import os
 
 FULL, RECORDER = "full", "recorder"
+#: AGENTDUET AI (2026-10-03): the AI half alone, beside AgentDuet Recorder. It has no phone line
+#: and takes no calls; it reads the recordings the recorder leaves in the AgentDuet folder, and
+#: nothing else, and writes their transcripts into each call's `.txt` (see `ingest.py`).
+AI_ONLY = "ai"
 
 #: Everything that is AI, or exists only to serve it. The recorder build excludes each of these,
 #: and the core may reach one only behind `ai()`. Kept here, in the core, because the build and
@@ -27,7 +31,7 @@ FULL, RECORDER = "full", "recorder"
 AI_MODULES = (
     # speech, summaries, suggestions and the owner's assistant, and their half of the site
     "transcribe", "live", "brief", "suggest", "assistant", "decider", "recall", "tools",
-    "web_ai",
+    "web_ai", "ingest",
     # the console interview, which hands the owner's answers to the model
     "init",
     # the local model and what sizes, times and schedules it
@@ -62,12 +66,30 @@ def _built() -> str:
 
 
 def name() -> str:
-    """The edition. The build decides; AGENTDUET_EDITION=recorder runs the recorder from source."""
-    if _built() == RECORDER:
-        return RECORDER                         # a recorder binary cannot be talked out of it
-    return RECORDER if os.getenv("AGENTDUET_EDITION", "").strip().lower() == RECORDER else FULL
+    """The edition. The build decides; AGENTDUET_EDITION=recorder (or ai) runs one from source."""
+    if _built() in (RECORDER, AI_ONLY):
+        return _built()                         # a single-edition binary cannot be talked out of it
+    asked = os.getenv("AGENTDUET_EDITION", "").strip().lower()
+    return asked if asked in (RECORDER, AI_ONLY) else FULL
 
 
 def ai() -> bool:
     """Whether the AI half is part of this product."""
-    return name() == FULL
+    return name() in (FULL, AI_ONLY)
+
+
+def calls() -> bool:
+    """Whether this product has a phone line: it takes and records calls. Not AgentDuet AI."""
+    return name() in (FULL, RECORDER)
+
+
+def home_name() -> str:
+    """The instance folder under the home directory. Each edition keeps its own, so two of them
+    on one Mac never share one (the shell resolves the same names, Daemon.swift)."""
+    return {RECORDER: ".agentduet-recorder", AI_ONLY: ".agentduet-ai"}.get(name(), ".agentduet-desktop")
+
+
+def port() -> int:
+    """The owner site's default port. AgentDuet AI runs BESIDE the recorder, so it cannot share
+    8899; the full product and the recorder are never installed together, so they do."""
+    return 8897 if name() == AI_ONLY else 8899

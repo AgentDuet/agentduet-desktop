@@ -1458,5 +1458,6 @@ def _merge_text(stem: str, wavs: list[pathlib.Path]) -> None:
 
 def merge_once() -> int:
     """Merge every call whose legs are transcribed, with its transcript. See merge.once."""
-    from . import merge
-    return merge.once(_transcribed, _merge_text)
+    from . import edition, merge
+    # AGENTDUET AI writes the transcript only: the audio and header are the recorder's.
+    return merge.once(_transcribed, _merge_text, audio_too=edition.calls())

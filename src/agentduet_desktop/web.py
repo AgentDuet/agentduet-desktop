@@ -41,7 +41,7 @@ logger = logging.getLogger("secretary.web")
 HERE = pathlib.Path(__file__).parent      # install dir: web.html / sim.html
 RUN = paths.RUN
 TOKEN_FILE = RUN / "web-token"
-HOST, PORT = "127.0.0.1", int(os.getenv("SECRETARY_WEB_PORT", "8899"))
+HOST, PORT = "127.0.0.1", int(os.getenv("SECRETARY_WEB_PORT") or edition.port())
 
 
 def _phone_mic() -> str:
@@ -107,6 +107,10 @@ def make_app(token: str) -> web.Application:
         """
         if (paths.RUN / "setup-done").exists():
             return False
+        # AGENTDUET AI has nothing to infer from: no line, no connector. Setup is done when the
+        # owner finishes it, and not before.
+        if not edition.calls():
+            return True
         from . import connector
         return bool(owner.setup_pending(deep=True)) or not connector.configured()
 

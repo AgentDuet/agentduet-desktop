@@ -46,6 +46,12 @@ jobs:
             --product AgentDuetShell --build-path .build-recorder
           python3 ../packaging/audit-recorder.py --shell .build-recorder/release/AgentDuetShell
 
+      # AGENTDUET AI'S SHELL (-D AI_ONLY): no sign-in, no connection. Compiled so a view that
+      # assumes a phone line fails here rather than on a tester's Mac.
+      - name: Build the AgentDuet AI shell
+        working-directory: macos
+        run: swift build -c release -Xswiftc -warnings-as-errors -Xswiftc -DAI_ONLY --build-path .build-ai
+
       # Prove the bundle ASSEMBLES, with a stand-in for the daemon. Whether the shell can start
       # the real one is a question only a person with a Mac can answer; whether the plist parses
       # and the layout is right is answerable here, and it is where a typo would otherwise sit

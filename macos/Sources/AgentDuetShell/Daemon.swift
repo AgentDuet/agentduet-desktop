@@ -36,7 +36,7 @@ final class Daemon {
             return URL(fileURLWithPath: explicit)
         }
         return FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(Edition.recorder ? ".agentduet-recorder" : ".agentduet-desktop")
+            .appendingPathComponent(Edition.homeName)
     }
 
     private var siteURLFile: URL { instanceHome.appendingPathComponent("run/site-url") }

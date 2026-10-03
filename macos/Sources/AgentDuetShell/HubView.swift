@@ -70,6 +70,8 @@ extension HubView {
     var titleAndStatus: some View {
         HStack(spacing: 10) {
             Text(Edition.product).font(.headline).fixedSize()
+            // NO LINE IN AGENTDUET AI, so nothing to say about one.
+            if Edition.calls {
             Button { model.openSettings?("account") } label: {
                 HStack(spacing: 6) {
                     Circle().fill(model.connected ? Color.green : Color.secondary)
@@ -81,6 +83,7 @@ extension HubView {
             }
             .buttonStyle(.plain)
             .help(model.connected && !model.myNumber.isEmpty ? model.myNumber : model.connection)
+            }
         }
     }
 }

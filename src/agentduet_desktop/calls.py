@@ -27,13 +27,16 @@ LOG = paths.RUN / "calls.jsonl"
 
 
 def record(call_id: str, caller: str, mode: str, *, recordings: list[str] | None = None,
-           note: str = "", outgoing: bool = False, started: float | None = None) -> None:
+           note: str = "", outgoing: bool = False, started: float | None = None,
+           at: float | None = None) -> None:
     """Append one call. Never raises: losing the audio matters, losing the index does not."""
     try:
         paths.RUN.mkdir(parents=True, exist_ok=True)
         with LOG.open("a") as f:
             f.write(json.dumps({
-                "at": datetime.now().isoformat(timespec="seconds"),
+                # `at` GIVEN only for a call filed after the fact (AgentDuet AI reading a
+                # recording later): its end, not the moment it was read.
+                "at": (datetime.fromtimestamp(at) if at else datetime.now()).isoformat(timespec="seconds"),
                 "call_id": call_id,
                 # E.164 where the platform gives it. "?" when it does not — better an honest
                 # unknown than a row silently attributed to the wrong person.
