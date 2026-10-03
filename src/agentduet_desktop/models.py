@@ -923,8 +923,13 @@ def _gpu_layers(model: str) -> tuple[int, str]:
     return 0, "CPU — no GPU detected"
 
 
-#: ONE LOAD AT A TIME. The daemon loads the model at startup (llm.preload) while a first question
-#: may be loading it too; without this both would read gigabytes, and two copies would be resident.
+#: ONE LOAD AT A TIME — of ANY llama.cpp model, held by `search` and `transcribe` too.
+#: Two reasons, found two days apart. The daemon loads the model at startup (llm.preload) while a
+#: first question may be loading it too; without this both would read gigabytes, and two copies
+#: would be resident. And llama-cpp-python silences its loader by swapping the process's stdout
+#: and stderr for the length of a load, which is not safe from two threads at once: Gemma loading
+#: at startup beside the search indexer loading its model ended in `OSError: [Errno 9] Bad file
+#: descriptor`, and the indexer stopped (2026-10-03).
 _load_lock = threading.RLock()
 
 

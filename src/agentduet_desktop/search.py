@@ -147,8 +147,10 @@ def embed(texts: list[str]) -> "list[list[float]] | None":
         if _model is None:
             from llama_cpp import Llama
             from . import machine
-            _model = Llama(model_path=str(folder() / FILE), embedding=True, n_ctx=2048,
-                           n_gpu_layers=-1 if machine.can_offload() else 0, verbose=False)
+            from . import models
+            with models._load_lock:                # one llama.cpp load at a time (models.py)
+                _model = Llama(model_path=str(folder() / FILE), embedding=True, n_ctx=2048,
+                               n_gpu_layers=-1 if machine.can_offload() else 0, verbose=False)
             logger.info("search model loaded")
         v = np.array(_model.embed(texts, normalize=True), dtype=np.float32)[:, :DIMS]
     slot.touch(slot.EMBED)
