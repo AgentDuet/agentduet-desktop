@@ -416,7 +416,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             self.openWindow()
         }
         setupWindow.onQuit = { NSApp.terminate(nil) }
-        setupWindow.show(api: api, rerun: rerun)
+        setupWindow.show(api: api, host: self, rerun: rerun)
     }
 
     // MARK: - the native Settings window

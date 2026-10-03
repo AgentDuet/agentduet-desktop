@@ -15,13 +15,16 @@ import SwiftUI
     var nsWindow: NSWindow? { window }
     var isOpen: Bool { window?.isVisible ?? false }
 
-    func show(api: DaemonAPI, rerun: Bool) {
+    func show(api: DaemonAPI, host: SettingsHost, rerun: Bool) {
         if let window, window.isVisible {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
         let model = SetupModel(api: api, rerun: rerun)
+        // THE HOST, as Settings has: Allow for Contacts, and the Documents and folder panels, are
+        // the app's to raise. Setup had none, so Allow for Contacts did nothing at all (2026-10-03).
+        model.settings.host = host
         model.onFinish = { [weak self] in self?.finish() }
         model.onQuit = { [weak self] in self?.onQuit?() }
         let w = NSWindow(contentViewController: NSHostingController(rootView: SetupView(model: model)))
