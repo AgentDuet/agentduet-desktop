@@ -256,6 +256,13 @@ the object is not always injected before the script runs.
 
 ## Releasing — build, VERIFY, then tag (learned the hard way on a6)
 
+**THREE APPS, ONE RELEASE EACH, macOS ONLY (Stanley, 2026-10-03).** AgentDuet (`v0.1.0b7`),
+AgentDuet Recorder (`recorder-v0.1.0b7`) and AgentDuet AI (`ai-v0.1.0b7`) share a version number
+and nothing else. Each is built with `build.yml` and `edition:` full, recorder or ai, verified,
+released under its own tag, and attached from its own run. Each app's update check reads only
+its own prefix (`update.PREFIX`), so a recorder is never linked to a page offering another app.
+Windows and Linux are not built. The full app still ships: Singtel is one telco of many.
+
 **THE TAG TRIGGERS THE BUILD HERE.** `build.yml` runs on `push: tags: ["v*"]`, so the tag is
 what produces the DMG. The global rule that "the deploy pipeline creates the git tag, not you"
 belongs to the microservices and is WRONG in this repo — do not reason with it here.
