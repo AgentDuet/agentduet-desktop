@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 
 /// The native setup window's steps and actions (2026-09-29) — the HTML wizard's behaviour, drawn
@@ -34,11 +35,18 @@ import Foundation
     private var startedDecider = false
     #endif
 
+    /// The settings model's changes, passed on as this one's.
+    private var relay: AnyCancellable?
+
     init(api: DaemonAPI, rerun: Bool) {
         settings = SettingsModel(api: api)
         signIn = SignInModel(settings: settings)
         self.rerun = rerun
         signIn.onDone = { [weak self] in self?.step = .permissions }
+        // THE STEPS READ `settings`, BUT THE WINDOW WATCHES THIS MODEL. Without passing its changes
+        // on, a permission granted in the background was never drawn: Allow stayed "Allow" while
+        // the daemon said granted (2026-10-03, and the report from Samip before it).
+        relay = settings.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
 
     private var api: DaemonAPI { settings.api }

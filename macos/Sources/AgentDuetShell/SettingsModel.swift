@@ -236,6 +236,13 @@ import Foundation
                 let r = await api.post("/api/permissions", ["action": "documents"])
                 if r["ok"] as? Bool == false { say(.permissions, r) }
                 await poll()
+                // BACK IN FRONT once macOS has its answer: its prompt hands the focus to the last
+                // ordinary app when it closes, which left this window behind others.
+                for _ in 0..<120 where documents == "asking" {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    await poll()
+                }
+                AppDelegate.comeBack()
             }
         }
     }
