@@ -692,6 +692,33 @@ derived from no longer exists, it is the only place that says so.
       the direction-specific code is no longer written from one case only.
 - [ ] **Record Message (SMS) does not exist at all.** We have WhatsApp through the SDK, not SMS
       archiving. This is a channel we do not ingest, not a screen we have not drawn.
+      **PLANNED, NOT STARTED (Stanley, 2026-10-03): AgentDuet Recorder records messages too.**
+      What was agreed:
+      - **Record only, no replying** from the Recorder.
+      - **One file per person per CALENDAR MONTH** in the AgentDuet folder:
+        `Messages/<number>/2026-10.txt`. A header like a call's (`Messages: Name (+65…)`,
+        `Month:`, `Network:`), then one line per message: `[2026-10-03 14:05] them: …`.
+      - **Folder named by number,** never the name, which changes in Contacts.
+      - **Each line appended in one write, and never rewritten.** The month comes from the
+        message's own time.
+      - **WhatsApp and DDUET from one person share the file,** with the network on each line
+        when it holds more than one.
+      - **Why month:** past months never change, so AgentDuet AI re-indexes only the current file;
+        files stay readable; archiving or deleting old months is moving files. Per day splits
+        a conversation at midnight; "after a silence" makes the boundary a guess that a late
+        message can reopen.
+      - **The split is plain code, never a model:** the Recorder contains no AI, and a file
+        contract between two apps must be predictable. AgentDuet AI may still group messages
+        into CONVERSATIONS for display, summaries and search — the decision model is a fit
+        there ("does this continue the conversation above?") — without touching the files.
+      - **Work it needs:**
+        - a core message log, since recording a message today goes through `brain.record`,
+          which the Recorder does not contain;
+        - the Recorder's channel taking messages (`messages_on` is `edition.ai()` today);
+        - the Recorder hub showing them;
+        - AgentDuet AI's `ingest.py` reading `Messages/`.
+      - **Open:** the owner's own replies from their phone never reach our line, so a file holds
+        only the other side. Ask the platform whether outgoing messages can be passed on.
 - [ ] **Connect AI is a SUMMARISER in the design** — transcripts go to a cloud model for action
       items and summaries, after the call. That is not what `llm.py` does today, which is drive a
       live agent. The providers and key handling carry over; the feature does not exist.
