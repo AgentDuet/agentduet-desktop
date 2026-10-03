@@ -116,7 +116,8 @@ private struct PermissionsStep: View {
                 Section {
                     Toggle(isOn: $model.atLogin) {
                         Text("Start \(Edition.product) when I log in (Optional)")
-                        Text("So calls are recorded without opening the app.")
+                        Text(Edition.aiOnly ? "So calls are transcribed without opening the app."
+                             : "So calls are recorded without opening the app.")
                     }
                 }
             }
