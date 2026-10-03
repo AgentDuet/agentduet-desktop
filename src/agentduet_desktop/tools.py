@@ -677,6 +677,22 @@ def untrusted(text: str) -> str:
     if not text:
         return ""
     return f"{UNTRUSTED_MARK} {str(text).replace(UNTRUSTED_MARK, '')} {UNTRUSTED_MARK}"
+def search_calls(query: str, who: str = "") -> str:
+    """Find where something was said on recorded calls — by meaning or by exact words, in any
+    language. Use it to answer "who mentioned…", "when did someone say…", or to find a call by
+    what was in it. `who` narrows it to one person."""
+    from . import names, search
+    target = names.resolve(who) if who else ""
+    if who and not target:
+        return f"No one matches {who!r}. Give their number, or the name the hub shows."
+    hits = search.search(query, target)
+    if not hits:
+        return "Nothing said on the calls matches that."
+    # THE HEADER IS OURS (when, and with whom, from the index); only the piece is the caller's.
+    return "\n".join(f"--- {h['at'][:16].replace('T', ' ')} with {_caller_label(h['person'])} ---\n"
+                     + untrusted(h["text"]) for h in hits)
+
+
 def read_call(who: str = "", when: str = "") -> str:
     """The transcript of a recorded call. `who` is the caller; `when` narrows to one date."""
     from . import calls as _calls, carry
@@ -1128,4 +1144,6 @@ RECORDER_TOOLS = {
         "days": "only the last N days, or 0 for all of it"}),
     "read_call": (read_call, {"who": "the caller, or empty for any",
                               "when": "a date like 2026-08-26, or empty for the most recent"}),
+    "search_calls": (search_calls, {"query": "what was said, in any words or language",
+                                    "who": "the person, or empty for everyone"}),
 }

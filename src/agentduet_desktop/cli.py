@@ -205,6 +205,16 @@ def _status_ai_head() -> None:
     except Exception as exc:
         _d = f"NOT available — {type(exc).__name__}: {exc}"
     print(f"  decider  : {_d}")
+    # SEARCH: its engine, and SQLite's trigram index, which a Python built against an old SQLite
+    # lacks — checked by making one, as a frozen build would have to.
+    try:
+        import sqlite3 as _sq
+        _sq.connect(":memory:").execute("CREATE VIRTUAL TABLE t USING fts5(x, tokenize='trigram')")
+        from . import search as _se
+        _s = "available, model downloaded" if _se.ready() else "available, model not downloaded"
+    except Exception as exc:
+        _s = f"NOT available — {type(exc).__name__}: {exc}"
+    print(f"  search   : {_s}")
 
 
 def _status_ai_tail() -> None:

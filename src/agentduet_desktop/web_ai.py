@@ -1022,6 +1022,18 @@ def routes(ctx) -> tuple[list, list]:
                     sockets.discard(ws)
         return web.json_response(out)
 
+    async def api_search(request):
+        """What was said on calls that matches `q` — by meaning and by keyword (search.py).
+        `who` narrows it to one person. Each hit carries the name the hub shows."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import names, search
+        q, who = request.query.get("q", ""), request.query.get("who", "")
+        hits = await asyncio.to_thread(search.search, q, who)
+        for h in hits:
+            h["display"] = names.name_for(h["person"])
+        return web.json_response({"q": q, "results": hits})
+
     async def api_chat_history(request):
         """The owner's own chat, so a reload does not look like it never happened."""
         if not authed(request):
@@ -1158,6 +1170,7 @@ def routes(ctx) -> tuple[list, list]:
         web.post("/api/resolve", api_resolve),
         web.post("/api/send", api_send),
         web.get("/api/chat_history", api_chat_history),
+        web.get("/api/search", api_search),
         web.post("/api/chat_new", api_chat_new),
         web.get("/api/proposals", api_proposals),
         web.post("/api/proposal", api_proposal),

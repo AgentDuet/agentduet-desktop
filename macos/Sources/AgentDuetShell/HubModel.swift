@@ -51,6 +51,33 @@ import Foundation
     /// The last PERSON opened, so "her" and "this person" in a question resolve to them.
     private(set) var lastPerson = ""
     @Published var search = ""
+    #if !RECORDER
+    /// What was said on calls that matches `search` (search.py), best first.
+    @Published private(set) var hits: [JSON] = []
+    /// A call to scroll to once its person's page has it — a search result that was opened.
+    @Published var focusCall: String?
+    private var searchTask: Task<Void, Never>?
+
+    /// SEARCH WHAT WAS SAID, a moment after typing stops: three characters at least, which is
+    /// what the keyword index needs; the names above filter as before.
+    func runSearch(_ text: String) {
+        searchTask?.cancel()
+        let q = text.trimmingCharacters(in: .whitespaces)
+        guard q.count >= 3 else { hits = []; return }
+        searchTask = Task {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            if Task.isCancelled { return }
+            let r = await api.get("/api/search", query: ["q": q])
+            if Task.isCancelled { return }
+            hits = r["results"] as? [JSON] ?? []
+        }
+    }
+
+    func openHit(_ h: JSON) {
+        focusCall = h.str("call_id")
+        pick(h.str("person"))
+    }
+    #endif
     /// Settings, which the app opens — at a section, or where it was.
     var openSettings: ((String?) -> Void)?
     @Published var notice: SettingsModel.Notice?

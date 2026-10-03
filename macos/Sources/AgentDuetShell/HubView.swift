@@ -202,14 +202,37 @@ private struct PeopleList: View {
                             PersonRow(person: p, picked: on, onCall: phone.onACall(p.str("who")))
                         }
                     }
-                    if everyone.isEmpty {
+                    if everyone.isEmpty && noHits {
                         Text(model.search.isEmpty ? "Nobody yet." : "No one matches.")
                             .foregroundStyle(.secondary).padding(.top, 8)
                     }
+                    #if !RECORDER
+                    // WHAT WAS SAID, under who matches by name — found by meaning or by the words.
+                    if !model.hits.isEmpty {
+                        Text("In Calls").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 8).padding(.top, 10)
+                        ForEach(model.hits.indices, id: \.self) { i in
+                            let h = model.hits[i]
+                            row(on: false, tap: { model.openHit(h) }) { HitRow(hit: h) }
+                        }
+                    }
+                    #endif
                 }
             }
         }
         .padding(8)
+        #if !RECORDER
+        .onChange(of: model.search) { model.runSearch($0) }
+        #endif
+    }
+
+    private var noHits: Bool {
+        #if RECORDER
+        return true
+        #else
+        return model.hits.isEmpty
+        #endif
     }
 
     /// EVERYONE, plus anyone on a call right now who has no history yet — a first-time caller
@@ -233,6 +256,37 @@ private struct PeopleList: View {
             .onTapGesture(perform: tap)
     }
 }
+
+#if !RECORDER
+/// One place on a call that matches the search: who, when, and the words.
+private struct HitRow: View {
+    let hit: JSON
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(hit.str("display").isEmpty ? hit.str("person") : hit.str("display"))
+                    .font(.body.weight(.semibold)).lineLimit(1)
+                Spacer()
+                Text(HubModel.when(hit.str("at"))).font(.caption).foregroundStyle(.secondary)
+            }
+            Text(snippet).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+        }
+        .padding(.vertical, 6)
+    }
+
+    /// The words without the "them:" and "you:" labels the transcript stores them with.
+    private var snippet: String {
+        hit.str("text").split(separator: "\n").map { line -> String in
+            let s = String(line)
+            for p in ["them:", "you:"] where s.hasPrefix(p) {
+                return s.dropFirst(p.count).trimmingCharacters(in: .whitespaces)
+            }
+            return s
+        }.joined(separator: " · ")
+    }
+}
+#endif
 
 private struct PersonRow: View {
     let person: JSON
@@ -864,7 +918,7 @@ private struct Conversation: View {
             }
             .animation(.easeOut(duration: 0.15), value: compact.value)
             // THE LATEST AT THE BOTTOM, in view on opening and when something new arrives.
-            .onAppear { reader.scrollTo("end", anchor: .bottom) }
+            .onAppear { if !scrollToFocus(reader, items) { reader.scrollTo("end", anchor: .bottom) } }
             #if !RECORDER
             // AND WHEN THE ASSISTANT OPENS OVER IT: what is left in view is the latest, once the
             // panel has finished taking its space.
@@ -875,7 +929,11 @@ private struct Conversation: View {
                 }
             }
             #endif
-            .onChange(of: items.count) { _ in withAnimation { reader.scrollTo("end", anchor: .bottom) } }
+            .onChange(of: items.count) { _ in
+                if !scrollToFocus(reader, items) {
+                    withAnimation { reader.scrollTo("end", anchor: .bottom) }
+                }
+            }
             .onChange(of: person.str("who")) { _ in reader.scrollTo("end", anchor: .bottom) }
             #if !RECORDER
             .onChange(of: liveNow.map { (phone.captions[$0.0] ?? []).count }.reduce(0, +)) { _ in
@@ -886,6 +944,19 @@ private struct Conversation: View {
         .sheet(isPresented: $editing.value) { RenameSheet(model: model) }
         #if !RECORDER
         .sheet(isPresented: $correcting.value) { CorrectSheet(model: model, who: person.str("who")) }
+        #endif
+    }
+
+    /// A search result opened this page: show that call, not the newest. True when it did.
+    private func scrollToFocus(_ reader: ScrollViewProxy, _ items: [HubModel.Item]) -> Bool {
+        #if RECORDER
+        return false
+        #else
+        guard let want = model.focusCall,
+              let item = items.first(where: { $0.call?.str("call_id") == want }) else { return false }
+        model.focusCall = nil
+        DispatchQueue.main.async { withAnimation { reader.scrollTo(item.id, anchor: .top) } }
+        return true
         #endif
     }
 
