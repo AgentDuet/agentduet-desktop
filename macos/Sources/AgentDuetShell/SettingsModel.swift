@@ -175,17 +175,8 @@ import Foundation
 
     // MARK: - Record & Transcribe
 
-    var recordCalls: Bool { cur.bool("record_calls") }
     var storage: String { panel.str("storage") }
     var language: String { cur.str("language").isEmpty ? "en" : cur.str("language") }
-
-    func setRecordCalls(_ on: Bool) {
-        Task {
-            say(.calls, await api.post("/api/setup/setting",
-                                       ["field": "record_calls", "value": on ? "yes" : "no"]))
-            await poll()
-        }
-    }
 
     #if !RECORDER
     func setLanguage(_ code: String) {

@@ -262,8 +262,8 @@ private struct CallsPane: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Save calls to this Mac", isOn: Binding(
-                    get: { model.recordCalls }, set: { model.setRecordCalls($0) }))
+                // NO SWITCH FOR RECORDING (Stanley, 2026-10-03): AgentDuet is meaningless without
+                // the recordings, and the switch never reached a carried call anyway.
                 // THE FOLDER'S NAME, NOT ITS PATH, as Safari's download folder does: a path is as
                 // long as the owner made it and a row is not. The full path is on hover.
                 LabeledContent("Folder") {
