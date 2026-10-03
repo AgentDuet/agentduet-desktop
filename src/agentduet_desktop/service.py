@@ -179,7 +179,7 @@ def _last_lines(n: int = 3) -> list[str]:
 
 def service_status() -> str:
     """Is the secretary running, and if not, what was it doing when it stopped?"""
-    from . import connector, llm
+    from . import connector, edition
 
     pid = running_pid()
     out = []
@@ -195,7 +195,9 @@ def service_status() -> str:
 
     # configured(), not verify(): verify calls the model, and a status check must not spend a
     # token every time an assistant is curious.
-    out.append(f"  model      {'attached' if llm.configured() else 'NOT ATTACHED'}")
+    if edition.ai():
+        from . import llm
+        out.append(f"  model      {'attached' if llm.configured() else 'NOT ATTACHED'}")
     out.append(f"  connector  {'configured' if connector.configured() else 'NOT SET'}")
 
     # THE REACHABLE ADDRESS, because "try it yourself" is the only convincing first step and
@@ -227,8 +229,11 @@ def service_start() -> str:
     if pid := running_pid():
         return f"Already running (pid {pid})."
 
-    from . import connector, llm
-    ok, why = llm.verify()          # a real call here IS worth it: starting without one is worse
+    from . import connector, edition
+    ok, why = True, ""
+    if edition.ai():
+        from . import llm
+        ok, why = llm.verify()      # a real call here IS worth it: starting without one is worse
     if not ok:
         # Starting it would produce a daemon that connects and then cannot answer anyone.
         return (f"Not started: no working model ({why}). Secrets must be set at a terminal — "

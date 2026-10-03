@@ -42,7 +42,7 @@ jobs:
           # deleted by an edit — it passed 140 other checks once while the voice path was broken.
           pip install wasmtime pyflakes
 
-      # Four suites, each run even if an earlier one fails. A single `&&` chain would report the
+      # Five suites, each run even if an earlier one fails. A single `&&` chain would report the
       # first failure and hide the rest, which turns one red run into several round trips.
       - name: Rules (model-free)
         run: python tests/test_rules.py
@@ -59,3 +59,9 @@ jobs:
       - name: Boundary (the recorder does not depend on the secretary)
         if: ${{ !cancelled() }}
         run: python tests/test_boundary.py
+
+      # The recorder EDITION: the package with every AI module deleted, booted as a daemon. Also
+      # boots the full edition the same way, so a split that drops an AI route fails here too.
+      - name: Recorder edition (no AI in it, and it still runs)
+        if: ${{ !cancelled() }}
+        run: python tests/test_recorder.py

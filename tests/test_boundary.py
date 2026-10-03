@@ -16,10 +16,10 @@ TWO CHECKS, because one kind of leak hides from the other:
      invisible to a source scan. Run in a FRESH interpreter per module, because sys.modules is
      global and one earlier import in this process would poison every later answer.
 
-WHAT THIS DOES NOT COVER, said plainly rather than implied: `web.py` imports `tools.py`, which
-imports most of the secretary, and both products need the site. Splitting those two files is a
-separate job. This pins the boundary that can be pinned today, and it will fail the moment
-someone widens it.
+THE WIDER LINE IS tests/test_recorder.py (2026-10-03): the recorder EDITION, which contains no
+AI at all, is checked there by deleting every AI module and booting the daemon. The site was
+split for it (`web.py` core, `web_ai.py` the rest). This file still pins the narrower,
+older boundary inside the full edition.
 
 Run:  python3 tests/test_boundary.py
 """

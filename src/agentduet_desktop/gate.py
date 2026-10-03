@@ -96,8 +96,8 @@ def turn():
 def _call_on() -> bool:
     """A call in progress: live captions running, or a call ringing or live in the app."""
     try:
-        from . import live, phone
-        return bool(live._calls) or phone._active is not None
+        from . import oncall, phone
+        return oncall.active() or phone._active is not None
     except Exception:
         return False
 

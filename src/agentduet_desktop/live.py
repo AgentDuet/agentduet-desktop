@@ -26,6 +26,8 @@ import collections
 import logging
 import time
 
+from .oncall import _calls, snapshot  # noqa: F401  (the registry is the recorder's; captions are ours)
+
 logger = logging.getLogger("secretary")
 
 #: The recording format `carry` writes: 24 kHz mono 16-bit.
@@ -35,9 +37,6 @@ FRAME = int(RATE * 0.03)
 #: Frames of history the noise floor is learned from — about ten seconds.
 FLOOR_FRAMES = 330
 
-#: The calls on right now: call_id -> {"who", "started", "captions": [...]}. What a page that opens
-#: mid-call needs in order to catch up.
-_calls: dict[str, dict] = {}
 _queue: "asyncio.Queue | None" = None
 #: call_id -> languages a long piece of that call has shown. See `worker`.
 _confirmed: dict[str, set] = {}
@@ -49,16 +48,9 @@ def enabled() -> bool:
     return transcribe.local_model() == transcribe.QWEN and transcribe.is_cached(transcribe.QWEN)
 
 
-def snapshot() -> dict:
-    """Every call in progress, with its captions so far — sent to a page when it connects."""
-    return {"type": "live_calls",
-            "calls": [{"call": cid, "who": c["who"], "started": c["started"],
-                       "captions": c["captions"]} for cid, c in _calls.items()]}
-
-
 async def _push(obj: dict) -> None:
-    from . import phone
-    await phone._broadcast(obj)
+    from . import oncall
+    await oncall.push(obj)
 
 
 async def start(call_id: str, who: str) -> None:
@@ -67,12 +59,11 @@ async def start(call_id: str, who: str) -> None:
     LOADED AT THE START OF THE CALL, not on the first piece. It is not kept resident between
     calls, and loading it on demand held the first caption of the first real call eight seconds.
     """
-    _calls[call_id] = {"who": who, "started": time.time(), "captions": []}
+    from . import oncall
     if enabled():
         from . import transcribe
         asyncio.get_running_loop().run_in_executor(None, _warm, transcribe)
-    await _push({"type": "live_start", "call": call_id, "who": who,
-                 "started": _calls[call_id]["started"]})
+    await oncall.start(call_id, who)
 
 
 def _warm(transcribe) -> None:
@@ -86,9 +77,9 @@ def _warm(transcribe) -> None:
 
 async def end(call_id: str) -> None:
     """The call is over. Pages drop the live mark; the captions stay until the real transcript."""
+    from . import oncall
     _confirmed.pop(call_id, None)
-    if _calls.pop(call_id, None) is not None:
-        await _push({"type": "live_end", "call": call_id})
+    await oncall.end(call_id)
 
 
 class Leg:

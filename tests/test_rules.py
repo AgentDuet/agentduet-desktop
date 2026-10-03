@@ -56,6 +56,13 @@ PASS = FAIL = 0
 FAILED: list[str] = []
 
 
+def _site_src(pkg) -> str:
+    """The owner site's source: the core (`web.py`) and its AI half (`web_ai.py`), split for the
+    recorder edition on 2026-10-03. A check about the site reads both."""
+    pkg = pathlib.Path(pkg)
+    return "\n".join((pkg / f).read_text(encoding="utf-8") for f in ("web.py", "web_ai.py"))
+
+
 def ok(name: str, cond: bool, detail: str = "") -> None:
     global PASS, FAIL
     if cond:
@@ -644,7 +651,7 @@ def test_answered_call_recording() -> None:
     _pkg = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
     ok("and in use means RUNNING, not merely named",
        'running == "local" and model == current' in (_pkg / "transcribe.py").read_text())
-    web_src_e = (_pkg / "web.py").read_text()
+    web_src_e = _site_src(_pkg)
     ok("the endpoint names the engine that runs",
        '"Apple on-device" if transcribe.engine() == "apple"' in web_src_e)
     stt_page = (_pkg / "settings.html").read_text()
@@ -1184,7 +1191,7 @@ def test_setup_mode() -> None:
 
     # ONE definition. Checked in the source because the alternative is importing both modules,
     # and this suite must run with no venv: `web` pulls in aiohttp, `secretary_agent` the SDK.
-    web_src = (src / "web.py").read_text()
+    web_src = _site_src(src)
     ok("the site's page choice comes from owner.setup_pending",
        re.search(r"def needs_setup.*?owner\.setup_pending\(", web_src, re.S) is not None)
     agent_src = (src / "secretary_agent.py").read_text()
@@ -1206,7 +1213,7 @@ def test_setup_mode() -> None:
     page = (src / "setup.html").read_text()
     ok("the setup page has a cancel button", 'id="doCancel"' in page)
     ok("it stops through the existing /api/quit, not a second path",
-       "post('/api/quit'" in page and "/api/quit" in (src / "web.py").read_text())
+       "post('/api/quit'" in page and "/api/quit" in _site_src(src))
     ok("it reads the channel state, so it can say whether anything goes off the air",
        "/api/state" in page and "onAir" in page)
     # Both of these have unwired a whole page before: localStorage is a ReferenceError in
@@ -1321,7 +1328,7 @@ def test_setup_mode() -> None:
        and "if (!m.ok)" not in setup_page)
     # AND THE HUB SHOWS IT, since it usually outlasts setup. In the Assistant tab only.
     hub = (src / "web.html").read_text()
-    ok("the hub is served the pick's download", '"pick": _pick_payload()' in (src / "web.py").read_text())
+    ok("the hub is served the pick's download", '"pick": _pick_payload()' in _site_src(src))
     ok("the Assistant tab has a progress bar", 'id="aDl"' in hub and "function drawDownload" in hub)
     ok("shown only in the Assistant tab, while downloading",
        "const show = PICKED === ASSISTANT && bars.length > 0;" in hub
@@ -1330,7 +1337,7 @@ def test_setup_mode() -> None:
     # speech model is 2.4 GB and used to arrive silently on the first call.
     ok("the hub shows the speech model arriving too", "if (sp.running && !sp.cached) bars.push(" in hub)
     ok("and is served its progress", '"got_mb": transcribe.size_on_disk(transcribe.local_model())'
-       in (src / "web.py").read_text())
+       in _site_src(src))
     ok("and the speech model arriving, by bar", 'id="sttDl"' in setup_page
        and 'id="setupStt"' not in setup_page)
     ok("and starts it with the step, as it does the AI model",
@@ -1420,7 +1427,7 @@ def test_setup_mode() -> None:
     ok("the gate accepts a blank key when one is stored",
        "(!key && !KEY_OFFERED)" in setup_src)
     ok("the server fills blanks from the files",
-       "fill_from_files" in (src / "web.py").read_text())
+       "fill_from_files" in _site_src(src))
 
     # ---- A CALL THE OWNER'S OWN LINE PLACES IS STILL A CALL --------------------------------
     #
@@ -1444,7 +1451,7 @@ def test_setup_mode() -> None:
     # qwen3-8b" — a refusal where the owner meant "and this one too" — and finishing a download
     # took over the model in use, so comparing two meant adopting each as it landed.
     mods = (src / "models.py").read_text()
-    webs = (src / "web.py").read_text()
+    webs = _site_src(src)
     ok("downloads are keyed per model", "_jobs: dict[str, dict]" in mods)
     ok("with a cap", "MAX_CONCURRENT_DOWNLOADS = 2" in mods)
     ok("and the cap is about disk, not speed", "PER MODEL" in mods)
@@ -1484,7 +1491,7 @@ def test_setup_mode() -> None:
     # how a9 presented — every download failed on a missing CA bundle and the reason was
     # returned and dropped. Reported again on 2026-09-08 as "download is not working".
     models_src_f = (src / "models.py").read_text()
-    web_src_f = (src / "web.py").read_text()
+    web_src_f = _site_src(src)
     ok("the reason is kept per model", "def note_failure" in models_src_f)
     ok("and outlives the attempt", "_failed: dict[str, str]" in models_src_f)
     ok("a retry clears the stale reason", "def forget_failure" in models_src_f)
@@ -1512,7 +1519,7 @@ def test_setup_mode() -> None:
     logo = src / "logo.png"
     _root = pathlib.Path(__file__).parent.parent
     spec_src_l = (_root / "packaging" / "agentduet-desktop.spec").read_text()
-    web_src_l = (src / "web.py").read_text()
+    web_src_l = _site_src(src)
     web_page_l = (src / "web.html").read_text()
     ok("the mark ships with the package", logo.is_file())
     ok("and is a PNG", logo.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n")
@@ -1601,7 +1608,7 @@ def test_setup_mode() -> None:
        "--login-item-status" in (pathlib.Path(__file__).parent.parent / "macos" / "Sources"
                                  / "AgentDuetShell" / "main.swift").read_text())
     ok("unknowable is not the same as off", "None means unknowable here" in login_src)
-    _web = (src / "web.py").read_text()
+    _web = _site_src(src)
     ok("the page prefers the fact over the preference",
        '_actual in ("on", "pending")' in _web)
     ok("and falls back to the recorded answer where nothing can be asked",
@@ -2511,8 +2518,7 @@ def test_a_failed_turn_is_reported() -> None:
     ok("with the explanation as the answer", "out of memory" in chat.shown[-1]["a"])
     eq("and no tool is claimed to have run", chat.shown[-1]["tools"], [])
 
-    web_src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
-               / "web.py").read_text()
+    web_src = _site_src(pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop")
     ok("the chat endpoint catches what the turn raises",
        "await _chat().turn(message, viewing))" in web_src
        and "chat.note_failure(message, reply)" in web_src)
@@ -2827,12 +2833,11 @@ def test_sending_is_code_on_both_surfaces() -> None:
     ok("there is one implementation", "def send_if_asked" in
        (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
         / "assistant.py").read_text())
-    for name in ("web.py", "secretary_agent.py"):
+    for name in ("web_ai.py", "secretary_agent.py"):
         text = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
                 / name).read_text()
         ok(f"{name} calls it", "send_if_asked(" in text)
-    web_src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
-               / "web.py").read_text()
+    web_src = _site_src(pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop")
     # It lived in web.make_app's closure, so the owner asking from their phone got a model turn
     # and was told "the assistant only reads" — true of the model, false of the product. The
     # comment it replaced warned that a second implementation is how the two surfaces drift.
@@ -3038,7 +3043,7 @@ def test_a_person_is_a_number_not_a_direction() -> None:
     # NOTHING CAPTURED IS NOT "NOT YET TRANSCRIBED". `silent` requires files, so a call with
     # none fell through to "Transcript pending." — a promise that can never be kept, and the
     # state every carried call is in while the platform hands us no audio.
-    web = (src / "web.py").read_text()
+    web = _site_src(src)
     page = (src / "web.html").read_text()
     ok("a call with no files says so", '"norecording": not names,' in web)
     ok("and the page stops promising a transcript", "No recording." in page)
@@ -3180,8 +3185,7 @@ def test_one_pair_of_credential_files() -> None:
     ok("and the mask is bullets plus a short tail", '"•" * 8 + key[-KEY_MASK_CHARS:]' in src)
     ok("the whole key never appears in what is offered",
        "return key" not in src.split("def key_mask")[1].split("def offered_pair")[0])
-    web = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
-           / "web.py").read_text()
+    web = _site_src(pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop")
     ok("and a blank field falls back to the file", "connector.fill_from_files(key, uuid)" in web)
     submitted = connector.fill_from_files("typed", "typed-uuid")
     eq("anything typed still wins", submitted, ("typed", "typed-uuid"))
@@ -3273,8 +3277,7 @@ def test_owner_writes_to_their_own_agent() -> None:
     ok("the assistant is shared, not built per surface", "def owner_chat" in
        (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
         / "assistant.py").read_text())
-    web_src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
-               / "web.py").read_text()
+    web_src = _site_src(pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop")
     ok("and the page uses that one", "assistant.owner_chat()" in web_src)
     ok("with one place to forget it", "assistant.forget_owner_chat()" in web_src)
 
@@ -3652,7 +3655,7 @@ def test_a_suggestion_is_judged_once_and_never_guessed() -> None:
     # ONE TEXT, ONE READER. The page renders `carry.transcript_of` and the pass judges it; two
     # copies would drift and a suggestion would cite words that are not on the screen.
     ok("the pass reads the same transcript the page shows",
-       "carry.transcript_of(" in body and "carry.transcript_of(" in (src / "web.py").read_text())
+       "carry.transcript_of(" in body and "carry.transcript_of(" in _site_src(src))
 
 
 def test_the_prompt_says_what_it_means_to_say() -> None:
@@ -3815,7 +3818,7 @@ def test_the_icon_font_ships_in_the_binary() -> None:
     # instead of flashing the ligature name.
     ok("and hides the glyph rather than the name while loading", "font-display:block" in css)
     ok("the daemon serves it", '"/fonts/material-symbols-rounded.woff2", icon_font'
-       in (src / "web.py").read_text())
+       in _site_src(src))
 
     # EVERY ICON THE PAGES USE WAS IN THE SUBSET. The font is cut to fifteen icons — the full
     # one is 3.7 MB — so a SIXTEENTH added to a page renders as its name while every other icon
@@ -3843,7 +3846,7 @@ def test_sign_in_uses_the_owners_own_browser() -> None:
     from agentduet_desktop import oauth
 
     src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
-    web = (src / "web.py").read_text()
+    web = _site_src(src)
     oa = (src / "oauth.py").read_text()
 
     # WHY. `location.href` navigates whatever shows the page, and in the native window that is
@@ -3882,7 +3885,7 @@ def test_about_answers_which_build_this_is() -> None:
 
     src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
     page = (src / "settings.html").read_text()
-    web = (src / "web.py").read_text()
+    web = _site_src(src)
 
     # WHY IT EXISTS. Two reports on 2026-09-10 both came down to which build was running — a
     # stale update notice, and a feature "not working" that was not in the build being tested —
@@ -4861,7 +4864,7 @@ def test_assets_are_utf8_whatever_the_machine_thinks() -> None:
     """The first Windows build ever run reached the wizard and then 500'd on the hub."""
     print("\n  -- assets decode as UTF-8, not as the locale --")
     src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
-    web = (src / "web.py").read_text(encoding="utf-8")
+    web = _site_src(src)
 
     # THE BUG: Path.read_text() with no encoding uses locale.getencoding() — UTF-8 on Linux and
     # macOS, cp1252 on Windows. web.html holds 72 em-dashes, so the hub was unreachable on
@@ -5143,7 +5146,7 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
     root = pathlib.Path(__file__).parent.parent
     shell = root / "macos/Sources/AgentDuetShell"
     swift = {f.name: f.read_text() for f in shell.glob("*.swift")}
-    web = (root / "src/agentduet_desktop/web.py").read_text()
+    web = _site_src(root / "src/agentduet_desktop")
     served = set(_re.findall(r'web\.(?:get|post)\("(/api/[^"]+)"', web))
     called = set()
     for text in swift.values():
@@ -5528,15 +5531,17 @@ def test_one_place_decides_the_model_and_hosted_is_quarantined() -> None:
         eq("unquarantined, SECRETARY_MODEL is the model again", llm.current_model(), "claude-sonnet-5")
 
     # NOTHING ELSE READS THE SETTING. Ten call sites each resolved it, with their own defaults.
-    for f in ("assistant.py", "brain.py", "hosts.py", "init.py", "models.py", "web.py"):
+    for f in ("assistant.py", "brain.py", "hosts.py", "init.py", "models.py", "web.py", "web_ai.py"):
         code = "\n".join(l for l in (src / f).read_text().splitlines()
                          if not l.strip().startswith("#"))
         ok(f"{f} does not read SECRETARY_MODEL itself", 'os.getenv("SECRETARY_MODEL"' not in code)
     brain_code = (src / "brain.py").read_text()
     ok("brain no longer captures the model at import, with a name Google does not serve",
        'MODEL = os.getenv("SECRETARY_MODEL", "gemini-3.1-flash")' not in brain_code)
-    ok("the daemon's startup uses the SHARED assistant, not a second instance",
-       "chat = assistant.owner_chat()" in (src / "web.py").read_text())
+    # THE SITE BUILDS NO ASSISTANT OF ITS OWN: web_ai asks for the shared one per request, and
+    # since the recorder split (2026-10-03) startup builds none at all.
+    ok("the site uses the SHARED assistant, never a second instance",
+       "assistant.owner_chat()" in _site_src(src) and "OwnerChat(" not in _site_src(src))
 
     # THE ASSISTANT FOLLOWS A FINISHED DOWNLOAD. owner_chat() resolves per call and rebuilds when
     # the answer changes, so when the pick lands on disk the next turn uses it — no restart.
@@ -5574,12 +5579,12 @@ def test_the_pages_offer_the_pick_not_a_picker() -> None:
     print("\n  -- the pages offer the pick, not a picker --")
     import re
     import unittest.mock as mock
-    from agentduet_desktop import llm, models, web
+    from agentduet_desktop import llm, models, web_ai
 
     src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
     st = (src / "settings.html").read_text()
     su = (src / "setup.html").read_text()
-    wb = (src / "web.py").read_text()
+    wb = _site_src(src)
 
     # ONE BUILDER FEEDS BOTH PAGES, so Settings and the wizard cannot disagree about the pick.
     ok("the settings endpoint carries the pick", 'cur["pick"] = _pick_payload()' in wb)
@@ -5587,7 +5592,7 @@ def test_the_pages_offer_the_pick_not_a_picker() -> None:
     with mock.patch.object(models, "pick", return_value={"model": "gemma-4-e4b", "fit": "fits",
                                                          "why": "x", "predicted_tps": 33.0}), \
          mock.patch.object(models, "is_downloaded", return_value=False):
-        pk = web._pick_payload()
+        pk = web_ai._pick_payload()
     eq("it names the model, its size, and whether it is here",
        (pk["model"], pk["name"], pk["dl_mb"], pk["downloaded"]),
        ("gemma-4-e4b", "Gemma 4 E4B", 4916, False))
@@ -5678,7 +5683,7 @@ def test_the_developer_override() -> None:
         ok("an override that no longer resolves falls back to the pick", llm.override_model() == "")
 
     src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
-    wb = (src / "web.py").read_text()
+    wb = _site_src(src)
     ok("it has an endpoint", 'web.post("/api/model-override", api_model_override)' in wb)
     ok("an empty name clears it", "tools._forget_env([llm.OVERRIDE])" in wb)
     ok("setting it only registers — nothing downloads from that call",
@@ -6100,7 +6105,7 @@ def test_live_captions_while_a_call_is_on() -> None:
        carry_src.count("await _live_start(") == 2 and carry_src.count("await _live_end(") == 2)
     ok("the live worker is started with the others",
        "asyncio.create_task(_live.worker())" in (src / "secretary_agent.py").read_text())
-    ok("a page opened mid-call catches up", "live.snapshot()" in (src / "phone.py").read_text())
+    ok("a page opened mid-call catches up", "oncall.snapshot()" in (src / "phone.py").read_text())
     ok("the page routes captions away from the phone's own state",
        "['live_calls', 'live_start', 'live_end', 'caption'].includes(m.type)" in hub)
     ok("a person on a call is marked in the list", 'class="livemark">On a call' in hub)
@@ -6132,7 +6137,7 @@ def test_live_captions_while_a_call_is_on() -> None:
 
     # A CALL NOBODY PICKED UP says so, rather than "No recording.": explicitly when the platform
     # reports it unanswered, and structurally for a carried call with no audio on either side.
-    web_src = (src / "web.py").read_text()
+    web_src = _site_src(src)
     ok("an unanswered call is noted as missed in the index",
        'outcome = "missed"' in carry_src and "note=outcome" in carry_src)
     ok("and a carried call with no audio at all counts as missed",
@@ -6164,7 +6169,8 @@ def test_live_captions_while_a_call_is_on() -> None:
     sent = []
     async def _drive():
         async def _push(obj): sent.append(obj)
-        with mock.patch.object(live, "_push", _push), \
+        from agentduet_desktop import oncall
+        with mock.patch.object(live, "_push", _push), mock.patch.object(oncall, "push", _push), \
              mock.patch.object(live, "_transcribe", side_effect=[("English", "Can you waive my bill?"),
                                                                   ("Cantonese", "系诶。"),
                                                                   ("English", "Yes.")]):
@@ -6469,7 +6475,7 @@ def test_unread_badge() -> None:
     """A person's row counts what is new since the owner last opened them."""
     print("\n  -- the unread badge --")
     src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
-    web = (src / "web.py").read_text()
+    web = _site_src(src)
     hub = (src / "web.html").read_text(encoding="utf-8")
     ok("only what the person did is news: calls in, their messages",
        'not c.get("outgoing")' in web and 'm.get("them")' in web)
@@ -6601,7 +6607,7 @@ def test_logs_can_be_exported() -> None:
     ok("and says what is in it before it is saved", "include phone numbers and caller names" in app)
     ok("About offers it too", 'Button("Export Logs…")' in
        (root / "macos/Sources/AgentDuetShell/SettingsView.swift").read_text())
-    ok("the route is served", 'web.get("/api/logs", api_logs)' in (root / "src/agentduet_desktop/web.py").read_text())
+    ok("the route is served", 'web.get("/api/logs", api_logs)' in _site_src(root / "src/agentduet_desktop"))
 
 
 def test_briefs_are_about_the_right_person() -> None:
@@ -6662,7 +6668,7 @@ def test_briefs_are_about_the_right_person() -> None:
     ok("the assistant can read a brief, and it counts as a stranger's words",
        "read_brief" in tools.RECORDER_TOOLS and "read_brief" in _a.TAINTING)
     root = pathlib.Path(__file__).parent.parent
-    web_src = (root / "src/agentduet_desktop/web.py").read_text()
+    web_src = _site_src(root / "src/agentduet_desktop")
     hub_src = (root / "macos/Sources/AgentDuetShell/HubView.swift").read_text()
     ok("each person comes with their summary, for their page",
        'p["summary"], p["summary_at"] = rec.get("summary", ""), rec.get("updated", "")' in web_src)

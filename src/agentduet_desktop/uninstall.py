@@ -36,7 +36,7 @@ import pathlib
 import shutil
 import subprocess
 
-from . import hosts, install, loginitem, paths
+from . import edition, install, loginitem, paths
 
 #: The Swift shell answers this and exits without becoming an application. Only the bundle can
 #: unregister its own login item — SMAppService.mainApp means "the caller's app", so asking from
@@ -89,6 +89,8 @@ def speech_caches() -> list[pathlib.Path]:
     gigabytes.
     """
     out = []
+    if not edition.ai():
+        return out              # the recorder edition downloads no speech model
     from . import transcribe
     stt = transcribe.stt_dir()
     if stt.is_dir():
@@ -120,9 +122,12 @@ def survey() -> list[tuple[str, str, str]]:
                      f"{install.VERSIONS_DIR} ({_human(_bytes(install.VERSIONS_DIR))})"))
     if loginitem.MAC_PLIST.is_file():
         rows.append(("registration", "legacy login item", str(loginitem.MAC_PLIST)))
-    for label, state in hosts.registration():
-        if state == "registered" or state.startswith("registered, but"):
-            rows.append(("registration", f"{label} registration", "as `%s`" % hosts.SERVER_NAME))
+    if edition.ai():                # the recorder edition registers with no assistant
+        from . import hosts
+        for label, state in hosts.registration():
+            if state == "registered" or state.startswith("registered, but"):
+                rows.append(("registration", f"{label} registration",
+                             "as `%s`" % hosts.SERVER_NAME))
     weights = paths.HOME / "models"
     if weights.is_dir() and any(weights.iterdir()):
         rows.append(("models", "local model weights", f"{weights} ({_human(_bytes(weights))})"))
@@ -179,6 +184,9 @@ def _unregister_login_item(apply: bool) -> list[str]:
 def _deregister_assistants(apply: bool) -> list[str]:
     """Remove only what `connect` wrote: Claude Code and Goose. Nothing else is ours to touch."""
     out = []
+    if not edition.ai():
+        return out
+    from . import hosts
     claude = hosts.resolve_bin("claude")
     if claude:
         cmd = [claude, "mcp", "remove", hosts.SERVER_NAME, "-s", "user"]
