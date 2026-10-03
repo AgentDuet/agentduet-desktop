@@ -132,8 +132,7 @@ ROW_WAIT_SECONDS = 600
 
 def _row(stem: str) -> dict | None:
     from . import calls
-    call_id = stem.split("-", 1)[1] if "-" in stem else stem
-    return next((r for r in calls.recent(2000) if r.get("call_id") == call_id), None)
+    return calls.get(stem.split("-", 1)[1] if "-" in stem else stem)
 
 
 def _length(path: pathlib.Path) -> str:

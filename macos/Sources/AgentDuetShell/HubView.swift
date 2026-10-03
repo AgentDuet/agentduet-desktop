@@ -812,7 +812,14 @@ private struct Conversation: View {
                         .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .strokeBorder(Color.green.opacity(c.ended ? 0.2 : 0.5)))
                     }
-                    if items.isEmpty && liveNow.isEmpty { Text("Nothing yet.").foregroundStyle(.secondary) }
+                    if items.isEmpty && liveNow.isEmpty {
+                        // JUST PICKED: the list line came first, and their calls are on the way.
+                        if person["call_count"] != nil {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Text("Nothing yet.").foregroundStyle(.secondary)
+                        }
+                    }
                     Color.clear.frame(height: 1).id("end")
                 }
                 .frame(maxWidth: 640)

@@ -106,7 +106,7 @@ def resolve(who: str) -> str:
     if not who or is_number(who):
         return who
     from . import calls
-    identities = set(calls.by_person()) | set(typed())
+    identities = set(calls.people()) | set(typed())
     people = contacts_state().get("people")
     if isinstance(people, dict):
         identities |= set(people)

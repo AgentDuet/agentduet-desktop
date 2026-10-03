@@ -6422,7 +6422,9 @@ def test_jobs_and_briefs() -> None:
                 return ("2026-09-25 15:00 — booking" if "OPEN items" in prompt
                         else "Books appointments by phone.")
         with _m.patch.object(_p, "RUN", tmp), \
-             _m.patch("agentduet_desktop.calls.recent", lambda: rows), \
+             _m.patch("agentduet_desktop.calls.recent", lambda *a: rows), \
+             _m.patch("agentduet_desktop.calls.for_person",
+                      lambda who, limit=None: [r for r in rows if r["caller"] == who]), \
              _m.patch.object(brief, "_transcript", lambda r: texts.get(r.get("call_id"))), \
              _m.patch.object(brief, "_chat_after", lambda who, after: []), \
              _m.patch.object(llm, "configured", lambda: True), \
@@ -6518,7 +6520,7 @@ def test_unread_badge() -> None:
     hub = (src / "web.html").read_text(encoding="utf-8")
     ok("only what the person did is news: calls in, their messages",
        'not c.get("outgoing")' in web and 'm.get("them")' in web)
-    ok("the first time, everyone starts as seen", "if seen is None:" in web)
+    ok("the first time, everyone starts as seen", "first = seen is None" in web and "if first:" in web)
     swift_hub = (src.parent.parent / "macos/Sources/AgentDuetShell/HubModel.swift").read_text()
     seen_fn = swift_hub.split("private func markSeen()")[1].split("func pick(")[0]
     ok("the native hub marks seen by a call's filed time, which is what the daemon counts",
@@ -6593,6 +6595,8 @@ def test_appointments_are_a_tool() -> None:
     at = datetime.now().isoformat(timespec="seconds")
     seen = {"them: lunch?": {"title": "Lunch at the office", "start": soon, "end": "", "when": ""}}
     with mock.patch.object(calls, "by_person", lambda: {"+6594378817": [{"at": at, "call_id": "c1"}]}), \
+         mock.patch.object(calls, "since",
+                           lambda cut: [{"at": at, "call_id": "c1", "caller": "+6594378817"}]), \
          mock.patch.object(carry, "call_audio", lambda r, c: (TMP, ["x.wav"])), \
          mock.patch.object(carry, "transcript_of", lambda n, f: "them: lunch?"), \
          mock.patch.object(tools, "rows", lambda: []), \
@@ -6672,8 +6676,10 @@ def test_briefs_are_about_the_right_person() -> None:
     shown = {cen: "Cen", kc: "Ong Kok Choong"}
     with mock.patch.object(brief.paths, "RUN", run), \
          mock.patch.object(_a.OwnerChat, "STORE", chat), \
-         mock.patch.object(calls, "recent", lambda: []), \
+         mock.patch.object(calls, "recent", lambda *a: []), \
          mock.patch.object(calls, "by_person", lambda: {cen: [], kc: []}), \
+         mock.patch.object(calls, "people", lambda: {cen: "", kc: ""}), \
+         mock.patch.object(calls, "for_person", lambda who, limit=None: []), \
          mock.patch.object(names, "name_for", lambda w, seen=None: shown.get(w, "")), \
          mock.patch.object(llm, "configured", lambda: True), \
          mock.patch.object(llm, "client", lambda *a: _Model()), \
@@ -6892,6 +6898,69 @@ def test_cards_stay_after_open() -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_calls_index() -> None:
+    """The call log's SQLite index: every reader sees every call, and the file stays the record."""
+    print("\n  -- the call log, indexed --")
+    import json as _json
+    import unittest.mock as _m
+    from agentduet_desktop import calls as _c
+    d = pathlib.Path(tempfile.mkdtemp())
+    log, db = d / "calls.jsonl", d / "calls.db"
+    with _m.patch.object(_c, "LOG", log), _m.patch.object(_c, "DB", db), \
+         _m.patch.object(_c.paths, "RUN", d):
+        _c.record("c1", "+6590000001", "carried", recordings=["a.wav"], outgoing=True)
+        eq("a call is in the file and the index", (log.read_text().count("\n"), _c.get("c1")["caller"]),
+           (1, "+6590000001"))
+        # AN OLDER BUILD appends to the file and knows nothing of the index.
+        with log.open("a") as f:
+            f.write(_json.dumps({"at": "2026-01-01T09:00:00", "call_id": "old", "caller": "+6590000002",
+                                 "mode": "carried", "outgoing": False, "recordings": [], "note": "",
+                                 "started": ""}) + "\n")
+        ok("a line another build appended is read next time", _c.get("old") is not None)
+        # MORE THAN 200 CALLS, MORE THAN 200 PEOPLE: nobody drops off.
+        with log.open("a") as f:
+            for i in range(300):
+                f.write(_json.dumps({"at": f"2026-02-01T10:{i // 60:02d}:{i % 60:02d}",
+                                     "call_id": f"x{i}", "caller": f"+6591{i % 250:06d}",
+                                     "mode": "carried", "outgoing": False, "recordings": [],
+                                     "note": "", "started": ""}) + "\n")
+        ppl = _c.people()
+        eq("everyone is a person, not just the newest 200 calls' people", len(ppl), 252)
+        ok("the quietest person is still there", "+6590000002" in ppl
+           and _c.for_person("+6590000002")[0]["call_id"] == "old")
+        ok("newest first", list(ppl)[0] == "+6590000001")
+        eq("since() is a range, not a scan", len(_c.since("2026-02-01T10:04:00")), 61)
+        sm = _c.summary({"+6590000002": "2026-01-01T09:00:00"})
+        ok("the list is counted, everyone in it", len(sm) == 252
+           and sum(v["calls"] for v in sm.values()) == 302)
+        ok("unread counts incoming calls newer than what was seen",
+           sm["+6590000002"]["unread"] == 0 and sm["+6590000001"]["unread"] == 0
+           and sm[list(sm)[1]]["unread"] >= 1)
+        ok("a legacy direction word still merges", _c.person_of({"caller": "to +659"}) == "+659")
+        # THE INDEX IS DERIVED: lose it and it comes back from the file.
+        db.unlink()
+        for extra in ("-wal", "-shm"):
+            pathlib.Path(str(db) + extra).unlink(missing_ok=True)
+        eq("a deleted index is rebuilt from the file", len(_c.recent(None)), 302)
+        # A FILE REPLACED, NOT APPENDED (shorter than what was indexed): rebuilt from it whole.
+        log.write_text(log.read_text().splitlines(keepends=True)[0])
+        eq("a replaced file is read whole again", len(_c.recent(None)), 1)
+        # HALF A LINE is left until it is whole.
+        with log.open("a") as f:
+            f.write('{"at": "2026-03-01T10:00:00", "call_id": "half"')
+        ok("half a line is not read", _c.get("half") is None)
+        with log.open("a") as f:
+            f.write(', "caller": "+6590000009", "mode": "carried"}\n')
+        ok("and is, once it is whole", (_c.get("half") or {}).get("caller") == "+6590000009")
+    # THE HUB ASKS FOR ONE PERSON IN FULL, and the rest light.
+    web = _site_src(pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop")
+    ok("the hub reads its list from the index, one person in full",
+       'calls.summary(_seen() or {})' in web
+       and "calls.for_person(who)" in web)
+    hub = (pathlib.Path(__file__).parent.parent / "macos/Sources/AgentDuetShell/HubModel.swift").read_text()
+    ok("and the Mac hub names who is open", 'query: ["open": picked ?? ""]' in hub)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -6903,6 +6972,7 @@ def main() -> None:
     test_idle_break()
     test_model_gate()
     test_jobs_and_briefs()
+    test_calls_index()
     test_assistant_memory()
     test_budget_split()
     test_unread_badge()

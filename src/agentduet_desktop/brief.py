@@ -231,8 +231,7 @@ def _calls_after(who: str, after: str) -> tuple[list[tuple[str, str]], bool]:
     Stops at the first call still being transcribed, so the watermark never jumps past one.
     """
     from . import calls as _calls
-    rows = [r for r in _calls.recent() if (r.get("caller") or "") == who
-            and (r.get("at") or "") > after]
+    rows = [r for r in _calls.for_person(who) if (r.get("at") or "") > after]
     rows.sort(key=lambda r: r.get("at", ""))
     out = []
     for r in rows:
@@ -255,7 +254,7 @@ def _about_them(q: str, who: str) -> bool:
     from . import calls, names
     if names.mentions(q, who):
         return True
-    return not any(names.mentions(q, other) for other in calls.by_person() if other != who)
+    return not any(names.mentions(q, other) for other in calls.people() if other != who)
 
 
 def _chat_after(who: str, after: str) -> list[tuple[str, str]]:
@@ -669,11 +668,9 @@ def request(who: str) -> None:
 def sweep() -> int:
     """Request an update for everyone with a call newer than their brief. Cheap when idle."""
     from . import calls as _calls
-    newest: dict[str, str] = {}
-    for r in _calls.recent():
-        who, at = r.get("caller") or "", r.get("at") or ""
-        if who and at > newest.get(who, ""):
-            newest[who] = at
+    # EVERYONE, by their newest call — not the newest 200 calls, which left anyone quieter than
+    # that with a summary that never caught up.
+    newest = {who: at for who, at in _calls.people().items() if who and who != "?"}
     n = 0
     for who, at in newest.items():
         if at > load(who).get("through_call", ""):

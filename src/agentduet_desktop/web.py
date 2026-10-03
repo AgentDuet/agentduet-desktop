@@ -612,62 +612,84 @@ def make_app(token: str) -> web.Application:
         from . import calls, carry
 
         folder = carry.recordings()
+
+        def _call(r: dict) -> dict:
+            """One call in full: its audio and transcript, joined to the files on disk."""
+            # THE MERGE IF IT IS DONE, ELSE THE LEGS. The index row is written when the
+            # call ends and the merge happens later on the transcription queue, so a
+            # just-finished call legitimately has legs and no merged file. Asking only for
+            # the merged name would report it as "No recording." while its audio sat on
+            # disk — a false claim, and the exact shape of failure this file keeps finding.
+            af, names = carry.call_audio(r.get("recordings", []), r.get("call_id", ""))
+            # A .wav with no sibling .txt is still in the transcription queue — that is the
+            # queue, so the UI can say "pending" without a second source of truth.
+            # BOTH LEGS, LABELLED. This broke out of the loop on the first transcript it
+            # found, and since `names` is sorted that was the CALLEE — this line's own side.
+            # Half a conversation, and the half the owner already knows. The files are
+            # deliberately unmixed (see carry._Recorder: the two sides are not aligned, so
+            # summing them compresses one), which is exactly why each needs saying whose it
+            # is. `-caller` is always the other party and `-callee` always this line,
+            # whichever way the call was set up.
+            text = carry.transcript_of(names, af)[:4000]
+            audio = sum((af / n).stat().st_size for n in names) if names else 0
+            return {
+                "at": r.get("at", ""), "call_id": r.get("call_id", ""),
+                "mode": r.get("mode", ""), "files": len(names), "bytes": audio,
+                # THE ONE FILE TO PLAY: the merge, both sides in one — never a single leg,
+                # which is half a conversation. Empty until the merge is done.
+                **_playable(af, names),
+                "transcript": text,
+                # Empty WAVs are what an unbridged call leaves behind; saying so beats
+                # showing a call that looks recorded and plays nothing.
+                "silent": bool(names) and audio <= len(names) * carry.EMPTY_WAV_BYTES,
+                # NOTHING WAS CAPTURED, which is not the same as "not transcribed yet".
+                # `silent` requires files, so a call with none fell through to the page's
+                # "Transcript pending." — promising a transcript that can never arrive. That
+                # is the state a carried call is in whenever the platform hands us no audio,
+                # so it would have said "pending" for ever.
+                "norecording": not names,
+                # NOBODY PICKED UP, said as that rather than as a missing file. Recorded
+                # explicitly since 2026-09-25 ("missed"); for rows before that, a CARRIED call
+                # with no audio from either side is the same fact structurally — carried calls
+                # are always recorded, so empty legs mean no one was ever connected.
+                "missed": (r.get("note", "").startswith("missed")
+                           or (not names and r.get("mode") == "carried")),
+                "outgoing": bool(r.get("outgoing")),
+                # When it BEGAN, where recorded — see calls.record. The page orders by it.
+                "started": r.get("started", ""),
+            }
+
+        # ONE PERSON IN FULL, EVERYONE ELSE COUNTED (2026-10-03). `open` names the person whose
+        # page is showing: their calls are read in full — audio found, transcript read. Everyone
+        # else is a line of the list: how many calls, the newest, how many unread — counted by the
+        # database (`calls.summary`), so the poll costs the same however many calls there are.
+        # Reading every call in full on every poll grew with every call ever made, which is why
+        # this used to show only the newest 200 (docs/limits.md).
+        # A CALLER WITHOUT `open` — the frozen HTML pages — still gets every call of the newest
+        # 200 in full, exactly as before.
+        open_who = request.query.get("open")
         people = []
-        for who, rows in calls.by_person().items():
-            items = []
-            for r in rows:
-                # THE MERGE IF IT IS DONE, ELSE THE LEGS. The index row is written when the
-                # call ends and the merge happens later on the transcription queue, so a
-                # just-finished call legitimately has legs and no merged file. Asking only for
-                # the merged name would report it as "No recording." while its audio sat on
-                # disk — a false claim, and the exact shape of failure this file keeps finding.
-                af, names = carry.call_audio(r.get("recordings", []), r.get("call_id", ""))
-                # A .wav with no sibling .txt is still in the transcription queue — that is the
-                # queue, so the UI can say "pending" without a second source of truth.
-                # BOTH LEGS, LABELLED. This broke out of the loop on the first transcript it
-                # found, and since `names` is sorted that was the CALLEE — this line's own side.
-                # Half a conversation, and the half the owner already knows. The files are
-                # deliberately unmixed (see carry._Recorder: the two sides are not aligned, so
-                # summing them compresses one), which is exactly why each needs saying whose it
-                # is. `-caller` is always the other party and `-callee` always this line,
-                # whichever way the call was set up.
-                text = carry.transcript_of(names, af)[:4000]
-                audio = sum((af / n).stat().st_size for n in names) if names else 0
-                items.append({
-                    "at": r.get("at", ""), "call_id": r.get("call_id", ""),
-                    "mode": r.get("mode", ""), "files": len(names), "bytes": audio,
-                    # THE ONE FILE TO PLAY: the merge, both sides in one — never a single leg,
-                    # which is half a conversation. Empty until the merge is done.
-                    **_playable(af, names),
-                    "transcript": text,
-                    # Empty WAVs are what an unbridged call leaves behind; saying so beats
-                    # showing a call that looks recorded and plays nothing.
-                    "silent": bool(names) and audio <= len(names) * carry.EMPTY_WAV_BYTES,
-                    # NOTHING WAS CAPTURED, which is not the same as "not transcribed yet".
-                    # `silent` requires files, so a call with none fell through to the page's
-                    # "Transcript pending." — promising a transcript that can never arrive. That
-                    # is the state a carried call is in whenever the platform hands us no audio,
-                    # so it would have said "pending" for ever.
-                    "norecording": not names,
-                    # NOBODY PICKED UP, said as that rather than as a missing file. Recorded
-                    # explicitly since 2026-09-25 ("missed"); for rows before that, a CARRIED call
-                    # with no audio from either side is the same fact structurally — carried calls
-                    # are always recorded, so empty legs mean no one was ever connected.
-                    "missed": (r.get("note", "").startswith("missed")
-                               or (not names and r.get("mode") == "carried")),
-                    "outgoing": bool(r.get("outgoing")),
-                    # When it BEGAN, where recorded — see calls.record. The page orders by it.
-                    "started": r.get("started", ""),
-                })
-            people.append({"who": who, "calls": items, "messages": [],
-                           "last": items[0]["at"] if items else ""})
+        if open_who is None:
+            for who, rows in calls.by_person().items():
+                items = [_call(r) for r in rows]
+                people.append({"who": who, "calls": items, "messages": [],
+                               "last": items[0]["at"] if items else ""})
+        else:
+            for who, s in calls.summary(_seen() or {}).items():
+                if who == open_who:
+                    items = [_call(r) for r in calls.for_person(who)]
+                    people.append({"who": who, "calls": items, "messages": [], "last": s["last"]})
+                else:
+                    people.append({"who": who, "calls": [], "messages": [], "last": s["last"],
+                                   "call_count": s["calls"], "calls_unread": s["unread"],
+                                   "last_in": s["last_in"]})
 
         # MESSAGES, SUGGESTIONS, HELD REPLIES AND SUMMARIES are the AI half's (web_ai). It may
         # add people the call log has never heard of — someone who only wrote — so it runs
         # before names are joined.
         if edition.ai():
             from . import web_ai
-            web_ai.threads_extras(people)
+            web_ai.threads_extras(people, open_who)
 
         # A READABLE NAME where one arrived with the message. Joined here rather than stored on
         # the row, so it follows whatever the last message said the person is called.
@@ -699,9 +721,17 @@ def make_app(token: str) -> web.Application:
 
     def _incoming(p: dict) -> list[str]:
         """The items that can be NEW to the owner: calls in, and messages from the person.
-        A call the owner placed, or a reply they sent, is not news to them."""
+        A call the owner placed, or a reply they sent, is not news to them. A person in the list
+        only (not open) brings their newest incoming call as `last_in`, for the first look."""
         return ([c["at"] for c in p["calls"] if not c.get("outgoing") and c.get("at")]
-                + [m["at"] for m in p["messages"] if m.get("them") and m.get("at")])
+                + [m["at"] for m in p["messages"] if m.get("them") and m.get("at")]
+                + ([p["last_in"]] if p.get("last_in") else []))
+
+    def _seen() -> dict | None:
+        try:
+            return json.loads(SEEN.read_text())
+        except (OSError, ValueError):
+            return None
 
     def _mark_unread(people: list[dict]) -> None:
         """Set `unread` on each person: incoming items newer than what the owner last saw.
@@ -710,11 +740,9 @@ def make_app(token: str) -> web.Application:
         light up at once the day this shipped. After that a new person has no mark, so their
         first call counts.
         """
-        try:
-            seen = json.loads(SEEN.read_text())
-        except (OSError, ValueError):
-            seen = None
-        if seen is None:
+        seen = _seen()
+        first = seen is None
+        if first:
             seen = {p["who"]: max(_incoming(p) or [""]) for p in people}
             try:
                 SEEN.parent.mkdir(parents=True, exist_ok=True)
@@ -723,7 +751,12 @@ def make_app(token: str) -> web.Application:
                 pass
         for p in people:
             mark = seen.get(p["who"], "")
-            p["unread"] = sum(1 for at in _incoming(p) if at > mark)
+            # A LIST LINE's calls were counted by the database (`calls_unread`); its `last_in` is
+            # only for the first look, which marks everything seen.
+            unread_calls = 0 if first else p.pop("calls_unread", 0)
+            p.pop("calls_unread", None)
+            p["unread"] = unread_calls + sum(
+                1 for at in _incoming(p) if at > mark and at != p.get("last_in"))
 
     async def api_seen(request):
         """The owner opened this person's history: everything in it up to now is seen."""

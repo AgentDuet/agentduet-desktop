@@ -586,7 +586,7 @@ def list_calls(days: str = "7") -> str:
         cut = datetime.now() - timedelta(days=7)
     folder = carry.recordings()
     out = []
-    for r in _calls.recent():
+    for r in _calls.since(cut.isoformat(timespec="seconds")):
         at = r.get("at", "")
         try:
             if datetime.fromisoformat(at) < cut:
@@ -641,10 +641,9 @@ def list_appointments(days: str = "30") -> str:
             pass
         for s in suggest.for_texts([text]).values():
             found.append((s["start"], s["title"], who, at, how))
-    for who, rows_ in _calls.by_person().items():
-        for r in rows_:
-            af, n = carry.call_audio(r.get("recordings", []), r.get("call_id", ""))
-            add(carry.transcript_of(n, af), who, r.get("at", ""), "call")
+    for r in _calls.since(cut.isoformat(timespec="seconds")):
+        af, n = carry.call_audio(r.get("recordings", []), r.get("call_id", ""))
+        add(carry.transcript_of(n, af), _calls.person_of(r), r.get("at", ""), "call")
     for r in rows():
         if r.get("network") in ("WA", "DDUET"):
             both = "\n".join(p for p in (r.get("question", ""), r.get("answer", "")) if p)
@@ -682,7 +681,7 @@ def read_call(who: str = "", when: str = "") -> str:
     """The transcript of a recorded call. `who` is the caller; `when` narrows to one date."""
     from . import calls as _calls, carry
     hits = []
-    for r in _calls.recent():
+    for r in _calls.recent(None):              # every call: asked rarely, and must not miss one
         # BY NAME TOO, since list_calls shows one (#8's rule, for calls).
         if who and not _is_them(who, r.get("caller") or "", None):
             continue

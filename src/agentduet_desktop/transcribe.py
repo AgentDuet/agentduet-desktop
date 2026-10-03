@@ -995,14 +995,8 @@ def _other_name(path: pathlib.Path) -> str:
         if stem.endswith(suffix):
             stem = stem[: -len(suffix)]
     call_id = stem.split("-", 1)[1] if "-" in stem else ""
-    try:
-        for line in calls.LOG.read_text().splitlines():
-            if call_id and call_id in line:
-                row = json.loads(line)
-                return names.name_for(str(row.get("caller") or ""))
-    except (OSError, ValueError):
-        pass
-    return ""
+    row = calls.get(call_id) if call_id else None
+    return names.name_for(str(row.get("caller") or "")) if row else ""
 
 
 def _other_speech(path: pathlib.Path) -> list[tuple[float, float]] | None:
