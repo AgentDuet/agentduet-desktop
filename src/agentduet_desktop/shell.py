@@ -174,7 +174,9 @@ def site_url(timeout: float = 20.0) -> str | None:
             u = recorded.read_text().strip()
             if u:
                 return u
-        if tok.is_file():
+        # A GUESS FROM THE PORT only where the port is fixed: with 0 (any free one) only the
+        # recorded address can say where the daemon is.
+        if tok.is_file() and port != "0":
             t = tok.read_text().strip()
             if t:
                 return f"http://127.0.0.1:{port}/?t={t}"

@@ -72,7 +72,7 @@ print("\n-- the edition --")
 check("it is AgentDuet AI", edition.name() == edition.AI_ONLY)
 check("with the AI half and no phone line", edition.ai() and not edition.calls())
 check("its own instance", paths.HOME.name == "home" and edition.home_name() == ".agentduet-ai")
-check("and its own port, beside the recorder's", edition.port() == 8897)
+check("and any free port, so it never clashes with the recorder", edition.port() == 0)
 
 FOLDER = WORK / "AgentDuet"
 with mock.patch.object(carry, "recordings", lambda: FOLDER):
@@ -151,25 +151,24 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
-port = free_port()
 home = WORK / "boot"
 env = {k: v for k, v in os.environ.items() if k in ("PATH", "LANG", "TMPDIR")}
 env.update(PYTHONPATH=str(ROOT / "src"), AGENTDUET_EDITION="ai", AGENTDUET_HOME=str(home),
-           SECRETARY_WEB_PORT=str(port), HOME=str(WORK))
+           HOME=str(WORK))                  # NO PORT GIVEN: it takes one, and says which
 log = (WORK / "daemon.log").open("w")
 proc = subprocess.Popen([sys.executable, "-m", "agentduet_desktop.cli", "run", "--headless"],
                         stdout=log, stderr=subprocess.STDOUT, env=env)
 try:
-    tok = home / "run" / "web-token"
+    site = home / "run" / "site-url"
+    port = 0
     for _ in range(80):
         time.sleep(0.25)
-        if tok.is_file():
-            try:
-                with socket.create_connection(("127.0.0.1", port), timeout=0.5):
-                    break
-            except OSError:
-                pass
-    t = tok.read_text().strip() if tok.is_file() else ""
+        if site.is_file() and site.read_text().strip():
+            port = int(site.read_text().split(":")[2].split("/")[0])
+            break
+    check("it says which port it took, and it is not a fixed one",
+          port not in (0, 8897, 8899), port)
+    t = (home / "run" / "web-token").read_text().strip() if port else ""
 
     def get(path):
         try:

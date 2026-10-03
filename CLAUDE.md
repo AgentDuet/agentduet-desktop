@@ -109,7 +109,7 @@ BESIDE AgentDuet Recorder.
   written.
 - **What it lacks:** sign-in, a connection and calls (`edition.calls()` is false; Swift
   `-D AI_ONLY`).
-- **What it has of its own:** `~/.agentduet-ai`, port 8897, `com.b3networks.agentduet-ai`.
+- **What it has of its own:** `~/.agentduet-ai`, `com.b3networks.agentduet-ai`, and any free port (it never signs in, so nothing needs a fixed number; the shell reads `run/site-url`).
 - **How to run it:** `EDITION=ai ./dev-app.sh`, which leaves the recorder running.
 - **Proven by** `tests/test_ai_edition.py`.
 

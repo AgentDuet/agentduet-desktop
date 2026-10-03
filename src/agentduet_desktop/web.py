@@ -1090,11 +1090,19 @@ def _token() -> str:
 
 async def start() -> str:
     """Start the site inside the daemon's loop. Returns the URL to open."""
+    global PORT
     token = _token()
 
+    # A STALE ADDRESS MUST NOT OUTLIVE THE RUN that wrote it: with a port macOS picks, the last
+    # run's number is wrong, and a reader would wait on it.
+    (paths.RUN / "site-url").unlink(missing_ok=True)
     runner = web.AppRunner(make_app(token))
     await runner.setup()
-    await web.TCPSite(runner, HOST, PORT).start()
+    site = web.TCPSite(runner, HOST, PORT)
+    await site.start()
+    # THE PORT ACTUALLY BOUND, which is not PORT when that was 0 (edition.port()). Written back
+    # so anything that reads web.PORT later — the sign-in redirect, a log line — sees the real one.
+    PORT = site._server.sockets[0].getsockname()[1]
 
     url = f"http://{HOST}:{PORT}/?t={token}"
     # Record the URL that was actually bound. A second launch reads this rather than rebuilding
