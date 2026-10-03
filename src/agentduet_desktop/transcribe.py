@@ -865,10 +865,12 @@ def _qwen_model():
             return out
 
     (model_file, _), (mmproj_file, _) = QWEN_FILES
-    handler = _AudioHandler(clip_model_path=str(_qwen_dir() / mmproj_file), verbose=False)
-    _qwen_llm = Llama(model_path=str(_qwen_dir() / model_file), chat_handler=handler,
-                      n_ctx=8192, n_gpu_layers=-1 if machine.can_offload() else 0,
-                      verbose=False)
+    from . import models
+    with models._load_lock:                        # one llama.cpp load at a time (models.py)
+        handler = _AudioHandler(clip_model_path=str(_qwen_dir() / mmproj_file), verbose=False)
+        _qwen_llm = Llama(model_path=str(_qwen_dir() / model_file), chat_handler=handler,
+                          n_ctx=8192, n_gpu_layers=-1 if machine.can_offload() else 0,
+                          verbose=False)
     logger.info("speech model Qwen3-ASR 1.7B loaded on %s", backend())
     return _qwen_llm
 
