@@ -609,6 +609,8 @@ async def run_channel() -> None:
             if owner.messages() == owner.MESSAGES_CARRY:
                 brain.record(asker, question, "carried", "", "", network=network,
                              verified=verified, conversation=conversation)
+                from . import search as _search
+                _search.wake()                     # a new message is searchable at once
                 logger.info("[%s] %s → carried to the owner, not answered", network, asker)
                 return
 

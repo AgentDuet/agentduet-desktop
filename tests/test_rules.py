@@ -4717,7 +4717,7 @@ def test_exact_speaking_order() -> None:
         body = carry.read_body(carry.merged_txt(stem))
         eq("turns interleave by time, with the offset applied",
            body.strip().splitlines(),
-           ["them: is that the delivery", "you: yes tuesday", "them: and the time"])
+           ["[0:00] them: is that the delivery", "[0:02] you: yes tuesday", "[0:03] them: and the time"])
         ok("and no commentary is written", "#" not in body)
 
         # NO TIMINGS MEANS NO CLAIM. A leg transcribed by an earlier build has none, and
@@ -7039,15 +7039,22 @@ def test_search() -> None:
     import numpy as _np
     import unittest.mock as _m
     from agentduet_desktop import assistant as _a, carry, calls as _c, search, tools as _t
-    body = "\n".join(f"{'them' if i % 2 == 0 else 'you'}: turn {i}" for i in range(7))
-    got = search.pieces(body)
-    eq("seven turns, three a piece, one shared", [p.count("\n") + 1 for p in got], [3, 3, 3])
-    ok("each piece starts where the last ended", got[1].startswith("them: turn 2"))
-    long_ = search.pieces("them: " + "word " * 400)
+    # TIMES IN THE TRANSCRIPT (2026-10-03), and older ones without.
+    eq("a turn's time is read", carry.parse_turns("[1:05] them: hi\n[1:05:30] you: yes"),
+       [(65, "them", "hi"), (3930, "you", "yes")])
+    eq("and a transcript without times still reads", carry.parse_turns("them: hi\nmore\nyou: yes"),
+       [(None, "them", "hi more"), (None, "you", "yes")])
+    eq("times are written as the owner reads them", (carry.stamp(65), carry.stamp(3930)),
+       ("[1:05]", "[1:05:30]"))
+    body = "\n".join(f"[0:{i:02d}] {'them' if i % 2 == 0 else 'you'}: turn {i}" for i in range(7))
+    got = search.pieces(carry.parse_turns(body))
+    eq("seven turns, three a piece, one shared", [p.count("\n") + 1 for p, _, _ in got], [3, 3, 3])
+    ok("each piece starts where the last ended, and knows that turn and its time",
+       got[1][0].startswith("them: turn 2") and got[1][1:] == (2, 2))
+    ok("the piece's words carry who, not when", "[0:" not in got[0][0])
+    long_ = search.pieces([(0, "them", "word " * 400)])
     ok("a long turn is cut, no line longer than the limit",
-       len(long_) >= 2 and all(len(l) <= search.MAX_CHARS for p in long_ for l in p.split("\n")))
-    ok("a continuation line joins its turn", search.pieces("them: one\nand more\nyou: two") ==
-       ["them: one and more\nyou: two"])
+       len(long_) >= 2 and all(len(l) <= search.MAX_CHARS for p, _, _ in long_ for l in p.split("\n")))
 
     # A STAND-IN for the model: a text "means" the topics whose word it contains.
     topics = ["invoice", "lunch", "airport"]
@@ -7057,6 +7064,7 @@ def test_search() -> None:
         v = _np.pad(v, ((0, 0), (0, search.DIMS - v.shape[1])))
         return v / _np.linalg.norm(v, axis=1, keepdims=True)
     d = pathlib.Path(tempfile.mkdtemp())
+    msgs = []
     texts = {"c1": "them: The invoice is overdue, call 91234567.\nyou: I'll chase it.",
              "c2": "them: Lunch on Friday?\nyou: Yes.", "c3": "them: My flight lands at the airport at six."}
     rows = [{"call_id": k, "caller": f"+659000000{i}", "at": f"2026-10-0{i + 1}T10:00:00",
@@ -7066,7 +7074,8 @@ def test_search() -> None:
     with _m.patch.object(search, "DB", d / "search.db"), _m.patch.object(search, "ready", lambda: True), \
          _m.patch.object(search, "embed", fake_embed), \
          _m.patch.object(_c, "recent", lambda *a: rows), \
-         _m.patch.object(carry, "call_audio", lambda r, c: (d, r)):
+         _m.patch.object(carry, "call_audio", lambda r, c: (d, r)), \
+         _m.patch.object(_t, "rows", lambda: msgs):
         eq("every transcript is indexed", search.index_once(), 3)
         eq("and nothing twice", search.index_once(), 0)
         r = search.search("91234567")
@@ -7086,8 +7095,19 @@ def test_search() -> None:
             r = search.search("overdue")
             ok("with the model unavailable (a call is on), the words still answer",
                r and r[0]["how"] == "words" and r[0]["call_id"] == "c1")
-    ok("the assistant can search", "search_calls" in _t.RECORDER_TOOLS)
-    ok("and what it finds is marked as a caller's words", "search_calls" in _a.TAINTING)
+        # MESSAGES ARE CONVERSATIONS TOO.
+        msgs.extend([{"asker": "+6590000009", "network": "WA", "at": "2026-10-03T09:00:00",
+                      "question": "Can you send the invoices again?", "answer": ""},
+                     {"asker": "+6590000009", "outcome": "owner_reply", "network": "",
+                      "at": "2026-10-03T09:05:00", "question": "(owner reply)", "answer": "Sent."}])
+        eq("a message thread is indexed", search.index_once(), 1)
+        r = [h for h in search.search("invoices") if h["kind"] == "message"]
+        ok("and found, with whose thread and the message's time",
+           r and r[0]["source"] == "+6590000009" and r[0]["at"] == "2026-10-03T09:00:00")
+        ok("a call hit says which call", any(h["kind"] == "call" and h["call_id"] == "c1"
+                                            for h in search.search("invoices")))
+    ok("the assistant can search", "search_conversations" in _t.RECORDER_TOOLS)
+    ok("and what it finds is marked as a caller's words", "search_conversations" in _a.TAINTING)
 
 
 def main() -> None:

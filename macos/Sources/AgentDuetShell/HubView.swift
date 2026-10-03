@@ -265,6 +265,9 @@ private struct HitRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
+                // A CALL OR MESSAGES: where the words were said.
+                Image(systemName: hit.str("kind") == "message" ? "message" : "phone")
+                    .foregroundStyle(.secondary).font(.caption)
                 Text(hit.str("display").isEmpty ? hit.str("person") : hit.str("display"))
                     .font(.body.weight(.semibold)).lineLimit(1)
                 Spacer()
@@ -952,10 +955,19 @@ private struct Conversation: View {
         #if RECORDER
         return false
         #else
+        // A MESSAGE: the one with that time.
+        if let at = model.focusMessage,
+           let item = items.first(where: { $0.message?.str("at") == at }) {
+            model.focusMessage = nil
+            DispatchQueue.main.async { withAnimation { reader.scrollTo(item.id, anchor: .center) } }
+            return true
+        }
+        // A CALL: the turn the result came from where it is known, else the call.
         guard let want = model.focusCall,
               let item = items.first(where: { $0.call?.str("call_id") == want }) else { return false }
-        model.focusCall = nil
-        DispatchQueue.main.async { withAnimation { reader.scrollTo(item.id, anchor: .top) } }
+        let target: String = model.focusTurn.map { "\(want)#\($0)" } ?? item.id
+        model.focusCall = nil; model.focusTurn = nil
+        DispatchQueue.main.async { withAnimation { reader.scrollTo(target, anchor: .center) } }
         return true
         #endif
     }
@@ -1121,7 +1133,17 @@ private struct CallCard: View {
                 if turns.isEmpty {
                     Text(call.str("transcript")).textSelection(.enabled)
                 } else {
-                    ForEach(turns) { t in Balloon(text: t.text, mine: t.mine, caption: "") }
+                    ForEach(turns) { t in
+                        // THE TIME UNDER EACH TURN, and a click on it plays from there.
+                        Balloon(text: t.text, mine: t.mine,
+                                caption: t.at.map { HubModel.clock($0) } ?? "")
+                            .id("\(call.str("call_id"))#\(t.id)")
+                            .onTapGesture {
+                                guard let at = t.at, !call.str("audio").isEmpty else { return }
+                                player.play(callID: call.str("call_id"), path: call.str("audio"), from: at)
+                            }
+                            .help(t.at != nil && !call.str("audio").isEmpty ? "Play from here" : "")
+                    }
                 }
             }
             if let s = call["suggest"] as? JSON { SuggestionRow(model: model, suggestion: s) }

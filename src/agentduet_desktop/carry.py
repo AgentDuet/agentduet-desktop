@@ -31,6 +31,7 @@ that switches it on says so in the file the owner reads.
 import asyncio
 import logging
 import pathlib
+import re
 import time
 import wave
 from datetime import datetime
@@ -113,6 +114,35 @@ def split_txt(text: str) -> tuple[str, str]:
         if not line.strip():
             return "\n".join(lines[:i]), "\n".join(lines[i + 1:]).strip()
     return "\n".join(lines), ""
+
+
+#: A TURN'S TIME leads its line (2026-10-03): `[0:12] them: …`, `[1:05:30] you: …` past an hour —
+#: seconds from the start of the call's recording, so the owner can find the moment in any player.
+#: Transcripts written before have no time, and every reader takes both.
+_TURN = re.compile(r"^(?:\[(?:(\d+):)?(\d+):(\d{2})\]\s*)?(them|you):\s?(.*)$")
+
+
+def stamp(seconds: float) -> str:
+    """`[m:ss]`, or `[h:mm:ss]` from an hour."""
+    s = max(0, int(seconds))
+    h, m, s = s // 3600, s % 3600 // 60, s % 60
+    return f"[{h}:{m:02d}:{s:02d}]" if h else f"[{m}:{s:02d}]"
+
+
+def parse_turns(body: str) -> list[tuple[float | None, str, str]]:
+    """A transcript body as (seconds or None, "them"|"you", text) turns. A line with no label
+    belongs to the turn before it."""
+    out: list[tuple[float | None, str, str]] = []
+    for line in body.splitlines():
+        m = _TURN.match(line.strip())
+        if m:
+            h, mi, se, who, text = m.groups()
+            at = int(h or 0) * 3600 + int(mi) * 60 + int(se) if se is not None else None
+            out.append((at, who, text.strip()))
+        elif out and line.strip():
+            at, who, text = out[-1]
+            out[-1] = (at, who, (text + " " + line.strip()).strip())
+    return out
 
 
 def read_body(path: pathlib.Path) -> str:
