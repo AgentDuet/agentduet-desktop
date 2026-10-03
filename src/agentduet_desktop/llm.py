@@ -761,6 +761,20 @@ def forget() -> None:
     _cached.clear()
 
 
+def preload() -> str:
+    """Load the local model now, so the first question does not wait for it, and keep it.
+
+    THE MODEL STAYS LOADED (slot.py): its warm prompt is what makes a follow-up question 0.7 s
+    instead of 12.5 s cold. Only the speech and decision models come and go. Nothing for a
+    hosted provider, or a model not downloaded yet — the first use loads it, as before.
+    """
+    if provider() != "local" or not configured():
+        return ""
+    from . import models
+    _engine, msg = models.load(current_model())
+    return msg
+
+
 def configured(model: str = "") -> bool:
     """Is a credential present for the configured model? NO network call.
 

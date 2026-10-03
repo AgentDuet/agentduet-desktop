@@ -11,10 +11,12 @@ a plan. Measured 2026-10-03 (scratch harness, 22 scripted cases + 16 real calls)
 7/8 scripted where the word rule got 2/8, and 16/16 real calls with nothing invented. It is
 worse than code at dates and at languages, so those stay code's.
 
-ONE CHILD PROCESS PER BATCH. The model is loaded in `agentduet-desktop decide`, which reads one
-JSON request on stdin, answers, and exits — so its memory (0.5 GB of working memory, 1.8 GB of
-mapped weights) is certainly returned, whatever ONNX Runtime's allocator keeps. Loading costs
-~0.4 s; a question ~1 s on the CPU. Measured: unloading in-process left the 0.5 GB allocated.
+A CHILD PROCESS THAT STAYS WHILE IT IS USED (2026-10-03). The model is loaded in
+`agentduet-desktop decide`, which answers one JSON request per line on stdin until stdin closes.
+It is kept between requests — loading costs ~0.4 s, and summaries come in runs — and ENDED when
+the slot needs it gone (slot.py): idle for two minutes, or the speech model claiming the room.
+Ending the process is still how its memory (0.5 GB working, 1.8 GB mapped) is certainly returned,
+whatever ONNX Runtime's allocator keeps. Measured: unloading in-process left the 0.5 GB allocated.
 
 NEVER REQUIRED. Missing files, a missing runtime, a crash or a timeout all answer None, and the
 caller keeps its code rule. Nothing waits on a download.
@@ -27,6 +29,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import queue
 import subprocess
 import sys
 import threading
@@ -210,11 +213,18 @@ class _Engine:
 
 
 def serve_stdin() -> int:
-    """`agentduet-desktop decide`: one JSON request on stdin, the answers on stdout, then exit."""
-    req = json.loads(sys.stdin.read() or "{}")
-    engine = _Engine()
-    out = {name: engine.ask(req.get("state", ""), q) for name, q in (req.get("questions") or {}).items()}
-    sys.stdout.write(json.dumps(out))
+    """`agentduet-desktop decide`: one JSON request per LINE on stdin, one answer per line on
+    stdout, until stdin closes. The model loads once, on the first request."""
+    engine = None
+    for line in sys.stdin:
+        if not line.strip():
+            continue
+        req = json.loads(line)
+        engine = engine or _Engine()
+        out = {name: engine.ask(req.get("state", ""), q)
+               for name, q in (req.get("questions") or {}).items()}
+        sys.stdout.write(json.dumps(out) + "\n")
+        sys.stdout.flush()
     return 0
 
 
@@ -224,22 +234,87 @@ def _worker() -> list[str]:
     return [sys.executable, "-m", "agentduet_desktop.cli", "decide"]
 
 
+_proc: "subprocess.Popen | None" = None
+_lines: "queue.Queue | None" = None
+_worker_lock = threading.Lock()
+
+
+def _start_worker() -> "subprocess.Popen":
+    """The worker, and a thread that hands its answers over line by line (so a read can time out)."""
+    global _proc, _lines
+    log = open(paths.RUN / "decider.log", "a")
+    _proc = subprocess.Popen(_worker(), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log,
+                             text=True, bufsize=1, env={**os.environ, "PYTHONUNBUFFERED": "1"})
+    _lines = queue.Queue()
+    proc, lines = _proc, _lines
+
+    def pump():
+        for line in proc.stdout:
+            lines.put(line)
+        lines.put(None)                           # the worker ended
+    threading.Thread(target=pump, name="decider-out", daemon=True).start()
+    return _proc
+
+
+def _stop_worker() -> None:
+    """End the worker — the slot's call (slot.py). Its memory goes with it."""
+    global _proc
+    with _worker_lock:
+        p, _proc = _proc, None
+    if p is None:
+        return
+    try:
+        p.stdin.close()
+        p.wait(timeout=3)
+    except Exception:
+        p.kill()
+    logger.info("decision model unloaded")
+
+
+def _register_slot() -> None:
+    from . import slot
+    slot.register(slot.DECIDER, _stop_worker)
+
+
+_register_slot()
+
+
 def ask(state: str, questions: dict[str, dict]) -> dict | None:
-    """Ask several questions about one state. None when the model is not here or fails."""
+    """Ask several questions about one state. None when the model is not here, may not run now
+    (a call is using the speech model — slot.py), or fails."""
+    from . import slot
     if not questions or not ready():
         return None
-    try:
-        done = subprocess.run(_worker(), input=json.dumps({"state": state, "questions": questions}),
-                              capture_output=True, text=True, timeout=TIMEOUT,
-                              env={**os.environ, "PYTHONUNBUFFERED": "1"})
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        logger.warning("decider did not answer: %s", exc)
+    # THE SLOT FIRST, outside the worker's lock: claiming it may wait for the speech model to
+    # finish a piece, and the speech side claims while holding its own lock.
+    if not slot.claim(slot.DECIDER):
         return None
-    if done.returncode != 0:
-        logger.warning("decider failed (%s): %s", done.returncode, (done.stderr or "")[-300:])
-        return None
+    with _worker_lock:
+        try:
+            p = _proc if (_proc is not None and _proc.poll() is None) else _start_worker()
+            p.stdin.write(json.dumps({"state": state, "questions": questions}) + "\n")
+            p.stdin.flush()
+            line = _lines.get(timeout=TIMEOUT)
+        except (OSError, queue.Empty, ValueError) as exc:
+            logger.warning("decider did not answer: %s", type(exc).__name__)
+            line = None
+        if line is None:
+            _kill_locked()
+            return None
+    slot.touch(slot.DECIDER)
     try:
-        return json.loads(done.stdout)
+        return json.loads(line)
     except ValueError:
         logger.warning("decider answered something that is not JSON")
         return None
+
+
+def _kill_locked() -> None:
+    """A worker that failed or hung is ended; the next question starts a fresh one."""
+    global _proc
+    p, _proc = _proc, None
+    if p is not None:
+        try:
+            p.kill()
+        except Exception:
+            pass

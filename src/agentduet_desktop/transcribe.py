@@ -819,8 +819,15 @@ def _qwen_fetch() -> None:
 
 
 def _qwen_model():
-    """Load Qwen3-ASR once and keep it, like the Whisper model. llama.cpp's multimodal path."""
+    """Load Qwen3-ASR, and keep it until the slot needs it gone. llama.cpp's multimodal path.
+
+    THE SLOT (slot.py): speech and the decision model share one, so claiming it here unloads the
+    decision model if it is there, and marks speech as just used. Called under `_qwen_lock`, for
+    every piece, so the idle clock is a piece behind at most.
+    """
     global _qwen_llm
+    from . import slot
+    slot.claim(slot.ASR)
     if _qwen_llm is not None:
         return _qwen_llm
     if not is_cached(QWEN):
@@ -927,6 +934,31 @@ def _qwen_parse(raw: str) -> tuple[str, str]:
 #: resident Qwen, from different threads, and a llama.cpp context is not safe to share — so every
 #: piece holds this for the length of one transcription. Pieces are short, so neither waits long.
 _qwen_lock = threading.Lock()
+
+
+def _qwen_unload() -> None:
+    """Free the speech model — the slot's call (slot.py), when it is idle or the decision model
+    needs the room. Waits for a piece in progress; the next use loads it again."""
+    global _qwen_llm
+    with _qwen_lock:
+        if _qwen_llm is None:
+            return
+        try:
+            _qwen_llm.close()
+        except Exception:
+            pass
+        _qwen_llm = None
+    import gc
+    gc.collect()
+    logger.info("speech model Qwen3-ASR unloaded")
+
+
+def _register_slot() -> None:
+    from . import slot
+    slot.register(slot.ASR, _qwen_unload)
+
+
+_register_slot()
 
 
 #: Qwen's names for the codes `## Language` holds. A code not here (Tamil is on our list and not

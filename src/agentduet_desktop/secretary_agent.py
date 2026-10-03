@@ -950,6 +950,9 @@ async def main() -> None:
         from . import decider as _dec, llm as _llm
         if _llm.configured():
             _dec.fetch_in_background()
+            # THE ASSISTANT'S MODEL, LOADED NOW and kept (slot.py): the first question no longer
+            # waits seconds for it. On a thread — gigabytes are read — and never awaited.
+            asyncio.create_task(asyncio.to_thread(_llm.preload))
 
     # AGENTDUET AI HAS NO LINE: it reads the recordings AgentDuet Recorder leaves in the folder
     # (ingest.py), and never waits for, or opens, a channel.

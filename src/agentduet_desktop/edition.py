@@ -31,7 +31,7 @@ AI_ONLY = "ai"
 AI_MODULES = (
     # speech, summaries, suggestions and the owner's assistant, and their half of the site
     "transcribe", "live", "brief", "suggest", "assistant", "decider", "recall", "tools",
-    "web_ai", "ingest",
+    "web_ai", "ingest", "slot",
     # the console interview, which hands the owner's answers to the model
     "init",
     # the local model and what sizes, times and schedules it

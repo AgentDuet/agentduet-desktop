@@ -32,7 +32,8 @@ what is coming.
 |---|---|---|
 | Gemma 4 E4B (the assistant, summaries) | 4.8 GB on disk, ~5.6 GB resident | one at a time, `gate.py` |
 | Qwen3-ASR 1.7B (speech) | 2.4 GB on disk, ~2.5 GB resident | |
-| Decision model | 1.7 GB on disk, ~0.5 GB while it runs | in a child process, freed after |
+| Decision model | 1.7 GB on disk, ~0.5 GB while it runs | in a child process, ended when idle 2 min or speech needs the room |
+| **Peak** | Gemma + the larger of speech and the decision model | `slot.py` (2026-10-03): Gemma stays loaded; speech and the decision model share one slot and unload lazily (idle 10 / 2 min, or when the other claims it). Was all three at once. |
 | Transcription speed | **measured** 9.3 s for a 222 s call (M5) | ~24x realtime |
 | Summary per call | **measured** ~8.7 s (Gemma 4 E4B, M5) | |
 
