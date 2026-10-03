@@ -99,6 +99,11 @@ def _playable(folder, names) -> dict:
     return {"audio": str(path), "seconds": round(seconds, 1)}
 
 
+def _decider_progress() -> dict:
+    from . import decider
+    return decider.progress()
+
+
 def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
     # Built once at startup, `chat` stayed None for the life of a FIRST RUN — no model exists
     # yet, so the setup interview could never run in the session that attached one. Everything
@@ -437,6 +442,15 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         msg = await asyncio.to_thread(_brief.correct, who, said)
         return web.json_response({"ok": msg.startswith("Corrected"), "message": msg,
                                   "summary": _brief.load(who).get("summary", "")})
+
+    async def api_setup_decider(request):
+        """The decision model's download: GET its progress, POST to start it (decider.py)."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import decider as _dec
+        if request.method == "POST":
+            _dec.start()
+        return web.json_response(_dec.progress())
 
     async def api_contact_add(request):
         """The header's Add to Contacts: a card with this person's number, and the name the hub
@@ -909,6 +923,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
             # Whether the Apple Neural Engine option may be OFFERED. It is not built, so this
             # only decides enabled-vs-disabled and the reason shown beside it.
             "ane": dict(zip(("supported", "why"), transcribe.ane_support())),
+            # The decision model's download, for the hub's progress bar (decider.py).
+            "decider": _decider_progress(),
             "stt": {"engine": transcribe.engine(), "model": transcribe.local_model(),
                     "quality": _own.transcription_quality() or "balanced",
                     "cached": transcribe.is_cached(),
@@ -2071,6 +2087,8 @@ def make_app(chat: "OwnerChat | None", token: str) -> web.Application:
         web.post("/api/name", api_name),
         web.post("/api/contacts/add", api_contact_add),
         web.post("/api/summary/correct", api_summary_correct),
+        web.get("/api/setup/decider", api_setup_decider),
+        web.post("/api/setup/decider", api_setup_decider),
         web.get("/api/logs", api_logs),
         web.get("/logo.png", logo),
         # Browsers ask for this unprompted, and the console filled with a 404 on every page load.

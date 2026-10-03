@@ -30,6 +30,7 @@ import Foundation
     private var nameWas = ""
     private var startedPick = false
     private var startedSpeech = false
+    private var startedDecider = false
 
     init(api: DaemonAPI, rerun: Bool) {
         settings = SettingsModel(api: api)
@@ -71,7 +72,7 @@ import Foundation
 
     // MARK: - quick setup
 
-    /// BOTH DOWNLOADS START WHEN THIS STEP IS ON SCREEN, not at Finish: 7 GB is minutes, and they
+    /// ALL THREE DOWNLOADS START WHEN THIS STEP IS ON SCREEN, not at Finish: 7 GB is minutes, and they
     /// run in the daemon, so leaving setup does not stop them. A refusal is retried at Finish.
     func startDownloads() {
         let pick = settings.pick
@@ -80,6 +81,13 @@ import Foundation
             Task {
                 let r = await api.post("/api/models", ["action": "download", "name": pick.str("model")])
                 if r["ok"] as? Bool == false { startedPick = false }
+                await settings.poll()
+            }
+        }
+        if !startedDecider, !settings.decider.bool("ready"), !settings.decider.bool("running") {
+            startedDecider = true
+            Task {
+                _ = await api.post("/api/setup/decider")
                 await settings.poll()
             }
         }

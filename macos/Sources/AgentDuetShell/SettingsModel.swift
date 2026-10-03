@@ -59,6 +59,8 @@ import Foundation
     @Published private(set) var about: JSON = [:]
     @Published private(set) var perms: JSON = [:]
     @Published private(set) var stt: JSON = [:]
+    /// The decision model's download: {ready, mb, got_mb, running}.
+    @Published private(set) var decider: JSON = [:]
     @Published private(set) var mic = "not-asked"
     @Published private(set) var contacts = "not-asked"
     @Published var notice: [Section: Notice] = [:]
@@ -111,6 +113,7 @@ import Foundation
             group.addTask { let v = await api.get("/api/setup/current"); await MainActor.run { self.cur = v } }
             group.addTask { let v = await api.get("/api/panel"); await MainActor.run { self.panel = v } }
             group.addTask { let v = await api.get("/api/setup/stt"); await MainActor.run { self.stt = v } }
+            group.addTask { let v = await api.get("/api/setup/decider"); await MainActor.run { self.decider = v } }
         }
     }
 
