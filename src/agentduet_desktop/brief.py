@@ -216,10 +216,7 @@ def _transcript(row: dict) -> str | None:
     for n in names:
         t = (folder / n).with_suffix(".txt")
         if t.is_file():
-            try:
-                return t.read_text(encoding="utf-8")[:CALL_CHARS]
-            except OSError:
-                return ""
+            return carry.read_body(t)[:CALL_CHARS]      # the words, not the call's header
     # NOT YET TRANSCRIBED — or never will be. A row a day old with no transcript is not coming.
     try:
         age = (datetime.now() - datetime.fromisoformat(row.get("at", ""))).total_seconds()

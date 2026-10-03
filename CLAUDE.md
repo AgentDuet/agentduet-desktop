@@ -99,6 +99,18 @@ every carry, recording, Contacts or sign-in fix twice. Instead:
   - `macos-shell.yml` builds the recorder shell and checks its strings on every Swift push.
 - **To try it here: `EDITION=recorder ./dev-app.sh`.**
 
+**A CALL'S `.txt` IS A CONTRACT BETWEEN TWO APPS** (2026-10-03), so a separate AI app can enrich
+what the recorder recorded without either knowing the other. It starts with a header of
+`key: value` lines (`Call:`, `Direction:`, `Started:`, `Length:`, `Recording:`), then a blank
+line, then the transcript.
+- **The header is the recorder's.** `merge.write_txt` writes it at merge time, by
+  write-then-rename, so a watching app never reads half a file.
+- **The body is the AI's.** It is replaced whole, and the header is kept exactly as written.
+- **Readers take the body only.** Use `carry.read_body` or `split_txt`. A file written before
+  headers is all body.
+- **The recorder never shows a body**, even one another app wrote: `transcript_of` returns "".
+- **The number is the key; the name is a label** that goes stale when Contacts changes.
+
 **The rule that follows:** a new AI feature lands in an AI module, or behind `edition.ai()` /
 `#if !RECORDER`. If it doesn't, the recorder test or the audit fails, which is the point.
 

@@ -4484,8 +4484,12 @@ def test_one_call_one_file() -> None:
                 struct.pack("<h", int(12000 * math.sin(2 * math.pi * hz * i / rate)))
                 for i in range(int(rate * secs))))
 
+    from agentduet_desktop import merge as _merge
+    ROW = {"call_id": "callX", "caller": "+6591112222", "outgoing": False,
+           "started": "2026-09-09T12:00:00"}
     with mock.patch.object(carry, "recordings", lambda: R), \
-         mock.patch.object(carry, "legs", lambda: L):
+         mock.patch.object(carry, "legs", lambda: L), \
+         mock.patch.object(_merge, "_row", lambda s: dict(ROW)):
         stem = "20260909T120000-callX"
         tone(L / f"{stem}-caller.wav", 440, 1.0)
         tone(L / f"{stem}-callee.wav", 880, 1.0)
@@ -4527,7 +4531,28 @@ def test_one_call_one_file() -> None:
            not body.lstrip().startswith("#") and "speaking order" not in body
            and "%" not in body)
 
-        eq("the owner keeps exactly two files",
+        # THE CALL'S DETAILS HEAD THE FILE (2026-10-03): written by the recorder at merge, kept by
+        # whoever writes the transcript, and never read as part of what was said.
+        head, words = carry.split_txt(body)
+        ok("the .txt opens with the call's details",
+           head.startswith("Call: +6591112222") and "Direction: incoming" in head
+           and "Started: 2026-09-09 12:00:00" in head and f"Recording: {stem}.wav" in head
+           and "Length: 0:02" in head, head)
+        ok("and the transcript is everything after them",
+           words.startswith("them: is that the delivery") and "Call:" not in words, words)
+        ok("a reader gets the words, not the header",
+           carry.read_body(carry.merged_txt(stem)) == words)
+        _merge.write_txt(stem, "them: rewritten")
+        ok("a new body keeps the header as written",
+           carry.merged_txt(stem).read_text().startswith(head + "\n\nthem: rewritten"))
+        _merge.write_txt(stem, row=dict(ROW, caller="+6593334444"))
+        ok("and a new header keeps the body", carry.read_body(carry.merged_txt(stem)) == "them: rewritten"
+           and "+6593334444" in carry.merged_txt(stem).read_text())
+        _merge.write_txt(stem, words, row=dict(ROW))
+        eq("a file written before headers reads as all body",
+           carry.split_txt("them: hello\nyou: hi"), ("", "them: hello\nyou: hi"))
+
+        eq("the owner keeps exactly two files — nothing half-written left beside them",
            sorted(x.name for x in R.iterdir()), [f"{stem}.txt", f"{stem}.wav"])
         ok("the legs are kept for a future re-transcription",
            len(list(L.glob("*.wav"))) == 2)
@@ -4676,7 +4701,7 @@ def test_exact_speaking_order() -> None:
         transcribe._last_segments[str(L / f"{stem}-callee.wav")] = [
             (0.0, 1.0, "yes tuesday")]          # +2s once the offset is applied
         transcribe._merge_text(stem, sorted(L.glob("*.wav")))
-        body = carry.merged_txt(stem).read_text()
+        body = carry.read_body(carry.merged_txt(stem))
         eq("turns interleave by time, with the offset applied",
            body.strip().splitlines(),
            ["them: is that the delivery", "you: yes tuesday", "them: and the time"])
@@ -4687,7 +4712,7 @@ def test_exact_speaking_order() -> None:
         transcribe._last_segments.clear()
         transcribe._merge_text(stem, sorted(L.glob("*.wav")))
         eq("without timings it groups by party",
-           carry.merged_txt(stem).read_text().strip().splitlines(),
+           carry.read_body(carry.merged_txt(stem)).strip().splitlines(),
            ["them: x", "you: x"])
 
 
