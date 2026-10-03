@@ -26,7 +26,7 @@ import SwiftUI
         model.onQuit = { [weak self] in self?.onQuit?() }
         let w = NSWindow(contentViewController: NSHostingController(rootView: SetupView(model: model)))
         w.styleMask = [.titled, .closable, .miniaturizable]
-        w.title = "AgentDuet Setup"
+        w.title = "\(Edition.product) Setup"
         w.isReleasedWhenClosed = false
         w.delegate = self
         w.center()

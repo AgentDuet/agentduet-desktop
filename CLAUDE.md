@@ -102,9 +102,12 @@ every carry, recording, Contacts or sign-in fix twice. Instead:
 **The rule that follows:** a new AI feature lands in an AI module, or behind `edition.ai()` /
 `#if !RECORDER`. If it doesn't, the recorder test or the audit fails, which is the point.
 
-**Open with the partner, not decided by us:** the app's name and branding, whether the update
-check (it calls GitHub) is acceptable to their review, and whether the sign-in is theirs. The
-name and bundle id are `APP_NAME`/`BUNDLE_ID` overrides for when that is known.
+**The name is "AgentDuet Recorder"** (Stanley, 2026-10-03): the bundle, the title bar, the menus
+and the macOS permission prompts (`Edition.product` in Swift, `PRODUCT` in `make-macos-app.sh`).
+The AgentDuet ACCOUNT and the `Documents › AgentDuet` folder keep their own names.
+
+**Open with the partner, not decided by us:** any further branding, whether the update check (it
+calls GitHub) is acceptable to their review, and whether the sign-in is theirs.
 
 ## Layout
 

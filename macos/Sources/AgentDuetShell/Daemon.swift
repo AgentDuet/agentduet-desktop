@@ -15,9 +15,9 @@ final class Daemon {
         var errorDescription: String? {
             switch self {
             case .binaryMissing(let where_):
-                return "The AgentDuet service is missing from this app.\n\nExpected it at:\n\(where_)"
+                return "The \(Edition.product) service is missing from this app.\n\nExpected it at:\n\(where_)"
             case .neverCameUp(let log):
-                return "The AgentDuet service did not start.\n\n\(log)"
+                return "The \(Edition.product) service did not start.\n\n\(log)"
             }
         }
     }

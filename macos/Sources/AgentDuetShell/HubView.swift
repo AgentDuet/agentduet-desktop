@@ -69,7 +69,7 @@ extension HubView {
     /// Settings at Account, with the number on hover.
     var titleAndStatus: some View {
         HStack(spacing: 10) {
-            Text("AgentDuet").font(.headline).fixedSize()
+            Text(Edition.product).font(.headline).fixedSize()
             Button { model.openSettings?("account") } label: {
                 HStack(spacing: 6) {
                     Circle().fill(model.connected ? Color.green : Color.secondary)
