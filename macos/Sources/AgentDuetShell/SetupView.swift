@@ -121,9 +121,10 @@ private struct QuickStep: View {
                 Section {
                     LabeledContent("AI model") { aiBar(s) }
                     LabeledContent("Speech recognition") { speechBar(s) }
+                    LabeledContent("Decision model") { deciderBar(s) }
                 } footer: {
                     if downloading(s) {
-                        Text("Both download in the background. You can finish setup now.")
+                        Text("They download in the background. You can finish setup now.")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                 }
@@ -136,6 +137,7 @@ private struct QuickStep: View {
 
     private func downloading(_ s: SettingsModel) -> Bool {
         (s.pickJob != nil && !s.pick.bool("downloaded")) || (s.stt.bool("running") && !s.stt.bool("cached"))
+            || (s.decider.bool("running") && !s.decider.bool("ready"))
     }
 
     @ViewBuilder private func aiBar(_ s: SettingsModel) -> some View {
@@ -147,6 +149,11 @@ private struct QuickStep: View {
     @ViewBuilder private func speechBar(_ s: SettingsModel) -> some View {
         if s.stt.bool("cached") { bar(1, "Ready") }
         else { progress(s.sttGotMB, s.stt.num("mb")) }
+    }
+
+    @ViewBuilder private func deciderBar(_ s: SettingsModel) -> some View {
+        if s.decider.bool("ready") { bar(1, "Ready") }
+        else { progress(s.decider.num("got_mb"), s.decider.num("mb")) }
     }
 
     private func progress(_ done: Double, _ total: Double) -> some View {

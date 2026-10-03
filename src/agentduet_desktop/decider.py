@@ -88,14 +88,34 @@ def fetch() -> bool:
 _started = False
 
 
+def start() -> bool:
+    """Start the download now unless it is running or done — the wizard's and Settings' call.
+    True when a download is (now) running."""
+    if ready():
+        return False
+    if not _fetching.locked():
+        logger.info("fetching the decision model (%d MB) in the background", MB)
+        threading.Thread(target=fetch, name="decider-fetch", daemon=True).start()
+    return True
+
+
 def fetch_in_background() -> None:
     """Start the download once per process, when the files are not here. Never waits on it."""
     global _started
     if _started or ready():
         return
     _started = True
-    logger.info("fetching the decision model (%d MB) in the background", MB)
-    threading.Thread(target=fetch, name="decider-fetch", daemon=True).start()
+    start()
+
+
+def progress() -> dict:
+    """What a progress bar needs, read from disk: whole files plus any partial one."""
+    got = 0
+    for name, _size in FILES:
+        target = folder() / name
+        part = target.with_name(target.name + ".part")
+        got += target.stat().st_size if target.is_file() else (part.stat().st_size if part.is_file() else 0)
+    return {"ready": ready(), "mb": MB, "got_mb": got // 2**20, "running": _fetching.locked()}
 
 
 # ---- questions -------------------------------------------------------------------------------

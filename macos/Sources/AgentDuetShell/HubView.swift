@@ -526,6 +526,10 @@ private struct Downloads: View {
             if stt.bool("running"), !stt.bool("cached") {
                 bar(stt.str("name"), stt.num("got_mb"), stt.num("mb"))
             }
+            let dec = model.panel.obj("decider")
+            if dec.bool("running"), !dec.bool("ready") {
+                bar("Decision model", dec.num("got_mb"), dec.num("mb"))
+            }
         }
     }
     private func bar(_ name: String, _ done: Double, _ total: Double) -> some View {

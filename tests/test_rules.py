@@ -6788,6 +6788,16 @@ def test_the_decider_checks_relationships() -> None:
     ok("it runs in a child process, so its memory comes back",
        '[sys.executable, "decide"]' in (root / "src/agentduet_desktop/decider.py").read_text()
        and 'sub.add_parser("decide")' in (root / "src/agentduet_desktop/cli.py").read_text())
+    with mock.patch.object(decider, "folder", lambda: TMP / "decider-dl"):
+        (TMP / "decider-dl" / "onnx").mkdir(parents=True, exist_ok=True)
+        (TMP / "decider-dl" / "config.json").write_bytes(b"x" * 1806)
+        (TMP / "decider-dl" / "onnx" / "model_quantized.onnx_data.part").write_bytes(b"x" * (3 * 2**20))
+        got = decider.progress()
+    ok("download progress counts whole files and the partial one",
+       got["got_mb"] == 3 and got["mb"] == decider.MB and got["ready"] is False, got)
+    ok("the wizard shows it as a third bar, and the hub while it downloads",
+       'LabeledContent("Decision model") { deciderBar(s) }' in (root / "macos/Sources/AgentDuetShell/SetupView.swift").read_text()
+       and 'bar("Decision model"' in (root / "macos/Sources/AgentDuetShell/HubView.swift").read_text())
     ok("CI fails a binary that cannot run it",
        'decider  : available' in (root / ".github/workflows/build.yml").read_text())
 
