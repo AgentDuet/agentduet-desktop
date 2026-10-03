@@ -24,10 +24,12 @@ EDITION="${EDITION:-full}"
 if [ "$EDITION" = "recorder" ]; then
   APP_NAME="${APP_NAME:-AgentDuet Recorder}"
   BUNDLE_ID="${BUNDLE_ID:-com.b3networks.agentduet-recorder}"
-  DOCS_WHY="AgentDuet keeps your call recordings in Documents › AgentDuet."
+  PRODUCT="AgentDuet Recorder"
+  DOCS_WHY="AgentDuet Recorder keeps your call recordings in Documents › AgentDuet."
 else
   APP_NAME="${APP_NAME:-AgentDuet Desktop}"
   BUNDLE_ID="${BUNDLE_ID:-com.b3networks.agentduet-desktop}"
+  PRODUCT="AgentDuet"
   DOCS_WHY="AgentDuet keeps your call recordings and transcripts in Documents › AgentDuet."
 fi
 
@@ -176,7 +178,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
        Restore it with the audio-input entitlement to bring the in-app phone back. -->
   <!-- NAMES FOR CALLERS, from Contacts (ContactsWatch.swift). Optional in setup; without this
        string macOS kills the app the first time it asks. -->
-  <key>NSContactsUsageDescription</key><string>AgentDuet shows the names of people who call you, from your contacts.</string>
+  <key>NSContactsUsageDescription</key><string>${PRODUCT} shows the names of people who call you, from your contacts.</string>
   <!-- RECORDINGS AND TRANSCRIPTS live in ~/Documents/AgentDuet, which macOS protects. Setup
        asks for it on its Permissions step; this is the reason macOS shows in its prompt. -->
   <key>NSDocumentsFolderUsageDescription</key><string>${DOCS_WHY}</string>

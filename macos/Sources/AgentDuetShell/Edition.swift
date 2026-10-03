@@ -13,6 +13,15 @@ enum Edition {
     static let recorder = false
     #endif
 
+    /// THE PRODUCT'S NAME, as the app says it in its own text: "AgentDuet Recorder" for the
+    /// recorder-only app (Stanley, 2026-10-03), "AgentDuet" for the full one. The AgentDuet
+    /// ACCOUNT and the Documents › AgentDuet folder keep their own names — those are not the app.
+    #if RECORDER
+    static let product = "AgentDuet Recorder"
+    #else
+    static let product = "AgentDuet"
+    #endif
+
     /// The app's own name, from its bundle — so a partner's build is named as its plist names it.
     static var appName: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String

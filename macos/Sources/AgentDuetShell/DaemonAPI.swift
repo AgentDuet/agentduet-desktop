@@ -72,11 +72,11 @@ struct DaemonAPI {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             if (response as? HTTPURLResponse)?.statusCode == 401 {
-                return ["ok": false, "message": "This window is signed out. Reopen AgentDuet."]
+                return ["ok": false, "message": "This window is signed out. Reopen \(Edition.product)."]
             }
             return (try? JSONSerialization.jsonObject(with: data)) as? JSON ?? [:]
         } catch {
-            return ["ok": false, "message": "AgentDuet is not running behind this window."]
+            return ["ok": false, "message": "\(Edition.product) is not running behind this window."]
         }
     }
 }

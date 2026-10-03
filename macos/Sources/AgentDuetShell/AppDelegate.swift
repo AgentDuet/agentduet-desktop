@@ -96,7 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         buildMenu()
         buildStatusItem()
         buildWindow()
-        show(title: "Starting AgentDuet…", detail: "")
+        show(title: "Starting \(Edition.product)…", detail: "")
 
         // The daemon takes a second or two to bind, and `Daemon.start()` blocks on a socket
         // probe. Doing that on the main thread would freeze the window it is trying to fill.
@@ -121,7 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                     self.showHubOrSetup(url)
                 case .failure(let error):
                     self.stateItem.title = "Not running"
-                    self.show(title: "AgentDuet could not start",
+                    self.show(title: "\(Edition.product) could not start",
                               detail: error.localizedDescription)
                 }
             }
@@ -196,7 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         updateItem.isHidden = true
         menu.addItem(updateItem)
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Open AgentDuet", action: #selector(openWindow), keyEquivalent: "")
+        menu.addItem(withTitle: "Open \(Edition.product)", action: #selector(openWindow), keyEquivalent: "")
         menu.addItem(withTitle: "Settings…", action: #selector(openSettingsItem), keyEquivalent: "")
         loginItem = NSMenuItem(title: "Start at Login", action: #selector(toggleLoginItem),
                                keyEquivalent: "")
@@ -647,7 +647,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        show(title: "Could not load the AgentDuet window", detail: error.localizedDescription)
+        show(title: "Could not load the \(Edition.product) window", detail: error.localizedDescription)
     }
 
     // MARK: - menu
@@ -744,7 +744,7 @@ extension AppDelegate: SettingsHost {
         panel.allowsMultipleSelection = false
         panel.directoryURL = start
         panel.prompt = "Choose"
-        panel.message = "Location to store AgentDuet \(Edition.kept)"
+        panel.message = "Location to store \(Edition.product) \(Edition.kept)"
         let finish: (NSApplication.ModalResponse) -> Void = { r in done(r == .OK ? panel.url : nil) }
         if let over { panel.beginSheetModal(for: over, completionHandler: finish) }
         else { finish(panel.runModal()) }
@@ -784,14 +784,14 @@ extension AppDelegate: SettingsHost {
             guard let data = await api.data("/api/logs") else {
                 let alert = NSAlert()
                 alert.messageText = "Could not export the logs"
-                alert.informativeText = "AgentDuet is not answering. Quit it, open it again, and try once more."
+                alert.informativeText = "\(Edition.product) is not answering. Quit it, open it again, and try once more."
                 alert.runModal()
                 return
             }
             let panel = NSSavePanel()
             let stamp = ISO8601DateFormatter.string(from: Date(), timeZone: .current,
                                                     formatOptions: [.withFullDate])
-            panel.nameFieldStringValue = "AgentDuet Logs \(stamp).zip"
+            panel.nameFieldStringValue = "\(Edition.product) Logs \(stamp).zip"
             panel.allowedContentTypes = [.zip]
             // WHAT IS IN IT, said where the owner decides to send it.
             panel.message = "The logs include phone numbers and caller names. \(Edition.notInLogs)"

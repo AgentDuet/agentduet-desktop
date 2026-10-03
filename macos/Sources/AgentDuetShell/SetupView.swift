@@ -61,7 +61,7 @@ private struct SignInStep: View {
         ScrollView {
             VStack(spacing: 18) {
                 #if RECORDER
-                StepHeader(title: "Welcome to AgentDuet",
+                StepHeader(title: "Welcome to \(Edition.product)",
                            subtitle: "Your calls, recorded on this Mac. Please sign in to link your line.")
                 #else
                 StepHeader(title: "Welcome to AgentDuet",
@@ -82,7 +82,7 @@ private struct PermissionsStep: View {
     var body: some View {
         let s = model.settings
         VStack(spacing: 8) {
-            StepHeader(title: "Permissions", subtitle: "What AgentDuet needs on this Mac.")
+            StepHeader(title: "Permissions", subtitle: "What \(Edition.product) needs on this Mac.")
             Form {
                 Section {
                     PermissionRow(title: "Documents folder (Required)",
@@ -103,7 +103,7 @@ private struct PermissionsStep: View {
                 // nothing, and adding yourself to login items unasked is what adware does.
                 Section {
                     Toggle(isOn: $model.atLogin) {
-                        Text("Start AgentDuet when I log in (Optional)")
+                        Text("Start \(Edition.product) when I log in (Optional)")
                         Text("So calls are recorded without opening the app.")
                     }
                 }
@@ -231,7 +231,7 @@ private struct BottomBar: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
-        .confirmationDialog(model.onAir ? "Stop AgentDuet?" : "Stop setup?", isPresented: $confirmQuit.value) {
+        .confirmationDialog(model.onAir ? "Stop \(Edition.product)?" : "Stop setup?", isPresented: $confirmQuit.value) {
             Button("Quit", role: .destructive) { model.quit() }
         } message: {
             Text((model.onAir ? "Calls stop arriving until you start it again."

@@ -38,7 +38,7 @@ import SwiftUI
             let w = NSWindow(contentViewController: hosting)
             w.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
             w.toolbarStyle = .unified
-            w.title = "AgentDuet"
+            w.title = Edition.product
             // DRAWN BY THE TOOLBAR instead, beside the connection status (HubView).
             w.titleVisibility = .hidden
             w.setContentSize(NSSize(width: 1100, height: 740))
