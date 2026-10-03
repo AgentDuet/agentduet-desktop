@@ -272,15 +272,15 @@ import Foundation
     func setStartAtLogin(_ want: Bool) {
         Task {
             let r = await api.post("/api/setup/login-item", ["want": want])
+            await poll()
             // Only an answer that needs the owner is worth saying: "on" is what the switch shows.
-            if r.str("message").range(of: "approval", options: .caseInsensitive) != nil {
-                say(.permissions, r)
-            } else if r["ok"] as? Bool == false {
+            // A SWITCH THAT DID NOT TAKE IS SAID TOO: it flipped back in silence (2026-10-03).
+            if r.str("message").range(of: "approval", options: .caseInsensitive) != nil
+                || r["ok"] as? Bool == false || startAtLogin != want {
                 say(.permissions, r)
             } else {
                 notice[.permissions] = nil
             }
-            await poll()
         }
     }
 

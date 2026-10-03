@@ -220,8 +220,23 @@ def _bundle_shell() -> pathlib.Path | None:
     """
     if sys.platform != "darwin":
         return None
-    shell = pathlib.Path(sys.executable).resolve().parent / "AgentDuet Desktop"
-    return shell if shell.is_file() else None
+    # TOLD BY THE SHELL that started us (Daemon.swift). The only way a daemon running from
+    # source — `./dev-app.sh` — can reach the app it serves.
+    told = os.getenv("AGENTDUET_SHELL", "")
+    if told and pathlib.Path(told).is_file():
+        return pathlib.Path(told)
+    # ELSE THE BUNDLE WE ARE IN, by its own Info.plist. NOT A FIXED NAME: this looked for
+    # "AgentDuet Desktop" beside itself, so in "AgentDuet Recorder.app" it found nothing, fell
+    # back to the plist path and refused — the switch could not be turned on (2026-10-03).
+    here = pathlib.Path(sys.executable).resolve().parent
+    try:
+        import plistlib
+        name = plistlib.loads((here.parent / "Info.plist").read_bytes()).get("CFBundleExecutable", "")
+    except (OSError, ValueError):
+        return None
+    shell = here / name if name else None
+    # Not the daemon itself: a PyInstaller bundle names ITS executable here.
+    return shell if shell and shell.is_file() and shell.name != pathlib.Path(sys.executable).name else None
 
 
 def apply(want: bool) -> str:
