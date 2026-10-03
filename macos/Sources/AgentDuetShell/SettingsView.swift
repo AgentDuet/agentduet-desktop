@@ -254,8 +254,10 @@ private struct SignInSheet: View {
 private struct CallsPane: View {
     @ObservedObject var model: SettingsModel
 
+    #if !RECORDER
     static let languages = [("en", "English"), ("vi", "Vietnamese"), ("zh", "Chinese"),
                             ("ms", "Malay"), ("th", "Thai")]
+    #endif
 
     var body: some View {
         Form {
@@ -280,6 +282,10 @@ private struct CallsPane: View {
                     .help(abbreviated(model.storage))
                 }
             }
+            #if RECORDER
+            Section {} footer: { NoticeFooter(notice: model.notice[.calls]) }
+            #else
+            // THE LANGUAGE IS THE SPEECH ENGINE'S HINT, so the recorder has no such row.
             Section {
                 Picker("Language of your calls", selection: Binding(
                     get: { model.language }, set: { model.setLanguage($0) })) {
@@ -288,6 +294,7 @@ private struct CallsPane: View {
             } footer: {
                 NoticeFooter(notice: model.notice[.calls])
             }
+            #endif
         }
     }
 
@@ -381,12 +388,14 @@ struct PermissionRow: View {
 
 private struct AdvancedPane: View {
     @ObservedObject var model: SettingsModel
+    #if !RECORDER
     @StateObject private var editing = Local<Override?>(nil)
 
     enum Override: String, Identifiable {
         case model, speech
         var id: String { rawValue }
     }
+    #endif
 
     var body: some View {
         Form {
@@ -395,6 +404,9 @@ private struct AdvancedPane: View {
                     Button("Run Setup…") { model.runSetup() }
                 }
             }
+            #if RECORDER
+            Section {} footer: { NoticeFooter(notice: model.notice[.advanced]) }
+            #else
             Section {
                 LabeledContent("AI model") {
                     HStack {
@@ -429,13 +441,17 @@ private struct AdvancedPane: View {
             } footer: {
                 NoticeFooter(notice: model.notice[.advanced])
             }
+            #endif
         }
+        #if !RECORDER
         .sheet(item: $editing.value) { which in
             OverrideSheet(model: model, which: which)
         }
+        #endif
     }
 }
 
+#if !RECORDER
 private struct OverrideSheet: View {
     @ObservedObject var model: SettingsModel
     let which: AdvancedPane.Override
@@ -482,6 +498,7 @@ private struct OverrideSheet: View {
         }
     }
 }
+#endif
 
 // MARK: - About
 
@@ -494,8 +511,10 @@ private struct AboutPane: View {
                 LabeledContent("Version") {
                     Text(model.version).textSelection(.enabled)
                 }
+                #if !RECORDER
                 LabeledContent("AI model") { aiModel }
                 LabeledContent("Speech model") { speechModel }
+                #endif
             } footer: {
                 NoticeFooter(notice: model.notice[.about])
             }
@@ -525,6 +544,7 @@ private struct AboutPane: View {
         }
     }
 
+    #if !RECORDER
     @ViewBuilder private var aiModel: some View {
         let pick = model.pick
         if let job = model.pickJob {
@@ -561,6 +581,7 @@ private struct AboutPane: View {
     }
 
     private func gb(_ mb: Double) -> String { String(format: "%.1f GB", mb / 1024) }
+    #endif
 
     /// "Last looked 5 minutes ago", from whatever the daemon stored: epoch seconds or ISO 8601.
     private var lastLooked: String? {

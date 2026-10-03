@@ -25,22 +25,29 @@ import Foundation
 
     /// NOT A PERSON, so pinned above the list rather than sorted into it.
     static let assistant = "__assistant__"
+    /// What the window opens on: the assistant — or, in the recorder, which has none, the newest
+    /// person (`load` picks them).
+    static let home: String? = Edition.recorder ? nil : assistant
 
     @Published private(set) var people: [JSON] = []
     @Published private(set) var panel: JSON = [:]
-    @Published var picked: String? = HubModel.assistant
+    @Published var picked: String? = HubModel.home
+    #if !RECORDER
     /// The assistant's conversation (run/owner_chat.json, on the daemon).
     @Published private(set) var turns: [JSON] = []
     /// What the assistant proposes and is waiting on the owner to approve.
     @Published private(set) var proposals: [JSON] = []
+    #endif
     /// Whether someone is on a call now, or one that has just ended — the phone's to say.
     var onLine: (String) -> Bool = { _ in false }
     /// A call's recording, played from its card.
     let player = CallPlayer()
+    #if !RECORDER
     /// The message box's text, and the question the assistant is answering right now.
     @Published var draft = ""
     @Published private(set) var busy = false
     @Published private(set) var pendingQuestion = ""
+    #endif
     /// The last PERSON opened, so "her" and "this person" in a question resolve to them.
     private(set) var lastPerson = ""
     @Published var search = ""
@@ -68,24 +75,29 @@ import Foundation
     func load() async {
         async let t = api.get("/api/threads")
         async let p = api.get("/api/panel")
+        let (threads, panel) = await (t, p)
+        people = threads["people"] as? [JSON] ?? []
+        self.panel = panel
+        #if !RECORDER
         async let h = api.get("/api/chat_history")
         // PROPOSALS ARE ON DISK, not only in a chat reply: a card must survive a restart.
         async let q = api.get("/api/proposals")
-        let (threads, panel, history, pending) = await (t, p, h, q)
-        people = threads["people"] as? [JSON] ?? []
-        self.panel = panel
+        let (history, pending) = await (h, q)
         // NOT WHILE A TURN IS IN FLIGHT: the pending question is this window's own state.
         if !busy {
             turns = history["turns"] as? [JSON] ?? turns
             proposals = pending["proposals"] as? [JSON] ?? proposals
         }
+        #endif
         // A CALLER ON THE LINE IS NOT YET IN THE LIST — a first-time caller is filed when the call
         // ends — so "not in the list" must not send the page back to the assistant while their
         // call is live or just ended (2026-10-01: in a demo it snapped back every five seconds).
         if picked != Self.assistant, !people.contains(where: { $0.str("who") == picked }),
            !(picked.map { onLine($0) } ?? false) {
-            picked = Self.assistant
+            picked = Self.home
         }
+        // THE RECORDER OPENS ON SOMEONE: it has no assistant page to stand on.
+        if picked == nil, Edition.recorder { picked = people.first?.str("who") }
         markSeen()
     }
 
@@ -170,14 +182,20 @@ import Foundation
         if c.bool("norecording") && c.bool("missed") { return c.bool("outgoing") ? "No answer." : "Missed call." }
         if c.bool("norecording") { return "No recording." }
         if c.bool("silent") { return "No audio." }
+        #if !RECORDER
         if c.str("transcript").isEmpty { return "Transcript pending." }
+        #endif
         return nil
     }
 
     /// What kind of call, and how long. Files and bytes are the recorder's business, not the
     /// owner's.
     static func callMeta(_ c: JSON) -> String {
+        #if RECORDER
+        let kind = "Voice call"
+        #else
         let kind = c.str("mode") == "answered" ? "Answered by assistant" : "Voice call"
+        #endif
         return c.num("seconds") > 0 ? "\(kind) · \(clock(c.num("seconds")))" : kind
     }
 
@@ -246,7 +264,9 @@ import Foundation
     }
 
     func pick(_ who: String?) {
+        #if !RECORDER
         if who != picked { drawerOpen = false }
+        #endif
         picked = who
         if let who, who != Self.assistant { lastPerson = who }
         notice = nil
@@ -255,10 +275,13 @@ import Foundation
 
     var onAssistant: Bool { picked == Self.assistant }
 
+    #if !RECORDER
     /// The assistant's panel at the foot of a person's page: open over their history, or just its
     /// header and the box. Sending opens it, so the answer is seen.
     @Published var drawerOpen = false
+    #endif
 
+    #if !RECORDER
     // MARK: - the message box
 
     /// Whether the assistant can answer: a model is attached.
@@ -300,6 +323,8 @@ import Foundation
         }
     }
 
+    #endif
+
     /// A phone number, as the daemon's identities are: an optional "+" and six or more digits.
     static func isNumber(_ who: String) -> Bool {
         let digits = who.hasPrefix("+") ? String(who.dropFirst()) : who
@@ -316,6 +341,7 @@ import Foundation
         }
     }
 
+    #if !RECORDER
     // MARK: - the assistant's drafts and proposals
 
     /// Who a draft would go to: the last person opened, else the one person waiting for a reply.
@@ -354,7 +380,6 @@ import Foundation
         }
     }
 
-    /// Edit's Save. Empty removes the typed name, so the Contacts name or the number shows again.
     /// Correct… on the Summary card. The model rewrites the summary around the owner's words, so
     /// this takes seconds; nil on success, else what went wrong.
     func correctSummary(_ who: String, _ correction: String) async -> String? {
@@ -362,13 +387,16 @@ import Foundation
         await load()
         return r["ok"] as? Bool == true ? nil : (r.str("message").isEmpty ? "The summary was not changed." : r.str("message"))
     }
+    #endif
 
+    /// Edit's Save. Empty removes the typed name, so the Contacts name or the number shows again.
     func rename(_ name: String) async {
         guard let who = picked else { return }
         _ = await api.post("/api/name", ["who": who, "name": name])
         await load()
     }
 
+    #if !RECORDER
     /// The calendar card: open it (it stays, and can be opened again) or dismiss it.
     func suggestion(_ key: String, _ action: String) {
         Task {
@@ -379,6 +407,7 @@ import Foundation
             await load()
         }
     }
+    #endif
 
     // MARK: - dates
 

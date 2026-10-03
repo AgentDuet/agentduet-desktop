@@ -175,6 +175,7 @@ private struct PeopleList: View {
     /// sits where the separator was — the assistant's row is set apart enough by its own look.
     var body: some View {
         VStack(spacing: 6) {
+            #if !RECORDER
             row(on: model.onAssistant, tap: { model.pick(HubModel.assistant) }) {
                 HStack(spacing: 10) {
                     ZStack {
@@ -187,6 +188,7 @@ private struct PeopleList: View {
                 }
                 .padding(.vertical, 6)
             }
+            #endif
             SearchField(text: $model.search)
             ScrollView {
                 LazyVStack(spacing: 2) {
@@ -320,17 +322,26 @@ private struct PersonBox: View {
                 .fill(Color(nsColor: .controlBackgroundColor))
                 .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
             VStack(spacing: 0) {
+                #if !RECORDER
                 if model.onAssistant {
                     AssistantPane(model: model)
                     Composer(model: model)
+                }
+                #endif
+                if model.onAssistant {
+                    EmptyView()
                 } else if let p = model.person {
                     Conversation(model: model, phone: phone, person: p)
-                        .modifier(WithAssistant(model: model))
+                        .assistantPanel(model)
                 } else if let who = model.picked {
                     // A first-time caller, on a call: nothing filed yet but the call itself.
                     Conversation(model: model, phone: phone,
                                  person: ["who": who, "display": "", "calls": [JSON](), "messages": [JSON]()])
-                        .modifier(WithAssistant(model: model))
+                        .assistantPanel(model)
+                } else {
+                    // THE RECORDER, before anyone has called: there is no assistant to open on.
+                    Text("Nobody yet.").foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -338,8 +349,20 @@ private struct PersonBox: View {
     }
 }
 
+extension View {
+    /// The assistant at the foot of a person's page — in the full edition. The recorder has none.
+    @ViewBuilder func assistantPanel(_ model: HubModel) -> some View {
+        #if RECORDER
+        self
+        #else
+        modifier(WithAssistant(model: model))
+        #endif
+    }
+}
+
 // MARK: - the message box
 
+#if !RECORDER
 /// One box, whose meaning is whoever is open: a question to the assistant, or a reply to a person.
 private struct Composer: View {
     @ObservedObject var model: HubModel
@@ -372,6 +395,9 @@ private struct Composer: View {
     }
 }
 
+#endif
+
+#if !RECORDER
 // MARK: - the assistant
 
 private struct AssistantPane: View {
@@ -706,6 +732,8 @@ private struct EmailFields: View {
     }
 }
 
+#endif
+
 // MARK: - a person's conversation
 
 private struct Conversation: View {
@@ -715,9 +743,11 @@ private struct Conversation: View {
     @StateObject private var editing = Local(false)
     /// The big header has scrolled away, so the small one stands in at the top.
     @StateObject private var compact = Local(false)
+    #if !RECORDER
     /// The summary, from the slim header, and the sheet that corrects it.
     @StateObject private var showingSummary = Local(false)
     @StateObject private var correcting = Local(false)
+    #endif
 
     var body: some View {
         let items = model.items(person)
@@ -742,6 +772,7 @@ private struct Conversation: View {
                             .onChange(of: bottom) { setCompact($0 < 0) }
                     })
                     .padding(.top, 24).padding(.bottom, 6)
+                    #if !RECORDER
                     if !person.str("summary").isEmpty {
                         SummaryBody(person: person) { correcting.value = true }
                             .padding(14)
@@ -749,22 +780,29 @@ private struct Conversation: View {
                             .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .fill(Color(nsColor: .windowBackgroundColor).opacity(0.6)))
                     }
+                    #endif
                     ForEach(items) { item in
                         Group {
                             if let c = item.call {
+                                #if RECORDER
+                                CallCard(model: model, call: c, player: model.player)
+                                #else
                                 CallCard(model: model, call: c,
-                                         captions: phone.live[c.str("call_id")]?.captions ?? [],
+                                         captions: phone.captions[c.str("call_id")] ?? [],
                                          player: model.player)
+                                #endif
                             } else if let m = item.message { MessageRows(model: model, message: m) }
                         }
                         .id(item.id)
                     }
                     // A CALL NOT YET IN THE HISTORY shows here, with its captions as they come.
-                    ForEach(liveNow, id: \.0) { _, c in
+                    ForEach(liveNow, id: \.0) { id, c in
                         VStack(alignment: .leading, spacing: 10) {
                             Label(c.ended ? "Call ended" : "On a call", systemImage: "phone.fill")
                                 .font(.subheadline.weight(.semibold)).foregroundStyle(c.ended ? Color.secondary : Color.green)
-                            ForEach(c.captions) { cap in Balloon(text: cap.text, mine: cap.mine, caption: "") }
+                            #if !RECORDER
+                            ForEach(phone.captions[id] ?? []) { cap in Balloon(text: cap.text, mine: cap.mine, caption: "") }
+                            #endif
                         }
                         .padding(14)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -790,6 +828,7 @@ private struct Conversation: View {
                             }
                             buttons(calls)
                             Spacer()
+                            #if !RECORDER
                             if !person.str("summary").isEmpty {
                                 Button { showingSummary.value = true } label: {
                                     Label("Summary", systemImage: "text.alignleft")
@@ -804,6 +843,7 @@ private struct Conversation: View {
                                     .frame(width: 400)
                                 }
                             }
+                            #endif
                         }
                         .padding(.horizontal, 16).padding(.vertical, 8)
                         Divider()
@@ -815,6 +855,7 @@ private struct Conversation: View {
             .animation(.easeOut(duration: 0.15), value: compact.value)
             // THE LATEST AT THE BOTTOM, in view on opening and when something new arrives.
             .onAppear { reader.scrollTo("end", anchor: .bottom) }
+            #if !RECORDER
             // AND WHEN THE ASSISTANT OPENS OVER IT: what is left in view is the latest, once the
             // panel has finished taking its space.
             .onChange(of: model.drawerOpen) { open in
@@ -823,14 +864,19 @@ private struct Conversation: View {
                     withAnimation { reader.scrollTo("end", anchor: .bottom) }
                 }
             }
+            #endif
             .onChange(of: items.count) { _ in withAnimation { reader.scrollTo("end", anchor: .bottom) } }
             .onChange(of: person.str("who")) { _ in reader.scrollTo("end", anchor: .bottom) }
-            .onChange(of: liveNow.map { $0.1.captions.count }.reduce(0, +)) { _ in
+            #if !RECORDER
+            .onChange(of: liveNow.map { (phone.captions[$0.0] ?? []).count }.reduce(0, +)) { _ in
                 reader.scrollTo("end", anchor: .bottom)
             }
+            #endif
         }
         .sheet(isPresented: $editing.value) { RenameSheet(model: model) }
+        #if !RECORDER
         .sheet(isPresented: $correcting.value) { CorrectSheet(model: model, who: person.str("who")) }
+        #endif
     }
 
     private func setCompact(_ on: Bool) {
@@ -855,6 +901,7 @@ private struct Conversation: View {
 
 
 
+#if !RECORDER
 // MARK: - the summary
 
 /// WHAT THE APP KNOWS ABOUT THEM (2026-10-01): the running brief, as the notes sit on a Contacts
@@ -940,13 +987,17 @@ private struct CorrectSheet: View {
     }
 }
 
+#endif
+
 // MARK: - a call
 
 private struct CallCard: View {
     @ObservedObject var model: HubModel
     let call: JSON
+    #if !RECORDER
     /// This call's live captions, which stand in until its kept transcript lands.
     var captions: [PhoneModel.Caption] = []
+    #endif
 
     @ObservedObject var player: CallPlayer
 
@@ -973,6 +1024,13 @@ private struct CallCard: View {
             if let problem = player.problem, problem.callID == call.str("call_id") {
                 Text(problem.text).font(.caption).foregroundStyle(.orange)
             }
+            #if RECORDER
+            // A RECORDING, NOT A TRANSCRIPT: the recorder has no speech engine, so a call says
+            // only what happened to it — missed, nothing recorded — and otherwise plays.
+            if let state = HubModel.callState(call) {
+                Text(state).foregroundStyle(.secondary).italic()
+            }
+            #else
             if call.str("transcript").isEmpty, !captions.isEmpty {
                 ForEach(captions) { c in Balloon(text: c.text, mine: c.mine, caption: "") }
             } else if let state = HubModel.callState(call) {
@@ -986,6 +1044,7 @@ private struct CallCard: View {
                 }
             }
             if let s = call["suggest"] as? JSON { SuggestionRow(model: model, suggestion: s) }
+            #endif
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -1011,7 +1070,9 @@ private struct MessageRows: View {
                     : (message.bool("held") ? "Not delivered · " : "You · ") + HubModel.when(message.str("at"))
                 Balloon(text: message.str("us"), mine: true, caption: caption, held: message.bool("held"))
             }
+            #if !RECORDER
             if let s = message["suggest"] as? JSON { SuggestionRow(model: model, suggestion: s) }
+            #endif
         }
     }
 }
@@ -1045,6 +1106,7 @@ private struct Balloon: View {
     }
 }
 
+#if !RECORDER
 /// What was arranged, under the words that arranged it: the event and its time, and nothing else.
 private struct SuggestionRow: View {
     @ObservedObject var model: HubModel
@@ -1066,6 +1128,8 @@ private struct SuggestionRow: View {
             .strokeBorder(Color.secondary.opacity(0.3)))
     }
 }
+
+#endif
 
 // MARK: - rename
 

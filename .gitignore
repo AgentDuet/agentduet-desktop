@@ -50,3 +50,6 @@ _build.py
 
 # playwright-mcp screenshots and snapshots — a local debugging aid, never a deliverable
 .playwright-mcp/
+_edition.py
+macos/.build-recorder/
+/build-recorder/

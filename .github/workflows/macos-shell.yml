@@ -36,6 +36,16 @@ jobs:
         working-directory: macos
         run: swift build -c release -Xswiftc -warnings-as-errors
 
+      # THE RECORDER EDITION'S SHELL, compiled without its AI views (-D RECORDER), and its
+      # strings checked for anything only those views would put there. Cheap, and it catches a
+      # new AI view that forgot its `#if !RECORDER` on the push that adds it.
+      - name: Build the recorder shell, and check it carries no AI
+        working-directory: macos
+        run: |
+          swift build -c release -Xswiftc -warnings-as-errors -Xswiftc -DRECORDER \
+            --product AgentDuetShell --build-path .build-recorder
+          python3 ../packaging/audit-recorder.py --shell .build-recorder/release/AgentDuetShell
+
       # Prove the bundle ASSEMBLES, with a stand-in for the daemon. Whether the shell can start
       # the real one is a question only a person with a Mac can answer; whether the plist parses
       # and the layout is right is answerable here, and it is where a typo would otherwise sit

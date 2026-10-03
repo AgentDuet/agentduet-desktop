@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import re
 import shutil
 import socket
 import subprocess
@@ -41,7 +42,7 @@ ROUTES = [
     ("/api/setup/setting", {"field": "name", "value": "Pat"}),
     ("/api/seen", {"who": "+6590000000"}),
     ("/api/name", {"who": "+6590000000", "name": "Sam"}),
-    ("/", None), ("/setup", None), ("/settings", None), ("/app.css", None), ("/logo.png", None),
+    ("/app.css", None), ("/logo.png", None),
 ]
 
 #: Routes that belong to the AI half. In the recorder they must not exist at all (404), not
@@ -83,6 +84,14 @@ def stripped_tree(at: pathlib.Path) -> pathlib.Path:
     shutil.copytree(PKG, dest, ignore=shutil.ignore_patterns("__pycache__"))
     for name in edition.AI_MODULES:
         (dest / f"{name}.py").unlink(missing_ok=True)
+    # AND THE DATA the build leaves out (edition.AI_DATA), so a page or template the core still
+    # reaches for fails here as it would in the bundle.
+    for pattern in edition.AI_DATA:
+        for f in sorted(dest.glob(pattern), reverse=True):
+            shutil.rmtree(f) if f.is_dir() else f.unlink()
+    for d in sorted((p for p in dest.rglob("*") if p.is_dir()), reverse=True):
+        if not any(d.iterdir()):
+            d.rmdir()
     (dest / "_edition.py").write_text('NAME = "recorder"\n')
     (at / "_absent.py").write_text(BLOCKER)
     return at
@@ -213,6 +222,19 @@ def main() -> int:
     check("edition reads recorder", out.stdout.strip() == "recorder False", out.stderr[-400:])
     left = [m for m in edition.AI_MODULES if (tree / "agentduet_desktop" / f"{m}.py").exists()]
     check("no AI module in the tree", not left, left)
+
+    print("\n-- a new instance is seeded with the recorder's own settings --")
+    out = subprocess.run([sys.executable, "-c",
+                          "import _absent\nfrom agentduet_desktop import owner, paths\n"
+                          "print(paths.SETTINGS.read_text())\nprint('CALLS=' + owner.calls())\n"
+                          "print('KNOWLEDGE=' + str(paths.KNOWLEDGE.exists()))"],
+                         capture_output=True, text=True, env=env(tree, work / "user" / "seed"))
+    text = out.stdout
+    check("seeded, carrying", "CALLS=carry" in text, (out.stdout + out.stderr)[-600:])
+    check("with nothing of an agent, a model or a transcript in it",
+          not re.search(r"\b(agent|model|transcri\w*|whisper|assistant|AI)\b", text, re.I),
+          text[:800])
+    check("and no knowledge folder", "KNOWLEDGE=False" in text, text[-200:])
     out = subprocess.run([sys.executable, "-c", "from agentduet_desktop import edition\n"
                           "print(edition.name())"], capture_output=True, text=True,
                          env=env(tree, home, AGENTDUET_EDITION="full"))

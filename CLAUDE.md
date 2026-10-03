@@ -60,6 +60,52 @@ to answer for.
 connector has one handler. Answering and carrying are therefore mutually exclusive per install,
 which is a MODE, not a preference — see the trunk-use-case section at the end.
 
+## TWO EDITIONS, ONE CODEBASE (2026-10-03)
+
+**The recorder also ships ALONE, as its own app with no AI in it.** A telco partner is launching
+it with their Power SIM connector, and their security review treats anything AI, transcription
+included, as a separate product they do not endorse. So that build must CONTAIN no AI. Switching
+it off is not enough, because a reviewer checks by listing the bundle. Our quarantine flags keep
+code IN on purpose, so they are the wrong tool here.
+
+**Not a fork.** The recorder is the core of the full product too, so a fork would mean landing
+every carry, recording, Contacts or sign-in fix twice. Instead:
+
+- **`edition.py` is the authority.** `AI_MODULES`, `AI_LIBRARIES` and `AI_DATA` list what the
+  recorder leaves out, and the spec, the tests and the audit all read them. `edition.ai()`
+  gates every place the core reaches into AI code; no core module may do so without it.
+- **The split, daemon side.**
+  - `web.py` is the core site, and `web_ai.py` holds the AI routes.
+  - `settings.py`, `merge.py` and `oncall.py` came out of `tools`, `transcribe` and `live`,
+    because the recorder needs them too.
+  - The recorder carries calls only. It takes no messages, starts no AI worker, and its CLI
+    has five commands.
+- **Swift side: `-D RECORDER`, and every AI view sits behind `#if !RECORDER`.** Not hidden:
+  never compiled. That covers the assistant, the composer, summaries, suggestions, captions,
+  downloads, the language picker and the developer overrides. Setup is sign in, then
+  permissions, then Done.
+- **Built separately and shipped separately.**
+  - The recorder is built with `AGENTDUET_EDITION=recorder` (the spec), `EDITION=recorder`
+    (`make-macos-app.sh`), or `edition: recorder` on `build.yml`. That last one is macOS only
+    and installs no AI package at all.
+  - It gets its own name, bundle id (`com.b3networks.agentduet-recorder`), DMG, instance
+    (`~/.agentduet-recorder`) and settings template (`templates-recorder/`).
+  - Both editions use port 8899, so only one runs at a time.
+- **Proven three ways.**
+  - `tests/test_recorder.py` deletes every AI module and data file, makes the AI libraries
+    unimportable, and boots the daemon.
+  - `packaging/audit-recorder.py` lists the SHIPPED bundle: its modules, libraries and data,
+    and the shell's strings.
+  - `macos-shell.yml` builds the recorder shell and checks its strings on every Swift push.
+- **To try it here: `EDITION=recorder ./dev-app.sh`.**
+
+**The rule that follows:** a new AI feature lands in an AI module, or behind `edition.ai()` /
+`#if !RECORDER`. If it doesn't, the recorder test or the audit fails, which is the point.
+
+**Open with the partner, not decided by us:** the app's name and branding, whether the update
+check (it calls GitHub) is acceptable to their review, and whether the sign-in is theirs. The
+name and bundle id are `APP_NAME`/`BUNDLE_ID` overrides for when that is known.
+
 ## Layout
 
 ```

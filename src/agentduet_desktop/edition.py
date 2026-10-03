@@ -46,6 +46,13 @@ AI_LIBRARIES = (
 )
 
 
+#: Package data the recorder build leaves out, as globs under the package. The prompts, the
+#: example capability and the tool sandbox are the secretary's; the HTML pages are the frozen
+#: owner site, whose hub holds the assistant (a Mac shows native windows, not these); and
+#: `templates/` seeds an agent's instance — the recorder seeds `templates-recorder/` instead.
+AI_DATA = ("prompts/**/*", "examples/**/*", "wasm/**/*", "templates/**/*", "*.html")
+
+
 def _built() -> str:
     try:
         from ._edition import NAME            # type: ignore  # written by the recorder build

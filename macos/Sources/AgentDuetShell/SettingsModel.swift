@@ -34,7 +34,8 @@ import Foundation
         var title: String {
             switch self {
             case .account: return "Account"
-            case .calls: return "Record & Transcribe"
+            // THE RECORDER RECORDS AND NOTHING MORE: no transcription to name.
+            case .calls: return Edition.recorder ? "Recording" : "Record & Transcribe"
             case .permissions: return "Permissions"
             case .advanced: return "Advanced"
             case .about: return "About"
@@ -58,9 +59,11 @@ import Foundation
     @Published private(set) var panel: JSON = [:]
     @Published private(set) var about: JSON = [:]
     @Published private(set) var perms: JSON = [:]
+    #if !RECORDER
     @Published private(set) var stt: JSON = [:]
     /// The decision model's download: {ready, mb, got_mb, running}.
     @Published private(set) var decider: JSON = [:]
+    #endif
     @Published private(set) var mic = "not-asked"
     @Published private(set) var contacts = "not-asked"
     @Published var notice: [Section: Notice] = [:]
@@ -112,8 +115,10 @@ import Foundation
             group.addTask { let v = await api.get("/api/permissions"); await MainActor.run { self.perms = v } }
             group.addTask { let v = await api.get("/api/setup/current"); await MainActor.run { self.cur = v } }
             group.addTask { let v = await api.get("/api/panel"); await MainActor.run { self.panel = v } }
+            #if !RECORDER
             group.addTask { let v = await api.get("/api/setup/stt"); await MainActor.run { self.stt = v } }
             group.addTask { let v = await api.get("/api/setup/decider"); await MainActor.run { self.decider = v } }
+            #endif
         }
     }
 
@@ -182,12 +187,14 @@ import Foundation
         }
     }
 
+    #if !RECORDER
     func setLanguage(_ code: String) {
         Task {
             say(.calls, await api.post("/api/setup/setting", ["field": "language", "value": code]))
             await poll()
         }
     }
+    #endif
 
     func changeFolder() {
         let sandboxed = perms.bool("sandboxed")
@@ -281,6 +288,7 @@ import Foundation
 
     // MARK: - Advanced
 
+    #if !RECORDER
     var modelOverride: String { cur.str("model_override") }
     var sttOverride: String { cur.str("transcription") }
     var thinkingPossible: Bool { cur.bool("thinking_possible") }
@@ -307,9 +315,11 @@ import Foundation
             await poll()
         }
     }
+    #endif
 
     func runSetup() { host?.runSetup() }
 
+    #if !RECORDER
     func startFresh() {
         Task {
             let r = await api.post("/api/chat_new")
@@ -318,11 +328,13 @@ import Foundation
                 : Notice(ok: true, text: "The assistant starts fresh.")
         }
     }
+    #endif
     func exportLogs() { host?.exportLogs() }
 
     // MARK: - About
 
     var version: String { about.str("version") }
+    #if !RECORDER
     var pick: JSON { cur.obj("pick") }
     var pickJob: JSON? { cur.obj("pick")["job"] as? JSON }
     var modelDescription: String { cur.str("model") }
@@ -351,6 +363,7 @@ import Foundation
             await poll()
         }
     }
+    #endif
 
     var update: JSON { about.obj("update") }
     var storeUpdates: Bool { about.bool("store_updates") }

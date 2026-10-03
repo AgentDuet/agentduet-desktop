@@ -23,6 +23,11 @@
 #
 # Same $AGENTDUET_HOME as the installed app and dev.sh, so it is the owner's real instance. For
 # a throwaway, prefix with AGENTDUET_HOME=/tmp/whatever SECRETARY_WEB_PORT=8901.
+#
+# THE RECORDER EDITION: `EDITION=recorder ./dev-app.sh` builds "AgentDuet Recorder Dev" — the shell
+# compiled with -D RECORDER, the daemon told AGENTDUET_EDITION=recorder, and its own instance at
+# ~/.agentduet-recorder (src/agentduet_desktop/edition.py). The AI modules are still on disk here,
+# so this shows the recorder's UI; tests/test_recorder.py is what proves it runs without them.
 set -euo pipefail
 cd "$(dirname "$0")"
 ROOT="$(pwd)"
@@ -30,18 +35,35 @@ ROOT="$(pwd)"
 VENV=.venv-build
 [ -x "$VENV/bin/python" ] || { echo "no $VENV — see CLAUDE.md Build"; exit 1; }
 
+EDITION="${EDITION:-full}"
+if [ "$EDITION" = "recorder" ]; then
+  NAME="AgentDuet Recorder Dev"; BUNDLE="com.b3networks.agentduet-recorder.dev"
+  SWIFT_FLAGS=(-Xswiftc -DRECORDER --product AgentDuetShell --build-path .build-recorder)
+  BUILT=macos/.build-recorder/release/AgentDuetShell
+else
+  NAME="AgentDuet Dev"; BUNDLE="com.b3networks.agentduet-desktop.dev"
+  SWIFT_FLAGS=()
+  BUILT=macos/.build/release/AgentDuetShell
+fi
+
 # STOP WHATEVER IS SERVING FIRST. The shell ATTACHES to a daemon that already answers rather
 # than starting its own, so with the installed app or a dev.sh daemon still up, this window
 # would show THAT code — the confusion this script exists to remove.
 # Apps FIRST (each stops the daemon it started), then any daemon left over. "if running", because
 # a bare `quit app` launches an app that is not running just to quit it.
-for a in "AgentDuet Desktop" "AgentDuet Dev"; do
+# BOTH EDITIONS: they share port 8899, so whichever is up must go before the other starts.
+for a in "AgentDuet Desktop" "AgentDuet Dev" "AgentDuet Recorder" "AgentDuet Recorder Dev"; do
   osascript -e "if application \"$a\" is running then tell application \"$a\" to quit" \
     2>/dev/null || true
 done
-PYTHONPATH=src "$VENV/bin/python" -m agentduet_desktop.cli stop 2>/dev/null || true
+# The recorder's only if it has an instance: importing the package seeds one where none is.
+for e in full recorder; do
+  [ "$e" = "recorder" ] && [ ! -d "$HOME/.agentduet-recorder" ] && continue
+  AGENTDUET_EDITION=$e PYTHONPATH=src "$VENV/bin/python" -m agentduet_desktop.cli stop \
+    2>/dev/null || true
+done
 
-(cd macos && swift build -c release -Xswiftc -warnings-as-errors) | tail -1
+(cd macos && swift build -c release -Xswiftc -warnings-as-errors ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"}) | tail -1
 
 # The daemon, as the shell expects to find it beside itself: an executable named
 # `agentduet-desktop`. `exec`, so the pid the shell holds IS the daemon and Quit stops it.
@@ -55,20 +77,17 @@ cat > "$STAGE/agentduet-desktop" <<EOF
 #!/bin/bash
 export PYTHONPATH="$ROOT/src\${PYTHONPATH:+:\$PYTHONPATH}"
 export AGENTDUET_OAUTH_URL="$OAUTH"
+export AGENTDUET_EDITION="$EDITION"
 exec "$ROOT/$VENV/bin/python" -m agentduet_desktop.cli "\$@"
 EOF
 chmod +x "$STAGE/agentduet-desktop"
 
 OUT=dist-dev
-packaging/make-macos-app.sh macos/.build/release/AgentDuetShell "$STAGE/agentduet-desktop" "$OUT" \
-  >/dev/null
-APP="$OUT/AgentDuet Dev.app"
-rm -rf "$APP"
-mv "$OUT/AgentDuet Desktop.app" "$APP"
-PLIST="$APP/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.b3networks.agentduet-desktop.dev" "$PLIST"
-/usr/libexec/PlistBuddy -c "Set :CFBundleName AgentDuet Dev" "$PLIST"
-/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName AgentDuet Dev" "$PLIST"
+# NAMED AND IDENTIFIED BY THE SCRIPT, with its own bundle id so macOS keeps its permissions and
+# login item apart from the installed app's.
+EDITION="$EDITION" APP_NAME="$NAME" BUNDLE_ID="$BUNDLE" \
+  packaging/make-macos-app.sh "$BUILT" "$STAGE/agentduet-desktop" "$OUT" >/dev/null
+APP="$OUT/$NAME.app"
 
 # WITH THE DEVELOPER ID WHEN THIS MAC HAS IT, ad hoc otherwise. Two reasons it matters here and
 # not only for release: macOS ties an ad-hoc app's microphone grant to that exact build, so every
@@ -88,5 +107,6 @@ codesign --force --deep --options runtime --timestamp=none \
 if [ -n "$IDENTITY" ]; then echo "  signed: Developer ID"; else echo "  signed: ad hoc"; fi
 
 open "$APP"
-echo "  AgentDuet Dev is up — the native window, daemon from source"
-echo "  log: ${AGENTDUET_HOME:-$HOME/.agentduet-desktop}/run/daemon-start.log"
+echo "  $NAME is up — the native window, daemon from source"
+_home=.agentduet-desktop; [ "$EDITION" = "recorder" ] && _home=.agentduet-recorder
+echo "  log: ${AGENTDUET_HOME:-$HOME/$_home}/run/daemon-start.log"
