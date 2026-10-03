@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The native setup window (2026-09-29): sign in, permissions, then the quick setup that names
-/// the owner and starts the two downloads. One window, a step at a time, with the buttons at the
+/// the owner and starts the model downloads. One window, a step at a time, with the buttons at the
 /// bottom right as a macOS setup assistant places them.
 struct SetupView: View {
     @ObservedObject var model: SetupModel
@@ -155,6 +155,7 @@ private struct QuickStep: View {
                     LabeledContent("AI model") { aiBar(s) }
                     LabeledContent("Speech recognition") { speechBar(s) }
                     LabeledContent("Decision model") { deciderBar(s) }
+                    LabeledContent("Search model") { searchBar(s) }
                 } footer: {
                     if downloading(s) {
                         Text("They download in the background. You can finish setup now.")
@@ -171,6 +172,7 @@ private struct QuickStep: View {
     private func downloading(_ s: SettingsModel) -> Bool {
         (s.pickJob != nil && !s.pick.bool("downloaded")) || (s.stt.bool("running") && !s.stt.bool("cached"))
             || (s.decider.bool("running") && !s.decider.bool("ready"))
+            || (s.searchModel.bool("running") && !s.searchModel.bool("ready"))
     }
 
     @ViewBuilder private func aiBar(_ s: SettingsModel) -> some View {
@@ -182,6 +184,11 @@ private struct QuickStep: View {
     @ViewBuilder private func speechBar(_ s: SettingsModel) -> some View {
         if s.stt.bool("cached") { bar(1, "Ready") }
         else { progress(s.sttGotMB, s.stt.num("mb")) }
+    }
+
+    @ViewBuilder private func searchBar(_ s: SettingsModel) -> some View {
+        if s.searchModel.bool("ready") { bar(1, "Ready") }
+        else { progress(s.searchModel.num("got_mb"), s.searchModel.num("mb")) }
     }
 
     @ViewBuilder private func deciderBar(_ s: SettingsModel) -> some View {

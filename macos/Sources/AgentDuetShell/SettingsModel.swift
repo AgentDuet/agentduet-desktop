@@ -63,6 +63,8 @@ import Foundation
     @Published private(set) var stt: JSON = [:]
     /// The decision model's download: {ready, mb, got_mb, running}.
     @Published private(set) var decider: JSON = [:]
+    /// The search model's download: {ready, mb, got_mb, running}.
+    @Published private(set) var searchModel: JSON = [:]
     #endif
     @Published private(set) var mic = "not-asked"
     @Published private(set) var contacts = "not-asked"
@@ -118,6 +120,7 @@ import Foundation
             #if !RECORDER
             group.addTask { let v = await api.get("/api/setup/stt"); await MainActor.run { self.stt = v } }
             group.addTask { let v = await api.get("/api/setup/decider"); await MainActor.run { self.decider = v } }
+            group.addTask { let v = await api.get("/api/setup/search"); await MainActor.run { self.searchModel = v } }
             #endif
         }
     }

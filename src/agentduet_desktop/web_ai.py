@@ -94,6 +94,9 @@ def panel_extras(out: dict) -> None:
     out["ane"] = dict(zip(("supported", "why"), transcribe.ane_support()))
     # The decision model's download, for the hub's progress bar (decider.py).
     out["decider"] = decider.progress()
+    # And the search model's (search.py).
+    from . import search
+    out["search"] = search.progress()
     out["stt"] = {"engine": transcribe.engine(), "model": transcribe.local_model(),
                   "quality": owner.transcription_quality() or "balanced",
                   "cached": transcribe.is_cached(),
@@ -1022,6 +1025,15 @@ def routes(ctx) -> tuple[list, list]:
                     sockets.discard(ws)
         return web.json_response(out)
 
+    async def api_setup_search(request):
+        """The search model's download: GET its progress, POST to start it (search.py)."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import search
+        if request.method == "POST":
+            search.start()
+        return web.json_response(search.progress())
+
     async def api_search(request):
         """What was said on calls that matches `q` — by meaning and by keyword (search.py).
         `who` narrows it to one person. Each hit carries the name the hub shows."""
@@ -1171,6 +1183,8 @@ def routes(ctx) -> tuple[list, list]:
         web.post("/api/send", api_send),
         web.get("/api/chat_history", api_chat_history),
         web.get("/api/search", api_search),
+        web.get("/api/setup/search", api_setup_search),
+        web.post("/api/setup/search", api_setup_search),
         web.post("/api/chat_new", api_chat_new),
         web.get("/api/proposals", api_proposals),
         web.post("/api/proposal", api_proposal),

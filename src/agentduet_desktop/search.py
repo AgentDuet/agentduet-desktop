@@ -90,11 +90,26 @@ def fetch() -> bool:
         _fetching.release()
 
 
+def start() -> bool:
+    """Start the download unless it is running or done — setup's call. True when one is running."""
+    if ready():
+        return False
+    if not _fetching.locked():
+        logger.info("fetching the search model (%d MB) in the background", SIZE // 2**20)
+        threading.Thread(target=fetch, name="search-fetch", daemon=True).start()
+    return True
+
+
 def fetch_in_background() -> None:
-    if ready() or _fetching.locked():
-        return
-    logger.info("fetching the search model (%d MB) in the background", SIZE // 2**20)
-    threading.Thread(target=fetch, name="search-fetch", daemon=True).start()
+    start()
+
+
+def progress() -> dict:
+    """What a progress bar needs, read from disk: the whole file or the partial one."""
+    f = folder() / FILE
+    part = f.with_name(f.name + ".part")
+    got = f.stat().st_size if f.is_file() else (part.stat().st_size if part.is_file() else 0)
+    return {"ready": ready(), "mb": SIZE // 2**20, "got_mb": got // 2**20, "running": _fetching.locked()}
 
 
 # ---- the model, in the slot --------------------------------------------------------------------
