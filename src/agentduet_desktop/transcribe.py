@@ -950,6 +950,8 @@ def _qwen_unload() -> None:
         except Exception:
             pass
         _qwen_llm = None
+    from . import slot
+    slot.released(slot.ASR)
     import gc
     gc.collect()
     logger.info("speech model Qwen3-ASR unloaded")
@@ -1131,8 +1133,7 @@ def _qwen(path: pathlib.Path) -> str:
 #: which on a Mac is Metal running out of memory. A tester's 8 GB Mac lost two calls' transcripts
 #: to it on 2026-10-05, with the assistant's model loaded beside speech. Nothing is wrong with the
 #: recording, so a give-up for this reason is not permanent (`requeue_memory_failures`).
-MEMORY_FAILURE = ("llama_decode returned -3", "Failed to evaluate chunk", "out of memory",
-                  "failed to allocate", "kIOGPUCommandBufferCallbackErrorOutOfMemory")
+from .slot import MEMORY_FAILURE                 # noqa: E402  (what a full GPU says)
 
 #: How often memory failures are tried again, besides once at start.
 REQUEUE_SECONDS = 3600
@@ -1215,6 +1216,9 @@ def drain_once() -> int:
         try:
             text = transcribe(wav)
         except Exception as exc:
+            from . import slot
+            if slot.is_memory_failure(exc):
+                slot.out_of_memory(slot.ASR)     # the estimates were high here: shrink the budget
             # RETRY BEFORE GIVING UP. This marked `.failed` on the first exception, which is
             # right for a corrupt file and wrong for everything else — and the commonest failure
             # here is not the file at all, it is the local model DOWNLOADING on first use. That

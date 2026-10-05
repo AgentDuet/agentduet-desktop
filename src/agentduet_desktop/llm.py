@@ -323,6 +323,9 @@ def _local_failure(exc: Exception, model: str) -> str:
     guessing between them.
     """
     text = str(exc)
+    from . import slot
+    if slot.is_memory_failure(exc):
+        slot.out_of_memory(slot.LLM)             # the estimates were high here: shrink the budget
     if "llama_decode" in text or "llama_batch" in text:
         return (f"{model} could not generate a reply. This is almost always memory — another "
                 f"process holding a model is enough, since an 8B needs about 6 GB resident. "

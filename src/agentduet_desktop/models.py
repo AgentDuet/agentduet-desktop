@@ -950,21 +950,24 @@ def using():
 def load(model: str, context: int = 8192):
     """Bring a model into memory. Returns (engine, message). One caller at a time.
 
-    ON A SMALL MAC THE ROOM IS CLAIMED FIRST (slot.py): loading the assistant's model unloads
-    speech, or is refused while a call needs it. Claimed BEFORE `_load_lock`, because speech holds
-    its own lock while it loads under that one.
+    ITS ROOM IS CLAIMED FIRST (slot.py): where it does not fit beside what is loaded, others are
+    unloaded — or the load is refused while speech is protected. Claimed BEFORE `_load_lock`,
+    because speech holds its own lock while it loads under that one.
     """
     if _engine_model != model:
         from . import slot
         if not slot.claim(slot.LLM):
-            return None, ("The speech model needs this Mac's memory right now, for a call. "
+            return None, ("The speech model needs this Mac's memory right now. "
                           "Try again in a minute.")
+    else:
+        from . import slot
+        slot.touch(slot.LLM)
     with _load_lock:
         return _load(model, context)
 
 
 def unload_for_speech() -> None:
-    """Free the assistant's model for speech (slot.py). A background job stops at its next token
+    """Free the assistant's model for another model (slot.py). A background job stops at its next token
     and runs again later; an owner's answer in progress is waited for. CLOSED, not only
     forgotten: a caller still holding the engine would otherwise keep its memory alive."""
     global _engine, _engine_model
@@ -983,12 +986,16 @@ def unload_for_speech() -> None:
             pass
         import gc
         gc.collect()
-    logger.info("unloaded %s so speech has the memory", was)
+    logger.info("unloaded %s to make room", was)
 
 
 def _register_slot() -> None:
     from . import slot
-    slot.register(slot.LLM, unload_for_speech)
+
+    def size() -> int:
+        from . import llm
+        return resident_mb(llm.current_model())
+    slot.register(slot.LLM, unload_for_speech, size)
 
 
 _register_slot()
@@ -1009,7 +1016,7 @@ def _load(model: str, context: int = 8192):
         return None, f"{model} is not downloaded."
     if _engine_model == model:
         return _engine, f"{(spec_of(model) or {}).get('name', model)} is already loaded."
-    unload()
+    _drop()                                      # a different model: its room is already claimed
     try:
         import llama_cpp
         layers, where = _gpu_layers(model)
@@ -1030,6 +1037,13 @@ def _load(model: str, context: int = 8192):
 
 def unload() -> str:
     """Release the memory. The file stays on disk."""
+    msg = _drop()
+    from . import slot
+    slot.released(slot.LLM)
+    return msg
+
+
+def _drop() -> str:
     global _engine, _engine_model
     if not _engine_model:
         return "No model is loaded."

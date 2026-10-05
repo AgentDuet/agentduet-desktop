@@ -261,6 +261,8 @@ def _stop_worker() -> None:
     global _proc
     with _worker_lock:
         p, _proc = _proc, None
+    from . import slot
+    slot.released(slot.DECIDER)
     if p is None:
         return
     try:

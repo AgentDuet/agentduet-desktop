@@ -124,6 +124,8 @@ def _unload() -> None:
         except Exception:
             pass
         _model = None
+    from . import slot
+    slot.released(slot.EMBED)
     logger.info("search model unloaded")
 
 

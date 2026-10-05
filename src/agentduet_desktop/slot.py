@@ -1,37 +1,47 @@
-"""One memory slot for the occasional models: speech (Qwen3-ASR), the decision model, or the
-search model (EmbeddingGemma) — one at a time.
+"""The models' memory: a budget, shared by what is loaded, and who goes when it runs out.
 
-WHY (Stanley, 2026-10-03). Three models want memory on a Mac that may have 16 GB: Gemma (~5.6 GB,
-the assistant and summaries), Qwen3-ASR (~2.5 GB) and the decision model (~0.5 GB working, 1.7 GB
-mapped). Gemma STAYS LOADED: its warm prompt is what makes a follow-up question 0.7 s instead of
-12.5 s cold (measured). The other two are needed now and then, and never at the same moment
-for any reason that matters — so they share one slot, and the peak is Gemma plus the larger of
-them (~8 GB) instead of all three (~10 GB).
+FOUR MODELS WANT MEMORY on a Mac that may have 8 GB: the assistant's model (Gemma, ~3.6–5.7 GB),
+speech (Qwen3-ASR, ~2.6 GB), the decision model (~0.6 GB, in a child process) and the search model
+(~0.6 GB). Each is loaded on use and stays, because loading costs seconds and the next use is
+often soon. This module decides what may stay together.
 
-LAZY TEARDOWN. Whatever is in the slot stays after it is used, because loading costs seconds and
-the next use is often soon (the next piece of a call, the next summary). It leaves only when:
-  - the OTHER model claims the slot — it is unloaded first, then the other loads; or
-  - it has sat unused for `IDLE[kind]` seconds — the reaper unloads it.
+WHY A BUDGET (2026-10-05). It replaced ONE SLOT that speech, the decision and search models took
+turns in, with Gemma pinned outside it. Two days in, that shape was wrong on both ends: on a
+16 GB Mac it unloaded speech for the decision model when everything fitted; on an 8 GB Mac it let
+Gemma and speech load together when they did not fit, and a tester's calls lost their
+transcripts to `llama_decode returned -3` (Metal out of memory). A budget answers both from one
+rule: a model loads beside the others if it fits, and if it does not, others make room.
 
-DURING A CALL, SPEECH WINS. Live captions use the speech model piece by piece, so the decision
-model may not push it out while a call is on: its claim is refused, and the summary that asked
-falls back to its word rule (decider.ask answers None). Summaries do not run during calls anyway
-(gate.py); this makes it a rule rather than a coincidence.
+THE RULE. `claim(kind)` before a use. If the model is loaded already, that is all. Otherwise its
+size (`register`) must fit in `budget_mb()` minus what is loaded. When it does not, loaded models
+are unloaded until it does, in this order:
 
-ON A SMALL MAC, GEMMA JOINS THE SLOT, AND SPEECH WINS (2026-10-05). Gemma staying loaded assumed
-Gemma and speech fit together. On an 8 GB Mac they do not: a tester's ran Gemma 4 E2B (~4 GB), and
-every piece of two calls failed with `llama_decode returned -3` — Metal out of memory — because
-speech loaded second; after a restart speech loaded first and Gemma failed instead. So where the
-two cannot both be held (`tight()`), speech and Gemma EXCLUDE EACH OTHER: speech claiming the slot
-unloads Gemma, and Gemma claiming its place (`claim(LLM)`) unloads speech — refused during a call.
-Recording and transcribing are the product; a summary can wait. Gemma is NOT a slot occupant: the
-decision and search models are small enough to sit beside it (E2B ~3.6 GB + ~0.5 GB), and making
-them exclusive too would reload gigabytes of Gemma in the middle of a summary that consults the
-decision model. Where everything fits, Gemma is untouched and stays loaded, as above.
+  1. NEVER a protected one: speech during a call, or any model more important than the one
+     asking that was used in the last `HOLD` seconds. The after-call transcript follows the call
+     within seconds; taking its memory between two pieces would make it fail.
+  2. A PARTNER LAST: the decision model works with the assistant's model (a person's summary asks
+     both), so making room for one does not throw out the other while anything else can go.
+  3. THE LESS IMPORTANT FIRST (`PRIORITY`): search, then the decision model, then the assistant,
+     then speech. Recording and transcribing are the product; a summary can wait.
+  4. THE LEAST RECENTLY USED among equals.
 
-Each model registers how it is unloaded (`register`) and claims the slot just before use
-(`claim`). An unloader must be safe to call at any time and must wait for a use in progress —
-the speech model's takes `transcribe._qwen_lock`, the decision model's ends its worker process.
+If nothing can make enough room, a model too big for the budget alone still loads once all else
+is gone — the budget is an estimate, not a wall. The claim is refused only when a protected model
+stands in the way: the job that asked fails and backs off
+(jobs.py), and speech's own claim is never refused, since the call is the product.
+
+THE SIZES ARE ESTIMATES, measured where they could be (models.resident_mb). A model that runs
+out of memory anyway reports it (`out_of_memory`), and the budget shrinks to what was loaded at
+that moment, so the next claim makes room where this one did not.
+
+LAZY TEARDOWN. Nothing leaves only because something else finished. It leaves when room is
+needed, or when it has sat unused for `IDLE[kind]` seconds (the reaper). The assistant's model
+has no idle limit: its warm prompt is what makes a follow-up question 0.7 s instead of 12.5 s.
+
+Each model registers how it is unloaded, and its size. An unloader must be safe to call at any
+time and must wait for a use in progress — speech takes `transcribe._qwen_lock`, the assistant's
+model `models._use_lock` (after asking a background job to stop at its next token), the decision
+model ends its worker process.
 """
 from __future__ import annotations
 
@@ -45,62 +55,94 @@ logger = logging.getLogger("secretary.slot")
 
 ASR, DECIDER, EMBED, LLM = "asr", "decider", "embed", "llm"
 
-#: What the speech model holds once loaded, model and audio encoder (~2.4 GB on disk, measured
-#: ~2.5 GB resident), with a little room: the sum `tight()` checks.
-ASR_RESIDENT_MB = 2600
+#: What goes first when room is needed: lower first.
+PRIORITY = {EMBED: 0, DECIDER: 1, LLM: 2, ASR: 3}
 
-#: Seconds unused before the reaper unloads. Speech is kept longer: a call's pieces, the after-call
-#: pass and the next call tend to come together, and reloading it costs more.
-IDLE = {ASR: 600, DECIDER: 120, EMBED: 300}
+#: Models that work together, so making room for one keeps the other while anything else can go.
+PARTNERS = {LLM: {DECIDER}, DECIDER: {LLM}}
 
-#: How long after speech was last used the assistant's model may take its memory on a small Mac.
-ASR_HOLD = 60
+#: Sizes in MB, for a model whose size is not given when it registers. Speech is the model and its
+#: audio encoder (~2.4 GB on disk, ~2.5 GB resident) with a little room; the decision model is
+#: ~0.5 GB working in its child process; search ~0.6 GB.
+SIZE_MB = {ASR: 2600, DECIDER: 600, EMBED: 600}
+
+#: Seconds unused before the reaper unloads. None: never by idleness.
+IDLE: dict[str, float | None] = {ASR: 600, DECIDER: 120, EMBED: 300, LLM: None}
+
+#: A model more important than the one asking is not unloaded within this many seconds of use.
+HOLD = 60
+
+#: WHAT A FULL GPU LOOKS LIKE from llama.cpp: `llama_decode returned -3` is a compute that failed,
+#: which on a Mac is Metal out of memory (a tester's 8 GB Mac, 2026-10-05).
+MEMORY_FAILURE = ("llama_decode returned -3", "Failed to evaluate chunk", "out of memory",
+                  "failed to allocate", "kIOGPUCommandBufferCallbackErrorOutOfMemory")
+
+
+def is_memory_failure(exc_or_text) -> bool:
+    text = exc_or_text if isinstance(exc_or_text, str) else f"{type(exc_or_text).__name__}: {exc_or_text}"
+    return any(m in text for m in MEMORY_FAILURE)
+
 
 #: How often the reaper looks.
 REAP_EVERY = 30
 
 _lock = threading.Lock()
-_occupant = ""
-_last = 0.0
+_loaded: dict[str, float] = {}                  # kind -> when it was last used
 _unloaders: dict[str, Callable[[], None]] = {}
+_sizes: dict[str, Callable[[], int]] = {}
+_learned_mb: float | None = None                # the budget, once a model ran out of memory
 _reaper: threading.Thread | None = None
 _stop = threading.Event()
 
 
-_tight: bool | None = None
-
-
-def tight() -> bool:
-    """Whether this machine cannot hold the assistant's model and the speech model together.
-
-    The budget is `machine.budget_gb()` (two thirds of RAM on a Mac), against what each occupies
-    once loaded. Asked once: neither the machine nor the picked model changes while the app runs.
-    A machine that cannot be read is not tight — nothing is taken away on a guess.
-    """
-    global _tight
-    if _tight is None:
-        try:
-            from . import llm, machine, models
-            budget_mb = machine.budget_gb() * 1024
-            need_mb = models.resident_mb(llm.current_model()) + ASR_RESIDENT_MB
-            _tight = bool(budget_mb) and need_mb > budget_mb
-            if _tight:
-                logger.info("slot: %.1f GB usable cannot hold the assistant's model and speech "
-                            "together (%.1f GB) — speech comes first", budget_mb / 1024,
-                            need_mb / 1024)
-        except Exception as exc:
-            logger.info("slot: could not size this machine (%s: %s)", type(exc).__name__, exc)
-            _tight = False
-    return _tight
-
-
-def register(kind: str, unload: Callable[[], None]) -> None:
-    """How `kind` is unloaded. Called once by the module that loads it."""
+def register(kind: str, unload: Callable[[], None], size_mb: Callable[[], int] | None = None) -> None:
+    """How `kind` is unloaded, and what it occupies once loaded. Called once by its module."""
     _unloaders[kind] = unload
+    if size_mb is not None:
+        _sizes[kind] = size_mb
+
+
+def size_mb(kind: str) -> int:
+    try:
+        if kind in _sizes:
+            return int(_sizes[kind]() or 0)
+    except Exception:
+        pass
+    return SIZE_MB.get(kind, 0)
+
+
+def budget_mb() -> float:
+    """What the models may hold together: `machine.budget_gb()` (two thirds of RAM on a Mac),
+    or less once a model ran out of memory. 0 when the machine cannot be read — then nothing is
+    unloaded for room, since nothing would be taken away on a guess."""
+    try:
+        from . import machine
+        base = machine.budget_gb() * 1024
+    except Exception:
+        base = 0.0
+    if _learned_mb is not None and base:
+        return min(base, _learned_mb)
+    return base
+
+
+def loaded() -> list[str]:
+    """What the budget counts as loaded, most recently used first."""
+    with _lock:
+        return sorted(_loaded, key=lambda k: -_loaded[k])
 
 
 def occupant() -> str:
-    return _occupant
+    """The most recently used model, or "" (kept for the log export and older callers)."""
+    got = loaded()
+    return got[0] if got else ""
+
+
+def tight() -> bool:
+    """Whether this machine cannot hold the assistant's model and speech together — the case
+    where they take turns. For the log export and for `llm.preload`, which does not load the
+    assistant's model at start where speech would have to unload it."""
+    budget = budget_mb()
+    return bool(budget) and size_mb(LLM) + size_mb(ASR) > budget
 
 
 def _call_on() -> bool:
@@ -111,58 +153,90 @@ def _call_on() -> bool:
         return False
 
 
+def _protected(kind: str, asking: str, now: float) -> bool:
+    if kind == ASR and _call_on():
+        return True                              # speech during a call, whoever asks
+    return (PRIORITY.get(kind, 0) > PRIORITY.get(asking, 0)
+            and now - _loaded.get(kind, 0.0) < HOLD)
+
+
+def _victims(asking: str, now: float) -> list[str] | None:
+    """What to unload so `asking` fits, in order; None if it cannot be made to fit."""
+    budget = budget_mb()
+    if not budget:
+        return []
+    need = size_mb(asking)
+    free = budget - sum(size_mb(k) for k in _loaded)
+    if free >= need:
+        return []
+    partners = PARTNERS.get(asking, set())
+    candidates = sorted((k for k in _loaded if not _protected(k, asking, now)),
+                        key=lambda k: (k in partners, PRIORITY.get(k, 0), _loaded[k]))
+    out = []
+    for k in candidates:
+        if free >= need:
+            break
+        out.append(k)
+        free += size_mb(k)
+    if free >= need:
+        return out
+    # TOO BIG FOR THE BUDGET EVEN ALONE (an estimate high for this machine, or a budget shrunk by
+    # `out_of_memory`): it still loads when only what may go stands in its way, everything else
+    # going first. Refused only for a protected model — speech during a call, or in use.
+    if all(not _protected(k, asking, now) for k in _loaded):
+        return out
+    return None
+
+
 def claim(kind: str) -> bool:
-    """Make the slot `kind`'s, unloading the other model first. False when it may not have it now.
-
-    Call just before using the model. The model itself loads on use, as before; this only makes
-    room and remembers who is there.
-    """
-    global _occupant, _last
+    """Make room for `kind`, unloading others first if it does not fit. False when it may not
+    load now. Call just before using the model; the model itself loads on use, as before."""
     _start_reaper()
-    if kind == LLM:
-        return _claim_llm()
-    # SPEECH COMES FIRST on a small Mac: the assistant's model goes before speech loads.
-    if kind == ASR and tight():
-        _unload(LLM)
+    now = time.time()
     with _lock:
-        other = _occupant if _occupant and _occupant != kind else ""
-        # DURING A CALL NOTHING PUSHES SPEECH OUT: not the decision model, not search.
-        if other == ASR and kind != ASR and _call_on():
-            logger.info("slot: %s waits — a call is using speech", kind)
-            return False
-        _occupant, _last = kind, time.time()
-    if other:
-        logger.info("slot: unloading %s for %s", other, kind)
-        _unload(other)
-    return True
-
-
-def _claim_llm() -> bool:
-    """Room for the assistant's model. Free where everything fits; on a small Mac, speech goes —
-    except during a call, when the answer is no and the job that asked waits for the call to end."""
-    global _occupant
-    if not tight():
-        return True
-    with _lock:
-        if _occupant != ASR:
+        if kind in _loaded:
+            _loaded[kind] = now
             return True
-        # NOT DURING A CALL, AND NOT WHILE SPEECH IS AT WORK: the after-call transcript follows
-        # the call within seconds, and taking the memory between its pieces would make it fail.
-        if _call_on() or time.time() - _last < ASR_HOLD:
-            logger.info("slot: the assistant's model waits — speech is in use")
-            return False
-        _occupant = ""
-    logger.info("slot: unloading asr for the assistant's model")
-    _unload(ASR)
+        victims = _victims(kind, now)
+        if victims is None:
+            if kind != ASR:
+                logger.info("slot: %s waits — no room it may take (%s loaded)", kind,
+                            ", ".join(sorted(_loaded)) or "nothing")
+                return False
+            victims = [k for k in _loaded if k != kind]   # SPEECH IS NEVER REFUSED: all else goes
+        for k in victims:
+            _loaded.pop(k, None)
+        _loaded[kind] = now
+    for k in victims:
+        logger.info("slot: unloading %s for %s", k, kind)
+        _unload(k)
     return True
 
 
 def touch(kind: str) -> None:
     """`kind` was just used: its idle clock starts again."""
-    global _last
     with _lock:
-        if _occupant == kind:
-            _last = time.time()
+        if kind in _loaded:
+            _loaded[kind] = time.time()
+
+
+def released(kind: str) -> None:
+    """`kind` was unloaded by its own module (an owner's Unload, a worker that ended): stop
+    counting it. Safe to call when it is not counted."""
+    with _lock:
+        _loaded.pop(kind, None)
+
+
+def out_of_memory(kind: str) -> None:
+    """`kind` ran out of memory despite the budget: the estimates were high for this machine, so
+    the budget becomes what was loaded then, less a margin. Lasts until the app restarts."""
+    global _learned_mb
+    with _lock:
+        held = sum(size_mb(k) for k in _loaded)
+    if held:
+        _learned_mb = max(1024.0, held - 512.0)
+        logger.warning("slot: %s ran out of memory with %.1f GB loaded — budget now %.1f GB",
+                       kind, held / 1024, _learned_mb / 1024)
 
 
 def _unload(kind: str) -> None:
@@ -175,20 +249,23 @@ def _unload(kind: str) -> None:
         logger.warning("slot: could not unload %s (%s: %s)", kind, type(exc).__name__, exc)
 
 
-def reap(now: float | None = None) -> str:
-    """Unload the occupant if it has been idle long enough. Returns what was unloaded, or ""."""
-    global _occupant
+def reap(now: float | None = None) -> list[str]:
+    """Unload whatever has been idle past its limit. Returns what was unloaded."""
     now = time.time() if now is None else now
+    gone = []
     with _lock:
-        kind = _occupant
-        if not kind or now - _last < IDLE.get(kind, 600):
-            return ""
-        if kind == ASR and _call_on():
-            return ""                                # never under a call's captions
-        _occupant = ""
-    logger.info("slot: %s idle for %ds — unloading", kind, int(now - _last))
-    _unload(kind)
-    return kind
+        for kind, last in list(_loaded.items()):
+            limit = IDLE.get(kind, 600)
+            if limit is None or now - last < limit:
+                continue
+            if kind == ASR and _call_on():
+                continue                          # never under a call's captions
+            _loaded.pop(kind)
+            gone.append(kind)
+    for kind in gone:
+        logger.info("slot: %s idle — unloading", kind)
+        _unload(kind)
+    return gone
 
 
 def _start_reaper() -> None:
@@ -207,10 +284,10 @@ def _shutdown() -> None:
     """FREE THE MODELS BEFORE PYTHON EXITS. A GPU model still loaded while this module's reaper
     thread is alive trips llama.cpp's Metal teardown (`GGML_ASSERT([rsets->data count] == 0)`)
     and prints a crash at every ordinary exit — found 2026-10-03, reproduced in isolation. So the
-    reaper stops, the slot's model is unloaded, and so is the assistant's."""
+    reaper stops and every model is unloaded, the assistant's included."""
     _stop.set()
-    if _occupant:
-        _unload(_occupant)
+    for kind in loaded():
+        _unload(kind)
     try:
         from . import models
         if models.loaded():
