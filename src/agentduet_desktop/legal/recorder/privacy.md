@@ -9,8 +9,8 @@ and who is responsible for it. The App is provided by B3 Networks Pte Ltd ("B3",
 
 - **Your recordings are stored on your computer, not by us.** You decide what is recorded, and
   you are responsible for recording lawfully.
-- **Calls pass through B3's platform** to reach your computer. B3 keeps a record of each call
-  (numbers, times, length), but not its audio.
+- **Calls reach your computer through AgentDuet's calling service**, which has its own privacy
+  policy (section 2).
 - **We do not collect usage analytics or telemetry** from the App.
 
 ## 1. Data stored on your computer
@@ -31,35 +31,20 @@ responsible under the PDPA and similar laws. That means telling the people on yo
 getting their consent where required, keeping it secure, and answering their requests about it.
 See section 2 of the Terms of Use.
 
-## 2. Data that passes through B3
+## 2. Data the calling service handles
 
-To carry calls, B3's platform handles:
-
-- **your AgentDuet account**: the email address and name from the sign-in you use (for example
-  your Google account), and the connector that links the App to your number;
-- **call audio**, in transit to your computer;
-- **connection and application logs**: your IP address, times of connection and sign-in, and
-  errors, kept for 3 years to run and secure the service;
-- **call records**: numbers, times, length and routing, kept for 3 years for billing, fraud
-  prevention and support.
-
-**Who is responsible for what.** For your account (sign-in identity and email), B3 is the
-controller: we decide how it is used. For call audio carried to you, B3 acts as a data
-intermediary on your behalf; if you use the App for a business, you are the organisation
-responsible for it (see section 1). As an intermediary, B3 still protects that data and keeps it
-no longer than needed, as the PDPA requires. See also
+The App connects to AgentDuet's calling service, which B3 runs (the "Service"). To carry your
+calls, the Service handles your AgentDuet account, call audio on its way to your computer, and
+records of your calls and connections. What it keeps, for how long, where, and
+who is responsible for it is set out in **the Service's own privacy policy**, not this one. See
 [b3networks.com/data-policy](https://www.b3networks.com/data-policy).
-
-**Where it is held.** B3 holds account data, call records and logs with Amazon Web Services. If
-it is transferred outside Singapore, B3 protects it to a standard comparable to the PDPA, as the
-PDPA's transfer rules require.
 
 ## 3. Other services the App contacts
 
 | Service | When | What it receives |
 |---|---|---|
 | GitHub (api.github.com) | to check for a new version, about four times a day | your IP address and the App's version number |
-| AgentDuet sign-in (auth.agentduet.com) and your identity provider | when you sign in | what you approve on the sign-in screen |
+| AgentDuet sign-in (auth.agentduet.com), part of the Service, and your identity provider | when you sign in | what you approve on the sign-in screen |
 
 Neither receives your recordings.
 
@@ -84,8 +69,7 @@ The App is not intended for anyone under 18.
 
 ## 7. Your rights
 
-For data B3 holds (section 2), you can ask us to access, correct or delete it through
-[b3networks.com/data-policy](https://www.b3networks.com/data-policy). For data on your computer
+For data the Service holds (section 2), see its privacy policy. For data on your computer
 (section 1), you hold it, so you can view, export or delete it yourself. Requests from people on
 your calls about that data are yours to answer.
 

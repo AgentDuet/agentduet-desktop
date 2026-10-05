@@ -36,15 +36,13 @@ You agree that:
   harassment, surveillance, fraud or any other unlawful purpose.
 
 B3 does not decide what you record, does not see what is stored on your computer, and cannot
-give consent for you. B3 keeps its own duties as the intermediary that carries your calls (see
-section 3 and the Privacy Policy).
+give consent for you. What the Service does with the calls it carries is set out in its own
+privacy policy.
 
 ## 3. Where your data is
 
 - **Recordings are stored on your computer**, in a folder you choose. B3 does not keep a copy.
-- **Call audio passes through B3's platform** to reach your computer. B3 handles it as a data
-  intermediary on your behalf.
-- **B3 keeps call records** (numbers, times, length and routing) for 3 years.
+- **Calls reach your computer through the Service**, under its own privacy policy.
 
 The Privacy Policy explains this in more detail.
 

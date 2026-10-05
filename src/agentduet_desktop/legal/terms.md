@@ -9,8 +9,8 @@ both of you.
 
 ## 1. What the App does
 
-The App carries phone calls to and from your number through B3's platform, records both sides of
-each call, and saves the recordings on your computer. It can also receive WhatsApp messages sent
+The App carries phone calls to and from your number through AgentDuet's calling service,
+records both sides of each call, and saves the recordings on your computer. It can also receive WhatsApp messages sent
 to your business number. Depending on the edition, it can also:
 
 - transcribe and summarise your calls and messages, using AI models that run on your computer;
@@ -43,17 +43,15 @@ You agree that:
   harassment, surveillance, fraud or any other unlawful purpose.
 
 B3 does not decide what you record, does not see what is stored on your computer, and cannot
-give consent for you. B3 keeps its own duties as the intermediary that carries your calls (see
-section 3 and the Privacy Policy).
+give consent for you. What the Service does with the calls it carries is set out in its own
+privacy policy.
 
 ## 3. Where your data is
 
 - **Recordings, transcripts, summaries and messages are stored on your computer**, in a folder
   you choose. B3 does not keep a copy.
-- **Call audio and messages pass through B3's platform** to reach your computer. B3 handles
-  them as a data intermediary on your behalf. WhatsApp messages also pass through Meta, under
-  Meta's own terms.
-- **B3 keeps call records** (numbers, times, length and routing) for 3 years.
+- **Calls and messages reach your computer through the Service**, under its own privacy
+  policy. WhatsApp messages also pass through Meta, under Meta's own terms.
 - **AI features run on your computer**, using these models: Qwen3-ASR (speech to text), Google
   Gemma 4 (summaries and the assistant), Google EmbeddingGemma (search) and Strands Decider
   (sorting what was said). No call or message content is sent to a cloud AI service.
