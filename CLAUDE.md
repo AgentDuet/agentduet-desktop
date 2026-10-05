@@ -1208,6 +1208,18 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       one evaluated (OpenCode's Big Pickle, 2026-08-11) still needs a signup with billing
       details, is free only "for a limited time", and says collected data may be used to improve
       the model — which contradicts the whole disclosure pitch, silently, on the owner's behalf.
+- [ ] **Terms of Use and a Privacy Policy — DRAFTED 2026-10-05, not in force.**
+      `docs/legal/terms.md` and `privacy.md`, with input from security-grc. Before this ships, the
+      app had NO terms at all: the Apache `LICENSE` covers the code, not someone recording calls
+      with it. **Position (Stanley): the owner handles their own PDPA and recording consent.** B3 is
+      controller of account data and a data intermediary for carried calls, so it keeps its own
+      duties; the terms must not claim otherwise.
+      **Open:** review by Zul (DPO) and Peter (CCO) / legal; the platform team must confirm the
+      carry path makes no platform-side recording (B3's RoPA lists S3 recordings for other
+      products) and stores no WhatsApp content; call-record retention (RoPA says 3 years,
+      security-grc #12); the liability cap vs the partner agreement's carve-out (MPA v1.2 8.2(c));
+      whose terms face a Singtel Recorder user (partner model says theirs); and the setup step
+      that shows them, which is not built.
 - [ ] **Credential storage on Windows** — use the OS credential store, or say plainly that the
       key is plaintext protected only by file mode.
 
