@@ -1,6 +1,6 @@
 # AgentDuet — Terms of Use
 
-Last updated: [date]
+Last updated: 5 October 2026
 
 These terms are an agreement between you and B3 Networks Pte Ltd ("B3", "we") about your use of
 AgentDuet, AgentDuet Recorder and AgentDuet AI (the "App"). By installing or using the App, you
@@ -47,7 +47,7 @@ section 3 and the Privacy Policy).
 - **Call audio and messages pass through B3's platform** to reach your computer. B3 handles
   them as a data intermediary on your behalf. WhatsApp messages also pass through Meta, under
   Meta's own terms.
-- **B3 keeps call records** (numbers, times, length and routing) for [3 years].
+- **B3 keeps call records** (numbers, times, length and routing) for 3 years.
 - **AI features run on your computer**, using these models: Qwen3-ASR (speech to text), Google
   Gemma 4 (summaries and the assistant), Google EmbeddingGemma (search) and Strands Decider
   (sorting what was said). No call or message content is sent to a cloud AI service.
@@ -70,7 +70,7 @@ and do, and for checking what it did.
 ## 5. Your account
 
 You sign in with an AgentDuet account. Keep access to your computer and your account secure, and
-tell us at [support email] if you think someone else has used them. We may suspend an account
+tell us through b3networks.com if you think someone else has used them. We may suspend an account
 that breaks these terms or puts the platform or other users at risk.
 
 ## 6. Third-party parts
@@ -81,7 +81,8 @@ and Google's prohibited use policy. By downloading them, you agree to follow tho
 third-party components are listed in the App's NOTICE file, each under its own licence.
 
 WhatsApp is provided by Meta. If you receive WhatsApp messages through the App, Meta's
-[WhatsApp Business terms and policies] also apply to you.
+[WhatsApp Business terms and policies](https://www.whatsapp.com/legal/business-policy) also apply
+to you.
 
 The App's source code is licensed under the Apache License 2.0. These terms cover your use of the
 App and the service. They do not limit any right you have under that licence to the code itself.
@@ -108,8 +109,8 @@ own backups of anything you need to keep.
 
 To the extent the law allows, B3 is not liable for indirect, incidental or consequential loss,
 or for loss of data, profits or business, arising from your use of the App. B3's total liability
-for any claim about the App is limited to [the amount you paid B3 for the App in the 12 months
-before the claim, or SGD 100 if you paid nothing]. Nothing in these terms limits liability that
+for any claim about the App is limited to the amount you paid B3 for the App in the 12 months
+before the claim, or SGD 100 if you paid nothing. Nothing in these terms limits liability that
 cannot be limited by law.
 
 ## 10. Your responsibility to us
@@ -134,4 +135,4 @@ jurisdiction.
 
 ## 14. Contact
 
-B3 Networks Pte Ltd, [address]. [support email]
+B3 Networks Pte Ltd, Singapore. Contact us through [b3networks.com](https://www.b3networks.com).

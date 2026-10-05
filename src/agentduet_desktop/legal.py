@@ -24,8 +24,8 @@ import time
 
 from . import edition, paths
 
-#: The version of the terms an agreement is to. Not yet signed off by legal and the DPO.
-VERSION = "2026-10-05-draft"
+#: The version of the terms an agreement is to. Bump it when the owner must read them again.
+VERSION = "2026-10-05"
 
 HERE = pathlib.Path(__file__).resolve().parent / "legal"
 DOCUMENTS = {"terms": "terms.md", "privacy": "privacy.md"}
