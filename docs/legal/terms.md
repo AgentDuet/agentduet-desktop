@@ -14,11 +14,12 @@ both of you.
 ## 1. What the App does
 
 The App carries phone calls to and from your number through B3's platform, records both sides of
-each call, and saves the recordings on your computer. Depending on the edition, it can also:
+each call, and saves the recordings on your computer. It can also receive WhatsApp messages sent
+to your business number. Depending on the edition, it can also:
 
 - transcribe and summarise your calls and messages, using AI models that run on your computer;
 - record messages sent to your number;
-- answer calls and messages for you, if you set up the assistant to do so.
+- reply to messages for you, if you set up the assistant to do so.
 
 ## 2. You are responsible for recording lawfully
 
@@ -30,9 +31,11 @@ You agree that:
 
 - you will tell the people you call, and the people who call you, that calls may be recorded,
   and get their consent wherever the law requires it;
-- you are the party responsible under data protection law for the recordings, transcripts,
-  summaries and messages the App creates and stores on your computer [GRC: confirm "controller"
-  / "organisation" wording under PDPA];
+- if you use the App for a business, you are the organisation responsible under the PDPA (and
+  any similar law that applies to you) for the recordings, transcripts, summaries and messages
+  the App creates and stores on your computer. Whatever your use, you are responsible for
+  recording lawfully. [DPO: final wording. The PDPA does not apply to individuals acting in a
+  personal or domestic capacity, s.4(1)(a). Use "controller" too if GDPR markets are targeted.];
 - you will keep that data secure, use it only for lawful purposes, and answer any request from
   a person to access, correct or delete their data;
 - you will not use the App to record anyone secretly where the law forbids it, or for
@@ -46,15 +49,18 @@ section 3 and the Privacy Policy).
 
 - **Recordings, transcripts, summaries and messages are stored on your computer**, in a folder
   you choose. B3 does not keep a copy.
-- **Call audio and messages pass through B3's platform** to reach your computer. B3 handles
+- **Call audio and messages pass through B3's platform** to reach your computer. WhatsApp
+  messages also pass through Meta, under Meta's own terms. B3 handles
   them as a data intermediary on your behalf. [ENG to confirm with the platform team: no
   platform-side recording or stored message content is created on the AgentDuet call path.]
 - **B3 keeps call records** (numbers, times, length and routing) for [3 years — per B3's record
   of processing; confirm once the retention schedule, security-grc #12, is set].
 - **AI features run on your computer**, using these models: Qwen3-ASR (speech to text), Google
   Gemma 4 (summaries and the assistant), Google EmbeddingGemma (search) and Strands Decider
-  (sorting what was said). No call or message content is sent to a cloud AI service, with one exception: if you turn on the assistant that answers calls for you, the call
-  is handled by a hosted AI service. [Name the provider before that feature is offered.]
+  (sorting what was said). No call or message content is sent to a cloud AI service.
+- **Tools you approve for the assistant** may send information, including details from your
+  calls and messages, to the service each tool names. Nothing is sent this way unless you have
+  approved that tool.
 
 The Privacy Policy explains this in more detail.
 
@@ -65,7 +71,7 @@ incomplete or inaccurate, and they can name the wrong person or the wrong langua
 anything important against the recording before you rely on it. **Do not use them as the only
 record of a legal, medical or financial commitment.**
 
-If you set up the assistant to answer for you, you are responsible for what you allow it to say
+If you set up the assistant to reply for you or approve tools for it, you are responsible for what you allow it to say
 and do, and for checking what it did.
 
 ## 5. Your account
@@ -80,6 +86,9 @@ The App downloads AI models from third parties the first time it needs them, inc
 Gemma models, which are provided under the [Gemma Terms of Use](https://ai.google.dev/gemma/terms)
 and Google's prohibited use policy. By downloading them, you agree to follow those terms. Other
 third-party components are listed in the App's NOTICE file, each under its own licence.
+
+WhatsApp is provided by Meta. If you receive WhatsApp messages through the App, Meta's
+[WhatsApp Business terms and policies] also apply to you.
 
 The App's source code is licensed under the Apache License 2.0. These terms cover your use of the
 App and the service. They do not limit any right you have under that licence to the code itself.
