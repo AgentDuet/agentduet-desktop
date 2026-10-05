@@ -32,6 +32,7 @@ from datetime import datetime
 from aiohttp import WSMsgType, web
 
 from . import edition
+from . import legal
 from . import owner
 from . import paths
 from . import settings
@@ -485,10 +486,24 @@ def make_app(token: str) -> web.Application:
         cur["needs_setup"] = needs_setup()
         cur["oauth_available"] = connector.oauth_available()
         cur["edition"] = edition.name()
+        # The native wizard asks this BESIDE needs_setup, not inside it — see legal.py.
+        cur["terms_agreed"] = legal.agreed()
         if edition.ai():
             from . import web_ai
             web_ai.setup_current_extras(cur)
         return web.json_response(cur)
+
+    async def api_terms(request):
+        """GET: the Terms of Use and Privacy Policy, and whether the owner has agreed.
+        POST {version}: agree — to the version that was shown, never to another (legal.agree)."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        if request.method == "POST":
+            body = (await request.json()) or {}
+            ok = legal.agree(str(body.get("version", "")))
+            return web.json_response({"ok": ok, **({} if ok else {
+                "message": "These terms have changed. Please read them again."})})
+        return web.json_response(legal.state())
 
     async def api_state(request):
         if not authed(request):
@@ -1059,6 +1074,8 @@ def make_app(token: str) -> web.Application:
         web.get("/favicon.ico", logo),
         web.post("/api/quit", api_quit),
         web.get("/api/setup/current", api_setup_current),
+        web.get("/api/terms", api_terms),
+        web.post("/api/terms", api_terms),
         web.get("/api/state", api_state),
         web.get("/api/panel", api_panel),
         web.get("/api/phone", api_phone),

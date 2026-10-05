@@ -401,7 +401,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         guard let api = DaemonAPI(site: url) else { webView.load(URLRequest(url: url)); return }
         Task { @MainActor in
             let cur = await api.get("/api/setup/current")
-            if cur.bool("needs_setup") { self.showSetup(rerun: false) } else { self.showHub(api) }
+            // THE TERMS ARE ASKED BESIDE needs_setup, not in it (legal.py): an install already set
+            // up still goes through them once, and again when they change.
+            if cur.bool("needs_setup") || cur["terms_agreed"] as? Bool == false {
+                self.showSetup(rerun: false)
+            } else { self.showHub(api) }
         }
     }
 

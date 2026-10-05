@@ -5215,8 +5215,9 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
 
     # SETUP IS NATIVE TOO (2026-09-29), shown exactly when the HTML wizard would have been.
     ok("the daemon reports the same question index asks", 'cur["needs_setup"] = needs_setup()' in web)
-    ok("the shell shows native setup when it is needed",
-       'if cur.bool("needs_setup") { self.showSetup(rerun: false) }' in app)
+    ok("the shell shows native setup when it is needed, or the terms are not agreed",
+       'if cur.bool("needs_setup") || cur["terms_agreed"] as? Bool == false {\n'
+       '                self.showSetup(rerun: false)' in app)
     ok("and a link to /setup opens it instead of the page", 'if url.path == "/setup" {' in app)
     ok("Settings' Run Setup opens it", "func runSetup() { showSetup(rerun: true) }" in app)
     setup = swift["SetupModel.swift"]
@@ -5251,7 +5252,7 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
     # THE HUB IS THE MAIN WINDOW (Stanley, 2026-09-29: "skip the preview"), and the HTML hub
     # page is not loaded on the Mac any more — it runs its own phone and would ring beside ours.
     ok("the native hub is the app's window once setup is done",
-       'if cur.bool("needs_setup") { self.showSetup(rerun: false) } else { self.showHub(api) }' in app)
+       '                self.showSetup(rerun: false)\n            } else { self.showHub(api) }' in app)
     ok("and there is no preview any more", "Native Hub Preview" not in app)
     ok("it asks through the same routes the page used",
        all(r in hub for r in ('"/api/chat"', '"/api/proposal"', '"/api/chat_history"')))
@@ -7033,6 +7034,48 @@ def _json_loads(s):
     return _j.loads(s)
 
 
+def test_terms() -> None:
+    """The Terms of Use and Privacy Policy: shipped, shown first, agreed to by version (legal.py)."""
+    print("\n  -- the terms are agreed to, by version --")
+    import pathlib as _p
+    import tempfile as _t
+    import unittest.mock as _m
+    from agentduet_desktop import legal, paths as _paths
+    root = _p.Path(legal.__file__).resolve().parents[2]
+    with _m.patch.object(_paths, "RUN", _p.Path(_t.mkdtemp()) / "run"):
+        ok("nothing agreed on a new install", not legal.agreed() and legal.state()["agreed"] is False)
+        ok("an agreement to OTHER words is refused", not legal.agree("an-older-version")
+           and not legal.agreed())
+        ok("an agreement to these words is kept", legal.agree(legal.VERSION) and legal.agreed())
+        ok("with when, and in which edition",
+           legal.agreement().get("at") and legal.agreement().get("edition"))
+        with _m.patch.object(legal, "VERSION", "a-later-version"):
+            ok("NEW TERMS ASK AGAIN: an agreement to the old ones counts as none", not legal.agreed())
+        (_paths.RUN / "terms.json").write_text("not json")
+        ok("an unreadable record is no agreement", not legal.agreed())
+    for name in ("terms", "privacy"):
+        shown = legal.text(name)
+        ok(f"the {name} text is there", len(shown) > 2000, len(shown))
+        ok(f"no review notes left in the {name}", not __import__("re").search(
+            r"\[(ENG|GRC|DPO|Legal)\b|DRAFT for review|remove before publishing", shown))
+    ok("the recorder ships them too: no AI_DATA glob reaches legal/",
+       not any(g.startswith("legal") for g in __import__("agentduet_desktop.edition",
+                                                          fromlist=["x"]).AI_DATA))
+    ok("packaged by pyproject AND the spec, or the frozen build has none",
+       '"legal/**/*"' in (root / "pyproject.toml").read_text()
+       and '"legal/**/*"' in (root / "packaging" / "agentduet-desktop.spec").read_text())
+    web = (root / "src/agentduet_desktop/web.py").read_text()
+    ok("served, and agreed only through the version shown",
+       'web.get("/api/terms", api_terms)' in web and 'web.post("/api/terms", api_terms)' in web
+       and "legal.agree(" in web)
+    ok("NOT part of needs_setup, which the frozen HTML wizard cannot satisfy",
+       "legal" not in web[web.index("def needs_setup"):web.index("def needs_setup") + 3000])
+    shell = root / "macos/Sources/AgentDuetShell"
+    ok("the native wizard opens on it, and asks it beside needs_setup",
+       "case .terms" in (shell / "SetupView.swift").read_text()
+       and 'cur["terms_agreed"] as? Bool == false' in (shell / "AppDelegate.swift").read_text())
+
+
 def test_search() -> None:
     """Search what was said: pieces, the index, meaning + keywords, and the floor (search.py)."""
     print("\n  -- search what was said on calls --")
@@ -7128,6 +7171,7 @@ def main() -> None:
     test_jobs_and_briefs()
     test_calls_index()
     test_model_slot()
+    test_terms()
     test_search()
     test_assistant_memory()
     test_budget_split()

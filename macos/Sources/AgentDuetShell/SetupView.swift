@@ -10,6 +10,7 @@ struct SetupView: View {
         VStack(spacing: 0) {
             Group {
                 switch model.step {
+                case .terms: TermsStep(model: model)
                 case .signIn: SignInStep(model: model)
                 case .permissions: PermissionsStep(model: model)
                 #if RECORDER
@@ -49,6 +50,34 @@ private struct NoticeLine: View {
             Text(n.text).font(.callout).foregroundStyle(n.ok ? Color.secondary : Color.red)
                 .multilineTextAlignment(.center).textSelection(.enabled)
         }
+    }
+}
+
+// MARK: - terms
+
+private struct TermsStep: View {
+    @ObservedObject var model: SetupModel
+    @StateObject private var showing = Local("terms")
+
+    var body: some View {
+        VStack(spacing: 14) {
+            StepHeader(title: "Terms and Privacy",
+                       subtitle: "Please read these and agree to continue.")
+            Picker("", selection: $showing.value) {
+                Text("Terms of Use").tag("terms")
+                Text("Privacy Policy").tag("privacy")
+            }
+            .pickerStyle(.segmented).labelsHidden().frame(width: 280)
+            ScrollView {
+                MarkdownDocument(source: model.terms.str(showing.value)).padding(16)
+            }
+            .id(showing.value)                       // each document opens at its top
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.25)))
+            NoticeLine(notice: model.notice)
+        }
+        .padding(.horizontal, 28)
+        .padding(.bottom, 16)
     }
 }
 
@@ -221,7 +250,11 @@ private struct BottomBar: View {
         HStack {
             // WHERE THEY CAME FROM decides the way out: a first run's only exit stops the daemon,
             // and says so; a walk through again only closes this window.
-            if model.rerun {
+            // NO WAY PAST THE TERMS BUT AGREEING: not agreeing stops the app, as it would on a
+            // first run — the same question as Quit, asked as the answer to the terms.
+            if model.step == .terms {
+                Button("Disagree") { confirmQuit.value = true }
+            } else if model.rerun {
                 Button("Cancel") { model.onFinish?() }.keyboardShortcut(.cancelAction)
             } else {
                 Button("Quit") { confirmQuit.value = true }
@@ -229,6 +262,10 @@ private struct BottomBar: View {
             }
             Spacer()
             switch model.step {
+            case .terms:
+                Button("Agree") { model.agree() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(model.terms.str("version").isEmpty)
             case .signIn:
                 EmptyView()
             case .permissions:
