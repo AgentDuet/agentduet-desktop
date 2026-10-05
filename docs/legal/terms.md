@@ -99,6 +99,11 @@ The App checks for new versions by contacting GitHub. It does not install update
 We may change or stop features, including in beta versions, which may be less stable than a final
 release.
 
+**If you change the App.** The App's source code is open, and some settings can be changed by
+hand. These terms and the Privacy Policy describe the App as B3 ships it. If you change its code
+or configuration, for example to turn on a feature the App does not offer, you are responsible
+for what your changed version does with data. [Legal: keep or drop.]
+
 ## 8. No warranty
 
 The App is provided **"as is" and "as available"**, without warranties of any kind, to the
