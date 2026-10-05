@@ -64,7 +64,8 @@ To carry calls and messages, B3's platform handles:
 
 **Who is responsible for what.** For your account (sign-in identity and email), B3 is the
 controller: we decide how it is used. For call audio and messages carried to you, B3 acts as a
-data intermediary on your behalf, and you are the organisation responsible for them. As an
+data intermediary on your behalf; if you use the App for a business, you are the organisation
+responsible for them (see section 1). As an
 intermediary, B3 still protects that data and keeps it no longer than needed, as the PDPA
 requires. See also [b3networks.com/data-policy].
 
