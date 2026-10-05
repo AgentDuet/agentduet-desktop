@@ -6963,40 +6963,103 @@ def test_calls_index() -> None:
 
 
 def test_model_slot() -> None:
-    """Speech and the decision model share one memory slot; Gemma is not in it (slot.py)."""
-    print("\n  -- one slot for speech and the decision model --")
+    """The models share a memory budget (slot.py): a model loads beside the others if it fits, and
+    when it does not, others make room — protected first, partners last, least important first,
+    then least recently used."""
+    print("\n  -- the models' memory budget --")
     import io as _io
     import sys as _sys
     import time as _time
     import unittest.mock as _m
     from agentduet_desktop import decider as _d, slot
     gone = []
-    with _m.patch.object(slot, "_unloaders", {slot.ASR: lambda: gone.append("asr"),
-                                              slot.DECIDER: lambda: gone.append("decider")}), \
-         _m.patch.object(slot, "_occupant", ""), _m.patch.object(slot, "_start_reaper", lambda: None), \
-         _m.patch.object(slot, "_call_on", lambda: False):
-        ok("the first claim unloads nothing", slot.claim(slot.ASR) and gone == [])
-        ok("claiming it again is free", slot.claim(slot.ASR) and gone == [])
-        ok("the other model claiming it unloads speech first",
-           slot.claim(slot.DECIDER) and gone == ["asr"] and slot.occupant() == slot.DECIDER)
-        slot.claim(slot.ASR)
-        eq("and back again", gone, ["asr", "decider"])
-        with _m.patch.object(slot, "_call_on", lambda: True):
-            ok("DURING A CALL the decision model may not push speech out",
-               not slot.claim(slot.DECIDER) and slot.occupant() == slot.ASR and gone == ["asr", "decider"])
-            ok("nor may the reaper", slot.reap(slot._last + slot.IDLE[slot.ASR] + 1) == "")
-        ok("not idle long enough: kept", slot.reap(slot._last + 5) == "" and slot.occupant() == slot.ASR)
-        ok("idle long enough: unloaded, LAZILY",
-           slot.reap(slot._last + slot.IDLE[slot.ASR] + 1) == slot.ASR and slot.occupant() == ""
-           and gone[-1] == "asr")
-        slot.claim(slot.DECIDER)
-        t0 = slot._last
-        _time.sleep(0.01); slot.touch(slot.DECIDER)
-        ok("a use starts the idle clock again", slot._last > t0)
+    unl = {k: (lambda k=k: gone.append(k)) for k in (slot.ASR, slot.DECIDER, slot.EMBED, slot.LLM)}
+    sizes = {slot.LLM: 3600, slot.ASR: 2600, slot.DECIDER: 600, slot.EMBED: 600}
+
+    def world(budget_gb, loaded=None, call=False):
+        return [_m.patch.object(slot, "_unloaders", unl),
+                _m.patch.object(slot, "_loaded", dict(loaded or {})),
+                _m.patch.object(slot, "size_mb", lambda k: sizes[k]),
+                _m.patch("agentduet_desktop.machine.budget_gb", lambda: budget_gb),
+                _m.patch.object(slot, "_learned_mb", None),
+                _m.patch.object(slot, "_start_reaper", lambda: None),
+                _m.patch.object(slot, "_call_on", lambda: call)]
+
+    import contextlib as _cl
+    def run(budget_gb, loaded=None, call=False):
+        st = _cl.ExitStack()
+        for p in world(budget_gb, loaded, call):
+            st.enter_context(p)
+        return st
+
+    old = _time.time() - slot.HOLD - 5
+    with run(10.6):                                       # a 16 GB Mac
+        ok("16 GB: all four load together, nothing unloaded",
+           all(slot.claim(k) for k in (slot.LLM, slot.ASR, slot.DECIDER, slot.EMBED)) and gone == [])
+        ok("and the assistant's model is not 'taking turns' there", not slot.tight())
+    with run(5.3, {slot.LLM: old}):                       # an 8 GB Mac, Gemma 4 E2B loaded
+        ok("8 GB: the assistant's model and speech take turns", slot.tight())
+        ok("speech claiming the room unloads the assistant's model",
+           slot.claim(slot.ASR) and gone == [slot.LLM])
+    gone.clear()
+    with run(5.3, {slot.ASR: _time.time()}):
+        ok("the assistant's model waits while speech is at work (HOLD)",
+           not slot.claim(slot.LLM) and gone == [])
+    with run(5.3, {slot.ASR: old}, call=True):
+        ok("and always during a call", not slot.claim(slot.LLM) and gone == [])
+    with run(5.3, {slot.ASR: old}):
+        ok("speech idle a while: the assistant's model takes its room",
+           slot.claim(slot.LLM) and gone == [slot.ASR])
+    gone.clear()
+    with run(5.3, {slot.LLM: old}):
+        ok("THE DECISION MODEL FITS BESIDE the assistant's model on 8 GB: nothing unloaded",
+           slot.claim(slot.DECIDER) and gone == [])
+    with run(4.6, {slot.LLM: old, slot.EMBED: old}):
+        ok("partners last: search goes before the assistant's model",
+           slot.claim(slot.DECIDER) and gone == [slot.EMBED])
+    gone.clear()
+    with run(3.0, {slot.DECIDER: old - 10, slot.EMBED: old}):
+        ok("the less important first, then least recently used",
+           slot.claim(slot.ASR) and gone[0] == slot.EMBED)
+    gone.clear()
+    with run(3.0, {slot.ASR: _time.time(), slot.LLM: old}, call=True):
+        ok("speech is never refused", slot.claim(slot.ASR))
+        ok("search may not take speech's memory during a call",
+           not slot.claim(slot.EMBED) and slot.ASR not in gone)
+    gone.clear()
+    with run(3.0, {slot.EMBED: old}):
+        ok("A MODEL TOO BIG FOR THE BUDGET ALONE still loads once the rest has gone",
+           slot.claim(slot.LLM) and gone == [slot.EMBED])
+    gone.clear()
+    with run(3.0, {slot.ASR: old}, call=True):
+        ok("but not past speech during a call", not slot.claim(slot.LLM) and gone == [])
+    gone.clear()
+    with run(0.0, {slot.LLM: old}):
+        ok("a machine that cannot be read unloads nothing for room",
+           slot.claim(slot.ASR) and gone == [])
+    with run(10.6, {slot.LLM: old, slot.ASR: _time.time()}):
+        slot.out_of_memory(slot.ASR)
+        ok("A MODEL OUT OF MEMORY SHRINKS THE BUDGET to what was loaded, less a margin",
+           abs(slot.budget_mb() - (3600 + 2600 - 512)) < 1, slot.budget_mb())
+    with run(10.6, {slot.DECIDER: old, slot.ASR: old, slot.LLM: old}):
+        ok("the reaper unloads what has been idle past its limit",
+           set(slot.reap(_time.time() + 10_000)) == {slot.DECIDER, slot.ASR})
+        ok("and never the assistant's model by idleness", slot.LLM in slot._loaded)
+    with run(10.6, {slot.ASR: old}, call=True):
+        ok("nor speech under a call's captions", slot.reap(_time.time() + 10_000) == []
+           and slot.ASR in slot._loaded)
+    with run(10.6, {slot.DECIDER: old}):
+        slot.released(slot.DECIDER)
+        ok("a model unloaded by its own module stops being counted", slot.DECIDER not in slot._loaded)
     with _m.patch.object(slot, "_unloaders", {slot.ASR: lambda: 1 / 0}), \
-         _m.patch.object(slot, "_occupant", slot.ASR), _m.patch.object(slot, "_start_reaper", lambda: None), \
-         _m.patch.object(slot, "_call_on", lambda: False):
+         _m.patch.object(slot, "_loaded", {slot.ASR: old}), \
+         _m.patch.object(slot, "size_mb", lambda k: 3000), \
+         _m.patch("agentduet_desktop.machine.budget_gb", lambda: 4.0), \
+         _m.patch.object(slot, "_learned_mb", None), \
+         _m.patch.object(slot, "_start_reaper", lambda: None), _m.patch.object(slot, "_call_on", lambda: False):
         ok("an unloader that fails does not take the caller down", slot.claim(slot.DECIDER))
+    ok("a full GPU is recognised", slot.is_memory_failure(RuntimeError("llama_decode returned -3"))
+       and not slot.is_memory_failure(ValueError("not a WAV file")))
 
     # THE DECISION MODEL'S WORKER answers line after line, and the slot can end it.
     class FakeEngine:
@@ -7015,7 +7078,7 @@ def test_model_slot() -> None:
     with _m.patch.object(_d, "ready", lambda: True), \
          _m.patch.object(_d, "_worker", lambda: [_sys.executable, "-c", worker]), \
          _m.patch.object(_d.paths, "RUN", TMP), _m.patch.object(slot, "_start_reaper", lambda: None), \
-         _m.patch.object(slot, "_call_on", lambda: False), _m.patch.object(slot, "_occupant", ""):
+         _m.patch.object(slot, "_call_on", lambda: False), _m.patch.object(slot, "_loaded", {}):
         a1 = _d.ask("s", {"q": {}})
         first = _d._proc
         a2 = _d.ask("s", {"q": {}})
@@ -7087,45 +7150,22 @@ def test_small_mac() -> None:
     import unittest.mock as _m
     from agentduet_desktop import carry, jobs, llm, logbundle, merge, models, paths as _paths, slot
     from agentduet_desktop import transcribe as _tr
-    gone = []
-    unl = {slot.ASR: lambda: gone.append("asr"), slot.DECIDER: lambda: gone.append("decider"),
-           slot.LLM: lambda: gone.append("llm")}
-    with _m.patch.object(slot, "_unloaders", unl), _m.patch.object(slot, "_occupant", ""), \
-         _m.patch.object(slot, "_start_reaper", lambda: None), \
-         _m.patch.object(slot, "_call_on", lambda: False), _m.patch.object(slot, "_tight", True):
-        ok("speech claiming the slot unloads the assistant's model first",
-           slot.claim(slot.ASR) and gone == ["llm"])
-        ok("the assistant's model waits while speech is at work",
-           not slot.claim(slot.LLM) and "asr" not in gone)
-        with _m.patch.object(slot, "_last", _time.time() - slot.ASR_HOLD - 1):
-            with _m.patch.object(slot, "_call_on", lambda: True):
-                ok("and always during a call", not slot.claim(slot.LLM) and "asr" not in gone)
-            ok("speech idle a while: the assistant's model takes its room",
-               slot.claim(slot.LLM) and gone[-1] == "asr" and slot.occupant() == "")
-        gone.clear()
-        ok("the decision model does NOT push the assistant's model out — they fit together",
-           slot.claim(slot.DECIDER) and "llm" not in gone)
-    gone.clear()
-    with _m.patch.object(slot, "_unloaders", unl), _m.patch.object(slot, "_occupant", slot.ASR), \
-         _m.patch.object(slot, "_start_reaper", lambda: None), _m.patch.object(slot, "_tight", False):
-        ok("WHERE BOTH FIT nothing changes: the assistant's model needs no room, speech stays",
-           slot.claim(slot.LLM) and slot.claim(slot.ASR) and gone == [] and slot.occupant() == slot.ASR)
-    with _m.patch.object(slot, "_tight", None), \
-         _m.patch("agentduet_desktop.machine.budget_gb", lambda: 5.3), \
+    with _m.patch("agentduet_desktop.machine.budget_gb", lambda: 5.3), \
+         _m.patch.object(slot, "_learned_mb", None), \
          _m.patch.object(models, "resident_mb", lambda m: 3574):
-        ok("an 8 GB Mac with Gemma 4 E2B is tight", slot.tight())
-    with _m.patch.object(slot, "_tight", None), \
-         _m.patch("agentduet_desktop.machine.budget_gb", lambda: 10.6), \
+        ok("an 8 GB Mac with Gemma 4 E2B: speech and the assistant take turns", slot.tight())
+    with _m.patch("agentduet_desktop.machine.budget_gb", lambda: 10.6), \
+         _m.patch.object(slot, "_learned_mb", None), \
          _m.patch.object(models, "resident_mb", lambda m: 5683):
-        ok("a 16 GB Mac with Gemma 4 E4B is not", not slot.tight())
+        ok("a 16 GB Mac with Gemma 4 E4B: they do not", not slot.tight())
     loads = []
-    with _m.patch.object(slot, "_tight", True), _m.patch.object(llm, "provider", lambda: "local"), \
+    with _m.patch.object(slot, "tight", lambda: True), _m.patch.object(llm, "provider", lambda: "local"), \
          _m.patch.object(llm, "configured", lambda: True), \
          _m.patch.object(models, "load", lambda m: loads.append(m) or (None, "")):
         ok("on a small Mac the assistant's model is not preloaded", llm.preload() == "" and not loads)
     with _m.patch.object(slot, "claim", lambda k: False), _m.patch.object(models, "_engine_model", ""):
         eng, msg = models.load("gemma-4-e2b")
-        ok("a load refused room returns no engine and says why", eng is None and "call" in msg)
+        ok("a load refused room returns no engine and says why", eng is None and "speech" in msg)
     llm_src = (_p.Path(llm.__file__)).read_text()
     ok("every generation holds the model, a stream included (models.using)",
        llm_src.count("with models.using():") == 2)

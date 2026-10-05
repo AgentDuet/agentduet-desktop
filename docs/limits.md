@@ -32,9 +32,9 @@ what is coming.
 |---|---|---|
 | Gemma 4 E4B (the assistant, summaries) | 4.8 GB on disk, ~5.6 GB resident | one at a time, `gate.py` |
 | Qwen3-ASR 1.7B (speech) | 2.4 GB on disk, ~2.5 GB resident | |
-| Search model (EmbeddingGemma 300M) | 313 MB on disk, ~0.6 GB while loaded | in the same slot; unloaded after 5 idle minutes |
-| Decision model | 1.7 GB on disk, ~0.5 GB while it runs | in a child process, ended when idle 2 min or speech needs the room |
-| **Peak** | Gemma + the larger of speech and the decision model | `slot.py` (2026-10-03): Gemma stays loaded; speech and the decision model share one slot and unload lazily (idle 10 / 2 min, or when the other claims it). Was all three at once. |
+| Search model (EmbeddingGemma 300M) | 313 MB on disk, ~0.6 GB while loaded | in the budget; unloaded after 5 idle minutes |
+| Decision model | 1.7 GB on disk, ~0.5 GB while it runs | in a child process; in the budget, ended when idle 2 min or room is needed |
+| **Peak** | what the budget allows: two thirds of RAM | `slot.py` (2026-10-05): a MEMORY BUDGET. A model loads beside the others if it fits; if not, others are unloaded — never speech during a call or a more important model used in the last minute, a partner (Gemma and the decision model) last, the less important first (search, decision, Gemma, speech), then least recently used. 16 GB holds all four (~9.4 of 10.6 GB). 8 GB cannot hold Gemma 4 E2B and speech together, so they take turns; the decision model still sits beside Gemma. A model that runs out of memory anyway shrinks the budget. |
 | Transcription speed | **measured** 9.3 s for a 222 s call (M5) | ~24x realtime |
 | Summary per call | **measured** ~8.7 s (Gemma 4 E4B, M5) | |
 
