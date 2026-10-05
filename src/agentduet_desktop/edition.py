@@ -54,7 +54,11 @@ AI_LIBRARIES = (
 #: example capability and the tool sandbox are the secretary's; the HTML pages are the frozen
 #: owner site, whose hub holds the assistant (a Mac shows native windows, not these); and
 #: `templates/` seeds an agent's instance — the recorder seeds `templates-recorder/` instead.
-AI_DATA = ("prompts/**/*", "examples/**/*", "wasm/**/*", "templates/**/*", "*.html")
+AI_DATA = ("prompts/**/*", "examples/**/*", "wasm/**/*", "templates/**/*", "*.html",
+           # the full Terms and Privacy Policy, which name the AI models; the recorder ships its own
+           # (legal/recorder/, legal.py). NAMED, not "legal/*.md": the spec matches with fnmatch,
+           # whose * crosses "/", so a glob would strip the recorder's own texts too.
+           "legal/terms.md", "legal/privacy.md")
 
 
 def _built() -> str:

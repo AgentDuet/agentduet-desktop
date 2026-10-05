@@ -3,7 +3,7 @@
 Last updated: 5 October 2026
 
 These terms are an agreement between you and B3 Networks Pte Ltd ("B3", "we") about your use of
-AgentDuet, AgentDuet Recorder and AgentDuet AI (the "App"). By installing or using the App, you
+AgentDuet or AgentDuet AI (the "App"). By installing or using the App, you
 agree to them. If you use the App for a business, you agree for that business, and "you" means
 both of you.
 

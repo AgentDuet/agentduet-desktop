@@ -197,6 +197,20 @@ def boot(tree: pathlib.Path, home: pathlib.Path, log: pathlib.Path, *, recorder:
             check(f"the panel says {want}", panel.get("edition") == want, panel.get("edition"))
             check("and carries the AI fields only in the full edition",
                   ("model" in panel) != recorder, sorted(panel))
+            # ITS OWN TERMS (legal/recorder/): served, and naming nothing of the AI — the words
+            # the bundle audit looks for in the shell, applied to what the owner agrees to.
+            code, text = request(base, token, "/api/terms", limit=None)
+            terms = json.loads(text or b"{}") if code == 200 else {}
+            shown = terms.get("terms", "") + terms.get("privacy", "")
+            title = "AgentDuet Recorder — Terms of Use" if recorder else "AgentDuet — Terms of Use"
+            check(f"the terms are {'the recorder' if recorder else 'the full app'}'s own",
+                  title in shown and len(shown) > 3000, shown[:200])
+            if recorder:
+                import re as _re
+                ai = sorted({m.group(0) for m in _re.finditer(
+                    r"\b(AI|transcri\w*|summar\w*|assistant|Gemma|Qwen|Whisper|Strands|decision "
+                    r"model|Hugging Face|model)\b", shown, _re.I)})
+                check("and name nothing of the AI", not ai, ai)
             for path in AI_ROUTES:
                 code, _ = request(base, token, path)
                 if recorder:

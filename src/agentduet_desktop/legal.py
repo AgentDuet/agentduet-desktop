@@ -27,8 +27,18 @@ from . import edition, paths
 #: The version of the terms an agreement is to. Bump it when the owner must read them again.
 VERSION = "2026-10-05"
 
-HERE = pathlib.Path(__file__).resolve().parent / "legal"
 DOCUMENTS = {"terms": "terms.md", "privacy": "privacy.md"}
+
+
+def folder() -> pathlib.Path:
+    """THE RECORDER HAS ITS OWN TEXTS (2026-10-05), with nothing about AI in them: it contains no
+    AI, and the full texts name the models. Its build leaves the full texts out (edition.AI_DATA),
+    so the bundle a partner's reviewer lists names no model either."""
+    base = pathlib.Path(__file__).resolve().parent / "legal"
+    return base / "recorder" if edition.name() == edition.RECORDER else base
+
+
+HERE = folder()
 
 
 def _record() -> pathlib.Path:
@@ -37,7 +47,7 @@ def _record() -> pathlib.Path:
 
 def text(name: str) -> str:
     """One document, as the owner reads it."""
-    return (HERE / DOCUMENTS[name]).read_text(encoding="utf-8")
+    return (folder() / DOCUMENTS[name]).read_text(encoding="utf-8")
 
 
 def agreement() -> dict:
