@@ -18,6 +18,17 @@ model may not push it out while a call is on: its claim is refused, and the summ
 falls back to its word rule (decider.ask answers None). Summaries do not run during calls anyway
 (gate.py); this makes it a rule rather than a coincidence.
 
+ON A SMALL MAC, GEMMA JOINS THE SLOT, AND SPEECH WINS (2026-10-05). Gemma staying loaded assumed
+Gemma and speech fit together. On an 8 GB Mac they do not: a tester's ran Gemma 4 E2B (~4 GB), and
+every piece of two calls failed with `llama_decode returned -3` — Metal out of memory — because
+speech loaded second; after a restart speech loaded first and Gemma failed instead. So where the
+two cannot both be held (`tight()`), speech and Gemma EXCLUDE EACH OTHER: speech claiming the slot
+unloads Gemma, and Gemma claiming its place (`claim(LLM)`) unloads speech — refused during a call.
+Recording and transcribing are the product; a summary can wait. Gemma is NOT a slot occupant: the
+decision and search models are small enough to sit beside it (E2B ~3.6 GB + ~0.5 GB), and making
+them exclusive too would reload gigabytes of Gemma in the middle of a summary that consults the
+decision model. Where everything fits, Gemma is untouched and stays loaded, as above.
+
 Each model registers how it is unloaded (`register`) and claims the slot just before use
 (`claim`). An unloader must be safe to call at any time and must wait for a use in progress —
 the speech model's takes `transcribe._qwen_lock`, the decision model's ends its worker process.
@@ -32,11 +43,18 @@ from typing import Callable
 
 logger = logging.getLogger("secretary.slot")
 
-ASR, DECIDER, EMBED = "asr", "decider", "embed"
+ASR, DECIDER, EMBED, LLM = "asr", "decider", "embed", "llm"
+
+#: What the speech model holds once loaded, model and audio encoder (~2.4 GB on disk, measured
+#: ~2.5 GB resident), with a little room: the sum `tight()` checks.
+ASR_RESIDENT_MB = 2600
 
 #: Seconds unused before the reaper unloads. Speech is kept longer: a call's pieces, the after-call
 #: pass and the next call tend to come together, and reloading it costs more.
 IDLE = {ASR: 600, DECIDER: 120, EMBED: 300}
+
+#: How long after speech was last used the assistant's model may take its memory on a small Mac.
+ASR_HOLD = 60
 
 #: How often the reaper looks.
 REAP_EVERY = 30
@@ -47,6 +65,33 @@ _last = 0.0
 _unloaders: dict[str, Callable[[], None]] = {}
 _reaper: threading.Thread | None = None
 _stop = threading.Event()
+
+
+_tight: bool | None = None
+
+
+def tight() -> bool:
+    """Whether this machine cannot hold the assistant's model and the speech model together.
+
+    The budget is `machine.budget_gb()` (two thirds of RAM on a Mac), against what each occupies
+    once loaded. Asked once: neither the machine nor the picked model changes while the app runs.
+    A machine that cannot be read is not tight — nothing is taken away on a guess.
+    """
+    global _tight
+    if _tight is None:
+        try:
+            from . import llm, machine, models
+            budget_mb = machine.budget_gb() * 1024
+            need_mb = models.resident_mb(llm.current_model()) + ASR_RESIDENT_MB
+            _tight = bool(budget_mb) and need_mb > budget_mb
+            if _tight:
+                logger.info("slot: %.1f GB usable cannot hold the assistant's model and speech "
+                            "together (%.1f GB) — speech comes first", budget_mb / 1024,
+                            need_mb / 1024)
+        except Exception as exc:
+            logger.info("slot: could not size this machine (%s: %s)", type(exc).__name__, exc)
+            _tight = False
+    return _tight
 
 
 def register(kind: str, unload: Callable[[], None]) -> None:
@@ -74,6 +119,11 @@ def claim(kind: str) -> bool:
     """
     global _occupant, _last
     _start_reaper()
+    if kind == LLM:
+        return _claim_llm()
+    # SPEECH COMES FIRST on a small Mac: the assistant's model goes before speech loads.
+    if kind == ASR and tight():
+        _unload(LLM)
     with _lock:
         other = _occupant if _occupant and _occupant != kind else ""
         # DURING A CALL NOTHING PUSHES SPEECH OUT: not the decision model, not search.
@@ -84,6 +134,26 @@ def claim(kind: str) -> bool:
     if other:
         logger.info("slot: unloading %s for %s", other, kind)
         _unload(other)
+    return True
+
+
+def _claim_llm() -> bool:
+    """Room for the assistant's model. Free where everything fits; on a small Mac, speech goes —
+    except during a call, when the answer is no and the job that asked waits for the call to end."""
+    global _occupant
+    if not tight():
+        return True
+    with _lock:
+        if _occupant != ASR:
+            return True
+        # NOT DURING A CALL, AND NOT WHILE SPEECH IS AT WORK: the after-call transcript follows
+        # the call within seconds, and taking the memory between its pieces would make it fail.
+        if _call_on() or time.time() - _last < ASR_HOLD:
+            logger.info("slot: the assistant's model waits — speech is in use")
+            return False
+        _occupant = ""
+    logger.info("slot: unloading asr for the assistant's model")
+    _unload(ASR)
     return True
 
 

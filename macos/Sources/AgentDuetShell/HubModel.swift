@@ -233,7 +233,9 @@ import Foundation
         if c.bool("norecording") { return "No recording." }
         if c.bool("silent") { return "No audio." }
         #if !RECORDER
-        if c.str("transcript").isEmpty { return "Transcript pending." }
+        if c.str("transcript").isEmpty {
+            return c.bool("transcript_failed") ? "Transcript failed." : "Transcript pending."
+        }
         #endif
         return nil
     }

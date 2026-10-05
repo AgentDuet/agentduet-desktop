@@ -7076,6 +7076,111 @@ def test_terms() -> None:
        and 'cur["terms_agreed"] as? Bool == false' in (shell / "AppDelegate.swift").read_text())
 
 
+def test_small_mac() -> None:
+    """On a Mac that cannot hold the assistant's model and speech together, speech wins (slot.py),
+    a memory failure is not permanent, and a failing job backs off (2026-10-05)."""
+    print("\n  -- a small Mac: speech first, failures retried, jobs back off --")
+    import json as _json
+    import pathlib as _p
+    import tempfile as _t
+    import time as _time
+    import unittest.mock as _m
+    from agentduet_desktop import carry, jobs, llm, logbundle, merge, models, paths as _paths, slot
+    from agentduet_desktop import transcribe as _tr
+    gone = []
+    unl = {slot.ASR: lambda: gone.append("asr"), slot.DECIDER: lambda: gone.append("decider"),
+           slot.LLM: lambda: gone.append("llm")}
+    with _m.patch.object(slot, "_unloaders", unl), _m.patch.object(slot, "_occupant", ""), \
+         _m.patch.object(slot, "_start_reaper", lambda: None), \
+         _m.patch.object(slot, "_call_on", lambda: False), _m.patch.object(slot, "_tight", True):
+        ok("speech claiming the slot unloads the assistant's model first",
+           slot.claim(slot.ASR) and gone == ["llm"])
+        ok("the assistant's model waits while speech is at work",
+           not slot.claim(slot.LLM) and "asr" not in gone)
+        with _m.patch.object(slot, "_last", _time.time() - slot.ASR_HOLD - 1):
+            with _m.patch.object(slot, "_call_on", lambda: True):
+                ok("and always during a call", not slot.claim(slot.LLM) and "asr" not in gone)
+            ok("speech idle a while: the assistant's model takes its room",
+               slot.claim(slot.LLM) and gone[-1] == "asr" and slot.occupant() == "")
+        gone.clear()
+        ok("the decision model does NOT push the assistant's model out — they fit together",
+           slot.claim(slot.DECIDER) and "llm" not in gone)
+    gone.clear()
+    with _m.patch.object(slot, "_unloaders", unl), _m.patch.object(slot, "_occupant", slot.ASR), \
+         _m.patch.object(slot, "_start_reaper", lambda: None), _m.patch.object(slot, "_tight", False):
+        ok("WHERE BOTH FIT nothing changes: the assistant's model needs no room, speech stays",
+           slot.claim(slot.LLM) and slot.claim(slot.ASR) and gone == [] and slot.occupant() == slot.ASR)
+    with _m.patch.object(slot, "_tight", None), \
+         _m.patch("agentduet_desktop.machine.budget_gb", lambda: 5.3), \
+         _m.patch.object(models, "resident_mb", lambda m: 3574):
+        ok("an 8 GB Mac with Gemma 4 E2B is tight", slot.tight())
+    with _m.patch.object(slot, "_tight", None), \
+         _m.patch("agentduet_desktop.machine.budget_gb", lambda: 10.6), \
+         _m.patch.object(models, "resident_mb", lambda m: 5683):
+        ok("a 16 GB Mac with Gemma 4 E4B is not", not slot.tight())
+    loads = []
+    with _m.patch.object(slot, "_tight", True), _m.patch.object(llm, "provider", lambda: "local"), \
+         _m.patch.object(llm, "configured", lambda: True), \
+         _m.patch.object(models, "load", lambda m: loads.append(m) or (None, "")):
+        ok("on a small Mac the assistant's model is not preloaded", llm.preload() == "" and not loads)
+    with _m.patch.object(slot, "claim", lambda k: False), _m.patch.object(models, "_engine_model", ""):
+        eng, msg = models.load("gemma-4-e2b")
+        ok("a load refused room returns no engine and says why", eng is None and "call" in msg)
+    llm_src = (_p.Path(llm.__file__)).read_text()
+    ok("every generation holds the model, a stream included (models.using)",
+       llm_src.count("with models.using():") == 2)
+
+    print("\n  -- a transcript lost to memory is tried again --")
+    home = _p.Path(_t.mkdtemp())
+    with _m.patch.object(_paths, "RUN", home / "run"):
+        legs = carry.legs(); legs.mkdir(parents=True)
+        stem = "20261005T162203-01a10b27"
+        for leg in ("caller", "callee"):
+            (legs / f"{stem}-{leg}.wav").write_bytes(b"x" * 100)
+            (legs / f"{stem}-{leg}.failed").write_text("RuntimeError: llama_decode returned -3\n")
+        (legs / f"{stem}{merge.MERGE_SUFFIX}").write_text("")
+        (legs / "20261005T100000-bad-caller.wav").write_bytes(b"x" * 100)
+        (legs / "20261005T100000-bad-caller.failed").write_text("ValueError: not a WAV file\n")
+        ok("the hub can tell a failed transcript from a pending one",
+           carry.transcript_failed([f"{stem}.wav"]) and not carry.transcript_failed(["other.wav"]))
+        eq("both legs that ran out of memory go back in the queue", _tr.requeue_memory_failures(), 2)
+        ok("and the call is merged again once they are done",
+           not (legs / f"{stem}{merge.MERGE_SUFFIX}").exists())
+        ok("a failure for any other reason stays given up on",
+           (legs / "20261005T100000-bad-caller.failed").exists())
+    web = (_p.Path(llm.__file__).parent / "web.py").read_text()
+    hub = (_p.Path(llm.__file__).parents[2] / "macos/Sources/AgentDuetShell/HubModel.swift").read_text()
+    ok("the hub says so", '"transcript_failed":' in web and '"Transcript failed."' in hub)
+
+    print("\n  -- a failing job backs off --")
+    eq("30 s, doubling, at most 30 minutes", [jobs.backoff(n) for n in (1, 2, 3, 10)],
+       [30.0, 60.0, 120.0, 1800.0])
+    runs = []
+    def boom():
+        runs.append(1)
+        raise RuntimeError("could not generate a reply")
+    jobs.request("test:boom", 5, boom)
+    for _ in range(50):
+        if runs and "test:boom" not in jobs.pending():
+            break
+        _time.sleep(0.02)
+    jobs.request("test:boom", 5, boom)
+    _time.sleep(0.1)
+    ok("asked again straight after failing, it does not run", len(runs) == 1, runs)
+    with jobs._cv:
+        jobs._failed.pop("test:boom", None)
+
+    print("\n  -- the export says what machine it came from --")
+    with _m.patch.object(_paths, "RUN", home / "run"):
+        import io as _io, zipfile as _z
+        about = _json.loads(_z.ZipFile(_io.BytesIO(logbundle.bundle())).read("about.json"))
+    mi = about.get("machine_info", {})
+    ok("its RAM", mi.get("ram_gb", 0) > 0, mi)
+    ok("the chip and macOS, on a Mac", mi.get("chip") and mi.get("macos"), mi)
+    ok("and whether speech and the assistant take turns",
+       "speech_and_assistant_take_turns" in mi.get("models", {}), mi.get("models"))
+
+
 def test_search() -> None:
     """Search what was said: pieces, the index, meaning + keywords, and the floor (search.py)."""
     print("\n  -- search what was said on calls --")
@@ -7172,6 +7277,7 @@ def main() -> None:
     test_calls_index()
     test_model_slot()
     test_terms()
+    test_small_mac()
     test_search()
     test_assistant_memory()
     test_budget_split()

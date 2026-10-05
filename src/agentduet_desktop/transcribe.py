@@ -1127,6 +1127,44 @@ def _qwen(path: pathlib.Path) -> str:
 
 # ---- the queue -------------------------------------------------------------------------
 
+#: WHAT A FULL GPU LOOKS LIKE from llama.cpp: `llama_decode returned -3` is a compute that failed,
+#: which on a Mac is Metal running out of memory. A tester's 8 GB Mac lost two calls' transcripts
+#: to it on 2026-10-05, with the assistant's model loaded beside speech. Nothing is wrong with the
+#: recording, so a give-up for this reason is not permanent (`requeue_memory_failures`).
+MEMORY_FAILURE = ("llama_decode returned -3", "Failed to evaluate chunk", "out of memory",
+                  "failed to allocate", "kIOGPUCommandBufferCallbackErrorOutOfMemory")
+
+#: How often memory failures are tried again, besides once at start.
+REQUEUE_SECONDS = 3600
+
+
+def requeue_memory_failures() -> int:
+    """Put back in the queue every leg given up on for want of memory. Returns how many.
+
+    `.failed` stays permanent for anything else (a corrupt file). For memory it means "not now":
+    the machine had too much loaded at that moment, and the slot now makes room for speech
+    (slot.py). The call's `.merged` mark goes too, so the merge writes its transcript once both
+    legs are done. Hourly, and at start — which is what recovers calls an earlier build lost.
+    """
+    from . import carry, merge
+    if not carry.legs().is_dir():
+        return 0
+    n = 0
+    for failed in sorted(carry.legs().glob("*.failed")):
+        try:
+            why = failed.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if not any(m in why for m in MEMORY_FAILURE):
+            continue
+        failed.unlink(missing_ok=True)
+        (carry.legs() / f"{carry.stem_of(failed.stem)}{merge.MERGE_SUFFIX}").unlink(missing_ok=True)
+        n += 1
+    if n:
+        logger.info("%d recording leg(s) given up on for want of memory: trying again", n)
+    return n
+
+
 def pending() -> list[pathlib.Path]:
     """Recordings still needing a transcript, oldest first.
 
@@ -1242,8 +1280,16 @@ async def worker() -> None:
     """
     global _wake
     _wake = asyncio.Event()
+    import time as _time
+    requeued_at = 0.0
     while True:
         await _nap(POLL_SECONDS)
+        if _time.time() - requeued_at > REQUEUE_SECONDS:
+            requeued_at = _time.time()
+            try:
+                requeue_memory_failures()
+            except Exception as exc:
+                logger.warning("could not requeue failed transcripts (%s: %s)", type(exc).__name__, exc)
         try:
             await asyncio.to_thread(drain_once)
         except Exception as exc:            # a worker that dies takes the queue with it

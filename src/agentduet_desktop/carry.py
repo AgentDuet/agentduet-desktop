@@ -199,6 +199,14 @@ def transcript_of(names: list[str], folder: pathlib.Path) -> str:
     return "\n".join(parts)
 
 
+def transcript_failed(names: list[str]) -> bool:
+    """Whether a leg of this call was given up on (`.failed` beside it in `legs()`)."""
+    if not names or not legs().is_dir():
+        return False
+    stems = {stem_of(n) for n in names}
+    return any(any(legs().glob(f"{s}-*.failed")) for s in stems)
+
+
 def call_audio(names: list[str], call_id: str = "") -> tuple[pathlib.Path, list[str]]:
     """(folder, filenames) to show for one indexed call — the merge if it is done, else legs.
 

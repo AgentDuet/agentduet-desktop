@@ -38,6 +38,7 @@ whether one COULD run here; this says which of the three it is right now. Confla
 two is how a laptop ends up holding five gigabytes for a model nobody is using.
 """
 
+import contextlib
 import json
 import logging
 import os
@@ -933,10 +934,64 @@ def _gpu_layers(model: str) -> tuple[int, str]:
 _load_lock = threading.RLock()
 
 
+#: HELD FOR EACH GENERATION, so the slot can take the model away only between two of them —
+#: never in the middle of one (`unload_for_speech`). A different lock from `_load_lock` on
+#: purpose: speech loads under that one, so waiting on it here would be a deadlock.
+_use_lock = threading.RLock()
+
+
+@contextlib.contextmanager
+def using():
+    """Hold the loaded model for one generation."""
+    with _use_lock:
+        yield
+
+
 def load(model: str, context: int = 8192):
-    """Bring a model into memory. Returns (engine, message). One caller at a time."""
+    """Bring a model into memory. Returns (engine, message). One caller at a time.
+
+    ON A SMALL MAC THE ROOM IS CLAIMED FIRST (slot.py): loading the assistant's model unloads
+    speech, or is refused while a call needs it. Claimed BEFORE `_load_lock`, because speech holds
+    its own lock while it loads under that one.
+    """
+    if _engine_model != model:
+        from . import slot
+        if not slot.claim(slot.LLM):
+            return None, ("The speech model needs this Mac's memory right now, for a call. "
+                          "Try again in a minute.")
     with _load_lock:
         return _load(model, context)
+
+
+def unload_for_speech() -> None:
+    """Free the assistant's model for speech (slot.py). A background job stops at its next token
+    and runs again later; an owner's answer in progress is waited for. CLOSED, not only
+    forgotten: a caller still holding the engine would otherwise keep its memory alive."""
+    global _engine, _engine_model
+    if not _engine_model:
+        return                                   # speech claims the slot per piece: usually this
+    from . import gate
+    gate.preempt_background()
+    with _use_lock:
+        if not _engine_model:
+            return
+        was, eng = _engine_model, _engine
+        _engine, _engine_model = None, ""
+        try:
+            eng.close()
+        except Exception:
+            pass
+        import gc
+        gc.collect()
+    logger.info("unloaded %s so speech has the memory", was)
+
+
+def _register_slot() -> None:
+    from . import slot
+    slot.register(slot.LLM, unload_for_speech)
+
+
+_register_slot()
 
 
 def _load(model: str, context: int = 8192):

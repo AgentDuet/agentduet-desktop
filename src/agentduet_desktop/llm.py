@@ -267,7 +267,8 @@ class _Local:
     def _generate(self, engine, msgs, think: bool = False, max_tokens: int | None = None,
                   stream: bool = False, tools: list[dict] | None = None,
                   stop: list[str] | None = None):
-        return engine.create_chat_completion(
+        from . import models
+        kw = dict(
             messages=msgs,
             stream=stream,
             **({"tools": tools} if tools else {}),
@@ -298,6 +299,16 @@ class _Local:
             # for that case and is the honest cost of the setting; the truncation path below
             # covers what happens when even that runs out.
             max_tokens=max_tokens or (8192 if think else 2048))
+        # HELD FOR THE WHOLE GENERATION, a stream included, so the slot can only take the model
+        # between two (models.using). A stream holds it while it is read and lets go when the
+        # reader stops — a preempted job's GeneratorExit included.
+        if stream:
+            def chunks():
+                with models.using():
+                    yield from engine.create_chat_completion(**kw)
+            return chunks()
+        with models.using():
+            return engine.create_chat_completion(**kw)
 
 
 def _local_failure(exc: Exception, model: str) -> str:
@@ -770,7 +781,11 @@ def preload() -> str:
     """
     if provider() != "local" or not configured():
         return ""
-    from . import models
+    from . import models, slot
+    # NOT ON A SMALL MAC, where it and speech cannot both be held (slot.tight): speech comes
+    # first, and this model loads when it is first asked for.
+    if slot.tight():
+        return ""
     _engine, msg = models.load(current_model())
     return msg
 
