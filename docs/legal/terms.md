@@ -1,0 +1,150 @@
+# AgentDuet — Terms of Use
+
+> **DRAFT for review — not in force.** Written 2026-10-05 by engineering as a starting point for
+> B3 legal and GRC. Text in [brackets] is a placeholder or an open question. Reviewers: Zul (DPO), Peter (CCO) /
+> legal, then security-grc. Not legal advice.
+
+Last updated: [date]
+
+These terms are an agreement between you and B3 Networks Pte Ltd ("B3", "we") about your use of
+AgentDuet, AgentDuet Recorder and AgentDuet AI (the "App"). By installing or using the App, you
+agree to them. If you use the App for a business, you agree for that business, and "you" means
+both of you.
+
+## 1. What the App does
+
+The App carries phone calls to and from your number through B3's platform, records both sides of
+each call, and saves the recordings on your computer. Depending on the edition, it can also:
+
+- transcribe and summarise your calls and messages, using AI models that run on your computer;
+- record messages sent to your number;
+- answer calls and messages for you, if you set up the assistant to do so.
+
+## 2. You are responsible for recording lawfully
+
+**Recording a call is your decision and your responsibility.** Laws about recording calls and
+about personal data differ by country. In some places, everyone on the call must agree before
+it is recorded. These laws include Singapore's Personal Data Protection Act 2012 (PDPA).
+
+You agree that:
+
+- you will tell the people you call, and the people who call you, that calls may be recorded,
+  and get their consent wherever the law requires it;
+- you are the party responsible under data protection law for the recordings, transcripts,
+  summaries and messages the App creates and stores on your computer [GRC: confirm "controller"
+  / "organisation" wording under PDPA];
+- you will keep that data secure, use it only for lawful purposes, and answer any request from
+  a person to access, correct or delete their data;
+- you will not use the App to record anyone secretly where the law forbids it, or for
+  harassment, surveillance, fraud or any other unlawful purpose.
+
+B3 does not decide what you record, does not see what is stored on your computer, and cannot
+give consent for you. B3 keeps its own duties as the intermediary that carries your calls (see
+section 3 and the Privacy Policy).
+
+## 3. Where your data is
+
+- **Recordings, transcripts, summaries and messages are stored on your computer**, in a folder
+  you choose. B3 does not keep a copy.
+- **Call audio and messages pass through B3's platform** to reach your computer. B3 handles
+  them as a data intermediary on your behalf. [ENG to confirm with the platform team: no
+  platform-side recording or stored message content is created on the AgentDuet call path.]
+- **B3 keeps call records** (numbers, times, length and routing) for [3 years — per B3's record
+  of processing; confirm once the retention schedule, security-grc #12, is set].
+- **AI features run on your computer**, using these models: Qwen3-ASR (speech to text), Google
+  Gemma 4 (summaries and the assistant), Google EmbeddingGemma (search) and Strands Decider
+  (sorting what was said). No call or message content is sent to a cloud AI service, with one exception: if you turn on the assistant that answers calls for you, the call
+  is handled by a hosted AI service. [Name the provider before that feature is offered.]
+
+The Privacy Policy explains this in more detail.
+
+## 4. AI output can be wrong
+
+Transcripts, summaries, suggestions and search results are produced by AI models. They can be
+incomplete or inaccurate, and they can name the wrong person or the wrong language. Check
+anything important against the recording before you rely on it. **Do not use them as the only
+record of a legal, medical or financial commitment.**
+
+If you set up the assistant to answer for you, you are responsible for what you allow it to say
+and do, and for checking what it did.
+
+## 5. Your account
+
+You sign in with an AgentDuet account. Keep access to your computer and your account secure, and
+tell us at [support email] if you think someone else has used them. We may suspend an account
+that breaks these terms or puts the platform or other users at risk.
+
+## 6. Third-party parts
+
+The App downloads AI models from third parties the first time it needs them, including Google's
+Gemma models, which are provided under the [Gemma Terms of Use](https://ai.google.dev/gemma/terms)
+and Google's prohibited use policy. By downloading them, you agree to follow those terms. Other
+third-party components are listed in the App's NOTICE file, each under its own licence.
+
+The App's source code is licensed under the Apache License 2.0. These terms cover your use of the
+App and the service. They do not limit any right you have under that licence to the code itself.
+
+## 7. Updates
+
+The App checks for new versions by contacting GitHub. It does not install updates without you.
+We may change or stop features, including in beta versions, which may be less stable than a final
+release.
+
+## 8. No warranty
+
+The App is provided **"as is" and "as available"**, without warranties of any kind, to the
+extent the law allows. We do not promise that it will be uninterrupted, that every call will be
+recorded, or that recordings, transcripts or summaries will be complete or accurate. Keep your
+own backups of anything you need to keep.
+
+## 9. Limitation of liability
+
+To the extent the law allows, B3 is not liable for indirect, incidental or consequential loss,
+or for loss of data, profits or business, arising from your use of the App. B3's total liability
+for any claim about the App is limited to [the amount you paid B3 for the App in the 12 months
+before the claim, or SGD 100 if you paid nothing]. Nothing in these terms limits liability that
+cannot be limited by law. [Legal: B3's partner agreement (CPaaS MPA v1.2, clause 8.2(c)) puts
+data-protection breaches OUTSIDE its liability cap. Decide whether this cap should do the same,
+so the two do not contradict each other.]
+
+## 10. Your responsibility to us
+
+You agree to compensate B3 for claims by third parties, including the people on your calls,
+that arise from your recording or use of their data in breach of these terms or the law.
+[Legal: confirm whether an indemnity is wanted for consumer users.]
+
+## 11. Ending
+
+You can stop using the App at any time by uninstalling it. Your recordings stay on your computer
+until you delete them. We may end these terms if you break them.
+
+## 12. Changes to these terms
+
+We may update these terms. If a change is significant, the App will show it to you before it
+applies. If you keep using the App after that, you accept the new terms.
+
+## 13. Law
+
+These terms are governed by the laws of Singapore, and the courts of Singapore have
+jurisdiction. [Legal: confirm, and consider consumer-protection rules in other countries where
+the App is offered.]
+
+## 14. Contact
+
+B3 Networks Pte Ltd, [address]. [support email]
+
+---
+
+**Open questions for legal and GRC** (remove before publishing)
+
+1. Partner editions: under B3's existing partner model the partner is the controller and holds
+   the end-user relationship, so the PARTNER'S terms face the end user and B3's reach them through
+   the partner contract. Confirm whether Singtel is on the CPaaS Master Partner Agreement v1.2,
+   and whether the Recorder then ships with no B3 terms screen at all (commercial/legal call).
+2. Engineering: confirm with the platform team that the AgentDuet call path makes no
+   platform-side recording (B3's RoPA lists S3 call recordings for 3 years for other products),
+   and that WhatsApp message content is not stored on the platform.
+3. The liability cap amount, and whether the indemnity (section 10) is suitable for consumers.
+4. Whether the App should show a consent reminder before the first recording, beyond
+   accepting these terms.
+5. Where the published terms will live (URL), so the App can link to them.
