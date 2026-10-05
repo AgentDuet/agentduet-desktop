@@ -1208,7 +1208,7 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       one evaluated (OpenCode's Big Pickle, 2026-08-11) still needs a signup with billing
       details, is free only "for a limited time", and says collected data may be used to improve
       the model — which contradicts the whole disclosure pitch, silently, on the owner's behalf.
-- [ ] **Terms of Use and a Privacy Policy — DRAFTED 2026-10-05, not in force.**
+- [ ] **Terms of Use and a Privacy Policy — WRITTEN 2026-10-05, shown in setup from b8, not yet reviewed.**
       `src/agentduet_desktop/legal/terms.md` and `privacy.md` (in the package, so setup can
       show them offline), with input from security-grc. Before this ships, the
       app had NO terms at all: the Apache `LICENSE` covers the code, not someone recording calls
@@ -1216,8 +1216,11 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       controller of account data and a data intermediary for carried calls, so it keeps its own
       duties; the terms must not claim otherwise.
       **The texts carry NO review notes** (Stanley, 2026-10-05: he takes them to the team), so
-      what is still to confirm lives HERE. Bracketed placeholders (`[date]`, `[3 years]`,
-      `[region]`, `[support email]`) are values to fill. Two engineering rules the texts rely on:
+      what is still to confirm lives HERE. **Testers see them from b8** (Stanley, 2026-10-05), so the
+      placeholders were filled with defaults that read as final and must be CONFIRMED: retention
+      "3 years" (from B3's RoPA), "with Amazon Web Services" (no region named), contact and DPO
+      "through b3networks.com" / its data-policy page (no address or email invented), and the
+      liability cap "12 months' fees, or SGD 100". Two engineering rules the texts rely on:
       they say no call content reaches a cloud AI and there is no telemetry — so turning on answer
       mode (hosted DashScope voice) or a hosted provider (`llm.CHOICE_QUARANTINED`), or adding any
       analytics, changes BOTH texts first and bumps `legal.VERSION`.

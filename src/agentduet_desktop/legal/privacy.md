@@ -1,6 +1,6 @@
 # AgentDuet — Privacy Policy
 
-Last updated: [date]
+Last updated: 5 October 2026
 
 This policy explains what personal data AgentDuet, AgentDuet Recorder and AgentDuet AI (the
 "App") handle, where it goes, and who is responsible for it. The App is provided by B3 Networks
@@ -47,18 +47,18 @@ To carry calls and messages, B3's platform handles:
 - **call audio and message content**, in transit to your computer. WhatsApp messages reach B3
   from Meta, which handles them under its own privacy policy.
 - **connection and application logs**: your IP address, times of connection and sign-in, and
-  errors, kept for [3 years] to run and secure the service.
-- **call and message records**: numbers, times, length and routing, kept for [3 years] for
-  [billing, fraud prevention and support].
+  errors, kept for 3 years to run and secure the service.
+- **call and message records**: numbers, times, length and routing, kept for 3 years for
+  billing, fraud prevention and support.
 
 **Who is responsible for what.** For your account (sign-in identity and email), B3 is the
 controller: we decide how it is used. For call audio and messages carried to you, B3 acts as a
 data intermediary on your behalf; if you use the App for a business, you are the organisation
 responsible for them (see section 1). As an intermediary, B3 still protects that data and keeps it no longer than needed, as the PDPA
-requires. See also [b3networks.com/data-policy].
+requires. See also [b3networks.com/data-policy](https://www.b3networks.com/data-policy).
 
-**Where it is held.** B3 holds account data, call records and logs in [region]. If it is
-transferred outside Singapore, B3 protects it to a standard comparable to the PDPA, as the PDPA's transfer rules require.
+**Where it is held.** B3 holds account data, call records and logs with Amazon Web
+Services. If it is transferred outside Singapore, B3 protects it to a standard comparable to the PDPA, as the PDPA's transfer rules require.
 
 ## 3. Other services the App contacts
 
@@ -89,11 +89,12 @@ key kept in its folder.
 
 ## 6. Children
 
-The App is not intended for anyone under [18].
+The App is not intended for anyone under 18.
 
 ## 7. Your rights
 
-For data B3 holds (section 2), you can ask us to access, correct or delete it at [privacy email].
+For data B3 holds (section 2), you can ask us to access, correct or delete it through
+[b3networks.com/data-policy](https://www.b3networks.com/data-policy).
 For data on your computer (section 1), you hold it, so you can view, export or delete it
 yourself. Requests from people on your calls about that data are yours to answer.
 
@@ -104,4 +105,5 @@ changes in the App.
 
 ## 9. Contact
 
-B3 Networks Pte Ltd, [address]. Data Protection Officer: [name/email].
+B3 Networks Pte Ltd, Singapore. To reach our Data Protection Officer, see
+[b3networks.com/data-policy](https://www.b3networks.com/data-policy).
