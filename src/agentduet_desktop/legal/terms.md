@@ -17,6 +17,12 @@ to your business number. Depending on the edition, it can also:
 - record messages sent to your number;
 - reply to messages for you, if you set up the assistant to do so.
 
+**The calling service is separate.** The App connects to AgentDuet's calling service, which B3
+runs and which carries your calls and messages (the "Service"). The Service is provided under its
+own terms, between you, or the provider you got your line from, and B3. Those terms, not these,
+set what B3 is responsible for in carrying your calls. These terms cover the App: the software
+on your computer.
+
 ## 2. You are responsible for recording lawfully
 
 **Recording a call is your decision and your responsibility.** Laws about recording calls and
@@ -85,7 +91,7 @@ WhatsApp is provided by Meta. If you receive WhatsApp messages through the App, 
 to you.
 
 The App's source code is licensed under the Apache License 2.0. These terms cover your use of the
-App and the service. They do not limit any right you have under that licence to the code itself.
+App. They do not limit any right you have under that licence to the code itself.
 
 ## 7. Updates
 
@@ -107,11 +113,13 @@ own backups of anything you need to keep.
 
 ## 9. Limitation of liability
 
-To the extent the law allows, B3 is not liable for indirect, incidental or consequential loss,
-or for loss of data, profits or business, arising from your use of the App. B3's total liability
-for any claim about the App is limited to the amount you paid B3 for the App in the 12 months
-before the claim, or SGD 100 if you paid nothing. Nothing in these terms limits liability that
-cannot be limited by law.
+The App is free software. To the extent the law allows, B3 is not liable for any loss or damage
+arising from your use of the App, including loss of recordings, transcripts or other data, and
+loss of profits or business. Nothing in these terms limits liability that cannot be limited by
+law.
+
+What B3 is responsible for in carrying your calls and messages is set by the Service's own terms
+(section 1).
 
 ## 10. Your responsibility to us
 

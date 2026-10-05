@@ -1219,8 +1219,13 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       what is still to confirm lives HERE. **Testers see them from b8** (Stanley, 2026-10-05), so the
       placeholders were filled with defaults that read as final and must be CONFIRMED: retention
       "3 years" (from B3's RoPA), "with Amazon Web Services" (no region named), contact and DPO
-      "through b3networks.com" / its data-policy page (no address or email invented), and the
-      liability cap "12 months' fees, or SGD 100". Two engineering rules the texts rely on:
+      "through b3networks.com" / its data-policy page (no address or email invented).
+      **LIABILITY (Stanley, 2026-10-05): B3 is not liable for the App at all** (free software, as
+      is, to the extent the law allows), and **the calling service has its own terms** between the
+      owner, or their provider, and B3 — those set B3's responsibility for carrying calls. So the
+      Service's terms must EXIST and reach the owner; the App's terms only point at them. An
+      earlier draft carried a "12 months' fees or SGD 100" cap that was a placeholder of ours, not
+      from GRC or legal; it is gone. Two engineering rules the texts rely on:
       they say no call content reaches a cloud AI and there is no telemetry — so turning on answer
       mode (hosted DashScope voice) or a hosted provider (`llm.CHOICE_QUARANTINED`), or adding any
       analytics, changes BOTH texts first and bumps `legal.VERSION`.
@@ -1228,7 +1233,7 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       to platform logs; the platform team must confirm the
       carry path makes no platform-side recording (B3's RoPA lists S3 recordings for other
       products) and stores no WhatsApp content; call-record retention (RoPA says 3 years,
-      security-grc #12); the liability cap vs the partner agreement's carve-out (MPA v1.2 8.2(c));
+      security-grc #12); whether excluding liability for the App holds against consumer law, and how it sits with the partner agreement's carve-out (MPA v1.2 8.2(c));
       and whose terms face a Singtel Recorder user (partner model says theirs) — today the
       Recorder shows OURS, which name the AI models, to a partner whose review rejects anything AI.
       **Setup asks for agreement first, before sign-in — BUILT 2026-10-05, Mac only** (`legal.py`,
