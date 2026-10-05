@@ -1223,7 +1223,12 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       **LIABILITY (Stanley, 2026-10-05): B3 is not liable for the App at all** (free software, as
       is, to the extent the law allows), and **the calling service has its own terms** between the
       owner, or their provider, and B3 — those set B3's responsibility for carrying calls. So the
-      Service's terms must EXIST and reach the owner; the App's terms only point at them. An
+      Service's terms must EXIST and reach the owner; the App's terms only point at them.
+      **PRIVACY THE SAME WAY (Stanley, 2026-10-05):** the App's privacy policy covers only the
+      computer, its permissions and the services the App itself contacts. What B3's platform keeps
+      — the account, audio in transit, call records and logs, retention ("3 years" in the RoPA),
+      AWS and transfers, controller vs intermediary — belongs in the SERVICE's privacy policy,
+      which must say all of GRC's points; the App's texts point at b3networks.com/data-policy. An
       earlier draft carried a "12 months' fees or SGD 100" cap that was a placeholder of ours, not
       from GRC or legal; it is gone. Two engineering rules the texts rely on:
       they say no call content reaches a cloud AI and there is no telemetry — so turning on answer
