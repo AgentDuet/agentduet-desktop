@@ -1,8 +1,8 @@
 # AgentDuet — Terms of Use
 
 > **DRAFT for review — not in force.** Written 2026-10-05 by engineering as a starting point for
-> B3 legal and GRC. Text in [brackets] is a placeholder or an open question. Reviewers: Zul (DPO), Peter (CCO) /
-> legal, then security-grc. Not legal advice.
+> B3 legal and GRC. Text in [brackets] is a placeholder or an open question. Reviewers: the DPO
+> and legal, then security-grc. Not legal advice.
 
 Last updated: [date]
 
