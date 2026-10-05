@@ -3,7 +3,7 @@
 > **DRAFT for review — not in force.** Written 2026-10-05 by engineering as a starting point for
 > B3 legal and GRC. Every statement about what the App does was checked against the code on that
 > date. Statements about what B3's platform keeps are marked [ENG]/[GRC] and need confirming.
-> Reviewers: Zul (DPO), Peter (CCO) / legal, then security-grc.
+> Reviewers: the DPO and legal, then security-grc.
 > Not legal advice.
 
 Last updated: [date]
