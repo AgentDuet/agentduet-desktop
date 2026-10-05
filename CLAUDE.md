@@ -1209,17 +1209,30 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       details, is free only "for a limited time", and says collected data may be used to improve
       the model — which contradicts the whole disclosure pitch, silently, on the owner's behalf.
 - [ ] **Terms of Use and a Privacy Policy — DRAFTED 2026-10-05, not in force.**
-      `docs/legal/terms.md` and `privacy.md`, with input from security-grc. Before this ships, the
+      `src/agentduet_desktop/legal/terms.md` and `privacy.md` (in the package, so setup can
+      show them offline), with input from security-grc. Before this ships, the
       app had NO terms at all: the Apache `LICENSE` covers the code, not someone recording calls
       with it. **Position: the owner handles their own PDPA and recording consent.** B3 is
       controller of account data and a data intermediary for carried calls, so it keeps its own
       duties; the terms must not claim otherwise.
-      **Open:** review by the DPO and legal; the platform team must confirm the
+      **The texts carry NO review notes** (Stanley, 2026-10-05: he takes them to the team), so
+      what is still to confirm lives HERE. Bracketed placeholders (`[date]`, `[3 years]`,
+      `[region]`, `[support email]`) are values to fill. Two engineering rules the texts rely on:
+      they say no call content reaches a cloud AI and there is no telemetry — so turning on answer
+      mode (hosted DashScope voice) or a hosted provider (`llm.CHOICE_QUARANTINED`), or adding any
+      analytics, changes BOTH texts first and bumps `legal.VERSION`.
+      **Open:** review by the DPO and legal; the AWS region and what the AgentDuet path writes
+      to platform logs; the platform team must confirm the
       carry path makes no platform-side recording (B3's RoPA lists S3 recordings for other
       products) and stores no WhatsApp content; call-record retention (RoPA says 3 years,
       security-grc #12); the liability cap vs the partner agreement's carve-out (MPA v1.2 8.2(c));
-      whose terms face a Singtel Recorder user (partner model says theirs); and the setup step
-      that shows them, which is not built.
+      and whose terms face a Singtel Recorder user (partner model says theirs) — today the
+      Recorder shows OURS, which name the AI models, to a partner whose review rejects anything AI.
+      **Setup asks for agreement first, before sign-in — BUILT 2026-10-05, Mac only** (`legal.py`,
+      `/api/terms`, the native wizard's Terms step; the HTML wizard is frozen and does not ask).
+      The agreement records `legal.VERSION` in `run/terms.json`: bump it when the owner must see
+      the text again, and the next launch asks again. It is NOT part of `needs_setup`, which a
+      page with no terms step could never satisfy. Settings has no way to read them again yet.
 - [ ] **Credential storage on Windows** — use the OS credential store, or say plainly that the
       key is plaintext protected only by file mode.
 

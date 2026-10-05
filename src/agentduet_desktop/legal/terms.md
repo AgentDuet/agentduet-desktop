@@ -1,9 +1,5 @@
 # AgentDuet — Terms of Use
 
-> **DRAFT for review — not in force.** Written 2026-10-05 by engineering as a starting point for
-> B3 legal and GRC. Text in [brackets] is a placeholder or an open question. Reviewers: the DPO
-> and legal, then security-grc. Not legal advice.
-
 Last updated: [date]
 
 These terms are an agreement between you and B3 Networks Pte Ltd ("B3", "we") about your use of
@@ -34,8 +30,7 @@ You agree that:
 - if you use the App for a business, you are the organisation responsible under the PDPA (and
   any similar law that applies to you) for the recordings, transcripts, summaries and messages
   the App creates and stores on your computer. Whatever your use, you are responsible for
-  recording lawfully. [DPO: final wording. The PDPA does not apply to individuals acting in a
-  personal or domestic capacity, s.4(1)(a). Use "controller" too if GDPR markets are targeted.];
+  recording lawfully;
 - you will keep that data secure, use it only for lawful purposes, and answer any request from
   a person to access, correct or delete their data;
 - you will not use the App to record anyone secretly where the law forbids it, or for
@@ -49,12 +44,10 @@ section 3 and the Privacy Policy).
 
 - **Recordings, transcripts, summaries and messages are stored on your computer**, in a folder
   you choose. B3 does not keep a copy.
-- **Call audio and messages pass through B3's platform** to reach your computer. WhatsApp
-  messages also pass through Meta, under Meta's own terms. B3 handles
-  them as a data intermediary on your behalf. [ENG to confirm with the platform team: no
-  platform-side recording or stored message content is created on the AgentDuet call path.]
-- **B3 keeps call records** (numbers, times, length and routing) for [3 years — per B3's record
-  of processing; confirm once the retention schedule, security-grc #12, is set].
+- **Call audio and messages pass through B3's platform** to reach your computer. B3 handles
+  them as a data intermediary on your behalf. WhatsApp messages also pass through Meta, under
+  Meta's own terms.
+- **B3 keeps call records** (numbers, times, length and routing) for [3 years].
 - **AI features run on your computer**, using these models: Qwen3-ASR (speech to text), Google
   Gemma 4 (summaries and the assistant), Google EmbeddingGemma (search) and Strands Decider
   (sorting what was said). No call or message content is sent to a cloud AI service.
@@ -102,7 +95,7 @@ release.
 **If you change the App.** The App's source code is open, and some settings can be changed by
 hand. These terms and the Privacy Policy describe the App as B3 ships it. If you change its code
 or configuration, for example to turn on a feature the App does not offer, you are responsible
-for what your changed version does with data. [Legal: keep or drop.]
+for what your changed version does with data.
 
 ## 8. No warranty
 
@@ -117,15 +110,12 @@ To the extent the law allows, B3 is not liable for indirect, incidental or conse
 or for loss of data, profits or business, arising from your use of the App. B3's total liability
 for any claim about the App is limited to [the amount you paid B3 for the App in the 12 months
 before the claim, or SGD 100 if you paid nothing]. Nothing in these terms limits liability that
-cannot be limited by law. [Legal: B3's partner agreement (CPaaS MPA v1.2, clause 8.2(c)) puts
-data-protection breaches OUTSIDE its liability cap. Decide whether this cap should do the same,
-so the two do not contradict each other.]
+cannot be limited by law.
 
 ## 10. Your responsibility to us
 
 You agree to compensate B3 for claims by third parties, including the people on your calls,
 that arise from your recording or use of their data in breach of these terms or the law.
-[Legal: confirm whether an indemnity is wanted for consumer users.]
 
 ## 11. Ending
 
@@ -140,25 +130,8 @@ applies. If you keep using the App after that, you accept the new terms.
 ## 13. Law
 
 These terms are governed by the laws of Singapore, and the courts of Singapore have
-jurisdiction. [Legal: confirm, and consider consumer-protection rules in other countries where
-the App is offered.]
+jurisdiction.
 
 ## 14. Contact
 
 B3 Networks Pte Ltd, [address]. [support email]
-
----
-
-**Open questions for legal and GRC** (remove before publishing)
-
-1. Partner editions: under B3's existing partner model the partner is the controller and holds
-   the end-user relationship, so the PARTNER'S terms face the end user and B3's reach them through
-   the partner contract. Confirm whether Singtel is on the CPaaS Master Partner Agreement v1.2,
-   and whether the Recorder then ships with no B3 terms screen at all (commercial/legal call).
-2. Engineering: confirm with the platform team that the AgentDuet call path makes no
-   platform-side recording (B3's RoPA lists S3 call recordings for 3 years for other products),
-   and that WhatsApp message content is not stored on the platform.
-3. The liability cap amount, and whether the indemnity (section 10) is suitable for consumers.
-4. Whether the App should show a consent reminder before the first recording, beyond
-   accepting these terms.
-5. Where the published terms will live (URL), so the App can link to them.

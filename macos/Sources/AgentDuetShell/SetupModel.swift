@@ -10,9 +10,12 @@ import Foundation
 /// order of the steps and what finishing means.
 @MainActor final class SetupModel: ObservableObject {
 
-    enum Step { case signIn, permissions, quick }
+    enum Step { case terms, signIn, permissions, quick }
 
-    @Published var step: Step = .signIn
+    @Published var step: Step = .terms
+    /// The Terms of Use and Privacy Policy as the daemon serves them (legal.py), and the version
+    /// an Agree is to.
+    @Published var terms: JSON = [:]
     @Published var notice: SettingsModel.Notice?
     @Published var name = ""
     @Published var atLogin = true
@@ -60,14 +63,33 @@ import Foundation
         nameWas = cur.str("name")
         name = cur.str("name").isEmpty ? cur.str("os_name") : cur.str("name")
         signIn.prefill()
-        // SIGNED IN ALREADY: the first step has nothing left to ask. AGENTDUET AI has no line,
-        // so it has no sign-in step at all.
-        if settings.signedIn || !Edition.calls { step = .permissions }
+        // THE TERMS COME FIRST, before sign-in, which is already a use of the service — and only
+        // until they are agreed to, so a walk through again does not ask twice.
+        terms = await api.get("/api/terms")
+        step = terms.bool("agreed") ? afterTerms : .terms
         let state = await api.get("/api/state")
         onAir = ["live", "connecting", "retrying"].contains(state.obj("channel").str("channel"))
     }
 
     func stop() { settings.stop() }
+
+    // MARK: - sign in
+
+    /// SIGNED IN ALREADY, the first step has nothing left to ask. AGENTDUET AI has no line, so
+    /// it has no sign-in step at all.
+    private var afterTerms: Step { settings.signedIn || !Edition.calls ? .permissions : .signIn }
+
+    // MARK: - terms
+
+    func agree() {
+        Task {
+            let r = await api.post("/api/terms", ["version": terms.str("version")])
+            if r.bool("ok") { notice = nil; step = afterTerms; return }
+            // THE TERMS CHANGED while they were on screen: show the new ones, never agree to them.
+            notice = .init(ok: false, text: r.str("message"))
+            terms = await api.get("/api/terms")
+        }
+    }
 
     // MARK: - sign in
 

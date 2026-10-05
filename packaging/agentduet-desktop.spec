@@ -67,6 +67,9 @@ datas = collect_data_files("agentduet_desktop",
                            includes=["*.html", "*.css",
                                      # The recorder's own instance template (edition.py).
                                      "templates-recorder/**/*",
+                                     # The Terms of Use and Privacy Policy, shown in setup in
+                                     # every edition (legal.py).
+                                     "legal/**/*",
                                      # The brand mark, served at /logo.png and used as the
                                      # favicon. Without this the frozen build serves a 404 where
                                      # every page shows its logo — which looks like a broken
