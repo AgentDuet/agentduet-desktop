@@ -2,8 +2,7 @@
 
 Last updated: 5 October 2026
 
-This policy explains what personal data AgentDuet, AgentDuet Recorder and AgentDuet AI (the
-"App") handle, where it goes, and who is responsible for it. The App is provided by B3 Networks
+This policy explains what personal data AgentDuet and AgentDuet AI (the "App") handle, where it goes, and who is responsible for it. The App is provided by B3 Networks
 Pte Ltd ("B3", "we").
 
 ## The short version

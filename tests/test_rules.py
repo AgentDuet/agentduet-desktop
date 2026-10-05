@@ -7121,9 +7121,14 @@ def test_terms() -> None:
         ok(f"the {name} text is there", len(shown) > 2000, len(shown))
         ok(f"no review notes left in the {name}", not __import__("re").search(
             r"\[(ENG|GRC|DPO|Legal)\b|DRAFT for review|remove before publishing", shown))
-    ok("the recorder ships them too: no AI_DATA glob reaches legal/",
-       not any(g.startswith("legal") for g in __import__("agentduet_desktop.edition",
-                                                          fromlist=["x"]).AI_DATA))
+    import fnmatch as _fn
+    _ai = __import__("agentduet_desktop.edition", fromlist=["x"]).AI_DATA
+    ok("THE RECORDER SHIPS ITS OWN TEXTS and leaves the full ones out — matched as the spec does",
+       all(any(_fn.fnmatch(f, g) for g in _ai) for f in ("legal/terms.md", "legal/privacy.md"))
+       and not any(_fn.fnmatch(f, g) for g in _ai
+                   for f in ("legal/recorder/terms.md", "legal/recorder/privacy.md")))
+    ok("and both of its texts exist", all((root / "src/agentduet_desktop/legal/recorder" / n).is_file()
+                                          for n in ("terms.md", "privacy.md")))
     ok("packaged by pyproject AND the spec, or the frozen build has none",
        '"legal/**/*"' in (root / "pyproject.toml").read_text()
        and '"legal/**/*"' in (root / "packaging" / "agentduet-desktop.spec").read_text())

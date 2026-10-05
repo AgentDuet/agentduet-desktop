@@ -1234,8 +1234,9 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       carry path makes no platform-side recording (B3's RoPA lists S3 recordings for other
       products) and stores no WhatsApp content; call-record retention (RoPA says 3 years,
       security-grc #12); whether excluding liability for the App holds against consumer law, and how it sits with the partner agreement's carve-out (MPA v1.2 8.2(c));
-      and whose terms face a Singtel Recorder user (partner model says theirs) — today the
-      Recorder shows OURS, which name the AI models, to a partner whose review rejects anything AI.
+      and whose terms face a Singtel Recorder user (partner model says theirs). **The Recorder has
+      its OWN texts** (`legal/recorder/`, 2026-10-05): no AI in them, and its build leaves the full
+      texts out (`edition.AI_DATA`); `tests/test_recorder.py` checks the served text names no model.
       **Setup asks for agreement first, before sign-in — BUILT 2026-10-05, Mac only** (`legal.py`,
       `/api/terms`, the native wizard's Terms step; the HTML wizard is frozen and does not ask).
       The agreement records `legal.VERSION` in `run/terms.json`: bump it when the owner must see
