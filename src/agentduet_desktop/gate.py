@@ -125,6 +125,14 @@ def acquire(prio: int) -> Ticket:
             _cv.wait(timeout=1.0)
 
 
+def preempt_background() -> None:
+    """Ask a background job holding the model to stop at its next token (it runs again later).
+    An owner's question is left to finish. For the slot, which needs the memory (slot.py)."""
+    with _cv:
+        if _holder is not None and _holder.prio not in (QUESTION,):
+            _holder.cancel.set()
+
+
 def release(t: Ticket) -> None:
     global _holder
     with _cv:

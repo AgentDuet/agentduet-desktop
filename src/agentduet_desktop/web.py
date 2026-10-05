@@ -654,6 +654,9 @@ def make_app(token: str) -> web.Application:
                 # which is half a conversation. Empty until the merge is done.
                 **_playable(af, names),
                 "transcript": text,
+                # GIVEN UP ON, said as that: "pending" for a transcript that failed is a promise
+                # nothing is keeping. A memory failure goes back in the queue (transcribe.py).
+                "transcript_failed": not text and carry.transcript_failed(names),
                 # Empty WAVs are what an unbridged call leaves behind; saying so beats
                 # showing a call that looks recorded and plays nothing.
                 "silent": bool(names) and audio <= len(names) * carry.EMPTY_WAV_BYTES,
