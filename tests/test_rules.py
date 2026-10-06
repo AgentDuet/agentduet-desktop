@@ -7221,7 +7221,9 @@ def test_small_mac() -> None:
         about = _json.loads(_z.ZipFile(_io.BytesIO(logbundle.bundle())).read("about.json"))
     mi = about.get("machine_info", {})
     ok("its RAM", mi.get("ram_gb", 0) > 0, mi)
-    ok("the chip and macOS, on a Mac", mi.get("chip") and mi.get("macos"), mi)
+    import platform as _pf
+    ok("the chip and macOS, on a Mac (CI runs on Linux)",
+       _pf.system() != "Darwin" or (mi.get("chip") and mi.get("macos")), mi)
     ok("and whether speech and the assistant take turns",
        "speech_and_assistant_take_turns" in mi.get("models", {}), mi.get("models"))
 
