@@ -79,10 +79,12 @@ that breaks these terms or puts the platform or other users at risk.
 
 ## 6. Third-party parts
 
-The App downloads AI models from third parties the first time it needs them, including Google's
-Gemma models, which are provided under the [Gemma Terms of Use](https://ai.google.dev/gemma/terms)
-and Google's prohibited use policy. By downloading them, you agree to follow those terms. Other
-third-party components are listed in the App's NOTICE file, each under its own licence.
+The App downloads AI models from third parties the first time it needs them, each under its own
+licence. Google's EmbeddingGemma, used for search, is provided under the
+[Gemma Terms of Use](https://ai.google.dev/gemma/terms) and Google's prohibited use policy; by
+downloading it, you agree to follow those terms. The others, including Google's Gemma 4, are under
+the Apache License 2.0. The models and other third-party components are listed in the App's
+NOTICE file, each with its licence.
 
 WhatsApp is provided by Meta. If you receive WhatsApp messages through the App, Meta's
 [WhatsApp Business terms and policies](https://www.whatsapp.com/legal/business-policy) also apply

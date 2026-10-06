@@ -1,0 +1,22 @@
+AgentDuet Desktop
+Copyright 2026 B3 Networks Pte Ltd
+
+This product includes software developed at B3 Networks Pte Ltd.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this file except in compliance with the License. You may obtain a copy of the
+License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed
+under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+
+--------------------------------------------------------------------------------
+
+Binary distributions of this software bundle third-party components under their own
+licences: the Python runtime and the libraries the app is built with. Their full licence and
+notice texts are in THIRD-PARTY-NOTICES.txt, inside the app (Contents/Resources), generated at
+build time from the exact packages that build installed.
