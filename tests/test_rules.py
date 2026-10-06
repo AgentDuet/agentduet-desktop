@@ -7347,6 +7347,21 @@ def test_build_lock_and_floor() -> None:
     cq = (root / ".github/workflows/codeql.yml").read_text()
     ok("CodeQL builds all three shells for Swift (default setup's autobuild hung)",
        "language: swift" in cq and "build-mode: manual" in cq and "-DRECORDER" in cq and "-DAI_ONLY" in cq)
+    ok("THE LICENCES SHIP INSIDE THE APP: LICENSE, NOTICE and a third-party file from this build",
+       "Include the licences (macOS)" in build and 'cp LICENSE "$R/LICENSE"' in build
+       and "THIRD-PARTY-NOTICES.txt" in build)
+    rec_notice = (root / "packaging/NOTICE.recorder").read_text()
+    ok("and the recorder's NOTICE names no model",
+       not _re.search(r"(?i)gemma|qwen|decider|llama|onnx|tokenizers|\bAI\b|model", rec_notice), rec_notice)
+    notice = (root / "NOTICE").read_text()
+    ok("the full NOTICE says which licence each downloaded model carries",
+       all(m in notice for m in ("Gemma 4", "EmbeddingGemma", "Qwen3-ASR", "Strands Decider")))
+    terms = (root / "src/agentduet_desktop/legal/terms.md").read_text()
+    ok("and the terms do not put Gemma 4 under the Gemma Terms (it is Apache-2.0; EmbeddingGemma is not)",
+       "including Google's Gemma 4, are under\nthe Apache License 2.0" in terms)
+    sv = (root / "macos/Sources/AgentDuetShell/SettingsView.swift").read_text()
+    ok("Settings shows the texts agreed to, again", 'Button("Terms of Use")' in sv
+       and 'Button("Privacy Policy")' in sv and '"/api/terms"' in sv)
     eq("ONE minimum macOS, where the app declares it and where the build compiles for it",
        set(floors.values()), {"14.0"})
     swift = int(_re.search(r"\.macOS\(\.v(\d+)\)", (root / "macos/Package.swift").read_text())[1])
