@@ -7408,6 +7408,53 @@ def test_call_language_default() -> None:
        and "or owner.language()" not in src)
 
 
+def test_export_with_a_call() -> None:
+    """Help's export can carry ONE call's files — its recording, transcript and raw legs — which is
+    what a wrong transcript needs to be reproduced (2026-10-06). Never another call's."""
+    print("\n  -- the export, with one call --")
+    import io as _io
+    import json as _j
+    import pathlib as _p
+    import tempfile as _t
+    import unittest.mock as _m
+    import zipfile as _z
+    from agentduet_desktop import calls as _c, carry, logbundle
+    d = _p.Path(_t.mkdtemp())
+    rec = d / "AgentDuet"; rec.mkdir()
+    legs = d / "legs"; legs.mkdir()
+    mine, other = "20261006T145604-cMINE", "20261006T150000-cOTHER"
+    for st in (mine, other):
+        (rec / f"{st}.wav").write_bytes(b"RIFF" + b"\0" * 100)
+        (rec / f"{st}.txt").write_text("Call: +6590000000\n\n[0:02] you: hello\n")
+        for leg in ("caller", "callee"):
+            (legs / f"{st}-{leg}.wav").write_bytes(b"RIFF" + b"\0" * 100)
+            (legs / f"{st}-{leg}.start").write_text("0.0")
+    with _m.patch.object(_c, "LOG", d / "calls.jsonl"), _m.patch.object(_c, "DB", d / "calls.db"), \
+         _m.patch.object(_c.paths, "RUN", d), _m.patch.object(carry, "recordings", lambda: rec), \
+         _m.patch.object(carry, "legs", lambda: legs):
+        _c.record("cMINE", "+6590000000", "carried", recordings=[f"{mine}.wav"])
+        _c.record("cOTHER", "+6590000001", "carried", recordings=[f"{other}.wav"])
+        z = _z.ZipFile(_io.BytesIO(logbundle.bundle("cMINE")))
+        names = set(z.namelist())
+        ok("the call's recording and transcript go in", {f"call/{mine}.wav", f"call/{mine}.txt"} <= names, names)
+        ok("and both raw legs, with the .start that aligns them",
+           {f"call/legs/{mine}-caller.wav", f"call/legs/{mine}-callee.start"} <= names, names)
+        ok("NEVER ANOTHER CALL'S FILES", not any("cOTHER" in n for n in names), names)
+        info = _j.loads(z.read("call/info.json"))
+        ok("with the language in effect beside them", "language_in_effect" in info, info)
+        ok("and the README says a recording is in it", b"RECORDING AND TRANSCRIPT ARE INCLUDED" in z.read("README.txt"))
+        plain = set(_z.ZipFile(_io.BytesIO(logbundle.bundle())).namelist())
+        ok("without a call, no recording at all — as before", not any(n.startswith("call/") for n in plain), plain)
+        ok("an unknown call has no files", logbundle._call_files("nope") is None)
+    root = _p.Path(__file__).resolve().parent.parent
+    web = (root / "src/agentduet_desktop/web.py").read_text()
+    ok("the site refuses an unknown call rather than ignoring it",
+       'if call and _calls.get(call) is None:' in web and '"no such call"}, status=404' in web)
+    hub = (root / "macos/Sources/AgentDuetShell/HubView.swift").read_text()
+    ok("asked for from the call's own menu in the hub",
+       'Button("Export for Support…")' in hub and "exportLogsWith(call: call.str(\"call_id\"))" in hub)
+
+
 def test_search() -> None:
     """Search what was said: pieces, the index, meaning + keywords, and the floor (search.py)."""
     print("\n  -- search what was said on calls --")
@@ -7510,6 +7557,7 @@ def main() -> None:
     test_build_lock_and_floor()
     test_hint_never_spoken()
     test_call_language_default()
+    test_export_with_a_call()
     test_search()
     test_assistant_memory()
     test_budget_split()
