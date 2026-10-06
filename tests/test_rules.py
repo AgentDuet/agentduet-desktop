@@ -7344,6 +7344,9 @@ def test_build_lock_and_floor() -> None:
                                              (root / "packaging/make-macos-app.sh").read_text())[1],
         "build.yml": _re.search(r'MACOSX_DEPLOYMENT_TARGET: "([\d.]+)"', build)[1],
     }
+    cq = (root / ".github/workflows/codeql.yml").read_text()
+    ok("CodeQL builds all three shells for Swift (default setup's autobuild hung)",
+       "language: swift" in cq and "build-mode: manual" in cq and "-DRECORDER" in cq and "-DAI_ONLY" in cq)
     eq("ONE minimum macOS, where the app declares it and where the build compiles for it",
        set(floors.values()), {"14.0"})
     swift = int(_re.search(r"\.macOS\(\.v(\d+)\)", (root / "macos/Package.swift").read_text())[1])
