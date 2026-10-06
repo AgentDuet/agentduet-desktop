@@ -7302,6 +7302,54 @@ def test_codeql_fixes() -> None:
        "title, detail = html.escape(title), html.escape(detail)" in web)
 
 
+def test_build_lock_and_floor() -> None:
+    """The release builds from a lock, and nothing in it may need a newer macOS than the app says
+    it runs on (2026-10-06: b8 shipped llama.cpp built for 26 in an app declaring 13)."""
+    print("\n  -- the build: one lock, one macOS floor --")
+    import pathlib as _p
+    import re as _re
+    root = _p.Path(__file__).resolve().parent.parent
+    norm = lambda n: _re.sub(r"[-_.]+", "-", n.lower())
+    pins = {}
+    for line in (root / "requirements.txt").read_text().splitlines():
+        m = _re.match(r"^([A-Za-z0-9_.-]+)\s*(?:==\s*(\S+)|@\s*(\S+))", line)
+        if m:
+            pins[norm(m[1])] = m[2] or m[3]
+    py = (root / "pyproject.toml").read_text()
+    deps = _re.findall(r'"([A-Za-z0-9_.-]+)\s*([<>=!~][^"]*)?"', py[py.index("dependencies = ["):py.index("[project.scripts]")])
+    missing = [n for n, _ in deps if norm(n) not in pins]
+    ok("THE LOCK COVERS EVERY DEPENDENCY in pyproject.toml, extras included", not missing, missing)
+    try:
+        from packaging.specifiers import SpecifierSet
+        from packaging.version import Version
+        wrong = [f"{n}{spec} has {pins[norm(n)]}" for n, spec in deps
+                 if spec and norm(n) in pins and "://" not in pins[norm(n)]
+                 and not SpecifierSet(spec.split(";")[0].strip()).contains(Version(pins[norm(n)]), prereleases=True)]
+        ok("and each pin is inside pyproject's range", not wrong, wrong)
+    except ImportError:
+        pass                                   # `packaging` is not everywhere; the names still count
+    ok("the git dependency is pinned to a commit",
+       _re.search(r"agentduet-adapters @ git\+\S+@[0-9a-f]{40}", (root / "requirements.txt").read_text()))
+    build = (root / ".github/workflows/build.yml").read_text()
+    ok("the build installs under the lock (pip constraints, so the recorder still gets no AI)",
+       build.count("PIP_CONSTRAINT: ${{ runner.os == 'macOS' && 'requirements.txt' || '' }}") == 2)
+    ok("and checks the finished bundle against the app's minimum macOS",
+       'python packaging/check-minos.py "dist-bin/$APP_NAME.app"' in build)
+    ok("llama.cpp, built from source, is built for that minimum, not the runner's macOS",
+       "-DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET" in build)
+    floors = {
+        "LSMinimumSystemVersion": _re.search(r"LSMinimumSystemVersion</key><string>([\d.]+)<",
+                                             (root / "packaging/make-macos-app.sh").read_text())[1],
+        "build.yml": _re.search(r'MACOSX_DEPLOYMENT_TARGET: "([\d.]+)"', build)[1],
+    }
+    eq("ONE minimum macOS, where the app declares it and where the build compiles for it",
+       set(floors.values()), {"14.0"})
+    swift = int(_re.search(r"\.macOS\(\.v(\d+)\)", (root / "macos/Package.swift").read_text())[1])
+    # AT OR BELOW, not equal: a shell built for 13 runs on 14, and moving it to 14 would turn on
+    # macOS 14's deprecations, which this build treats as errors.
+    ok("the Swift shell is built for that minimum or older", swift <= 14, swift)
+
+
 def test_search() -> None:
     """Search what was said: pieces, the index, meaning + keywords, and the floor (search.py)."""
     print("\n  -- search what was said on calls --")
@@ -7401,6 +7449,7 @@ def main() -> None:
     test_small_mac()
     test_latin_languages()
     test_codeql_fixes()
+    test_build_lock_and_floor()
     test_search()
     test_assistant_memory()
     test_budget_split()
