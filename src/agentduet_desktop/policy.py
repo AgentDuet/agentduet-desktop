@@ -114,8 +114,12 @@ CONTINUATION_SIGNAL = re.compile(
 #:
 #: Anchored to the start and required to be short: "I tried again to reach you last week" is
 #: a real sentence about something else, not a retry.
+#: NO TWO RUNS OF SPACE THAT CAN SPLIT THE SAME GAP (CodeQL py/polynomial-redos, 2026-10-06): the
+#: old `\s+(it|that|this)?\s*again` let both runs claim the spaces after "do", so "do" and 20,000
+#: spaces took 0.6 s, growing with the square. The optional word now carries its own trailing
+#: space, so each space has one place to go. Same matches.
 RETRY_MARKER = re.compile(
-    r"^\s*(please\s+)?((try|do)\s+(it|that|this)?\s*again|again|retry|"
+    r"^\s*(please\s+)?((try|do)\s+(?:(?:it|that|this)\s+)?again|again|retry|"
     r"once more|one more time|same thing)\b[.!\s]*$", re.I)
 
 

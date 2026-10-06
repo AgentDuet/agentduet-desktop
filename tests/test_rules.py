@@ -7278,6 +7278,28 @@ def test_latin_languages() -> None:
     ok("and 'doesn't speak Malay' turns it off", "Malay" in r3["languages_off"])
 
 
+def test_codeql_fixes() -> None:
+    """The two CodeQL findings that were real (2026-10-06): a quadratic regex and an unescaped
+    sign-in page."""
+    print("\n  -- CodeQL: the two real findings --")
+    import pathlib as _p
+    import time as _t
+    from agentduet_desktop import policy
+    before = {"try again": True, "please try it again": True, "do that again": True, "Again!": True,
+              "retry": True, "once more": True, "one more time": True, "same thing.": True,
+              "do again": True, "Try this  again": True, "try it again please": False,
+              "again and again": False, "do it": False}
+    got = {c: bool(policy.RETRY_MARKER.match(c)) for c in before}
+    eq("the retry phrase matches exactly what it did before", got, before)
+    t0 = _t.time()
+    policy.RETRY_MARKER.match("do " + " " * 20000 + "x")
+    ok("and 'do' plus 20,000 spaces no longer takes the square of its length",
+       _t.time() - t0 < 0.05, f"{_t.time() - t0:.3f}s (was 0.6 s)")
+    web = (_p.Path(policy.__file__).parent / "web.py").read_text()
+    ok("the token-free sign-in page escapes what the address put in it",
+       "title, detail = html.escape(title), html.escape(detail)" in web)
+
+
 def test_search() -> None:
     """Search what was said: pieces, the index, meaning + keywords, and the floor (search.py)."""
     print("\n  -- search what was said on calls --")
@@ -7376,6 +7398,7 @@ def main() -> None:
     test_terms()
     test_small_mac()
     test_latin_languages()
+    test_codeql_fixes()
     test_search()
     test_assistant_memory()
     test_budget_split()
