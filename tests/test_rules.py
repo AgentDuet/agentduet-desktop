@@ -7104,7 +7104,7 @@ def test_terms() -> None:
     import tempfile as _t
     import unittest.mock as _m
     from agentduet_desktop import legal, paths as _paths
-    root = _p.Path(legal.__file__).resolve().parents[2]
+    root = _p.Path(__file__).resolve().parent.parent      # the checkout, not the installed package
     with _m.patch.object(_paths, "RUN", _p.Path(_t.mkdtemp()) / "run"):
         ok("nothing agreed on a new install", not legal.agreed() and legal.state()["agreed"] is False)
         ok("an agreement to OTHER words is refused", not legal.agree("an-older-version")
@@ -7194,7 +7194,7 @@ def test_small_mac() -> None:
         ok("a failure for any other reason stays given up on",
            (legs / "20261005T100000-bad-caller.failed").exists())
     web = (_p.Path(llm.__file__).parent / "web.py").read_text()
-    hub = (_p.Path(llm.__file__).parents[2] / "macos/Sources/AgentDuetShell/HubModel.swift").read_text()
+    hub = (_p.Path(__file__).resolve().parent.parent / "macos/Sources/AgentDuetShell/HubModel.swift").read_text()
     ok("the hub says so", '"transcript_failed":' in web and '"Transcript failed."' in hub)
 
     print("\n  -- a failing job backs off --")
