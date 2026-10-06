@@ -789,6 +789,20 @@ derived from no longer exists, it is the only place that says so.
       **Unproven:** the frozen `.app` (only source-run so far); long-call memory with Gemma also
       resident (~2.5 + ~5.6 GB); the repeated "You have failed" at the end of the 222 s call, which
       may be a real repetition or a model loop; and the Thai call, which nobody here can read.
+      **THE HINT LEAKED INTO A TRANSCRIPT, fixed 2026-10-06:** on a piece the model could not make
+      out it read the context back as speech ("The owner of this phone is Power Mobile."; the full
+      hint, twice, on a re-run). `_strip_context` removes every hint sentence in `qwen_piece`, and a
+      blank `## Language` now takes the Mac's own (`owner.call_language`), so the hint is never the
+      name alone.
+      **AN ECHO FILTER WAS MEASURED AND NOT SHIPPED (2026-10-06, Stanley's call).** The tester's
+      garbled opening was the OTHER side's "hello, 1, 2, 3" leaking faintly into the owner's leg
+      (8–10x quieter, waveform correlation ~0: the phone's own echo canceller had already run, so a
+      WebRTC/Speex AEC cannot model it). Over 171 pieces from 19 calls neither signal separated echo
+      from real speech: by LOUDNESS against the other leg, real replies said over the other person
+      sat at 0.04–0.24 ("Bye bye.", "How about change to tomorrow?") beside the echoes at 0.10–0.29;
+      by RHYTHM (log-energy envelope correlation, 0–400 ms lag) many short replies scored as high as
+      the echoes (~0.8). Deleting a real reply is worse than a stray syllable. Reopen only with a
+      LABELLED set — someone listening to ~20 clips — not with another threshold.
       **Correction recorded with it:** Apple's engine DOES give timestamps — `attributeOptions:
       [.audioTimeRange]`, verified 2026-09-25 — and our helper asked for none. The 2026-09-09
       quarantine cited "Apple's helper prints bare text"; that was our helper, not Apple.
