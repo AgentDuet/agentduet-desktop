@@ -356,7 +356,7 @@ def apple_supports(lang: str | None) -> bool:
 
 def _configured_language() -> str | None:
     from . import owner
-    return os.getenv("SECRETARY_STT_LANGUAGE") or owner.language() or None
+    return os.getenv("SECRETARY_STT_LANGUAGE") or owner.call_language() or None
 
 
 def apple_ready() -> tuple[bool, str]:
@@ -676,7 +676,7 @@ def _local(path: pathlib.Path) -> str:
         _local_model = _load(want)
         _loaded_name = want
     from . import owner
-    lang = os.getenv("SECRETARY_STT_LANGUAGE") or owner.language() or None
+    lang = os.getenv("SECRETARY_STT_LANGUAGE") or owner.call_language() or None
     # PRIMING WITH THE OWNER'S NAME beats a bigger model, and costs nothing. Measured on an 88s
     # call: medium heard "my name is Spandy Leong"; primed with "Stanley Leong" it heard it
     # correctly, which neither medium nor large-v3 managed unprimed. A caller saying the owner's
@@ -985,7 +985,7 @@ def qwen_context(other: str = "") -> str:
     and deliberately not used.
     """
     from . import owner
-    code = (os.getenv("SECRETARY_STT_LANGUAGE") or owner.language() or "").strip().lower()
+    code = (os.getenv("SECRETARY_STT_LANGUAGE") or owner.call_language() or "").strip().lower()
     name = QWEN_LANGS.get(code.split("-")[0], "")
     out = (f"This is a phone call. The language is most likely {name}, but other languages "
            f"are possible and speakers may mix languages." if name else "")

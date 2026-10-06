@@ -7377,6 +7377,37 @@ def test_hint_never_spoken() -> None:
        "return lang, _strip_context(said, context)" in src)
 
 
+def test_call_language_default() -> None:
+    """A blank Language takes the computer's own (2026-10-06), so the speech hint is never just a
+    name — the shape that came back as speech on a tester's call."""
+    print("\n  -- the call language: the setting, else the computer's --")
+    import types as _ty
+    import unittest.mock as _m
+    from agentduet_desktop import owner, transcribe as tr
+
+    def mac(out):
+        return _m.patch("subprocess.run", lambda *a, **k: _ty.SimpleNamespace(stdout=out))
+    for out, want in (('(\n    "en-SG",\n    "zh-Hans-SG"\n)\n', "en"),
+                      ('(\n    "zh-Hans-SG",\n    "en-SG"\n)\n', "zh"),
+                      ('(\n    "ms-MY"\n)\n', "ms"), ("", "")):
+        with _m.patch.object(owner, "_system_language", None), mac(out), \
+             _m.patch("platform.system", lambda: "Darwin"):
+            eq(f"the Mac's first preferred language {out.split(chr(10))[1].strip() if out else '(none)'}",
+               owner.system_language(), want)
+    with _m.patch.object(owner, "_system_language", "en"):
+        with _m.patch.object(owner, "language", lambda: "vi"):
+            eq("THE OWNER'S SETTING WINS", owner.call_language(), "vi")
+        with _m.patch.object(owner, "language", lambda: ""):
+            eq("a blank setting takes the computer's language", owner.call_language(), "en")
+            with _m.patch.object(owner, "name", lambda: "Power Mobile"):
+                ok("so the hint is never the name alone",
+                   tr.qwen_context().startswith("This is a phone call. The language is most likely English"),
+                   tr.qwen_context())
+    src = (pathlib.Path(__file__).resolve().parent.parent / "src/agentduet_desktop/transcribe.py").read_text()
+    ok("speech reads the language in effect, at every use", src.count("owner.call_language()") == 3
+       and "or owner.language()" not in src)
+
+
 def test_search() -> None:
     """Search what was said: pieces, the index, meaning + keywords, and the floor (search.py)."""
     print("\n  -- search what was said on calls --")
@@ -7478,6 +7509,7 @@ def main() -> None:
     test_codeql_fixes()
     test_build_lock_and_floor()
     test_hint_never_spoken()
+    test_call_language_default()
     test_search()
     test_assistant_memory()
     test_budget_split()

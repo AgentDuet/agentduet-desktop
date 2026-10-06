@@ -453,7 +453,9 @@ def make_app(token: str) -> web.Application:
         from . import carry, owner as _own, status
         cur["calls"] = _own.calls()
         cur["transcription"] = _own.transcription_quality()
-        cur["language"] = _own.language()
+        # THE LANGUAGE IN EFFECT: the setting, or the computer's own when it is blank — so Settings
+        # shows what the speech model is actually told, never an empty picker.
+        cur["language"] = _own.call_language()
         cur["record_calls"] = _own.record_calls()
         # As above: the badge on the setup screen means the LINE, not the owner's own number.
         cur["line"] = status.snapshot().get("number", "")
