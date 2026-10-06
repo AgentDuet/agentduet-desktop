@@ -505,8 +505,35 @@ private struct OverrideSheet: View {
 
 // MARK: - About
 
+/// One of the texts agreed to in setup, as the daemon serves it (`/api/terms`) — the same words,
+/// drawn the same way as setup's Terms step.
+private struct LegalSheet: View {
+    let api: DaemonAPI
+    let which: String
+    let done: () -> Void
+    @StateObject private var text = Local("")
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                MarkdownDocument(source: text.value).padding(20)
+            }
+            Divider()
+            HStack {
+                Spacer()
+                Button("Done", action: done).keyboardShortcut(.defaultAction)
+            }
+            .padding(14)
+        }
+        .frame(width: 560, height: 600)
+        .task { text.value = (await api.get("/api/terms")).str(which) }
+    }
+}
+
 private struct AboutPane: View {
     @ObservedObject var model: SettingsModel
+    /// Which agreed text is open: "terms", "privacy", or nil.
+    @StateObject private var reading = Local<String?>(nil)
 
     var body: some View {
         Form {
@@ -523,6 +550,14 @@ private struct AboutPane: View {
             }
             Section {
                 LabeledContent("Logs") { Button("Export Logs…") { model.exportLogs() } }
+                // WHAT THE OWNER AGREED TO, readable again (2026-10-06): setup asks before anything
+                // else, and until now there was no way back to the text.
+                LabeledContent("Agreed to") {
+                    HStack {
+                        Button("Terms of Use") { reading.value = "terms" }
+                        Button("Privacy Policy") { reading.value = "privacy" }
+                    }
+                }
             }
             // AN APP STORE BUILD IS UPDATED BY THE STORE, so it has no row to check for one.
             if !model.storeUpdates {
@@ -544,6 +579,9 @@ private struct AboutPane: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: Binding(get: { reading.value != nil }, set: { if !$0 { reading.value = nil } })) {
+            LegalSheet(api: model.api, which: reading.value ?? "terms") { reading.value = nil }
         }
     }
 
