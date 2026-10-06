@@ -409,6 +409,24 @@ jobs:
         if: runner.os == 'macOS' && env.EDITION == 'recorder'
         run: python packaging/audit-recorder.py "dist-bin/$APP_NAME.app"
 
+      # THE LICENCES TRAVEL WITH THE APP (2026-10-06). MIT, BSD and Apache all ask that their
+      # notice go with every copy, and the bundle carried ~90 packages and none of their texts.
+      # THIRD-PARTY-NOTICES.txt is generated from what THIS build installed, so it is per edition
+      # by construction: the recorder's lists no AI. The recorder also gets its own NOTICE, which
+      # names no model. Before signing, so the files are sealed with the rest.
+      - name: Include the licences (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          pip install pip-licenses
+          R="dist-bin/$APP_NAME.app/Contents/Resources"
+          cp LICENSE "$R/LICENSE"
+          if [ "$EDITION" = "recorder" ]; then cp packaging/NOTICE.recorder "$R/NOTICE"; else cp NOTICE "$R/NOTICE"; fi
+          pip-licenses --with-license-file --no-license-path --with-notice-file --format=plain-vertical \
+            --ignore-packages pip-licenses prettytable wcwidth pip setuptools wheel \
+            --output-file "$R/THIRD-PARTY-NOTICES.txt"
+          test -s "$R/THIRD-PARTY-NOTICES.txt"
+          grep -c "^License" "$R/THIRD-PARTY-NOTICES.txt" || true
+
       # NOTHING IN THE BUNDLE MAY NEED A NEWER macOS THAN THE APP SAYS IT RUNS ON — the check
       # that b8 would have failed: llama.cpp built for 26 and numpy/onnxruntime for 14, in an app
       # that told macOS it ran on 13.
