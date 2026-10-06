@@ -522,6 +522,23 @@ Break one of these and the secretary is a different product.
   what is on `origin`, so a fix committed locally and not pushed is not in it. Caught after
   triggering a build to prove `app.css` was packaged, from a commit that did not have the fix —
   it would have gone green and proved the opposite of what was intended.
+- **A SOURCE BUILD TARGETS THE RUNNER'S macOS, NOT OURS** (found 2026-10-06). b8 declared macOS 13
+  (`LSMinimumSystemVersion`) and shipped llama.cpp built for **macOS 26** — compiled from source on
+  the `macos-26` runner, which builds for itself unless told — plus numpy and onnxruntime wheels
+  built for 14. On 14 and 15 the local models could not load, while recording carried on and
+  nothing said why; the one tester was on 26, which hid it. Now: `MACOSX_DEPLOYMENT_TARGET` 14.0
+  for the whole build, `-DCMAKE_OSX_DEPLOYMENT_TARGET` for llama.cpp's CMake, LSMinimumSystemVersion
+  14.0, and **`packaging/check-minos.py` fails the build if any binary in the bundle needs a newer
+  macOS than the app declares** (b8: 36 would have failed; b9's full build: 134 checked, all fine).
+  The Swift shell stays built for 13 — it runs on 14, and moving it would turn macOS 14's
+  deprecations into errors under `-warnings-as-errors`.
+  **THE BUILD INSTALLS UNDER A LOCK** the same day: `requirements.txt` (from
+  `packaging/requirements.in` via `packaging/lock.sh`, run on an Apple-silicon Mac) as pip
+  CONSTRAINTS, so versions are fixed without installing anything — the recorder still gets no AI.
+  Two traps met: uv's `--python-platform aarch64-apple-darwin` assumes macOS 13 and quietly picked
+  onnxruntime 1.23 over the 1.30 b8 shipped, so the script resolves for the machine itself; and pip
+  refuses a bare git URL beside the lock's `@<sha>` one as two packages, so the adapters are
+  installed from the lock's own address.
 - **`timeout` IS NOT ON macOS.** It is GNU coreutils. A Mac with Homebrew coreutils has it, so
   it works locally and in every local script here, and a clean `macos-26` runner says
   `timeout: command not found`. The a11 build failed on exactly this: the smoke test's new TLS
