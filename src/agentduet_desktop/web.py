@@ -21,6 +21,7 @@ prompt, full access, and the owner tool registry. Never share that code path.
 """
 
 import asyncio
+import html
 import json
 import logging
 import os
@@ -965,7 +966,14 @@ def make_app(token: str) -> web.Application:
 
     def _signin_page(title: str, detail: str, ok: bool = False) -> str:
         """A plain result page. Deliberately not one of the app pages: this route has no site
-        token, so it must not render anything that would try to call the API with one."""
+        token, so it must not render anything that would try to call the API with one.
+
+        ESCAPED (CodeQL py/reflective-xss, 2026-10-06): `detail` can be the provider's
+        `error_description`, which is whatever the address says — and this route takes no token,
+        on a known port, so any page could send the owner's browser here with a script in it.
+        The token never reaches a script (it is not in a cookie or in storage), which kept the
+        harm small; the escaping removes it."""
+        title, detail = html.escape(title), html.escape(detail)
         colour = "#34d399" if ok else "#fca5a5"
         return (f'<!doctype html><meta charset="utf-8"><title>{title}</title>'
                 f'<body style="background:#020617;color:#f1f5f9;font-family:system-ui;'
