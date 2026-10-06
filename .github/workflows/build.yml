@@ -141,7 +141,14 @@ jobs:
           # The [qwen] EXTRA is required, not optional polish: it pulls soxr + numpy, which the
           # adapter imports to resample call audio. Installing the bare package builds a binary
           # whose voice path dies on import — silently, because that same ImportError is caught.
-          pip install "agentduet-adapters[qwen] @ git+https://github.com/AgentDuet/agentduet-adapters"
+          #
+          # FROM THE LOCK'S OWN ADDRESS, commit included: pip treats the bare repo URL and the
+          # lock's pinned one (…@<sha>) as two different packages and refuses to resolve.
+          ADAPTERS="git+https://github.com/AgentDuet/agentduet-adapters"
+          if [ -n "${PIP_CONSTRAINT:-}" ]; then
+            ADAPTERS=$(sed -n 's/^agentduet-adapters @ //p' requirements.txt)
+          fi
+          pip install "agentduet-adapters[qwen] @ $ADAPTERS"
           # ALL THREE providers, because the model is config rather than code: the setup wizard
           # offers Gemini, Anthropic and Qwen, and it defaults to Gemini. A binary built with
           # only [qwen] fails on the first screen for anyone who takes the default.

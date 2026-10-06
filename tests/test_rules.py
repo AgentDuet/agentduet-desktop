@@ -7333,6 +7333,8 @@ def test_build_lock_and_floor() -> None:
     build = (root / ".github/workflows/build.yml").read_text()
     ok("the build installs under the lock (pip constraints, so the recorder still gets no AI)",
        build.count("PIP_CONSTRAINT: ${{ runner.os == 'macOS' && 'requirements.txt' || '' }}") == 2)
+    ok("the adapters are installed from the lock's own pinned address (pip refuses two URLs)",
+       "ADAPTERS=$(sed -n 's/^agentduet-adapters @ //p' requirements.txt)" in build)
     ok("and checks the finished bundle against the app's minimum macOS",
        'python packaging/check-minos.py "dist-bin/$APP_NAME.app"' in build)
     ok("llama.cpp, built from source, is built for that minimum, not the runner's macOS",
