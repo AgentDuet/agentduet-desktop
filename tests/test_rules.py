@@ -7172,8 +7172,8 @@ def test_small_mac() -> None:
         eng, msg = models.load("gemma-4-e2b")
         ok("a load refused room returns no engine and says why", eng is None and "speech" in msg)
     llm_src = (_p.Path(llm.__file__)).read_text()
-    ok("every generation holds the model, a stream included (models.using)",
-       llm_src.count("with models.using():") == 2)
+    ok("every generation holds the model, a stream and a pick included (models.using)",
+       llm_src.count("with models.using():") == 3)
 
     print("\n  -- a transcript lost to memory is tried again --")
     home = _p.Path(_t.mkdtemp())
@@ -7224,6 +7224,58 @@ def test_small_mac() -> None:
     ok("the chip and macOS, on a Mac", mi.get("chip") and mi.get("macos"), mi)
     ok("and whether speech and the assistant take turns",
        "speech_and_assistant_take_turns" in mi.get("models", {}), mi.get("models"))
+
+
+def test_latin_languages() -> None:
+    """A language written in the English alphabet: the decision model says it is not English,
+    Gemma names it, and only a sure name joins the tally — so one call never shows (brief.py)."""
+    print("\n  -- a language the script rule cannot see --")
+    import unittest.mock as _m
+    from agentduet_desktop import brief, decider, llm
+    MALAY = "them: Hello Stanley, saya nak tanya pasal invois bulan lepas, boleh tolong semak?\nyou: Sure."
+
+    class Picker:
+        def __init__(self, ans): self.ans, self.asked = ans, []
+        def pick(self, prompt, names):
+            self.asked.append(names); return self.ans
+
+    def run(gate_choice, ans, text=MALAY, ready=True):
+        pk = Picker(ans)
+        with _m.patch.object(decider, "ready", lambda: ready), \
+             _m.patch.object(decider, "ask", lambda s, q: {"lang": {"choice": gate_choice}}), \
+             _m.patch.object(llm, "client", lambda *a: pk):
+            return brief._latin_language(text), pk
+    got, pk = run("another language", ("Malay", 0.98))
+    ok("not English, and Gemma sure: the language is named", got == "Malay")
+    ok("from the list, with a way out", pk.asked and pk.asked[0][-1] == "another language"
+       and "Thai" in pk.asked[0])
+    ok("DENIED when Gemma is not sure (a measured miss sat at 0.69)",
+       run("another language", ("Indonesian", 0.69))[0] == "")
+    g, pk = run("English", ("Malay", 0.99))
+    ok("denied when the decision model hears English, and Gemma is not even asked", g == "" and not pk.asked)
+    ok("denied for 'another language' — nothing to name", run("another language", ("another language", 0.99))[0] == "")
+    ok("denied with no decision model", run("another language", ("Malay", 0.99), ready=False)[0] == "")
+    ok("denied for a pick that failed", run("another language", None)[0] == "")
+    ok("no caller turns, no question", run("another language", ("Malay", 0.99), text="you: hello")[0] == "")
+
+    rec = {}
+    with _m.patch.object(brief, "_latin_language", lambda t: "Malay"):
+        brief._tally_languages(rec, [("2026-10-06T10:00:00", MALAY)])
+        ok("ONE CALL NEVER SHOWS a language", brief._language_line(rec) == "", brief._language_line(rec))
+        brief._tally_languages(rec, [("2026-10-07T10:00:00", MALAY)])
+        ok("a second call shows it gently", brief._language_line(rec) == "Has spoken some Malay on calls.",
+           brief._language_line(rec))
+        brief._tally_languages(rec, [("2026-10-08T10:00:00", MALAY)])
+        ok("a third says it firmly", brief._language_line(rec) == "Speaks Malay.", brief._language_line(rec))
+    with _m.patch.object(brief, "_latin_language", lambda t: (_ for _ in ()).throw(AssertionError("asked"))):
+        r2 = {}
+        brief._tally_languages(r2, [("2026-10-06T10:00:00", "them: " + "สวัสดีครับ ผมโทรมาสอบถามเรื่องใบแจ้งหนี้เดือนที่แล้วครับ")])
+        ok("THAI IN ITS OWN SCRIPT stays the script rule's — no model is asked", "Thai" in r2["languages"])
+    r3 = {"languages_on": [], "languages_off": []}
+    brief._language_correction(r3, "she is from Malaysia")
+    ok("an owner's word is matched whole: 'Malaysia' is not Malay", "Malay" not in r3["languages_on"])
+    brief._language_correction(r3, "she doesn't speak Malay")
+    ok("and 'doesn't speak Malay' turns it off", "Malay" in r3["languages_off"])
 
 
 def test_search() -> None:
@@ -7323,6 +7375,7 @@ def main() -> None:
     test_model_slot()
     test_terms()
     test_small_mac()
+    test_latin_languages()
     test_search()
     test_assistant_memory()
     test_budget_split()

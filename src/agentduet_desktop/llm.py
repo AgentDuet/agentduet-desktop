@@ -165,6 +165,62 @@ class _Local:
             finally:
                 gate.release(ticket)
 
+    def pick(self, prompt: str, names: list[str]) -> tuple[str, float] | None:
+        """One of `names` for `prompt`, and how sure — read, not written (2026-10-06).
+
+        The options are numbered in the prompt and the model is asked for the number only; the
+        answer is its NEXT-TOKEN probability over "1".."n", normalised. Nothing is generated, so
+        nothing can wander off the list, and the probability is a confidence a caller can hold a
+        bar against. Measured naming a caller's language: right at 0.95 and above, wrong at 0.61
+        and 0.69 — see brief.LANGUAGE_NAME_SURE.
+
+        THE LOGITS ARE READ FROM llama.cpp DIRECTLY. Since llama-cpp-python 0.3 `Llama.eval` fills
+        `scores` only with logits_all=True (gigabytes at Gemma's 262k vocabulary), so `scores`
+        reads as zeros and every option ties — which looks like a model that always picks 1.
+        None when the options do not fit single digits or the model cannot run.
+        """
+        import math
+        from . import gate, models
+        if not 1 < len(names) <= 9:
+            return None
+        lines = "\n".join(f"{i + 1}. {n}" for i, n in enumerate(names))
+        user = f"{prompt.strip()}\n\n{lines}\n\nAnswer with the option number only."
+        prio = gate.current()
+        while True:
+            ticket = gate.acquire(prio)
+            try:
+                engine, msg = models.load(self.model)
+                if engine is None:
+                    raise RuntimeError(msg)
+                gate.before(engine, prio)
+                import llama_cpp
+                import numpy as np
+                from llama_cpp.llama_chat_format import Jinja2ChatFormatter
+                fmt = Jinja2ChatFormatter(template=engine.metadata["tokenizer.chat_template"],
+                                          eos_token="", bos_token="<bos>")
+                text = fmt(messages=[{"role": "user", "content": user}]).prompt
+                with models.using():
+                    toks = engine.tokenize(text.encode(), add_bos=False, special=True)
+                    digits = [engine.tokenize(str(i + 1).encode(), add_bos=False) for i in range(len(names))]
+                    if any(len(d) != 1 for d in digits):
+                        return None
+                    engine.reset()
+                    engine.eval(toks)
+                    row = np.ctypeslib.as_array(llama_cpp.llama_get_logits_ith(engine._ctx.ctx, -1),
+                                                shape=(engine.n_vocab(),))
+                    z = [float(row[d[0]]) for d in digits]
+                top = max(z)
+                e = [math.exp(v - top) for v in z]
+                k = max(range(len(e)), key=e.__getitem__)
+                return names[k], e[k] / sum(e)
+            except gate.Preempted:
+                logger.info("model: a priority-%d pick gave way and will run again", prio)
+            except Exception as exc:
+                logger.info("pick failed (%s: %s)", type(exc).__name__, exc)
+                return None
+            finally:
+                gate.release(ticket)
+
     def chat(self, messages: list[dict], tools: list[dict]) -> str:
         """One reply to a real conversation with real tool declarations, through `gate` as
         `complete` is. For a model whose own chat template renders tools (Gemma 4): see
