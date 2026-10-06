@@ -1063,7 +1063,20 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       16/16 real calls with nothing invented; worse than code at dates (3/5) and languages (12/16),
       which stay code's. Runs in a CHILD PROCESS per batch (`agentduet-desktop decide`) so its
       memory is certainly returned — in-process, 0.5 GB stayed allocated after release. ~1.7 s a
-      run, load included. **Open:** the fact-or-plan sort (7/9 scripted) is not wired yet; the
+      run, load included.
+      **ASK IT AS A CHOICE, WITH WHAT IT CANNOT KNOW (measured 2026-10-06).** Same model, better
+      questions, scored on 30+ HELD-OUT cases written before the run (Singlish, Malay, Vietnamese,
+      Mandarin, romanised Tamil, relative dates): language as a choice ("mostly English, a few odd
+      words" / "whole sentences in another language") 8/8, where the yes/no wording got 5/8 and the
+      CODE RULE (`brief._language_turns`, scripts only) 5/8 — it cannot see Malay or romanised Tamil;
+      the date as a choice WITH THE CALL'S DATE 6/8 (yes/no 5/8; misses "the day after tomorrow",
+      "later today"); fact-or-plan as "A note about a person" 8/10 (7/10). Appointment yes/no 8/8 as
+      is. Thresholds fitted in-sample did NOT hold (language at 0.70: 6/8) — use the choice forms.
+      "Who they are" held-out 5/8, every miss "not said" (fails safe), never an invented one.
+      **Against other models on the original 70 cases:** decider 60, Gemma 4 E4B as a picker 61
+      (but INVENTS relationships, 0.94 sure), Qwen3.5-2B untrained 43, its base 38-44 — the
+      training is what makes the 2B useful. The adapter and head cannot move to Gemma without
+      retraining (`strands-labs/strands-decider`, Qwen3.5-2B-Base only). **Open:** the fact-or-plan sort is not wired yet; the
       frozen `.app` has not run it (CI's `status` gate checks the runtime imports); and ~90 MB of
       ONNX Runtime + tokenizers joins the `[local]` extra.
 - [ ] **Confirm the lead family on QUALITY.** Gemma 4 leads on speed, measured 2026-09-23 on the
