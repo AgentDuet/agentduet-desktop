@@ -959,8 +959,10 @@ def make_app(token: str) -> web.Application:
             who = await asyncio.to_thread(oauth.complete, code, verifier, PORT)
         except Exception as exc:
             logger.warning("sign-in exchange failed: %s", exc)
+            # THE DETAIL IS THE LOG'S, not the page's (CodeQL py/stack-trace-exposure): an exception
+            # can carry the provider's response or our internals, and Export Logs already has it.
             return web.Response(status=400, content_type="text/html", text=_signin_page(
-                "Sign-in could not be completed", str(exc)))
+                "Sign-in could not be completed", "Start again from the setup page."))
         return web.Response(content_type="text/html", text=_signin_page(
             f"Signed in as {who}", "You can close this tab and go back to setup.", ok=True))
 

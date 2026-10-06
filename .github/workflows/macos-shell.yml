@@ -17,6 +17,10 @@ on:
       - "packaging/make-macos-app.sh"
       - ".github/workflows/macos-shell.yml"
 
+# Read-only: it checks the code out and nothing more (CodeQL actions/missing-workflow-permissions).
+permissions:
+  contents: read
+
 jobs:
   build:
     # macos-26 for the SDK, not the hardware: AgentDuetSTT uses SpeechAnalyzer, a macOS 26
