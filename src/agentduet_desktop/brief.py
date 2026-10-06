@@ -490,11 +490,62 @@ LANGUAGE_LONG = 20
 LANGUAGE_FIRM_TURNS = 3
 
 
+#: LANGUAGES WRITTEN IN THE ENGLISH ALPHABET, which `_SCRIPTS` cannot see (2026-10-06): Malay
+#: and Indonesian, Tagalog, and Tamil, Thai or Vietnamese when the transcript spells them out
+#: ("Sawasdee krub", "Vanakkam"). Two models and a bar, and the answer is NOTHING unless all agree:
+#:   1. the DECISION MODEL says the caller speaks another language — measured 13/13, and 8/8 on
+#:      held-out calls, where the script rule saw 5/8 (it is blind to Malay);
+#:   2. GEMMA names it, from this list (`llm._Local.pick`) — 11/13, every miss below 0.70 and
+#:      every right answer at 0.95 or above, so LANGUAGE_NAME_SURE drops the misses;
+#:   3. the name joins the same tally as a script language, at one turn per call — so it shows
+#:      only from a second call ("Has spoken some Malay on calls.") and is said firmly from a
+#:      third: one call never puts a language in About.
+#: The decision model alone could not name it (4/9: Malay as Indonesian, Tamil as Malay).
+LATIN_LANGUAGES = ("Malay", "Indonesian", "Tagalog", "Tamil", "Thai", "Vietnamese")
+LANGUAGE_NAME_SURE = 0.9
+
+
+def _latin_language(text: str) -> str:
+    """The language a caller spoke in a call the script rule found none in, or "" — which is
+    also the answer whenever a model is missing, unsure, or says English."""
+    if "them:" not in (text or ""):
+        return ""
+    try:
+        from . import decider, llm
+        if not decider.ready():
+            return ""
+        gate_q = decider.choice(
+            "Which language does the caller (the lines starting 'them:') mostly speak?",
+            {"English": "the caller speaks English, perhaps with a few odd words or names",
+             "another language": "the caller speaks whole sentences in another language"})
+        got = (decider.ask(text, {"lang": gate_q}) or {}).get("lang") or {}
+        if got.get("choice") != "another language":
+            return ""
+        model = llm.client()
+        if model is None or not hasattr(model, "pick"):
+            return ""
+        named = model.pick(
+            f"{text.strip()}\n\nThe caller (the lines starting 'them:') speaks a language other "
+            f"than English. Which language is it? It may be written in the English alphabet.",
+            list(LATIN_LANGUAGES) + ["another language"])
+    except Exception as exc:                     # a language is a nicety; a summary must not fail
+        logger.info("could not name a caller's language (%s: %s)", type(exc).__name__, exc)
+        return ""
+    if not named or named[0] == "another language" or named[1] < LANGUAGE_NAME_SURE:
+        return ""
+    return named[0]
+
+
 def _tally_languages(rec: dict, calls: list[tuple[str, str]]) -> None:
-    """Add these calls' qualifying turns to the person's tally."""
+    """Add these calls' qualifying turns to the person's tally: the script rule's, or else, for a
+    language written in the English alphabet, one turn per call (`_latin_language`)."""
     seen = rec.setdefault("languages", {})
     for at, text in calls:
-        for name, sizes in _language_turns(text).items():
+        found = _language_turns(text)
+        if not found:
+            name = _latin_language(text)
+            found = {name: [1]} if name else {}
+        for name, sizes in found.items():
             t = seen.setdefault(name, {"turns": 0, "calls": 0, "longest": 0, "last": ""})
             t["turns"] += len(sizes)
             t["calls"] += 1
@@ -543,8 +594,9 @@ def _relation_correction(rec: dict, said: str) -> None:
 
 def _language_correction(rec: dict, said: str) -> None:
     """An owner's correction naming a language turns it off (with a negation) or on."""
-    for name, _ in _SCRIPTS:
-        if name.lower() in said.lower() or (name == "Chinese" and re.search(r"mandarin|cantonese", said, re.I)):
+    for name in dict.fromkeys([n for n, _ in _SCRIPTS] + list(LATIN_LANGUAGES)):
+        # WHOLE WORDS: "Malaysia" is not Malay, "Thailand" is not Thai.
+        if re.search(rf"\b{name}\b", said, re.I) or (name == "Chinese" and re.search(r"mandarin|cantonese", said, re.I)):
             on, off = set(rec.get("languages_on") or []), set(rec.get("languages_off") or [])
             if _NEGATION.search(said):
                 off.add(name); on.discard(name)

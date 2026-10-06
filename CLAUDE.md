@@ -1076,7 +1076,14 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       **Against other models on the original 70 cases:** decider 60, Gemma 4 E4B as a picker 61
       (but INVENTS relationships, 0.94 sure), Qwen3.5-2B untrained 43, its base 38-44 — the
       training is what makes the 2B useful. The adapter and head cannot move to Gemma without
-      retraining (`strands-labs/strands-decider`, Qwen3.5-2B-Base only). **Open:** the fact-or-plan sort is not wired yet; the
+      retraining (`strands-labs/strands-decider`, Qwen3.5-2B-Base only).
+      **LANGUAGES IN THE ENGLISH ALPHABET — WIRED 2026-10-06** (`brief._latin_language`): where the
+      script rule finds none, the decider says "not English" and GEMMA NAMES IT through
+      `llm._Local.pick` (next-token probabilities over numbered options, read with
+      `llama_get_logits_ith`), kept only at `LANGUAGE_NAME_SURE` 0.9 — deny by default, and one
+      call never shows. Through the real path: 15/16 (Malay, Indonesian, Tagalog, romanised Tamil
+      and Thai, Thai script; Spanish and Singlish named nothing; one short Malay line denied). The
+      decider alone named only 4/9. Thai was added for AIS. **Open:** the fact-or-plan sort is not wired yet; the
       frozen `.app` has not run it (CI's `status` gate checks the runtime imports); and ~90 MB of
       ONNX Runtime + tokenizers joins the `[local]` extra.
 - [ ] **Confirm the lead family on QUALITY.** Gemma 4 leads on speed, measured 2026-09-23 on the
