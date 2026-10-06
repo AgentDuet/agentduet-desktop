@@ -18,6 +18,10 @@ concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only: it checks the code out and nothing more (CodeQL actions/missing-workflow-permissions).
+permissions:
+  contents: read
+
 jobs:
   tests:
     runs-on: ubuntu-latest
