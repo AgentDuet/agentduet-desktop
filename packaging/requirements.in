@@ -1,0 +1,6 @@
+# What the macOS release build installs — every edition's packages, so ONE lock pins them all.
+# Compiled into ../requirements.txt by packaging/lock.sh. Edit this, then run the script.
+.[gemini,anthropic,qwen,stt,local,ui]
+agentduet>=1.1.0b1
+agentduet-adapters[qwen] @ git+https://github.com/AgentDuet/agentduet-adapters
+pyinstaller

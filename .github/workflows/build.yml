@@ -85,6 +85,13 @@ jobs:
     # working, unsigned DMG exactly as before.
     env:
       APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
+      # THE OLDEST macOS WE SHIP FOR, given to everything compiled here (2026-10-06). Unset, a
+      # source build targets the RUNNER's own macOS: b8's llama.cpp was built for macOS 26, so on
+      # 14 and 15 the local models could not load while the app said it ran on 13. The same
+      # number is LSMinimumSystemVersion (make-macos-app.sh), Package.swift's platform and the
+      # lock's target (packaging/lock.sh); tests/test_rules.py keeps them one number, and
+      # packaging/check-minos.py fails the build if any binary in the bundle needs newer.
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
       # ONE NAME PER EDITION, used by every step below so the signing, DMG and notarization
       # path is shared rather than copied. `inputs.edition` is empty on a tag push → full.
       # FROM THE INPUT on a dispatch, FROM THE TAG'S PREFIX on a tag push (recorder-v…, ai-v…).
@@ -107,14 +114,21 @@ jobs:
       # THE RECORDER INSTALLS NO AI AT ALL — not a provider, not a speech engine, not a model
       # runtime. The spec leaves them out of the bundle regardless; not having them on the build
       # machine is the stronger claim, and the audit step below checks the result either way.
+      # THE LOCK (requirements.txt, packaging/lock.sh) pins every version as pip CONSTRAINTS:
+      # it fixes versions without installing anything, so the recorder still gets no AI, and two
+      # builds of one commit ship the same libraries. Compiled for macOS on Apple silicon only.
       - name: Install (recorder)
         if: env.EDITION == 'recorder'
+        env:
+          PIP_CONSTRAINT: ${{ runner.os == 'macOS' && 'requirements.txt' || '' }}
         run: |
           pip install "agentduet>=1.1.0b1"
           pip install ".[ui]" pyinstaller
 
       - name: Install
         if: env.EDITION != 'recorder'
+        env:
+          PIP_CONSTRAINT: ${{ runner.os == 'macOS' && 'requirements.txt' || '' }}
         run: |
           # >=1.1.0b1, not >=1.0.0: the daemon imports SendDduetMessage at module level
           # and PyPI still serves 1.0.0 as latest, so the old pin built a binary whose
@@ -155,7 +169,8 @@ jobs:
           #
           # Linux keeps the wheel: it is verified intact and saves the same minutes.
           if [ "$RUNNER_OS" = "macOS" ]; then
-            CMAKE_ARGS="-DGGML_METAL=on" pip install --no-binary=llama-cpp-python \
+            CMAKE_ARGS="-DGGML_METAL=on -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET" \
+              pip install --no-binary=llama-cpp-python \
               "llama-cpp-python>=0.3"
           else
             pip install --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu \
@@ -386,6 +401,13 @@ jobs:
       - name: Audit the recorder (no AI in the bundle)
         if: runner.os == 'macOS' && env.EDITION == 'recorder'
         run: python packaging/audit-recorder.py "dist-bin/$APP_NAME.app"
+
+      # NOTHING IN THE BUNDLE MAY NEED A NEWER macOS THAN THE APP SAYS IT RUNS ON — the check
+      # that b8 would have failed: llama.cpp built for 26 and numpy/onnxruntime for 14, in an app
+      # that told macOS it ran on 13.
+      - name: Check every binary runs on the app's minimum macOS
+        if: runner.os == 'macOS'
+        run: python packaging/check-minos.py "dist-bin/$APP_NAME.app"
 
       # ---- signing, and only when there is a certificate to sign with -----------------------
 
