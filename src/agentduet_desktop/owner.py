@@ -272,6 +272,46 @@ def language() -> str:
     return _first_line(_strip_guidance(_sections().get("Language", ""))).strip().lower()
 
 
+def call_language() -> str:
+    """The language calls are most likely in: the owner's setting, or else THIS COMPUTER'S OWN
+    LANGUAGE (Stanley, 2026-10-06). "" only when neither can be read.
+
+    WHY. A tester's install had no Language set, so the speech model's hint carried only the
+    owner's name — and on a piece it could not make out, it read that name sentence back as speech,
+    or wrote fake Chinese. With English set, the same recording came out right. The Mac already says
+    which language its owner uses, so a blank setting takes that instead of nothing. It is a HINT,
+    never a forced language (transcribe.qwen_context): someone who speaks another language is still
+    written in it.
+    """
+    return language() or system_language()
+
+
+def system_language() -> str:
+    """The computer's preferred language as a code ("en", "zh", "ms"), or "". On a Mac the first of
+    the owner's preferred languages (`AppleLanguages`: "en-SG", "zh-Hans-SG"); elsewhere the locale."""
+    global _system_language
+    if _system_language is None:
+        _system_language = ""
+        try:
+            import platform
+            import subprocess
+            if platform.system() == "Darwin":
+                out = subprocess.run(["defaults", "read", "-g", "AppleLanguages"], capture_output=True,
+                                     text=True, timeout=5).stdout
+                first = next((x.strip().strip('",') for x in out.splitlines()
+                              if x.strip().strip('",') not in ("(", ")", "")), "")
+            else:
+                import locale
+                first = locale.getlocale()[0] or ""
+            _system_language = re.split(r"[-_]", first)[0].lower() if first else ""
+        except Exception:
+            _system_language = ""
+    return _system_language
+
+
+_system_language: str | None = None
+
+
 def transcription_quality() -> str:
     """`fast`, `balanced` or `accurate` for the on-machine speech engine. "" means balanced.
 
