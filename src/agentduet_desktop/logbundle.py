@@ -149,8 +149,58 @@ def _models() -> dict:
     return out
 
 
-def bundle() -> bytes:
-    """The zip, in memory. Never raises for a missing file: a missing log is itself a finding."""
+def _call_files(call_id: str) -> dict[str, "pathlib.Path"] | None:
+    """{name in the zip: file} for ONE call, or None when there is no such call.
+
+    WHAT A TRANSCRIPT PROBLEM NEEDS, AND NOTHING ELSE (2026-10-06): a tester's transcript was
+    wrong and the logs could not say why. Reproducing it took the call's own files, sent by hand —
+    the merged recording and its .txt, and the raw legs the speech model actually read, with the
+    .start sidecars that align them. Only files of this call's own stem are taken; the stem comes
+    from the call index, never from the request.
+    """
+    from . import calls, carry
+    row = calls.get(call_id)
+    if row is None:
+        return None
+    folder, names = carry.call_audio(row.get("recordings", []), call_id)
+    stems = {carry.stem_of(n) for n in names} or {
+        carry.stem_of(p.name) for p in carry.legs().glob(f"*{call_id}*")}
+    out: dict = {}
+    for st in sorted(stems):
+        for ext in (".wav", ".txt"):
+            for where in dict.fromkeys([folder, carry.recordings(), paths.RUN / "recordings"]):
+                f = where / f"{st}{ext}"
+                if f.is_file():
+                    out.setdefault(f"call/{f.name}", f)
+        if carry.legs().is_dir():
+            for f in sorted(carry.legs().iterdir()):
+                if f.is_file() and f.name.startswith(st):
+                    out[f"call/legs/{f.name}"] = f
+    return out
+
+
+def _call_info(call_id: str) -> dict:
+    """How this call was (or would now be) transcribed: the language in effect, the engine, and
+    the exact hint the speech model is given — the thing that leaked into a transcript once."""
+    from . import calls, carry, edition, owner
+    info: dict = {"call": calls.get(call_id) or {}, "language_setting": owner.language(),
+                  "language_in_effect": owner.call_language()}
+    if edition.ai():
+        try:
+            from . import transcribe
+            legs = sorted(carry.legs().glob(f"*{call_id}*-caller.wav")) if carry.legs().is_dir() else []
+            other = transcribe._other_name(legs[0]) if legs else ""
+            info.update({"speech_engine": transcribe.engine(), "speech_hint": transcribe.qwen_context(other)})
+        except Exception as exc:                  # a diagnostic must not fail to diagnose
+            info["speech_error"] = f"{type(exc).__name__}: {exc}"
+    return info
+
+
+def bundle(call_id: str = "") -> bytes:
+    """The zip, in memory. Never raises for a missing file: a missing log is itself a finding.
+
+    With `call_id`, ONE CALL'S OWN FILES go in too (`_call_files`): its recording, transcript and
+    raw legs. The owner asks for that per call, from the call's menu; it is never the default."""
     buf = io.BytesIO()
     missing = []
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -172,11 +222,21 @@ def bundle() -> bytes:
         except (OSError, ValueError):
             pass
         z.writestr("about.json", json.dumps({**_about(), "machine_info": _machine()}, indent=1))
+        files = _call_files(call_id) if call_id else {}
+        for arc, f in (files or {}).items():
+            z.write(f, arc)
+        if call_id:
+            z.writestr("call/info.json", json.dumps(_call_info(call_id), indent=1, ensure_ascii=False))
         z.writestr("README.txt",
                    "AgentDuet Desktop logs, exported from the app.\n\n"
                    "Included: the app's logs (they contain phone numbers and caller names), "
                    "which build this is and the machine it runs on, and the permission record.\n"
-                   "Not included: credentials, recordings, transcripts, the assistant chat, "
-                   "or your contacts. The site token is removed from the logs.\n"
+                   + ("ONE CALL'S RECORDING AND TRANSCRIPT ARE INCLUDED, in call/: what both "
+                      "people said on that call.\n"
+                      "Not included: credentials, any other recording or transcript, the "
+                      "assistant chat, or your contacts. The site token is removed from the logs.\n"
+                      if call_id else
+                      "Not included: credentials, recordings, transcripts, the assistant chat, "
+                      "or your contacts. The site token is removed from the logs.\n")
                    + (f"\nNot found on this machine: {', '.join(missing)}\n" if missing else ""))
     return buf.getvalue()

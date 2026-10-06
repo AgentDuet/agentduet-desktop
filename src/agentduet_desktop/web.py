@@ -303,8 +303,13 @@ def make_app(token: str) -> web.Application:
         """The logs as one zip, for Help › Export Logs… — see `logbundle` for what is in it."""
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
-        from . import logbundle
-        data = await asyncio.to_thread(logbundle.bundle)
+        from . import calls as _calls, logbundle
+        # ?call=<id> adds that one call's recording, transcript and raw legs — asked for from the
+        # call's own menu. An id the index does not know is refused rather than ignored.
+        call = request.query.get("call", "")
+        if call and _calls.get(call) is None:
+            return web.json_response({"error": "no such call"}, status=404)
+        data = await asyncio.to_thread(logbundle.bundle, call)
         name = f"AgentDuet Logs {datetime.now():%Y-%m-%d %H%M}.zip"
         return web.Response(body=data, content_type="application/zip",
                             headers={"Content-Disposition": f'attachment; filename="{name}"'})

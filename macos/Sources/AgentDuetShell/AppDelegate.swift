@@ -782,10 +782,15 @@ extension AppDelegate: SettingsHost {
     /// THE LOGS AS ONE FILE, for a tester to send (2026-09-30). The daemon builds the zip — it
     /// knows what may go in (`logbundle.py`) — and this saves it through the system's panel,
     /// which is also what lets a sandboxed build write outside its container.
-    @objc func exportLogs() {
+    @objc func exportLogs() { exportLogsWith(call: nil) }
+
+    /// WITH ONE CALL (2026-10-06): the call's menu in the hub adds that call's recording,
+    /// transcript and raw legs, which is what a wrong transcript needs to be reproduced.
+    func exportLogsWith(call: String?) {
         guard let url = siteURL, let api = DaemonAPI(site: url) else { return }
         Task { @MainActor in
-            guard let data = await api.data("/api/logs") else {
+            let path = call.map { "/api/logs?call=" + ($0.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(.init(charactersIn: "-"))) ?? $0) }
+            guard let data = await api.data(path ?? "/api/logs") else {
                 let alert = NSAlert()
                 alert.messageText = "Could not export the logs"
                 alert.informativeText = "\(Edition.product) is not answering. Quit it, open it again, and try once more."
@@ -795,10 +800,12 @@ extension AppDelegate: SettingsHost {
             let panel = NSSavePanel()
             let stamp = ISO8601DateFormatter.string(from: Date(), timeZone: .current,
                                                     formatOptions: [.withFullDate])
-            panel.nameFieldStringValue = "\(Edition.product) Logs \(stamp).zip"
+            panel.nameFieldStringValue = "\(Edition.product) Logs \(stamp)\(call == nil ? "" : " with a call").zip"
             panel.allowedContentTypes = [.zip]
             // WHAT IS IN IT, said where the owner decides to send it.
-            panel.message = "The logs include phone numbers and caller names. \(Edition.notInLogs)"
+            panel.message = call == nil
+                ? "The logs include phone numbers and caller names. \(Edition.notInLogs)"
+                : "The logs include phone numbers and caller names, and this call's recording\(Edition.recorder ? "" : " and transcript")."
             NSApp.activate(ignoringOtherApps: true)
             guard panel.runModal() == .OK, let dest = panel.url else { return }
             do { try data.write(to: dest) } catch {

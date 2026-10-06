@@ -1156,6 +1156,12 @@ private struct CallCard: View {
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
             .fill(Color(nsColor: .windowBackgroundColor).opacity(0.6)))
+        // THIS CALL'S FILES WITH THE LOGS (2026-10-06): what a wrong transcript needs reproduced.
+        .contextMenu {
+            Button("Export for Support…") {
+                (NSApp.delegate as? AppDelegate)?.exportLogsWith(call: call.str("call_id"))
+            }
+        }
     }
 }
 
