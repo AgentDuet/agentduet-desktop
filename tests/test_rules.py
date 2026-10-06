@@ -7355,6 +7355,28 @@ def test_build_lock_and_floor() -> None:
     ok("the Swift shell is built for that minimum or older", swift <= 14, swift)
 
 
+def test_hint_never_spoken() -> None:
+    """The speech model's hint must never come back as something somebody said (2026-10-06: a
+    tester's transcript opened "The owner of this phone is Power Mobile.")."""
+    print("\n  -- the speech hint is never transcribed --")
+    import pathlib as _p
+    from agentduet_desktop import transcribe as tr
+    hint = ("This is a phone call. The language is most likely English, but other languages are "
+            "possible and speakers may mix languages. The owner of this phone is Power Mobile.")
+    eq("a hint sentence before real words goes, the words stay",
+       tr._strip_context("The owner of this phone is Power Mobile. Hello. Hello. Testing one two three.", hint),
+       "Hello. Hello. Testing one two three.")
+    eq("the whole hint read back is nothing (measured: it came back whole, twice)",
+       tr._strip_context(hint, hint), "")
+    eq("whatever the case and punctuation", tr._strip_context("the owner of this phone is power mobile", hint), "")
+    eq("real speech is untouched", tr._strip_context("Yeah. Sure. I will see you tonight.", hint),
+       "Yeah. Sure. I will see you tonight.")
+    eq("and with no hint, nothing changes", tr._strip_context("This is a phone call.", ""), "This is a phone call.")
+    src = (_p.Path(__file__).resolve().parent.parent / "src/agentduet_desktop/transcribe.py").read_text()
+    ok("in qwen_piece itself, so live captions get it too",
+       "return lang, _strip_context(said, context)" in src)
+
+
 def test_search() -> None:
     """Search what was said: pieces, the index, meaning + keywords, and the floor (search.py)."""
     print("\n  -- search what was said on calls --")
@@ -7455,6 +7477,7 @@ def main() -> None:
     test_latin_languages()
     test_codeql_fixes()
     test_build_lock_and_floor()
+    test_hint_never_spoken()
     test_search()
     test_assistant_memory()
     test_budget_split()

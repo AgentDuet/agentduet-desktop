@@ -1001,6 +1001,29 @@ def qwen_context(other: str = "") -> str:
     return " ".join([out] + who).strip() if out or who else ""
 
 
+def _strip_context(said: str, context: str) -> str:
+    """`said` without any sentence of our own hint in it.
+
+    THE HINT CAME BACK AS SPEECH (2026-10-06). A tester's transcript opened "The owner of this
+    phone is Power Mobile." — nobody said it: on a piece the model could not make out, it read back
+    the context it was given. Re-run on that recording, the full hint came back WHOLE, twice. So
+    each sentence of the hint is removed wherever it appears, case and punctuation aside; a piece
+    that was nothing but the hint is then empty, and dropped like silence.
+    """
+    import re as _re
+    if not said or not context:
+        return said
+    norm = lambda t: _re.sub(r"[^\w]+", " ", t.lower()).strip()
+    out = said
+    for sentence in _re.split(r"(?<=[.!?])\s+", context.strip()):
+        key = norm(sentence)
+        if len(key) < 12:                         # too short to be sure it is ours
+            continue
+        pat = r"\W*".join(_re.escape(w) for w in key.split())
+        out = _re.sub(pat + r"[\s.,!?;:]*", " ", out, flags=_re.I)
+    return " ".join(out.split()).strip(" ,;:")
+
+
 def qwen_piece(a, context: str = "") -> tuple[str, str]:
     """Transcribe ONE piece of mono float32 16 kHz audio. Returns (language, text).
 
@@ -1020,7 +1043,9 @@ def qwen_piece(a, context: str = "") -> tuple[str, str]:
         {"role": "user", "content": [{"type": "image_url", "image_url": {"url": url}}]}]
     with _qwen_lock:
         r = _qwen_model().create_chat_completion(messages=messages, max_tokens=1024, temperature=0)
-    return _qwen_parse(r["choices"][0]["message"]["content"])
+    lang, said = _qwen_parse(r["choices"][0]["message"]["content"])
+    # NEVER OUR OWN HINT AS SPEECH — here, so the saved transcript and live captions both get it.
+    return lang, _strip_context(said, context)
 
 
 def _other_name(path: pathlib.Path) -> str:
