@@ -159,7 +159,8 @@ def record(call_id: str, caller: str, mode: str, *, recordings: list[str] | None
     """Append one call. Never raises: losing the audio matters, losing the index does not."""
     try:
         paths.RUN.mkdir(parents=True, exist_ok=True)
-        with LOG.open("a") as f:
+        # UNDER THE LOCK, so `forget` rewriting the file cannot drop a line appended meanwhile.
+        with _lock, LOG.open("a") as f:
             f.write(json.dumps({
                 # `at` GIVEN only for a call filed after the fact (AgentDuet AI reading a
                 # recording later): its end, not the moment it was read.
@@ -186,6 +187,53 @@ def record(call_id: str, caller: str, mode: str, *, recordings: list[str] | None
     # THE INDEX CATCHES UP from the file, here or at the next read — one path, so the two
     # cannot disagree about what was written.
     _query("SELECT row FROM calls WHERE 0")
+
+
+def forget(call_id: str) -> int:
+    """Remove one call from the record — the owner deleted it. Returns how many lines went.
+
+    THE ONE PLACE `calls.jsonl` IS REWRITTEN, which the docstring above says never happens: an
+    owner deleting a call (or answering an erasure request) is the reason it must. Written whole
+    and renamed, so a reader sees the old file or the new one. The file is then shorter than the
+    index's offset, and `_catch_up` rebuilds the index from it.
+    """
+    if not call_id:
+        return 0
+    with _lock:
+        try:
+            lines = LOG.read_text(encoding="utf-8").splitlines(keepends=True)
+        except OSError:
+            return 0
+        kept, gone = [], 0
+        for line in lines:
+            try:
+                same = json.loads(line).get("call_id") == call_id
+            except ValueError:
+                same = False
+            if same:
+                gone += 1
+            else:
+                kept.append(line)
+        if not gone:
+            return 0
+        tmp = LOG.with_name(LOG.name + ".part")
+        tmp.write_text("".join(kept), encoding="utf-8")
+        tmp.replace(LOG)
+        # REBUILT, not trusted to notice: an index that had not caught up could hold an offset
+        # still inside the shorter file, and would then keep the deleted row.
+        try:
+            con = _connect()
+            try:
+                con.execute("DELETE FROM calls")
+                con.execute("DELETE FROM persons")
+                con.execute("INSERT OR REPLACE INTO meta VALUES ('log_bytes', '0')")
+                con.commit()
+            finally:
+                con.close()
+        except sqlite3.Error as exc:
+            logger.warning("calls: the index could not be cleared (%s)", exc)
+    _query("SELECT row FROM calls WHERE 0")
+    return gone
 
 
 def recent(limit: int | None = 200) -> list[dict]:

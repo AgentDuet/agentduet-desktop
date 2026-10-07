@@ -154,6 +154,10 @@ assert body == "", "a transcript appeared in the recorder: " + body
 assert not list(carry.recordings().glob(".*.part")), "a half-written file was left"
 assert carry.transcript_of([f"{stem}.wav"], carry.recordings()) == ""
 assert merge.once() == 0, "merged twice"
+assert not merge.leg_files(stem), "the legs were kept after the merge"
+from agentduet_desktop import erase
+assert erase.delete_call("cR")["ok"], "the recorder could not delete a call"
+assert not out.exists() and calls.get("cR") is None, "the deleted call is still there"
 print("ok")
 """
 

@@ -452,6 +452,19 @@ import Foundation
         await load()
     }
 
+    /// A call's Delete Call…: its recording, transcript and record (erase.py).
+    func deleteCall(_ id: String) {
+        if player.callID == id { player.stop() }
+        Task {
+            let r = await api.post("/api/calls/delete", ["call": id])
+            if r["ok"] as? Bool != true {
+                notice = .init(ok: false, text: r.str("message").isEmpty ? "The call was not deleted."
+                                                                         : r.str("message"))
+            }
+            await load()
+        }
+    }
+
     #if !RECORDER
     /// The calendar card: open it (it stays, and can be opened again) or dismiss it.
     func suggestion(_ key: String, _ action: String) {

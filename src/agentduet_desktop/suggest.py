@@ -99,6 +99,17 @@ def digest(text: str) -> str:
     return hashlib.sha256(" ".join((text or "").split()).encode()).hexdigest()[:16]
 
 
+def forget(text: str) -> bool:
+    """Drop the verdict on one text — its call was deleted (erase.py). True when one went."""
+    if not text:
+        return False
+    rows = _load()
+    if rows.pop(digest(text), None) is None:
+        return False
+    _save(rows)
+    return True
+
+
 def for_texts(texts: list[str]) -> dict:
     """{digest: suggestion} for the texts a page is about to render. NO MODEL, no network.
 

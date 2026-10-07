@@ -712,6 +712,15 @@ def correct(who: str, correction: str) -> str:
     return "Corrected. The brief now reads:\n" + load(who)["summary"]
 
 
+def forget(who: str) -> None:
+    """Start `who`'s brief again — a call with them was deleted (erase.py), and what it said may
+    be in the summary. It is rebuilt from the calls that remain; an owner's correction goes too."""
+    if not who or who == "?":
+        return
+    _file(who).unlink(missing_ok=True)
+    request(who)
+
+
 def request(who: str) -> None:
     if who:
         jobs.request("person:" + who, gate.PERSON, lambda: update(who))

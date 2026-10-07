@@ -67,9 +67,10 @@ def legs() -> pathlib.Path:
     """Where the PER-LEG audio is written, which is not where the owner looks.
 
     The two legs are working files: they exist because keeping the parties apart is what lets a
-    transcript say who spoke without diarisation, and because a re-transcription can still
-    separate the speakers later. They are not what the owner asked to keep — one file per call
-    is — so they live inside the instance and only the merged pair lands in the chosen folder.
+    transcript say who spoke without diarisation. They are not what the owner asked to keep — one
+    file per call is — so they live inside the instance, only the merged pair lands in the chosen
+    folder, and they are DELETED once the merge holds them (`merge.discard_legs`, 2026-10-07): the
+    stereo merge keeps each party on its own channel, so a re-transcription splits that instead.
 
     That also splits two questions the one folder was answering at once: what still needs work
     (here) and what the owner keeps (there). And it stays restart-safe, which

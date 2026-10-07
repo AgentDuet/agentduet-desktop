@@ -336,6 +336,29 @@ def index_once(limit: int = 200) -> int:
     return n
 
 
+def forget_call(call_id: str) -> int:
+    """Remove one call's pieces — the owner deleted it (erase.py). Returns how many went.
+
+    With the DB alone: the embedding model need not be loaded to forget something.
+    """
+    if not DB.exists():
+        return 0
+    with _db_lock:
+        con = _connect()
+        try:
+            old = con.execute("SELECT id, text FROM pieces WHERE kind = 'call' AND source = ?",
+                              (call_id,)).fetchall()
+            for r in old:
+                con.execute("INSERT INTO pieces_fts(pieces_fts, rowid, text) VALUES ('delete', ?, ?)",
+                            (r["id"], r["text"]))
+            con.execute("DELETE FROM pieces WHERE kind = 'call' AND source = ?", (call_id,))
+            con.execute("DELETE FROM indexed WHERE key = ?", ("call:" + call_id,))
+            con.commit()
+        finally:
+            con.close()
+    return len(old)
+
+
 # ---- asking ------------------------------------------------------------------------------------
 
 def search(q: str, who: str = "", k: int = 8) -> list[dict]:
