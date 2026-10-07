@@ -1317,6 +1317,9 @@ async def worker() -> None:
             requeued_at = _time.time()
             try:
                 requeue_memory_failures()
+                # AFTER the requeue, which unmarks the calls it puts back: their legs stay.
+                from . import merge
+                await asyncio.to_thread(merge.discard_merged_legs)
             except Exception as exc:
                 logger.warning("could not requeue failed transcripts (%s: %s)", type(exc).__name__, exc)
         try:

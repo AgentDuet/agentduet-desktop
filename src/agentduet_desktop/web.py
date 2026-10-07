@@ -314,6 +314,18 @@ def make_app(token: str) -> web.Application:
         return web.Response(body=data, content_type="application/zip",
                             headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
+    async def api_call_delete(request):
+        """A call's Delete Call…: its recording, transcript, legs and record — see `erase`."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        try:
+            body = await request.json()
+        except ValueError:
+            body = {}
+        from . import erase
+        got = await asyncio.to_thread(erase.delete_call, str(body.get("call") or ""))
+        return web.json_response(got)
+
     async def api_contact_add(request):
         """The header's Add to Contacts: a card with this person's number, and the name the hub
         shows them by if it is not just the number. Contacts asks the owner before adding it."""
@@ -1089,6 +1101,7 @@ def make_app(token: str) -> web.Application:
         web.post("/api/name", api_name),
         web.post("/api/contacts/add", api_contact_add),
         web.get("/api/logs", api_logs),
+        web.post("/api/calls/delete", api_call_delete),
         web.get("/logo.png", logo),
         # Browsers ask for this unprompted, and the console filled with a 404 on every page load.
         web.get("/favicon.ico", logo),

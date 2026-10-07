@@ -216,18 +216,15 @@ def once(settled=None, text=None, audio_too: bool = True) -> int:
                 text(stem, wavs)
                 done += 1
             # THE SPLIT LEGS ARE OURS, copies of the recorder's file: kept only to transcribe.
-            for w in wavs:
-                w.unlink(missing_ok=True)
-            try:
-                (carry.legs() / f"{stem}{MERGE_SUFFIX}").write_text("")
-            except OSError as exc:
-                logger.warning("merge %s: could not mark it done (%s)", stem, exc)
+            _mark(stem)
+            discard_legs(stem)
             continue
         # WAIT FOR THE ROW that says who the call was with, briefly — see ROW_WAIT_SECONDS.
         row = _row(stem)
         if row is None and wavs and time.time() - max(w.stat().st_mtime for w in wavs) < ROW_WAIT_SECONDS:
             continue
-        if audio(stem, wavs):
+        merged = audio(stem, wavs)
+        if merged:
             write_txt(stem, row=row or {})
             if text is not None:
                 text(stem, wavs)
@@ -235,11 +232,74 @@ def once(settled=None, text=None, audio_too: bool = True) -> int:
         # MARKED EITHER WAY. A call whose legs are all empty — an unbridged call, which is every
         # call until the platform hands us audio — has nothing to merge and must not be
         # reconsidered on every poll for the life of the instance.
-        try:
-            (carry.legs() / f"{stem}{MERGE_SUFFIX}").write_text("")
-        except OSError as exc:
-            logger.warning("merge %s: could not mark it done (%s)", stem, exc)
+        _mark(stem)
+        # THE LEGS GO ONCE THE MERGE HOLDS THEM, or when they hold nothing. A leg that could not
+        # be read is kept: it may be the only copy of that side.
+        if merged or all(w.stat().st_size <= carry.EMPTY_WAV_BYTES for w in wavs):
+            discard_legs(stem)
     return done
+
+
+def _mark(stem: str) -> None:
+    try:
+        (carry.legs() / f"{stem}{MERGE_SUFFIX}").write_text("")
+    except OSError as exc:
+        logger.warning("merge %s: could not mark it done (%s)", stem, exc)
+
+
+def leg_files(stem: str) -> list[pathlib.Path]:
+    """Every working file of one call in `legs()`: its audio, sidecars, leg transcripts, marks."""
+    if not carry.legs().is_dir():
+        return []
+    return sorted(f for f in carry.legs().iterdir()
+                  if f.name.startswith(stem + "-") or f.name == stem + MERGE_SUFFIX)
+
+
+def discard_legs(stem: str, force: bool = False) -> int:
+    """Delete a merged call's legs. Returns how many files went.
+
+    WHY (2026-10-07, threat model F01). The legs were kept "for a future re-transcription", so
+    every call had a second full copy of both sides inside the instance — and deleting the
+    recording in Finder left that copy behind, which made the privacy text's "it is deleted when
+    you delete it" untrue. The stereo merge keeps one party per channel, so it can be split
+    again (`ingest.split` does exactly that); the legs add nothing it lacks.
+
+    KEPT while any leg has a `.failed` mark, unless `force`: the retry (transcribe's
+    `requeue_memory_failures`) needs the leg's audio, and the hub's "Transcript failed." reads
+    the mark. A leg still being written (`.part`) is never touched.
+    """
+    files = leg_files(stem)
+    if any(f.name.endswith(".part") for f in files):
+        return 0
+    if not force and any(f.suffix == ".failed" for f in files):
+        return 0
+    n = 0
+    for f in files:
+        try:
+            f.unlink()
+            n += 1
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            logger.warning("merge %s: could not delete %s (%s)", stem, f.name, exc)
+    return n
+
+
+def discard_merged_legs() -> int:
+    """Delete the legs an EARLIER BUILD kept after merging. Returns how many calls were cleared.
+
+    Every call carried before 2026-10-07 left both legs in `legs()` beside a `.merged` mark.
+    Run at start, so an existing install loses them on its first launch of a fixed build.
+    """
+    if not carry.legs().is_dir():
+        return 0
+    n = 0
+    for mark in sorted(carry.legs().glob(f"*{MERGE_SUFFIX}")):
+        if discard_legs(mark.name[: -len(MERGE_SUFFIX)]):
+            n += 1
+    if n:
+        logger.info("merge: deleted the leftover legs of %d merged call(s)", n)
+    return n
 
 
 #: How often the recorder's merge looks for work. A call is merged within this of hanging up.
@@ -251,6 +311,10 @@ async def worker() -> None:
 
     The full edition does not run this — its transcription worker merges, after the words.
     """
+    try:
+        await asyncio.to_thread(discard_merged_legs)
+    except Exception as exc:
+        logger.error("the merge worker could not clear old legs: %s", exc)
     while True:
         await asyncio.sleep(POLL_SECONDS)
         try:

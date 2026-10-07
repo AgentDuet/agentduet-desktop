@@ -1161,6 +1161,19 @@ private struct CallCard: View {
             Button("Export for Support…") {
                 (NSApp.delegate as? AppDelegate)?.exportLogsWith(call: call.str("call_id"))
             }
+            Divider()
+            // THE WHOLE CALL, NOT THE FILE (2026-10-07): deleting the recording in Finder leaves
+            // the call in the list; this removes it everywhere the app keeps it (erase.py).
+            Button("Delete Call…", role: .destructive) {
+                let alert = NSAlert()
+                alert.messageText = "Delete this call?"
+                alert.informativeText = "This cannot be undone."
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "Delete")
+                alert.addButton(withTitle: "Cancel")
+                alert.buttons.first?.hasDestructiveAction = true
+                if alert.runModal() == .alertFirstButtonReturn { model.deleteCall(call.str("call_id")) }
+            }
         }
     }
 }

@@ -4567,8 +4567,10 @@ def test_one_call_one_file() -> None:
 
         eq("the owner keeps exactly two files — nothing half-written left beside them",
            sorted(x.name for x in R.iterdir()), [f"{stem}.txt", f"{stem}.wav"])
-        ok("the legs are kept for a future re-transcription",
-           len(list(L.glob("*.wav"))) == 2)
+        # THE LEGS GO ONCE THE MERGE HOLDS THEM (threat model F01, 2026-10-07): kept, they were a
+        # second full copy of the call that survived the owner deleting the recording.
+        eq("the legs are deleted once merged, sidecars and transcripts too",
+           sorted(x.name for x in L.iterdir()) if L.is_dir() else [], [])
         eq("and it is not merged twice", transcribe.merge_ready(), [])
 
         # AN EMPTY LEG IS NOT PUBLISHED AND NOT KEPT. A 44-byte header reads as "recording
@@ -4727,6 +4729,90 @@ def test_exact_speaking_order() -> None:
         eq("without timings it groups by party",
            carry.read_body(carry.merged_txt(stem)).strip().splitlines(),
            ["them: x", "you: x"])
+
+
+def test_a_deleted_call_is_gone() -> None:
+    """Deleting a call removes every copy the app keeps (threat model F01, 2026-10-07)."""
+    print("\n  -- deleting a call --")
+    import unittest.mock as mock
+    import wave as _wave
+    from agentduet_desktop import calls, carry, erase, merge
+
+    home = pathlib.Path(tempfile.mkdtemp(prefix="erase-test-"))
+    R, L = home / "recordings", home / "legs"
+
+    def leg(stem, side, frames=24000):
+        L.mkdir(parents=True, exist_ok=True)
+        with _wave.open(str(L / f"{stem}-{side}.wav"), "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(24000)
+            w.writeframes(b"\x01\x00" * frames)
+        (L / f"{stem}-{side}.start").write_text("100.0\n")
+
+    with mock.patch.object(carry, "recordings", lambda: R), \
+         mock.patch.object(carry, "legs", lambda: L), \
+         mock.patch.object(calls, "LOG", home / "calls.jsonl"), \
+         mock.patch.object(calls, "DB", home / "calls.db"), \
+         mock.patch.object(erase.paths, "RUN", home), \
+         mock.patch.object(erase.edition, "ai", lambda: False):
+        # A CALL AN EARLIER BUILD MERGED AND KEPT THE LEGS OF.
+        old = "20261001T090000-cOld"
+        leg(old, "caller"); leg(old, "callee")
+        (L / f"{old}-caller.txt").write_text("their words\n")
+        (L / f"{old}{merge.MERGE_SUFFIX}").write_text("")
+        # ONE WHOSE TRANSCRIPT FAILED: its retry needs the audio.
+        failed = "20261001T100000-cFail"
+        leg(failed, "caller"); leg(failed, "callee")
+        (L / f"{failed}-caller.failed").write_text("out of memory\n")
+        (L / f"{failed}{merge.MERGE_SUFFIX}").write_text("")
+        eq("an earlier build's leftover legs are cleared at start", merge.discard_merged_legs(), 1)
+        ok("all of them: audio, sidecars, leg transcripts, the mark",
+           not merge.leg_files(old), [f.name for f in merge.leg_files(old)])
+        ok("but a call whose transcript failed keeps its legs for the retry",
+           len(merge.leg_files(failed)) == 6, [f.name for f in merge.leg_files(failed)])
+
+        # A NEW CALL: recorded, merged, then deleted from the app.
+        stem = "20261007T120000-cNew"
+        calls.record("cNew", "+6591112222", "carried", recordings=[f"{stem}-caller.wav", f"{stem}-callee.wav"])
+        calls.record("cOther", "+6593334444", "carried")
+        leg(stem, "caller"); leg(stem, "callee")
+        part = L / f"{stem}-callee.wav.part"
+        part.write_text("")
+        eq("a call still being recorded is not deleted",
+           erase.delete_call("cNew")["message"], "The call is still on.")
+        part.unlink()
+        with mock.patch.object(merge, "_row", lambda s: calls.get("cNew")):
+            eq("the merge runs", merge.once(), 1)
+        ok("and the merge leaves no legs", not merge.leg_files(stem))
+        ok("the recording and its .txt are in the owner's folder",
+           carry.merged_wav(stem).is_file() and carry.merged_txt(stem).is_file())
+
+        eq("an id that is not one is refused", erase.delete_call("../x")["ok"], False)
+        eq("an unknown call is refused", erase.delete_call("cNope")["ok"], False)
+        got = erase.delete_call("cNew")
+        eq("Delete Call says so", (got["ok"], got["message"]), (True, "Call deleted."))
+        ok("the recording and .txt are gone",
+           not carry.merged_wav(stem).exists() and not carry.merged_txt(stem).exists())
+        eq("the call is out of the record", calls.get("cNew"), None)
+        ok("and out of the file, not only the index",
+           "cNew" not in (home / "calls.jsonl").read_text())
+        ok("the other call is untouched", calls.get("cOther") is not None)
+        eq("and so is the person list", sorted(calls.people()), ["+6593334444"])
+
+        # A CALL WITH LEGS LEFT (its transcript failed) loses them too: the owner asked.
+        calls.record("cFail", "+6595556666", "carried")
+        erase.delete_call("cFail")
+        ok("Delete Call takes legs a retry was keeping", not merge.leg_files(failed))
+
+    src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop")
+    web = (src / "web.py").read_text()
+    i = web.index("async def api_call_delete")
+    ok("the route checks the site token", "authed(request)" in web[i:i + 400])
+    ok("the AI stores are reached only behind edition.ai()",
+       "if row is not None and edition.ai():" in (src / "erase.py").read_text())
+    hub = (pathlib.Path(__file__).parent.parent / "macos" / "Sources" / "AgentDuetShell"
+           / "HubView.swift").read_text()
+    ok("the call's menu offers Delete Call, after a confirmation",
+       'Button("Delete Call…", role: .destructive)' in hub and "alert.runModal()" in hub)
 
 
 def test_a_fresh_install_pins_english() -> None:
@@ -7657,6 +7743,7 @@ def main() -> None:
     test_knowledge_writes()
     test_appointments_are_a_tool()
     test_logs_can_be_exported()
+    test_a_deleted_call_is_gone()
     test_briefs_are_about_the_right_person()
     test_the_decider_checks_relationships()
     # EVERY TEST MUST BE CALLED. They are invoked by hand above, so a new `test_*`
