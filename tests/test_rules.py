@@ -7055,7 +7055,7 @@ def test_calls_index() -> None:
     # THE HUB ASKS FOR ONE PERSON IN FULL, and the rest light.
     web = _site_src(pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop")
     ok("the hub reads its list from the index, one person in full",
-       'calls.summary(_seen() or {})' in web
+       'calls.summary(marks)' in web
        and "calls.for_person(who)" in web)
     hub = (pathlib.Path(__file__).parent.parent / "macos/Sources/AgentDuetShell/HubModel.swift").read_text()
     ok("and the Mac hub names who is open", 'query: ["open": picked ?? ""]' in hub)
@@ -7836,6 +7836,32 @@ def test_list_calls_counts() -> None:
     eq("other tools are untouched", oc._keep_period("read_brief", {"who": "x"}, "who?"), ({"who": "x"}, ""))
 
 
+def test_placed_call_news() -> None:
+    """A call the owner placed is news once its transcript lands (web.py, 2026-10-09)."""
+    print("\n  -- a placed call's transcript marks its person --")
+    import unittest.mock as mock
+    from agentduet_desktop import calls
+    home = pathlib.Path(tempfile.mkdtemp())
+    with mock.patch.object(calls, "LOG", home / "calls.jsonl"), mock.patch.object(calls, "DB", home / "calls.db"):
+        calls.record("a", "+6591111111", "carried", outgoing=True)
+        calls.record("b", "+6591111111", "carried", outgoing=False)
+        calls.record("c", "+6592222222", "carried", outgoing=True)
+        got = calls.outgoing_since("+6591111111", "")
+        eq("outgoing_since lists only the calls the owner placed, for that person",
+           [r["call_id"] for r in got], ["a"])
+        eq("and none filed before the mark", calls.outgoing_since("+6591111111", "9999"), [])
+    src = (pathlib.Path(__file__).parent.parent / "src/agentduet_desktop/web.py").read_text()
+    ok("a placed call carries when its transcript landed",
+       '"news_at": _transcript_at(r)' in src)
+    ok("which counts as new, beside calls in and messages from them",
+       'c["news_at"] for c in p["calls"] if c.get("outgoing") and c.get("news_at")' in src)
+    ok("the list counts it too, for people not open", "if _transcript_at(r) > mark)" in src)
+    ok("opening the person clears it: the mark extends over the transcripts on screen",
+       "at = max(at, _transcript_at(r))" in src)
+    ok("only where transcripts exist (never in the recorder)",
+       'if not r.get("outgoing") or not edition.ai():' in src)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -7861,6 +7887,7 @@ def main() -> None:
     test_search_in_litert()
     test_litert()
     test_list_calls_counts()
+    test_placed_call_news()
     test_assistant_memory()
     test_budget_split()
     test_unread_badge()

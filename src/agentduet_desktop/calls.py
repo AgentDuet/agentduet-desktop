@@ -255,6 +255,12 @@ def for_person(who: str, limit: int | None = None) -> list[dict]:
                   (who, limit) if limit is not None else (who,))
 
 
+def outgoing_since(who: str, since: str) -> list[dict]:
+    """One person's calls the OWNER placed, filed at or after `since` (ISO), newest first."""
+    return _query("SELECT row FROM calls WHERE person = ? AND outgoing = 1 AND at >= ? "
+                  "ORDER BY at DESC, id DESC", (who, since or ""))
+
+
 def get(call_id: str) -> dict | None:
     """The row for one call, or None."""
     rows = _query("SELECT row FROM calls WHERE call_id = ? ORDER BY id DESC LIMIT 1", (call_id,))

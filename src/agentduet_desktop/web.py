@@ -695,6 +695,9 @@ def make_app(token: str) -> web.Application:
                 "outgoing": bool(r.get("outgoing")),
                 # When it BEGAN, where recorded — see calls.record. The page orders by it.
                 "started": r.get("started", ""),
+                # WHEN THERE WAS SOMETHING NEW TO READ about a call the owner placed: its
+                # transcript landing. See `_incoming`.
+                "news_at": _transcript_at(r),
             }
 
         # ONE PERSON IN FULL, EVERYONE ELSE COUNTED (2026-10-03). `open` names the person whose
@@ -713,13 +716,17 @@ def make_app(token: str) -> web.Application:
                 people.append({"who": who, "calls": items, "messages": [],
                                "last": items[0]["at"] if items else ""})
         else:
-            for who, s in calls.summary(_seen() or {}).items():
+            marks = _seen() or {}
+            for who, s in calls.summary(marks).items():
                 if who == open_who:
                     items = [_call(r) for r in calls.for_person(who)]
                     people.append({"who": who, "calls": items, "messages": [], "last": s["last"]})
                 else:
+                    mark = marks.get(who, "")
+                    landed = sum(1 for r in calls.outgoing_since(who, mark)
+                                 if _transcript_at(r) > mark)
                     people.append({"who": who, "calls": [], "messages": [], "last": s["last"],
-                                   "call_count": s["calls"], "calls_unread": s["unread"],
+                                   "call_count": s["calls"], "calls_unread": s["unread"] + landed,
                                    "last_in": s["last_in"]})
 
         # MESSAGES, SUGGESTIONS, HELD REPLIES AND SUMMARIES are the AI half's (web_ai). It may
@@ -758,12 +765,28 @@ def make_app(token: str) -> web.Application:
     SEEN = paths.RUN / "seen.json"
 
     def _incoming(p: dict) -> list[str]:
-        """The items that can be NEW to the owner: calls in, and messages from the person.
-        A call the owner placed, or a reply they sent, is not news to them. A person in the list
-        only (not open) brings their newest incoming call as `last_in`, for the first look."""
+        """The items that can be NEW to the owner: calls in, messages from the person, and the
+        transcript of a call the owner placed, when it lands (2026-10-09 — placing the call is not
+        news, but what it said, written down a minute later, is). A reply they sent is not news.
+        A person in the list only (not open) brings their newest incoming call as `last_in`, for
+        the first look."""
         return ([c["at"] for c in p["calls"] if not c.get("outgoing") and c.get("at")]
+                + [c["news_at"] for c in p["calls"] if c.get("outgoing") and c.get("news_at")]
                 + [m["at"] for m in p["messages"] if m.get("them") and m.get("at")]
                 + ([p["last_in"]] if p.get("last_in") else []))
+
+    def _transcript_at(r: dict) -> str:
+        """When an OUTGOING call's transcript landed, "" if it has none. Only the AI half writes
+        transcripts, so in the recorder a call the owner placed is never news."""
+        if not r.get("outgoing") or not edition.ai():
+            return ""
+        from . import carry
+        af, files = carry.call_audio(r.get("recordings", []), r.get("call_id", ""))
+        for n in files:
+            t = (af / n).with_suffix(".txt")
+            if t.is_file() and carry.read_body(t):
+                return datetime.fromtimestamp(t.stat().st_mtime).isoformat(timespec="seconds")
+        return ""
 
     def _seen() -> dict | None:
         try:
@@ -810,6 +833,12 @@ def make_app(token: str) -> web.Application:
             seen = json.loads(SEEN.read_text())
         except (OSError, ValueError):
             seen = {}
+        # AND THE TRANSCRIPTS OF THE CALLS ON SCREEN, which landed after the call was filed: the
+        # page sends the newest call's time, and a transcript of it is later than that.
+        from . import calls
+        for r in calls.outgoing_since(who, seen.get(who, "")):
+            if r.get("at", "") <= at:
+                at = max(at, _transcript_at(r))
         if at > seen.get(who, ""):
             seen[who] = at
             SEEN.parent.mkdir(parents=True, exist_ok=True)
