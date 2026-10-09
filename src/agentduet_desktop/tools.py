@@ -576,16 +576,22 @@ def _caller_label(number: str) -> str:
     return f"{name} ({number})" if name and number else (number or "?")
 
 
-def list_calls(days: str = "7") -> str:
+def list_calls(days: str = "7", who: str = "") -> str:
     """Calls that were carried and recorded — who, when, and whether a transcript exists."""
-    from . import calls as _calls, carry
+    from . import calls as _calls, carry, names
     from datetime import datetime, timedelta
+    # ONE PERSON'S CALLS when asked (2026-10-09): "how many calls came from +6596918851?" read off
+    # a list of sixteen came back as 4, with "×6" in the line above it. Asked for that person
+    # alone, the answer is one line holding the count.
+    only = names.resolve(who) if who else ""
+    if who and not only:
+        return f"No one matches {who!r}. Give their number, or the name the hub shows."
     try:
         cut = datetime.now() - timedelta(days=max(1, int(str(days) or 7)))
     except ValueError:
         cut = datetime.now() - timedelta(days=7)
     folder = carry.recordings()
-    out = []
+    out, per, newest = [], {}, ""
     for r in _calls.since(cut.isoformat(timespec="seconds")):
         at = r.get("at", "")
         try:
@@ -593,12 +599,45 @@ def list_calls(days: str = "7") -> str:
                 continue
         except ValueError:
             pass
-        folder, names = carry.call_audio(r.get("recordings", []), r.get("call_id", ""))
+        if only and _calls.person_of(r) != only:
+            continue
+        folder, files = carry.call_audio(r.get("recordings", []), r.get("call_id", ""))
         # A BODY, not a file: the recorder writes the header before anything is transcribed.
-        done = any(carry.read_body((folder / n).with_suffix(".txt")) for n in names)
-        out.append(f"- {at}  {_caller_label(r.get('caller') or '')}  "
+        done = any(carry.read_body((folder / n).with_suffix(".txt")) for n in files)
+        label = _caller_label(r.get("caller") or "")
+        per[label] = per.get(label, 0) + 1
+        newest = max(newest, r.get("started") or at)
+        out.append(f"- {at}  {label}  "
                    f"({'transcript ready' if done else 'no transcript yet'})")
-    return "\n".join(out) if out else f"No calls recorded in the last {days} days."
+    if not out and only:
+        # AND WHEN THEIR LAST ONE WAS, for the same reason as below: asked "when did they last
+        # call?", the model asks for the 7-day default, and a bare "none" became the answer.
+        prev = (_calls.for_person(only, limit=1) or [{}])[0]
+        when = (prev.get("started") or prev.get("at") or "")[:16].replace("T", " ")
+        return (f"No calls with {_caller_label(only)} in the last {days} days."
+                + (f" Their most recent call was on {when}." if when else " They have never called."))
+    if not out:
+        # SAY WHEN THE LAST ONE WAS. A follow-up ("which of those called most?") is asked again
+        # with the 7-day default whatever period the question before it used — measured, and an
+        # instruction did not change it — and a bare "none" then contradicts the answer above it.
+        last = (_calls.recent(1) or [{}])[0].get("at", "")
+        if last:
+            ago = (datetime.now() - datetime.fromisoformat(last)).days
+            return (f"No calls recorded in the last {days} days. The most recent call was on "
+                    f"{last[:10]}, {ago} days ago — call this again with more days to include it.")
+        return f"No calls recorded in the last {days} days."
+    # THE COUNTS, WORKED OUT HERE (2026-10-09). Asked "how many calls came from +6596918851?",
+    # Gemma counted the lines of its own earlier answer and said 4; the list held 6. A model this
+    # size counts badly however it is told, so it is handed the counts to quote.
+    ranked = sorted(per.items(), key=lambda kv: (-kv[1], kv[0]))
+    head = (f"{len(out)} call{'s' if len(out) != 1 else ''} with {len(per)} "
+            f"{'people' if len(per) != 1 else 'person'} in the last {days} days: "
+            + ", ".join(f"{who} ×{n}" for who, n in ranked))
+    # AND WHEN THEIR LAST CALL WAS, for one person: read off the list, "when did they last
+    # call?" came back a day out (2026-10-01 for 2026-09-30, the next line down being the 1st).
+    if only and newest:
+        head += f". Their most recent call: {newest[:16].replace('T', ' ')}"
+    return head + "\n" + "\n".join(out)
 def read_brief(who: str) -> str:
     """A person's summary: who they are, what is open with them, and the last contact."""
     from . import brief, names
@@ -1136,7 +1175,9 @@ ASSISTANT_SHARED = {
 }
 
 RECORDER_TOOLS = {
-    "list_calls": (list_calls, {"days": "how many days back (default 7)"}),
+    "list_calls": (list_calls, {"days": "how many days back (default 7)",
+                                "who": "only this person's calls — their number or the name the hub "
+                                       "shows; leave empty for everyone"}),
     "list_appointments": (list_appointments, {"days": "how many days back to look (default 30)"}),
     "read_brief": (read_brief, {"who": "the person — their name as the hub shows it, or their number"}),
     "correct_brief": (correct_brief, {

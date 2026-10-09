@@ -7719,7 +7719,7 @@ def test_litert() -> None:
         eq("a tool call comes back structured", got["calls"],
            [{"name": "list_calls", "arguments": {"days": 7, "who": "Siti"}}])
         call = {"role": "assistant", "content": "", "tool_calls": [{"id": "c", "type": "function",
-                "function": {"name": "list_calls", "arguments": {"days": 7}}}]}
+                "function": {"name": "list_calls", "arguments": {"days": "7", "who": "Siti"}}}]}
         res = {"role": "tool", "tool_call_id": "c", "name": "list_calls", "content": "2 calls"}
         chat.ask(eng, [sysm, q1, call, res], tools)
         eq("a tool's result is sent to the SAME conversation, alone", (len(eng.convs), eng.convs[0].sent[-1]["role"]),
@@ -7735,6 +7735,13 @@ def test_litert() -> None:
         chat.ask(eng, [sys2, q2], tools)
         ok("history that changed (trimmed) starts it again, closing the old one",
            len(eng.convs) == 2 and eng.convs[0].closed)
+        # EARLIER TURNS' CALLS come back without arguments; that must not cost a re-read.
+        chat2, eng2 = litert.Chat(), Engine()
+        chat2.ask(eng2, [sysm, q1], tools)
+        bare = {"role": "assistant", "content": "", "tool_calls": [{"id": "c", "type": "function",
+                "function": {"name": "list_calls", "arguments": {}}}]}
+        chat2.ask(eng2, [sysm, q1, bare, res], tools)
+        ok("a call rebuilt without its arguments is still the same call", len(eng2.convs) == 1)
         ok("CHAT.holds names the engine it keeps alive", chat.holds(eng) and not chat.holds(Engine()))
 
     # THE CALL'S SYNTAX: what llm writes for LiteRT's structured call is what the assistant parses.
@@ -7782,6 +7789,53 @@ def test_litert() -> None:
         del sys.modules["litert_lm"]
 
 
+def test_list_calls_counts() -> None:
+    """The model quotes counts the code worked out; it does not count (tools.list_calls)."""
+    print("\n  -- call counts are worked out, not guessed --")
+    import unittest.mock as mock
+    from datetime import datetime, timedelta
+    from agentduet_desktop import assistant, calls as _c, carry, tools
+    now = datetime.now()
+    rows = [{"at": (now - timedelta(hours=h)).isoformat(timespec="seconds"), "caller": who,
+             "call_id": f"c{h}", "recordings": []}
+            for h, who in enumerate(["+6591111111"] * 3 + ["+6592222222"] * 2 + ["+6593333333"])]
+    with mock.patch.object(_c, "since", lambda cut: rows), \
+         mock.patch.object(carry, "call_audio", lambda r, c: (pathlib.Path("/nonexistent"), [])), \
+         mock.patch.object(tools, "_caller_label", lambda x: x):
+        out = tools.list_calls("7")
+    eq("the first line holds the counts, most calls first", out.splitlines()[0],
+       "6 calls with 3 people in the last 7 days: +6591111111 ×3, +6592222222 ×2, +6593333333 ×1")
+    eq("and every call is still listed under it", len(out.splitlines()), 7)
+    with mock.patch.object(_c, "since", lambda cut: rows), \
+         mock.patch.object(carry, "call_audio", lambda r, c: (pathlib.Path("/nonexistent"), [])), \
+         mock.patch.object(tools, "_caller_label", lambda x: x):
+        one = tools.list_calls("7", "+6592222222")
+    with mock.patch.object(_c, "since", lambda cut: []), \
+         mock.patch.object(_c, "for_person", lambda who, limit=None: [{"at": "2026-09-30T15:06:55",
+                                                                       "started": "2026-09-30T15:05:10"}]), \
+         mock.patch.object(tools, "_caller_label", lambda x: x):
+        eq("none in the period still says when their last call was", tools.list_calls("7", "+6592222222"),
+           "No calls with +6592222222 in the last 7 days. Their most recent call was on 2026-09-30 15:05.")
+    ok("asked about one person, it counts theirs and says when their last call was",
+       one.splitlines()[0].startswith("2 calls with 1 person in the last 7 days: +6592222222 ×2. "
+                                      "Their most recent call: " + rows[3]["at"][:16].replace("T", " ")),
+       one.splitlines()[0])
+    ok("the assistant is told to quote counts, never to count an earlier answer",
+       "never count from an earlier answer" in assistant._NATIVE_PROTOCOL)
+    # A FOLLOW-UP KEEPS THE PERIOD: the model asks for the default; code keeps the conversation's.
+    oc = assistant.OwnerChat.__new__(assistant.OwnerChat)
+    eq("the first question's period is used as asked",
+       oc._keep_period("list_calls", {"days": "14"}, "Who called me in the last two weeks?"), ({"days": "14"}, ""))
+    args, note = oc._keep_period("list_calls", {"days": "7"}, "Which number called most often?")
+    ok("a follow-up asking the default runs for the conversation's period, and the result says so",
+       args == {"days": "14"} and "last 14 days" in note)
+    eq("so does one with a phone number in it, which is no period",
+       oc._keep_period("list_calls", {}, "How many calls came from +6596918851?")[0], {"days": "14"})
+    eq("an owner who names a period gets it",
+       oc._keep_period("list_calls", {"days": "7"}, "And in the last 7 days?"), ({"days": "7"}, ""))
+    eq("other tools are untouched", oc._keep_period("read_brief", {"who": "x"}, "who?"), ({"who": "x"}, ""))
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -7806,6 +7860,7 @@ def main() -> None:
     test_search()
     test_search_in_litert()
     test_litert()
+    test_list_calls_counts()
     test_assistant_memory()
     test_budget_split()
     test_unread_badge()

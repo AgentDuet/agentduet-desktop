@@ -158,8 +158,10 @@ def _key(m: dict) -> tuple:
       question by the question (the inbox and screen context joined to it is rebuilt every
       turn). The conversation keeps what it read then; matching by the whole text would re-read
       everything, cold, on every question (3,243 tokens: 5.2 s).
-    - A tool call by its NAME: its arguments are re-parsed by the assistant, and a different
-      spelling of the same call is the same call.
+    - A tool call by its NAME: the assistant rebuilds earlier turns' calls without their
+      arguments, so comparing arguments would read the whole conversation again every turn.
+      (Where code runs a call with other arguments than the model wrote, it says so in the
+      result instead — assistant._keep_period.)
     - The model's own reply by its role: the conversation holds what it wrote; a note the
       assistant appended for the owner is not worth a cold re-read.
     """

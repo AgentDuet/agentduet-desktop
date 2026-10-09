@@ -432,7 +432,8 @@ After you see the result, either call another tool or answer in plain text.
 To answer directly, just write the answer — no JSON."""
 _NATIVE_PROTOCOL = """You have tools, declared to you. Call one whenever the answer is in the record,
 then answer from what it returned. Never say you checked, searched or looked unless you called a
-tool this turn — call it instead of saying so."""
+tool this turn — call it instead of saying so. For any count — how many calls, who called most —
+call the tool and quote the counts it gives; never count from an earlier answer."""
 
 #: Python annotation -> the type word a tool declaration carries.
 _SCHEMA_TYPES = {int: "integer", float: "number", bool: "boolean", str: "string"}
@@ -873,6 +874,7 @@ class OwnerChat:
         self._persist()
         self.history = []
         self.tainted = False
+        self._periods = {}                       # a new conversation starts from the defaults
 
     def _trim(self, lines: list[str]) -> list[str]:
         """The newest lines that fit KEEP and HISTORY_WORDS. The last line is always kept.
@@ -1034,6 +1036,39 @@ class OwnerChat:
     def _stable(self) -> str:
         """The start every prompt shares until the history changes: what `_prewarm` reads."""
         return self._head() + "\n\n" + "\n".join(self.history)
+
+    #: Tools that look back over a period, and the default a model falls back to.
+    PERIOD_TOOLS = {"list_calls": "7", "list_appointments": "30"}
+    #: The owner naming a period. A bare number is not one: "+6596918851" is a phone number.
+    _PERIOD = re.compile(r"\b(\d+\s*)?(day|days|week|weeks|fortnight|month|months|year|years|"
+                         r"today|yesterday|tonight|tomorrow)\b", re.I)
+
+    def _keep_period(self, name: str, args, message: str):
+        """A follow-up keeps the period the conversation was using (2026-10-09).
+
+        Asked "who called me in the last two weeks?" and then "which number called most often?",
+        Gemma called list_calls(days=14) and then list_calls(days=7) — the default — and answered
+        "no calls in the last 7 days" under an answer listing sixteen. An instruction to keep the
+        period changed nothing, so code keeps it: when the model asks for the default and the
+        owner's question names no period, the last one used in this conversation stands.
+
+        Returns (arguments to run with, a note for the result). The model's own call is left as
+        it wrote it and the RESULT says which period it covers: rewriting the call instead made
+        the kept conversation read everything again (litert.Chat), 20 s a follow-up.
+        """
+        default = self.PERIOD_TOOLS.get(name)
+        if default is None or not isinstance(args, dict):
+            return args, ""
+        periods = self.__dict__.setdefault("_periods", {})
+        asked = str(args.get("days", "")).strip()
+        note = ""
+        if (not asked or asked == default) and periods.get(name) and not self._PERIOD.search(message):
+            args = dict(args, days=periods[name])
+            note = (f"(Run for the last {periods[name]} days — the period this conversation is "
+                    f"about. Answer for that period.)\n")
+        if args.get("days"):
+            periods[name] = str(args["days"])
+        return args, note
 
     def _native(self) -> bool:
         """Real messages and declared tools for this model, rather than one flattened prompt.
@@ -1373,7 +1408,10 @@ class OwnerChat:
             # Every call in the reply, in the order given. One-at-a-time silently discarded
             # the rest of a batched reply.
             for name, args in action:
+                # THE CALL AS THE MODEL WROTE IT is what its conversation shows; it runs with the
+                # conversation's period, and the result says so (`_keep_period`).
                 self._call_args.append((name, args))
+                args, period_note = self._keep_period(name, args, message)
                 entry = self.registry.get(name)
                 if not entry:
                     history.append(f"TOOL_RESULT: no such tool '{name}'")
@@ -1448,7 +1486,7 @@ class OwnerChat:
                     self._draft_for = str(args["asker"])
                 used.append(name)
                 history.append(f"ASSISTANT: called {name}")
-                history.append(f"TOOL_RESULT: {result}")
+                history.append(f"TOOL_RESULT: {period_note}{result}")
             if repeats >= 2:
                 break               # asking the same thing twice more will not answer it
             continue
