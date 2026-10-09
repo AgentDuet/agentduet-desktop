@@ -7804,7 +7804,8 @@ def test_list_calls_counts() -> None:
          mock.patch.object(tools, "_caller_label", lambda x: x):
         out = tools.list_calls("7")
     eq("the first line holds the counts, most calls first", out.splitlines()[0],
-       "6 calls with 3 people in the last 7 days: +6591111111 ×3, +6592222222 ×2, +6593333333 ×1")
+       "Calls TO the owner in the last 7 days: 6 — +6591111111 ×3, +6592222222 ×2, +6593333333 ×1. "
+       "Calls the owner PLACED: 0.")
     eq("and every call is still listed under it", len(out.splitlines()), 7)
     with mock.patch.object(_c, "since", lambda cut: rows), \
          mock.patch.object(carry, "call_audio", lambda r, c: (pathlib.Path("/nonexistent"), [])), \
@@ -7817,9 +7818,17 @@ def test_list_calls_counts() -> None:
         eq("none in the period still says when their last call was", tools.list_calls("7", "+6592222222"),
            "No calls with +6592222222 in the last 7 days. Their most recent call was on 2026-09-30 15:05.")
     ok("asked about one person, it counts theirs and says when their last call was",
-       one.splitlines()[0].startswith("2 calls with 1 person in the last 7 days: +6592222222 ×2. "
+       one.splitlines()[0].startswith("Calls TO the owner in the last 7 days: 2 — +6592222222 ×2. Calls the owner PLACED: 0. "
                                       "Their most recent call: " + rows[3]["at"][:16].replace("T", " ")),
        one.splitlines()[0])
+    eq("each line says which way the call went", out.splitlines()[1].split("  ")[1], "+6591111111 called the owner")
+    eq("the label a tool printed is read back as its number",
+       [tools._who_number(x) for x in ("Pauline (+6598768643)", "+6598768643", "Pauline", "")],
+       ["+6598768643", "+6598768643", "Pauline", ""])
+    src = (pathlib.Path(__file__).parent.parent / "src/agentduet_desktop/tools.py").read_text()
+    ok("every person lookup in the tools reads the label back",
+       src.count("names.resolve(_who_number(who))") == 4 and "people.add_note(_who_number(who)" in src
+       and "names.resolve(who)" not in src)
     ok("the assistant is told to quote counts, never to count an earlier answer",
        "never count from an earlier answer" in assistant._NATIVE_PROTOCOL)
     # A FOLLOW-UP KEEPS THE PERIOD: the model asks for the default; code keeps the conversation's.
@@ -7858,6 +7867,10 @@ def test_placed_call_news() -> None:
     ok("the list counts it too, for people not open", "if _transcript_at(r) > mark)" in src)
     ok("opening the person clears it: the mark extends over the transcripts on screen",
        "at = max(at, _transcript_at(r))" in src)
+    ok("only transcripts landing after the rule began count, so old ones do not light up",
+       "return at if at > _news_since() else" in src)
+    ok("and a new install's first look still marks everyone seen",
+       'seen[_NEWS_SINCE] = datetime.now()' in src and "if seen is None:" in src)
     ok("only where transcripts exist (never in the recorder)",
        'if not r.get("outgoing") or not edition.ai():' in src)
 
