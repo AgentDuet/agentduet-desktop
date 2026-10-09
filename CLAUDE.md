@@ -786,6 +786,13 @@ derived from no longer exists, it is the only place that says so.
       **Gemma 4 E4B's own audio input was measured the same day and is far worse** — English read
       as Dutch and Japanese, its prompt echoed back as the transcript, "lunch at twelve PM" as "late,
       10 pm", Mandarin lost, and twice Qwen's time. Two models is the price; it is worth paying.
+      **Re-measured 2026-10-09, same verdict**, on 9 call sides with three prompts: Google's own ASR
+      prompt ("Transcribe … in English into English text" + its format rules), our mixed-language
+      hint, and none. 2.3x Qwen's time. Worse on English ("Sandy Leong", "567" for 5678, "Chapiem" for
+      "four PM"), and every prompt switched language mid-call on unclear audio — German with
+      English pinned; Korean, Hindi and Arabic with no hint. Our hint fixed one name and then came
+      back verbatim as the transcript of a silent piece. Its one edge: English words inside
+      Mandarin ("bot", "transcribe" where Qwen wrote 报, 传出来), in traditional characters.
       **Unproven:** the frozen `.app` (only source-run so far); long-call memory with Gemma also
       resident (~2.5 + ~5.6 GB); the repeated "You have failed" at the end of the 222 s call, which
       may be a real repetition or a model loop; and the Thai call, which nobody here can read.
