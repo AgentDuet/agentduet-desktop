@@ -185,6 +185,13 @@ def _status_ai_head() -> None:
             import llama_cpp                                       # noqa: F401
         except Exception as exc:                                   # the ctypes load failed
             _ok, _why = False, f"engine present but its library did not load: {exc}"
+        # LITERT, which runs the Gemma E-models (litert.py) — its library is loaded on first use,
+        # so it is loaded here, for the same reason.
+        try:
+            from litert_lm import _ffi as _lrt
+            _lrt._get_lib()
+        except Exception as exc:
+            _ok, _why = False, f"LiteRT present but its library did not load: {exc}"
     _here = sum(1 for _m in _models.CATALOGUE if _models.is_downloaded(_m))
     print(f"  engine   : {'available' if _ok else 'NOT available — ' + _why}")
     if _ok:

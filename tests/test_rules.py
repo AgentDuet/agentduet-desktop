@@ -5474,17 +5474,25 @@ def test_the_catalogue_carries_gemma_4_and_says_what_was_measured() -> None:
         e = models.CATALOGUE.get(key) or {}
         ok(f"{key} is in the catalogue", bool(e))
         ok(f"and its URL is built from its repo and file on huggingface.co",
-           e.get("url") == f"https://huggingface.co/{e.get('repo')}/resolve/main/{e.get('filename')}")
+           e.get("url") == f"https://huggingface.co/{e.get('repo')}/resolve/"
+                           f"{e.get('revision', 'main')}/{e.get('filename')}")
     # FROM THE VENDOR. Google publishes Gemma 4's files itself; a repack would lose the QAT
     # training and put a third party between the owner and the weights.
+    # litert-community is Google AI Edge's own account for LiteRT builds, Gemma's included.
     ok("every Gemma 4 file comes from Google's own repos",
-       all(models.CATALOGUE[k]["repo"].startswith("google/") for k in ladder))
+       all(models.CATALOGUE[k]["repo"].startswith(("google/", "litert-community/")) for k in ladder))
+    ok("the LiteRT E-models are pinned to a commit and a size",
+       all(models.CATALOGUE[k].get("revision") and models.CATALOGUE[k].get("size")
+           for k in ladder if models.engine_of(k) == "litert"))
 
     # TWO FIGURES, NEVER CONFUSED. ram_mb is the estimate on every entry — all 21 old ones were
     # exactly download x 1.30 while three comments called them measured — and `measured` is what
     # bench-models.py actually saw. A timed entry must not overwrite its estimate.
+    # EXCEPT LITERT'S: it keeps part of the file on disk, so download x 1.30 says nothing about
+    # what it holds in memory; those carry a figure from measurement (litert.py).
     ok("every ram_mb is still the derived estimate",
-       all(e["ram_mb"] == int(e["dl_mb"] * machine.WORKING_SET) for e in models.CATALOGUE.values()))
+       all(e["ram_mb"] == int(e["dl_mb"] * machine.WORKING_SET) for e in models.CATALOGUE.values()
+           if e.get("engine") != "litert"))
     timed = {k: e["measured"] for k, e in models.CATALOGUE.items() if "measured" in e}
     ok("the three timed entries carry a measurement",
        {"gemma-4-e4b", "gemma-4-12b", "qwen3.5-9b"} <= set(timed), str(sorted(timed)))
@@ -5495,14 +5503,14 @@ def test_the_catalogue_carries_gemma_4_and_says_what_was_measured() -> None:
        all("measured" not in models.CATALOGUE[k] for k in ("gemma-4-26b-a4b", "gemma-4-31b")))
 
     # THE MEASURED FIGURE IS THE ONE THAT DECIDES FIT.
-    eq("resident_mb prefers the measurement", models.resident_mb("gemma-4-e4b"), 5683)
+    eq("resident_mb prefers the measurement", models.resident_mb("gemma-4-e4b"), 1960)
     eq("and falls back to the estimate", models.resident_mb("gemma-4-31b"),
        models.CATALOGUE["gemma-4-31b"]["ram_mb"])
     seen = []
     with mock.patch.object(machine, "verdict", lambda gb: seen.append(gb) or ("fits", "")):
         models.can_run("gemma-4-e4b")
     ok("can_run sizes a timed model by what it measured",
-       seen and abs(seen[0] - 5683 / 1024 / machine.WORKING_SET) < 1e-6, str(seen))
+       seen and abs(seen[0] - 1960 / 1024 / machine.WORKING_SET) < 1e-6, str(seen))
     src = (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "models.py").read_text()
     ok("no comment still calls the derived figure measured",
        "ram_mb is measured" not in src and "MEASURED resident size" not in src)
@@ -5572,11 +5580,16 @@ def test_the_machine_picks_the_model() -> None:
     with box(16, 20, kind="cpu", offload=False) as p:
         eq("when nothing is fast enough, the quickest that fits", p["model"], "gemma-4-e2b")
         ok("and it says so", "none answers as fast" in p["why"], p["why"])
+    # 8 GB GETS E4B since LiteRT (2026-10-09): ~2 GB where llama.cpp's GGUF was 5.7 GB. It used to
+    # get E2B, tight — which is the machine the move was for.
     with box(8, 68) as p:
-        eq("8 GB gets the smallest, tight", p["model"], "gemma-4-e2b")
+        eq("8 GB gets E4B, now it runs in LiteRT", p["model"], "gemma-4-e4b")
+        ok("and it fits comfortably", p["fit"] == "fits", p["why"])
+    with box(3, 50) as p:
+        eq("3 GB gets the smallest, tight", p["model"], "gemma-4-e2b")
         ok("and says it will be tight", p["fit"] == "tight" and "tight" in p["why"], p["why"])
-    with box(4, 50) as p:
-        eq("4 GB gets no local model", p["model"], "")
+    with box(2, 50) as p:
+        eq("2 GB gets no local model", p["model"], "")
         ok("and a reason rather than an error", "not have enough memory" in p["why"], p["why"])
 
     # UNKNOWNS NEVER DEMOTE AND NEVER RAISE.
@@ -5721,7 +5734,7 @@ def test_the_pages_offer_the_pick_not_a_picker() -> None:
         pk = web_ai._pick_payload()
     eq("it names the model, its size, and whether it is here",
        (pk["model"], pk["name"], pk["dl_mb"], pk["downloaded"]),
-       ("gemma-4-e4b", "Gemma 4 E4B", 4916, False))
+       ("gemma-4-e4b", "Gemma 4 E4B", 3490, False))
 
     # NO PICKER ON THE PAGE (2026-09-24). The catalogue and the hosted cards are gone from
     # Settings; the model is the machine's pick, overridden by name in a developer dialog at the
@@ -7259,7 +7272,7 @@ def test_small_mac() -> None:
         ok("a load refused room returns no engine and says why", eng is None and "speech" in msg)
     llm_src = (_p.Path(llm.__file__)).read_text()
     ok("every generation holds the model, a stream and a pick included (models.using)",
-       llm_src.count("with models.using():") == 3)
+       llm_src.count("with models.using():") == 6)     # llama.cpp's three, and LiteRT's three
 
     print("\n  -- a transcript lost to memory is tried again --")
     home = _p.Path(_t.mkdtemp())
@@ -7711,6 +7724,116 @@ def test_llama_server() -> None:
        'if [ -f "$_llama" ] && [ "$EDITION" != "recorder" ]' in (root / "packaging/make-macos-app.sh").read_text())
 
 
+def test_litert() -> None:
+    """Gemma's E-models in LiteRT: a kept conversation, its own picker, closed on unload (litert.py)."""
+    print("\n  -- Gemma in LiteRT --")
+    from agentduet_desktop import assistant, edition, litert, llm, models
+
+    class Conv:
+        def __init__(self, seed, system):
+            self.seed, self.system, self.sent, self.closed = seed, system, [], False
+        def send_message_async(self, msg, **kw):
+            self.sent.append(msg)
+            if len(self.sent) == 1 and msg.get("role") == "user" and "calls" in str(msg.get("content")):
+                yield {"role": "assistant", "tool_calls": [{"type": "function", "function": {
+                    "name": "list_calls", "arguments": {"days": 7, "who": "Siti"}}}]}
+            else:
+                yield {"role": "assistant", "content": [{"type": "text", "text": "Two calls."}]}
+        def cancel_process(self):
+            pass
+        def close(self):
+            self.closed = True
+
+    class Engine:
+        def __init__(self):
+            self.convs = []
+        def create_conversation(self, messages=None, system_message=None, **kw):
+            c = Conv(messages, system_message)
+            self.convs.append(c)
+            return c
+
+    import sys, types
+    fake = types.ModuleType("litert_lm")
+    class _Tool:
+        pass
+    fake.interfaces = types.SimpleNamespace(Tool=_Tool)
+    fake.SamplerConfig = lambda **kw: kw
+    fake.RepetitionPenaltyConfig = lambda **kw: kw
+    sys.modules.setdefault("litert_lm", fake)
+    real = sys.modules["litert_lm"] is not fake
+
+    eng, chat = Engine(), litert.Chat()
+    tools = [{"type": "function", "function": {"name": "list_calls", "parameters": {}}}]
+    sysm = {"role": "system", "content": "Instructions.\n\nMemory v1", "key": "Instructions."}
+    q1 = {"role": "user", "content": "Inbox: 2 new.\n\nWho calls?", "key": "Who calls?"}
+    if not real:
+        got = chat.ask(eng, [sysm, q1], tools)
+        eq("a tool call comes back structured", got["calls"],
+           [{"name": "list_calls", "arguments": {"days": 7, "who": "Siti"}}])
+        call = {"role": "assistant", "content": "", "tool_calls": [{"id": "c", "type": "function",
+                "function": {"name": "list_calls", "arguments": {"days": 7}}}]}
+        res = {"role": "tool", "tool_call_id": "c", "name": "list_calls", "content": "2 calls"}
+        chat.ask(eng, [sysm, q1, call, res], tools)
+        eq("a tool's result is sent to the SAME conversation, alone", (len(eng.convs), eng.convs[0].sent[-1]["role"]),
+           (1, "tool"))
+        # THE NEXT TURN: memory re-folded, the old question without its context, a new one with it.
+        sys2 = dict(sysm, content="Instructions.\n\nMemory v2")
+        q1b = {"role": "user", "content": "Who calls?"}
+        ans = {"role": "assistant", "content": "Two calls. [a note the app added]"}
+        q2 = {"role": "user", "content": "Inbox: 3 new.\n\nAnd Siti?", "key": "And Siti?"}
+        chat.ask(eng, [sys2, q1b, call, res, ans, q2], tools)
+        ok("the next turn reuses it though memory, context and a note changed",
+           len(eng.convs) == 1 and eng.convs[0].sent[-1]["content"].endswith("And Siti?"))
+        chat.ask(eng, [sys2, q2], tools)
+        ok("history that changed (trimmed) starts it again, closing the old one",
+           len(eng.convs) == 2 and eng.convs[0].closed)
+        ok("CHAT.holds names the engine it keeps alive", chat.holds(eng) and not chat.holds(Engine()))
+
+    # THE CALL'S SYNTAX: what llm writes for LiteRT's structured call is what the assistant parses.
+    text = f"<|tool_call>call:list_calls{{{llm._gemma_args({'days': 7, 'who': 'Siti Tan'})}}}<tool_call|>"
+    with __import__("unittest.mock").mock.patch.object(assistant, "assistant_tools",
+                                                        lambda: {"list_calls": None}):
+        eq("a LiteRT tool call reads back through the assistant's own parser",
+           assistant._native_calls(text), [("list_calls", {"days": 7, "who": "Siti Tan"})])
+
+    # THE PICKER: an answer counts only when reversing the options does not change it.
+    class PickEngine:
+        def __init__(self, answers):
+            self.answers = list(answers)
+        def create_session(self, **kw):
+            e = self
+            class S:
+                def run_prefill(self, p):
+                    self.p = p[0]
+                def run_decode(self):
+                    return types.SimpleNamespace(texts=[e.answers.pop(0)])
+                def close(self):
+                    pass
+            return S()
+    names = ["English", "Malay", "Thai"]
+    eq("the same language from both orders is the answer", litert.pick(PickEngine(["2", "2"]), "?", names), "Malay")
+    eq("a different one from each order is no answer", litert.pick(PickEngine(["2", "1"]), "?", names), "")
+    eq("nor is a reply that is not an option", litert.pick(PickEngine(["x"]), "?", names), "")
+
+    src = (pathlib.Path(__file__).parent.parent / "src/agentduet_desktop/litert.py").read_text()
+    ok("the repetition penalty looks back 64 tokens, as llama.cpp's, not over the whole prompt",
+       "window_size=64" in src)
+    ok("tools run in the assistant's loop, never inside LiteRT", "automatic_tool_calling=False" in src)
+    ok("activations in float32: float16 garbled numbers past ~3,000 tokens",
+       "activation_data_type=lm.ActivationDataType.FLOAT32" in src)
+    msrc = (pathlib.Path(__file__).parent.parent / "src/agentduet_desktop/models.py").read_text()
+    ok("unloading Gemma closes the assistant's conversation, which keeps the engine alive",
+       "litert.CHAT.holds(eng)" in msrc and "litert.CHAT.close()" in msrc)
+    ok("a download is checked against its pinned size", 'spec.get("size")' in msrc)
+    ok("the GGUF it replaces is deleted once the LiteRT file is here", 'spec.get("replaces")' in msrc)
+    ok("the recorder leaves LiteRT out", "litert_lm" in edition.AI_LIBRARIES and "litert" in edition.AI_MODULES)
+    spec = (pathlib.Path(__file__).parent.parent / "packaging/agentduet-desktop.spec").read_text()
+    ok("the build carries LiteRT's library where it looks for it", '(str(_l), "litert_lm")' in spec)
+    ok("and the lock pins it", "litert-lm-api==" in (pathlib.Path(__file__).parent.parent / "requirements.txt").read_text())
+    if not real:
+        del sys.modules["litert_lm"]
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -7734,6 +7857,7 @@ def main() -> None:
     test_export_with_a_call()
     test_search()
     test_llama_server()
+    test_litert()
     test_assistant_memory()
     test_budget_split()
     test_unread_badge()

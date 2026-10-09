@@ -151,6 +151,10 @@ _saved_for = 0              # id() of the engine it was saved from
 def before(engine, prio: int) -> None:
     """Called with the model held, before a job uses it: keep the assistant's memory."""
     global _owner, _saved, _saved_for
+    # NOTHING TO KEEP for an engine without state saving (LiteRT): there the assistant's
+    # conversation is its own and a background job never touches it (litert.Chat).
+    if not hasattr(engine, "save_state"):
+        return
     try:
         if prio in _ASSISTANT:
             if _owner == "background" and _saved is not None and _saved_for == id(engine):

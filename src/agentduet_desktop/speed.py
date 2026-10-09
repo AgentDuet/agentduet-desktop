@@ -65,6 +65,8 @@ def measure(model: str) -> dict:
     ticket = gate.acquire(gate.PREWARM)
     try:
         gate.before(engine, gate.FOLD)            # keeps the assistant's state, like any job
+        if models.engine_of(model) == "litert":
+            return _measure_litert(model, engine, ticket)
         for _ in engine.generate(engine.tokenize(b"Hello there."), temp=0.0):
             break                                 # warm the kernels
         filler = uuid.uuid4().hex + " " + " ".join(f"note{i} about item {i}." for i in range(900))
@@ -91,6 +93,45 @@ def measure(model: str) -> dict:
         return rec
     finally:
         gate.release(ticket)
+
+
+def _measure_litert(model: str, engine, ticket) -> dict:
+    """The same two numbers through LiteRT (litert.py): its own session, closed afterwards."""
+    from . import litert
+    # CUT BY CHARACTERS, then counted: LiteRT refuses to detokenize a slice of tokens.
+    filler = uuid.uuid4().hex + " " + " ".join(f"note{i} about item {i}." for i in range(900))
+    prompt = filler
+    while len(engine.tokenize(prompt)) > PROMPT_TOKENS:
+        prompt = prompt[: int(len(prompt) * 0.9)]
+    n_read = len(engine.tokenize(prompt))
+    s = engine.create_session(apply_prompt_template=False, max_output_tokens=WRITE_TOKENS + 1,
+                              sampler_config=litert._sampler(False))
+    try:
+        # THE READ IS TIMED TO THE FIRST WORD WRITTEN, as the llama.cpp path does: LiteRT reads
+        # a prompt lazily, inside the first decode, so timing `run_prefill` alone measured
+        # nothing (it reported 40,000 tokens/s).
+        t0, first = time.time(), None
+        s.run_prefill([prompt])
+        written = []
+        for r in s.run_decode_async():
+            if ticket.cancel.is_set():
+                s.cancel_process()
+                request(model)
+                return {}
+            first = first or time.time()
+            written += r.texts
+        t1 = time.time()
+        n = len(engine.tokenize("".join(written)))
+    finally:
+        s.close()
+    first = first or t1
+    rec = {"read_tps": round(n_read / max(first - t0, 1e-6)),
+           "write_tps": round(max(n, 1) / max(t1 - first, 1e-6), 1),
+           "measured": datetime.now().isoformat(timespec="seconds")}
+    _save(model, rec)
+    logger.info("%s on this machine: reads %d tokens/s, writes %.1f tokens/s",
+                model, rec["read_tps"], rec["write_tps"])
+    return rec
 
 
 def request(model: str) -> None:

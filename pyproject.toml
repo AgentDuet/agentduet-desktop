@@ -56,6 +56,9 @@ ui = ["pywebview>=5.0"]
 # PyInstaller spec BY HAND — `--collect-all` fails silently for exactly this shape, as wasmtime
 # already taught us: the build succeeds and the binary dies at first use.
 local = ["llama-cpp-python>=0.3",
+         # GOOGLE'S LiteRT-LM, which runs the Gemma E-models (litert.py): the runtime alone —
+         # `litert-lm` would add its command-line tool and four packages for it.
+         "litert-lm-api>=0.18",
          # THE DECISION MODEL (decider.py): ONNX Runtime on the CPU, and the tokenizer it reads
          # the prompt with. Here rather than its own extra because it serves the same feature —
          # the summaries a local model writes. ~90 MB installed.

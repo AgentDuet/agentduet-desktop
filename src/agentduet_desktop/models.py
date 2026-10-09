@@ -44,6 +44,7 @@ import logging
 import os
 import pathlib
 import re
+import sys
 import threading
 import time
 import urllib.parse
@@ -217,30 +218,43 @@ CATALOGUE = {
     # `measured` is what docs/bench-models.py recorded on a real machine, and it never replaces
     # `ram_mb`, which stays the derived estimate every entry carries — so a timed figure and an
     # arithmetic one cannot be mistaken for each other. Absent means NOT TIMED, not slow.
+    # THE E-MODELS RUN IN LITERT, NOT llama.cpp (2026-10-09, litert.py): the same Gemma 4 weights
+    # in Google's own format, which keeps the per-layer embedding tables on disk. E4B on the M5:
+    # 41 tok/s against 20 and a fraction of the memory. `replaces` is the GGUF an earlier build
+    # downloaded, deleted once this one is here.
     "gemma-4-e2b": dict(
-        name="Gemma 4 E2B", brand="GOOGLE", params="E2B",
-        dl_mb=3194, ram_mb=4152,
-        # DERIVED FROM THE MEASUREMENT: 102.5 GB/s / 62.9 tok/s. The estimate before it — E4B's
-        # 0.64 share applied to this file — said 2,054 and predicted 51.1 tok/s: 19% slow, the
-        # safe direction, and it changed no pick. E2B reads about half its file per token.
+        name="Gemma 4 E2B", brand="GOOGLE", params="E2B", engine="litert",
+        # RAM SCALED FROM E4B's measurement by Google's own ratio of the two (1,623 to 3,217 MB on
+        # an M4 Max), with room — not measured here. active_mb is the llama.cpp figure, kept only
+        # to rank.
+        # cache_mb: the GPU form LiteRT builds on first load, scaled from E4B's (an estimate).
+        dl_mb=2468, ram_mb=1400, cache_mb=1500,
         active_mb=1669,
-        measured=dict(ram_mb=3574, decode_tps=62.9, prefill_tps=762.9,
-                      on="Apple M5, 16 GB, under ordinary use", date="2026-09-24"),
-        repo="google/gemma-4-E2B-it-qat-q4_0-gguf",
-        filename="gemma-4-E2B_q4_0-it.gguf",
-        url="https://huggingface.co/google/gemma-4-E2B-it-qat-q4_0-gguf/resolve/main/gemma-4-E2B_q4_0-it.gguf",
+        repo="litert-community/gemma-4-E2B-it-litert-lm",
+        revision="b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1",
+        filename="gemma-4-E2B-it.litertlm", size=2588147712,
+        url="https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/"
+            "b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1/gemma-4-E2B-it.litertlm",
+        replaces="gemma-4-E2B_q4_0-it.gguf",
         what="The smallest Gemma 4, for a machine with little memory to spare."),
     "gemma-4-e4b": dict(
-        name="Gemma 4 E4B", brand="GOOGLE", params="E4B",
-        dl_mb=4916, ram_mb=6390,
-        repo="google/gemma-4-E4B-it-qat-q4_0-gguf",
-        filename="gemma-4-E4B_q4_0-it.gguf",
-        url="https://huggingface.co/google/gemma-4-E4B-it-qat-q4_0-gguf/resolve/main/gemma-4-E4B_q4_0-it.gguf",
-        # "Effective 4B": ~3.1 GB of this 4.8 GB file is read per token, the rest stays off the hot
-        # path — which is why it outran every dense model its size. active_mb is DERIVED FROM THE
-        # MEASUREMENT: 101.6 GB/s effective / 32.9 tok/s.
+        name="Gemma 4 E4B", brand="GOOGLE", params="E4B", engine="litert",
+        # cache_mb: the GPU form LiteRT builds on first load, measured 2.1 GB on the M5.
+        dl_mb=3490, ram_mb=2200, cache_mb=2150,
         active_mb=3162,
-        measured=dict(ram_mb=5683, decode_tps=32.9, prefill_tps=387.8, on="Apple M5, 16 GB, under ordinary use", date="2026-09-23"),
+        # MEASURED 2026-10-09 on the M5 through LiteRT, warm, a 1,081-token prompt of five real
+        # calls: 41.4 tok/s, first token 1.7 s. MEMORY MEASURED SYSTEM-WIDE (active + wired +
+        # compressed, before and after), because the process's own footprint misses GPU memory:
+        # +0.4 GB loaded, +1.8 GB writing a summary, +2.0 GB with the assistant's conversation
+        # kept as well. llama.cpp's GGUF of the same model was 5.7 GB.
+        measured=dict(ram_mb=1960, decode_tps=41.4, prefill_tps=640.0,
+                      on="Apple M5, 16 GB, under ordinary use", date="2026-10-09"),
+        repo="litert-community/gemma-4-E4B-it-litert-lm",
+        revision="2eee7ac325f20eb8c9ac1d0e972f7c84663062da",
+        filename="gemma-4-E4B-it.litertlm", size=3659530240,
+        url="https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/"
+            "2eee7ac325f20eb8c9ac1d0e972f7c84663062da/gemma-4-E4B-it.litertlm",
+        replaces="gemma-4-E4B_q4_0-it.gguf",
         what="Gemma 4 for most laptops. The fastest of everything tested on a 16 GB Mac, and "
              "it handles Vietnamese almost as cheaply as English."),
     "gemma-4-12b": dict(
@@ -317,8 +331,12 @@ def path_of(model: str) -> pathlib.Path | None:
 
 
 def is_downloaded(model: str) -> bool:
+    """On disk and whole: the exact size, where the catalogue pins one."""
     p = path_of(model)
-    return bool(p and p.is_file() and p.stat().st_size > 0)
+    if not (p and p.is_file() and p.stat().st_size > 0):
+        return False
+    size = (spec_of(model) or {}).get("size")
+    return not size or p.stat().st_size == size
 
 
 def disk_free_mb() -> int:
@@ -348,7 +366,8 @@ def can_download(model: str) -> tuple[bool, str]:
     free = disk_free_mb()
     if not free:
         return True, ""                      # unknown: do not invent an obstacle
-    need = int(spec["dl_mb"] * DISK_HEADROOM)
+    # AND WHAT ITS FIRST LOAD WRITES: LiteRT builds a GPU form of the weights beside the file.
+    need = int((spec["dl_mb"] + spec.get("cache_mb", 0)) * DISK_HEADROOM)
     if free < need:
         return False, f"needs about {need / 1024:.1f} GB free, and {free / 1024:.1f} GB is left"
     return True, ""
@@ -826,8 +845,17 @@ def download(model: str) -> str:
                     out.write(chunk)
                     got += len(chunk)
                     _note(done_mb=int(got / 1024 / 1024))
+        if spec.get("size") and target.with_suffix(target.suffix + ".part").stat().st_size != spec["size"]:
+            raise OSError(f"the file is {part.stat().st_size} bytes, not {spec['size']}")
         part.replace(target)
         logger.info("downloaded %s (%.1f GB)", model, target.stat().st_size / 1024**3)
+        # THE FILE IT REPLACES goes now that this one is here: an earlier build's GGUF of the
+        # same model, gigabytes nothing will read again.
+        if spec.get("replaces"):
+            old = target.parent / spec["replaces"]
+            if old.is_file():
+                old.unlink()
+                logger.info("deleted %s, which %s replaces", old.name, target.name)
         return f"Downloaded {spec['name']}."
     except Exception as exc:
         _note(error=f"{type(exc).__name__}: {exc}")
@@ -876,9 +904,19 @@ def loaded() -> str:
     return _engine_model
 
 
-def available() -> tuple[bool, str]:
-    """Whether local inference can run at all in this build."""
+def engine_of(model: str) -> str:
+    """`litert` or `llama` — which engine runs this model (litert.py)."""
+    return (spec_of(model) or {}).get("engine", "llama")
+
+
+def available(model: str = "") -> tuple[bool, str]:
+    """Whether local inference can run in this build — for `model`, or for any model."""
     import importlib.util
+    from . import litert
+    if model and engine_of(model) == "litert":
+        return (True, "") if litert.available() else (False, "LiteRT is not in this build")
+    if not model and litert.available():
+        return True, ""
     if importlib.util.find_spec("llama_cpp") is None:
         return False, ("local models are not in this build — the hosted providers still work, "
                        "and calls are carried and recorded without any model at all")
@@ -980,13 +1018,27 @@ def unload_for_speech() -> None:
             return
         was, eng = _engine_model, _engine
         _engine, _engine_model = None, ""
-        try:
-            eng.close()
-        except Exception:
-            pass
+        _close(eng)
         import gc
         gc.collect()
     logger.info("unloaded %s to make room", was)
+
+
+def _close(eng) -> None:
+    """Close an engine, and the assistant's conversation first when it holds one of LiteRT's —
+    the conversation keeps its engine alive, so closing only the engine would free nothing."""
+    if eng is None:
+        return
+    try:
+        from . import litert
+        if litert.CHAT.holds(eng):
+            litert.CHAT.close()
+    except Exception:
+        pass
+    try:
+        eng.close()
+    except Exception:
+        pass
 
 
 def _register_slot() -> None:
@@ -1009,7 +1061,7 @@ def _load(model: str, context: int = 8192):
     not an error but a truncated prompt and a confidently wrong answer.
     """
     global _engine, _engine_model
-    ok, why = available()
+    ok, why = available(model)
     if not ok:
         return None, why
     if not is_downloaded(model):
@@ -1018,10 +1070,15 @@ def _load(model: str, context: int = 8192):
         return _engine, f"{(spec_of(model) or {}).get('name', model)} is already loaded."
     _drop()                                      # a different model: its room is already claimed
     try:
-        import llama_cpp
-        layers, where = _gpu_layers(model)
-        _engine = llama_cpp.Llama(model_path=str(path_of(model)), n_ctx=context,
-                                  n_gpu_layers=layers, verbose=False)
+        if engine_of(model) == "litert":
+            from . import litert
+            _engine = litert.load(path_of(model))
+            where = "LiteRT, GPU" if sys.platform == "darwin" else "LiteRT, CPU"
+        else:
+            import llama_cpp
+            layers, where = _gpu_layers(model)
+            _engine = llama_cpp.Llama(model_path=str(path_of(model)), n_ctx=context,
+                                      n_gpu_layers=layers, verbose=False)
         _engine_model = model
         spec = spec_of(model) or {}
         logger.info("loaded %s (~%d MB resident, %s)", model, spec.get("ram_mb", 0), where)
@@ -1050,7 +1107,9 @@ def _drop() -> str:
     _spec = spec_of(_engine_model) or {}
     was = _spec.get("name", _engine_model)
     freed = _spec.get("ram_mb", 0)
+    eng = _engine
     _engine, _engine_model = None, ""
+    _close(eng)
     import gc
     gc.collect()
     return f"Unloaded {was}, freeing about {freed / 1024:.1f} GB."

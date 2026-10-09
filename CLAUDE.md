@@ -1124,7 +1124,7 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       decider alone named only 4/9. Thai was added for AIS. **Open:** the fact-or-plan sort is not wired yet; the
       frozen `.app` has not run it (CI's `status` gate checks the runtime imports); and ~90 MB of
       ONNX Runtime + tokenizers joins the `[local]` extra.
-- [ ] **Move the local models to llama.cpp's own `llama-server` — SEARCH DONE 2026-10-09.**
+- [ ] **`llama-server` for search — BUILT 2026-10-09, TO BE REMOVED** (LiteRT does the same job in-process; see the LiteRT item).
       `llama-cpp-python` is one maintainer and trails llama.cpp by weeks (0.3.35 on 17 Aug, 0.3.36
       on 1 Oct), and EmbeddingGemma 2 (llama.cpp #30054, 6 Oct) was blocked on it. `llamaserver.py`
       runs one model per `llama-server` process, built by `packaging/build-llama-server.sh` from a
@@ -1139,23 +1139,36 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       **Left:** Gemma 4 (chat, tools, streaming, `save_state`, the picker's logits) and Qwen3-ASR
       (audio through `--mmproj`) still run in `llama-cpp-python`; move them in the same shape, then
       drop the package. Unproven: the server inside a signed, notarized `.app`.
-- [ ] **Gemma 4 in Google's LiteRT-LM instead of llama.cpp? MEASURED 2026-10-09, not decided.** Same
-      model (`litert-community/gemma-4-E4B-it-litert-lm`, the file Google AI Edge Foresight runs),
-      same 1,081-token prompt of five real calls, on the M5. LiteRT on the GPU, warm: **41 tok/s
-      against 20, first token 1.7 s against 3.0, and about 1 GB resident for one conversation
-      against 5.7 GB** — it keeps the per-layer embeddings on disk and reads the rows it needs, where
-      llama.cpp maps the whole file in. Answers of the same quality (it also caught the fee-waiver
-      request llama.cpp missed). MEASURE RSS, NOT FOOTPRINT: llama.cpp's mapped model is outside
-      `phys_footprint` (0.9 GB "footprint" at 5.7 GB resident), so footprint alone flatters it.
-      Costs: a first load builds a 2.1 GB GPU weight cache on disk (5 s, once); a 64 MB
-      `liblitert-lm.dylib`, macOS 14, Apache-2.0. The API has streaming, tools with an approve hook,
-      several conversations at once (our `save_state` stand-in, at a KV cache each — 2.2 GB with
-      three), repetition penalty, cancel and constrained output. **Two gaps:** no save/restore
-      (`clone()` is a TODO in the package), and `run_text_scoring` takes ONE target per fresh
-      session (~1 s for four options) and is far less sure than llama.cpp's next-token
-      probabilities — Thai 0.62 and Vietnamese 0.43 where llama.cpp gave 0.997 and 1.0 — so the
-      language picker's 0.9 bar cannot carry over unchanged. Qwen3-ASR has no LiteRT build and
-      stays on llama.cpp.
+- [ ] **Gemma 4 E2B/E4B RUN IN GOOGLE'S LiteRT-LM — BUILT 2026-10-09, not yet in a release** (`litert.py`).
+      Same weights (`litert-community/gemma-4-E4B-it-litert-lm`, the file Google AI Edge Foresight
+      runs), pinned and size-checked; the old GGUF is deleted once it lands. On the M5, warm:
+      **41 tok/s against llama.cpp's 20, first token 1.7 s against 3.0, ~2 GB against 5.7 GB**
+      (system-wide: LiteRT keeps the per-layer embedding tables on disk). So the pick now gives an
+      8 GB Mac E4B, not E2B. First load builds a 2.1 GB GPU cache beside the model, once.
+      **MEASURE MEMORY SYSTEM-WIDE, NOT BY FOOTPRINT:** llama.cpp's mapped file and LiteRT's GPU
+      memory both sit outside a process's footprint (0.9 GB "footprint" at 5.7 GB resident).
+      **THREE THINGS THAT BIT, each pinned by a test:**
+      - **float16 activations garble numbers past ~3,000 tokens** — the GPU default. The assistant
+        wrote "+659835262" for +6598352362 from a tool result in front of it, 0 of 7 right, while
+        llama.cpp on the same messages got 7 of 7; filler of the same length did it too, so it is
+        length, not tools. `ActivationDataType.FLOAT32`: 7 of 7, same first token, 4% slower.
+      - **Its repetition penalty looks back over the WHOLE conversation by default**, prompt
+        included; `window_size=64`, as llama.cpp's.
+      - **No reuse of a prompt's start between conversations, and seeded messages are read lazily**
+        — a new conversation re-reads everything (3,243 tokens: 5.2 s). So the assistant's ONE
+        conversation is kept (`litert.CHAT`) and fed only the newest message; its system message
+        and each question carry a `key` so re-folded memory and per-turn context do not count as
+        a change. Follow-ups read in ~0.3 s. Background jobs get conversations of their own, so
+        `save_state` is not needed (there is none: `clone()` is a TODO in the package).
+      **THE PICKER HAS NO PROBABILITY HERE.** LiteRT's `run_text_scoring` takes one option per fresh
+      session and is far flatter than llama.cpp's logits (Thai 0.62 where llama.cpp gave 0.997); a
+      decoded token's score is 0. Its greedy answer is good (6 of 6 languages, Tamil and Spanish
+      included), so `litert.pick` asks twice with the options reversed and keeps only an answer
+      that survives — agreement, not probability. Not yet re-measured on the held-out set.
+      **Next, decided 2026-10-09:** search to LiteRT too (`embeddinggemma-2-text-270m-litert-lm`,
+      157 MB, 21/21 on the bake-off) and then REMOVE `llama-server` (llamaserver.py, the build
+      script, the CI step) — its reason, EmbeddingGemma 2, is met by LiteRT. Speech stays on
+      `llama-cpp-python` (Qwen3-ASR 1.7B has no LiteRT build); test Qwen3-ASR 0.6B on LiteRT later.
 - [ ] **Confirm the lead family on QUALITY.** Gemma 4 leads on speed, measured 2026-09-23 on the
       M5: E4B read a 1.6k-token call and wrote the reply in 8.7 s, against 15.2 s for Qwen3.5 9B and
       13.8 s for today's Qwen3 8B. Quality is unmeasured — a blind comparison on our own calls can
