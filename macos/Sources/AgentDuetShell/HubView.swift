@@ -1097,6 +1097,9 @@ private struct CallCard: View {
     #endif
 
     @ObservedObject var player: CallPlayer
+    #if !RECORDER
+    @StateObject private var correcting = Local(false)
+    #endif
 
     var body: some View {
         let mine = player.callID == call.str("call_id")
@@ -1161,6 +1164,11 @@ private struct CallCard: View {
             Button("Export for Support…") {
                 (NSApp.delegate as? AppDelegate)?.exportLogsWith(call: call.str("call_id"))
             }
+            #if !RECORDER
+            if !call.str("transcript").isEmpty {
+                Button("Correct Transcript…") { correcting.value = true }
+            }
+            #endif
             Divider()
             // THE WHOLE CALL, NOT THE FILE (2026-10-07): deleting the recording in Finder leaves
             // the call in the list; this removes it everywhere the app keeps it (erase.py).
@@ -1175,8 +1183,86 @@ private struct CallCard: View {
                 if alert.runModal() == .alertFirstButtonReturn { model.deleteCall(call.str("call_id")) }
             }
         }
+        #if !RECORDER
+        .sheet(isPresented: $correcting.value) { TranscriptSheet(model: model, callID: call.str("call_id")) }
+        #endif
     }
 }
+
+#if !RECORDER
+/// CORRECT TRANSCRIPT (2026-10-09): the owner's own text, saved as typed — no model touches it.
+/// Then the words they put in are offered for the speech model to listen for in future calls,
+/// each unticked: a tidied sentence must not fill the list on its own (vocab.py).
+private struct TranscriptSheet: View {
+    @ObservedObject var model: HubModel
+    let callID: String
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var text = Local("")
+    @StateObject private var loaded = Local(false)
+    @StateObject private var busy = Local(false)
+    @StateObject private var failed = Local("")
+    @StateObject private var offered = Local<[String]>([])
+    @StateObject private var chosen = Local<Set<String>>([])
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if offered.value.isEmpty {
+                Text("Correct Transcript").font(.headline)
+                TextEditor(text: $text.value)
+                    .font(.body)
+                    .frame(minHeight: 320)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(.separator))
+                    .disabled(!loaded.value)
+            } else {
+                Text("Listen for these in future calls").font(.headline)
+                ForEach(offered.value, id: \.self) { w in
+                    Toggle(w, isOn: Binding(
+                        get: { chosen.value.contains(w) },
+                        set: { if $0 { chosen.value.insert(w) } else { chosen.value.remove(w) } }))
+                }
+            }
+            if !failed.value.isEmpty { Text(failed.value).foregroundStyle(.red) }
+            HStack {
+                if busy.value { ProgressView().controlSize(.small) }
+                Spacer()
+                if offered.value.isEmpty {
+                    Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                    Button("Save") { save() }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(busy.value || !loaded.value
+                                  || text.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                } else {
+                    Button("Not Now") { dismiss() }.keyboardShortcut(.cancelAction)
+                    Button("Listen for These") {
+                        Task {
+                            await model.listenFor(offered.value.filter { chosen.value.contains($0) })
+                            dismiss()
+                        }
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(chosen.value.isEmpty)
+                }
+            }
+        }
+        .padding(20)
+        .frame(width: 620)
+        .task {
+            text.value = await model.callTranscript(callID)
+            loaded.value = true
+        }
+    }
+
+    private func save() {
+        busy.value = true
+        failed.value = ""
+        Task {
+            let (error, words) = await model.saveTranscript(callID, text.value)
+            busy.value = false
+            if let error { failed.value = error } else if words.isEmpty { dismiss() } else { offered.value = words }
+        }
+    }
+}
+#endif
 
 // MARK: - a message
 

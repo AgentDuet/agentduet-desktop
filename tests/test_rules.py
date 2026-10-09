@@ -7875,6 +7875,49 @@ def test_placed_call_news() -> None:
        'if not r.get("outgoing") or not edition.ai():' in src)
 
 
+def test_vocabulary() -> None:
+    """Words the owner teaches the speech model by correcting a transcript (vocab.py)."""
+    print("\n  -- correcting a transcript, and the words it teaches --")
+    import unittest.mock as mock
+    from agentduet_desktop import edition, owner, transcribe, vocab
+    home = pathlib.Path(tempfile.mkdtemp())
+    with mock.patch.object(vocab.paths, "HOME", home):
+        old = "[0:09] them: No lah. We go eat dinner. Okay. Some key at the.\n[0:21] them: Ah, twelve o'clock."
+        new = "[0:09] them: No lah. We go eat dim sum. Okay. Sum Kee at the.\n[0:21] them: Ah, twelve o'clock."
+        eq("what was put in is offered", vocab.suggest(old, new), ["dim sum", "Sum Kee"])
+        eq("Chinese is compared by character, and offered whole", vocab.suggest("them: 我们去吃饭", "them: 我们去饮茶"), ["饮茶"])
+        eq("a change of case or punctuation offers nothing", vocab.suggest("them: see you at 1 pm", "them: See you at 1 PM."), [])
+        eq("nor does a rewrite", vocab.suggest("them: ok", "them: ok. I will send you the full invoice for the whole of last month"), [])
+        eq("nor numbers or filler", vocab.suggest("them: at two", "them: at 2 ah"), [])
+        eq("nothing is kept until the owner ticks it", vocab.words(), [])
+        vocab.add(["dim sum"])
+        eq("a kept word is not offered again", vocab.suggest(old, new), ["Sum Kee"])
+        vocab.add([f"w{i}" for i in range(12)])
+        eq("at most ten, the newest first", (len(vocab.words()), vocab.words()[0]), (10, "w0"))
+        ok("and the oldest went", "dim sum" not in vocab.words())
+        vocab.remove("w0")
+        ok("a word can be removed", "w0" not in vocab.words())
+        vocab._save(["dim sum"])
+        eq("the hint names them", vocab.hint(), "Words that may come up: dim sum.")
+        with mock.patch.object(owner, "call_language", lambda: "en"), mock.patch.object(owner, "name", lambda: ""):
+            ctx = transcribe.qwen_context()
+        ok("and the speech model is given it", ctx.endswith("Words that may come up: dim sum."), ctx)
+        eq("spoken back, it is stripped like the rest of the hint",
+           transcribe._strip_context("Okay. Words that may come up: dim sum. Bye.", ctx), "Okay. Bye.")
+        ok("a real 'dim sum' in speech is kept", "dim sum" in transcribe._strip_context("We go eat dim sum.", ctx))
+    ok("the recorder has none of it", "vocab" in edition.AI_MODULES)
+    src = (pathlib.Path(__file__).parent.parent / "src/agentduet_desktop/web_ai.py").read_text()
+    ok("the correction is saved as typed, with the recorder's header kept, by rename",
+       "head, _ = carry.split_txt(" in src and "tmp.replace(path)" in src and "llm" not in src[src.index("async def api_call_transcript"):src.index("async def api_vocabulary")])
+    ok("and the reply only OFFERS the words", '"suggest": vocab.suggest(old, new)' in src)
+    hub = (pathlib.Path(__file__).parent.parent / "macos/Sources/AgentDuetShell/HubView.swift").read_text()
+    ok("the call's menu offers Correct Transcript…, never in the recorder",
+       'Button("Correct Transcript…")' in hub and "TranscriptSheet" in hub)
+    ok("each offered word starts unticked", "@StateObject private var chosen = Local<Set<String>>([])" in hub)
+    sv = (pathlib.Path(__file__).parent.parent / "macos/Sources/AgentDuetShell/SettingsView.swift").read_text()
+    ok("Settings lists them, each removable", 'Section("Words to listen for")' in sv and "model.forgetWord(w)" in sv)
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -7901,6 +7944,7 @@ def main() -> None:
     test_litert()
     test_list_calls_counts()
     test_placed_call_news()
+    test_vocabulary()
     test_assistant_memory()
     test_budget_split()
     test_unread_badge()

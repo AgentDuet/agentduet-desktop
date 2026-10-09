@@ -297,6 +297,21 @@ private struct CallsPane: View {
             } footer: {
                 NoticeFooter(notice: model.notice[.calls])
             }
+            // THE OWNER'S WORDS, taught by correcting a transcript (vocab.py).
+            Section("Words to listen for") {
+                if model.vocabulary.isEmpty {
+                    Text("None").foregroundStyle(.secondary)
+                }
+                ForEach(model.vocabulary, id: \.self) { w in
+                    HStack {
+                        Text(w)
+                        Spacer()
+                        Button { model.forgetWord(w) } label: { Image(systemName: "minus.circle") }
+                            .buttonStyle(.borderless)
+                            .help("Remove")
+                    }
+                }
+            }
             #endif
         }
     }
