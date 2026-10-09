@@ -284,7 +284,7 @@ jobs:
           grep -q "decider  : available" status.txt \
             || { echo "::error::binary cannot run the decision model — check onnxruntime/tokenizers in [local]"; exit 1; }
           grep -q "search   : available" status.txt \
-            || { echo "::error::binary cannot search — SQLite without the fts5 trigram index, or no llama.cpp"; exit 1; }
+            || { echo "::error::binary cannot search — SQLite without the fts5 trigram index, or no LiteRT"; exit 1; }
           # The window is the same shape of silent absence as the lines above: without pywebview
           # the owner view just opens in a browser, which reads as a design choice rather than a
           # dependency that never got installed. Not asserted on Linux, where browser IS correct.

@@ -217,7 +217,9 @@ def _status_ai_head() -> None:
     try:
         import sqlite3 as _sq
         _sq.connect(":memory:").execute("CREATE VIRTUAL TABLE t USING fts5(x, tokenize='trigram')")
-        from . import search as _se
+        from . import litert as _lr, search as _se
+        if not _lr.available():
+            raise ImportError("LiteRT, which runs the search model, is not in this build")
         _s = "available, model downloaded" if _se.ready() else "available, model not downloaded"
     except Exception as exc:
         _s = f"NOT available — {type(exc).__name__}: {exc}"
