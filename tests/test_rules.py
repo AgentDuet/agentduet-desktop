@@ -2367,7 +2367,7 @@ def test_release_ships_the_native_shell() -> None:
     ok("the shell steps are not gated on == 'native'",
        "inputs.shell == 'native'" not in wf)
     ok("they are gated so an empty input still builds it",
-       wf.count("inputs.shell != 'pyinstaller'") == 3)    # the shell, llama-server, the wrap
+       wf.count("inputs.shell != 'pyinstaller'") == 2)
     # And the wrapper must not be handed its own output: it deletes that bundle before writing.
     ok("PyInstaller's bundle is staged aside before wrapping",
        "pyinstaller-stage.app" in wf)
@@ -7652,76 +7652,24 @@ def test_search() -> None:
     ok("and what it finds is marked as a caller's words", "search_conversations" in _a.TAINTING)
 
 
-def test_llama_server() -> None:
-    """Local models in llama.cpp's own server: private, and never outliving us (llamaserver.py)."""
-    print("\n  -- llama-server --")
-    import os as _os
-    import subprocess as _sp
-    import sys as _sys
-    import time as _time
-    from agentduet_desktop import llamaserver, search
-    src = (pathlib.Path(__file__).parent.parent / "src/agentduet_desktop/llamaserver.py").read_text()
-    ok("it listens on a socket, never a TCP port", '"--host", self._sock' in src
-       and "--port" not in src and "127.0.0.1" not in src)
-    ok("its key is in a 0600 file, never on the command line where ps shows it",
-       '"--api-key-file"' in src and "0o600" in src and '"--api-key",' not in src)
-    ok("it serves only the file it was given", '"--offline"' in src and '"--no-webui"' in src)
-
-    # THE WATCHER: closing its pipe stops the server, and so does the parent dying.
-    def alive(pid):
-        try:
-            _os.kill(pid, 0)
-            return True
-        except OSError:
-            return False
-
-    def child_of(sh_pid):
-        out = _sp.run(["pgrep", "-P", str(sh_pid)], capture_output=True, text=True).stdout.split()
-        return int(out[0]) if out else 0
-
-    p = _sp.Popen(["/bin/sh", "-c", llamaserver._WATCH, "sleep", "300"], stdin=_sp.PIPE,
-                  start_new_session=True)
-    _time.sleep(0.3)
-    kid = child_of(p.pid)
-    ok("the watcher runs the server", kid and alive(kid))
-    p.stdin.close()
-    p.wait(timeout=5)
-    _time.sleep(0.2)
-    ok("closing its pipe stops the server", kid and not alive(kid))
-
-    probe = ("import subprocess, sys, time\n"
-             "p = subprocess.Popen(['/bin/sh', '-c', sys.argv[1], 'sleep', '300'], stdin=subprocess.PIPE,"
-             " start_new_session=True)\n"
-             "time.sleep(0.3); print(p.pid, flush=True)\n"
-             "import os; os._exit(0)\n")
-    out = _sp.run([_sys.executable, "-c", probe, llamaserver._WATCH], capture_output=True, text=True,
-                  timeout=20).stdout.split()
-    _time.sleep(0.5)
-    sh = int(out[0]) if out else 0
-    ok("and so does the daemon dying without a word (os._exit)", sh and not alive(sh)
-       and not _sp.run(["pgrep", "-f", "sleep 300"], capture_output=True, text=True).stdout.strip())
-
-    with tempfile.TemporaryDirectory() as t:
-        fake = pathlib.Path(t) / "llama-server"
-        fake.write_text("#!/bin/sh\n")
-        fake.chmod(0o755)
-        _os.environ["AGENTDUET_LLAMA_SERVER"] = str(fake)
-        try:
-            eq("AGENTDUET_LLAMA_SERVER names the binary", llamaserver.binary(), fake)
-        finally:
-            del _os.environ["AGENTDUET_LLAMA_SERVER"]
-    ok("search waits for the server as well as the model", "llamaserver.binary() is not None" in
-       (pathlib.Path(__file__).parent.parent / "src/agentduet_desktop/search.py").read_text())
-    eq("search keeps 512 numbers, where version 2 separates answers from non-answers best",
-       (search.DIMS, search.MIN_SIMILARITY), (512, 0.72))
+def test_search_in_litert() -> None:
+    """Search runs EmbeddingGemma 2 in LiteRT, in this process (search.py)."""
+    print("\n  -- search in LiteRT --")
+    from agentduet_desktop import search
+    src = (pathlib.Path(__file__).parent.parent / "src/agentduet_desktop/search.py").read_text()
+    ok("on the CPU, so it never competes with Gemma or speech for the GPU",
+       "lm.EmbeddingEngine(" in src and "backend=lm.Backend.CPU()" in src)
+    ok("the file is LiteRT's text-only EmbeddingGemma 2, pinned and size-checked",
+       search.FILE.endswith(".litertlm") and len(search.REVISION) == 40 and search.SIZE > 0)
+    ok("and both files it replaced are deleted once it is here",
+       {"embeddinggemma-300m-qat-Q8_0.gguf", "embeddinggemma-2-Q8_0.gguf"} <= set(search.OLD_FILES))
+    eq("512 numbers, and a cutoff fitted on real calls", (search.DIMS, search.MIN_SIMILARITY), (512, 0.73))
+    eq("its vectors differ from the GGUF's, so the index is rebuilt", search.SCHEMA, 4)
     root = pathlib.Path(__file__).parent.parent
-    build = (root / ".github/workflows/build.yml").read_text()
-    ok("CI builds it for every edition but the recorder",
-       "packaging/build-llama-server.sh packaging/bin" in build and "env.EDITION != 'recorder'" in build)
-    ok("its licences go into THIRD-PARTY-NOTICES.txt", "llama-server.LICENSES.txt" in build)
-    ok("and the recorder's audit refuses one", '"llama-server"' in (root / "packaging/audit-recorder.py").read_text())
-    ok("make-macos-app.sh leaves it out of the recorder",
-       'if [ -f "$_llama" ] && [ "$EDITION" != "recorder" ]' in (root / "packaging/make-macos-app.sh").read_text())
+    ok("llama-server is gone: no module, no build script, no CI step",
+       not (root / "src/agentduet_desktop/llamaserver.py").exists()
+       and not (root / "packaging/build-llama-server.sh").exists()
+       and "llama-server" not in (root / ".github/workflows/build.yml").read_text())
 
 
 def test_litert() -> None:
@@ -7856,7 +7804,7 @@ def main() -> None:
     test_call_language_default()
     test_export_with_a_call()
     test_search()
-    test_llama_server()
+    test_search_in_litert()
     test_litert()
     test_assistant_memory()
     test_budget_split()

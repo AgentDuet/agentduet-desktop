@@ -18,7 +18,7 @@ specific language governing permissions and limitations under the License.
 
 Binary distributions of this software bundle third-party components under their own
 licences: the Python runtime and the libraries the app is built with — among them llama.cpp
-(llama-cpp-python and llama-server, MIT), ONNX Runtime (MIT), Hugging Face tokenizers (Apache-2.0), NumPy
+(llama-cpp-python, MIT), Google's LiteRT-LM (Apache-2.0), ONNX Runtime (MIT), Hugging Face tokenizers (Apache-2.0), NumPy
 (BSD-3-Clause), aiohttp (Apache-2.0), wasmtime (Apache-2.0 WITH LLVM-exception), pywebview
 (BSD-3-Clause), PyObjC (MIT) and the agentduet SDK. Their full licence and notice texts are in
 THIRD-PARTY-NOTICES.txt, inside the app (Contents/Resources), generated at build time from the

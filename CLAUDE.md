@@ -1124,21 +1124,6 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       decider alone named only 4/9. Thai was added for AIS. **Open:** the fact-or-plan sort is not wired yet; the
       frozen `.app` has not run it (CI's `status` gate checks the runtime imports); and ~90 MB of
       ONNX Runtime + tokenizers joins the `[local]` extra.
-- [ ] **`llama-server` for search — BUILT 2026-10-09, TO BE REMOVED** (LiteRT does the same job in-process; see the LiteRT item).
-      `llama-cpp-python` is one maintainer and trails llama.cpp by weeks (0.3.35 on 17 Aug, 0.3.36
-      on 1 Oct), and EmbeddingGemma 2 (llama.cpp #30054, 6 Oct) was blocked on it. `llamaserver.py`
-      runs one model per `llama-server` process, built by `packaging/build-llama-server.sh` from a
-      pinned commit (static, Metal, macOS 14, no TLS, no web UI) and copied into `Contents/MacOS` —
-      never the recorder's. It listens on a UNIX SOCKET in a 0700 folder with a key in a 0600 file,
-      so no TCP port exists and `ps` shows no key, and it runs under a shell that kills it when our
-      pipe closes, so a SIGKILLed daemon leaves no model holding memory.
-      **Search moved to EmbeddingGemma 2 with it** (Apache-2.0; the Gemma Terms line left the terms
-      and NOTICE): 21/21 first place on a 33-passage bake-off with 7 held-out queries, against 19/21
-      for version 1, the same on the Q8 file through the server as at full precision. 512 numbers,
-      cutoff 0.72 (the measurements are beside `search.MIN_SIMILARITY`).
-      **Left:** Gemma 4 (chat, tools, streaming, `save_state`, the picker's logits) and Qwen3-ASR
-      (audio through `--mmproj`) still run in `llama-cpp-python`; move them in the same shape, then
-      drop the package. Unproven: the server inside a signed, notarized `.app`.
 - [ ] **Gemma 4 E2B/E4B RUN IN GOOGLE'S LiteRT-LM — BUILT 2026-10-09, not yet in a release** (`litert.py`).
       Same weights (`litert-community/gemma-4-E4B-it-litert-lm`, the file Google AI Edge Foresight
       runs), pinned and size-checked; the old GGUF is deleted once it lands. On the M5, warm:
@@ -1165,10 +1150,14 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       decoded token's score is 0. Its greedy answer is good (6 of 6 languages, Tamil and Spanish
       included), so `litert.pick` asks twice with the options reversed and keeps only an answer
       that survives — agreement, not probability. Not yet re-measured on the held-out set.
-      **Next, decided 2026-10-09:** search to LiteRT too (`embeddinggemma-2-text-270m-litert-lm`,
-      157 MB, 21/21 on the bake-off) and then REMOVE `llama-server` (llamaserver.py, the build
-      script, the CI step) — its reason, EmbeddingGemma 2, is met by LiteRT. Speech stays on
-      `llama-cpp-python` (Qwen3-ASR 1.7B has no LiteRT build); test Qwen3-ASR 0.6B on LiteRT later.
+      **SEARCH TOO, the same day:** EmbeddingGemma 2 (Apache-2.0, so no Gemma Terms in the legal
+      texts) as LiteRT's text-only file, 157 MB, in this process ON THE CPU — 21/21 first place on
+      a 33-passage bake-off with 7 held-out queries against 19/21 for version 1, 15 real
+      conversations indexed in 1.4 s. 512 numbers, cutoff 0.73 fitted on real calls (beside
+      `search.MIN_SIMILARITY`). For one day it ran in llama.cpp's own `llama-server`, because no
+      `llama-cpp-python` release could load it; LiteRT made that machinery unnecessary and it was
+      removed. **Speech stays on `llama-cpp-python`** (Qwen3-ASR 1.7B has no LiteRT build) —
+      the one model left on it. Test Qwen3-ASR 0.6B on LiteRT; if it holds up, drop the package.
 - [ ] **Confirm the lead family on QUALITY.** Gemma 4 leads on speed, measured 2026-09-23 on the
       M5: E4B read a 1.6k-token call and wrote the reply in 8.7 s, against 15.2 s for Qwen3.5 9B and
       13.8 s for today's Qwen3 8B. Quality is unmeasured — a blind comparison on our own calls can

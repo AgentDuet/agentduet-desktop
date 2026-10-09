@@ -19,8 +19,9 @@ THE INDEX (`run/search.db`) is derived from the transcripts: a call is (re)index
 transcripts do not, and it lives in this instance, never in the recorder's folder.
 
 THE MODEL is one of the occasional ones (slot.py): loaded to index or to answer a question, then
-unloaded when idle or when speech or the decision model needs the room. It runs in llama.cpp's
-own server (llamaserver.py), because no `llama-cpp-python` release could load version 2. During a call it waits —
+unloaded when idle or when speech or the decision model needs the room. It runs in Google's
+LiteRT, in this process, on the CPU (see `embed`): no `llama-cpp-python` release could load
+version 2, and LiteRT's text-only build of it is half the size of the GGUF. During a call it waits —
 so a search then falls back to keywords only, and indexing waits for the call to end.
 """
 from __future__ import annotations
@@ -29,19 +30,19 @@ import asyncio
 import logging
 import re
 import sqlite3
-import sys
 import threading
 
 from . import paths
 
 logger = logging.getLogger("secretary.search")
 
-REPO = "ggml-org/embeddinggemma-2-GGUF"
+REPO = "litert-community/embeddinggemma-2-text-270m-litert-lm"
 #: PINNED: the file is checked by size, so a new upload must be a deliberate bump.
-REVISION = "bfcd298762cc34d0357ece5ebdd31791a3a374d8"
-FILE, SIZE = "embeddinggemma-2-Q8_0.gguf", 309855456
-#: The model this one replaced, deleted once the new one is here.
-OLD_FILES = ("embeddinggemma-300m-qat-Q8_0.gguf",)
+REVISION = "9be6e8b90982095dc05c2bd162e4b954ee4dbac7"
+FILE, SIZE = "embeddinggemma-2-text-270m.litertlm", 164626432
+#: The models this one replaced, deleted once the new one is here: version 1, and the GGUF of
+#: version 2 that ran in llama-server for a day.
+OLD_FILES = ("embeddinggemma-300m-qat-Q8_0.gguf", "embeddinggemma-2-Q8_0.gguf")
 #: The first DIMS of the model's 768 numbers, renormalised (Matryoshka). 512, not 256: at 256 the
 #: weakest right answer and the strongest non-answer were 0.003 apart, at 512 0.029 (2026-10-09).
 DIMS = 512
@@ -57,19 +58,21 @@ MAX_CHARS = 600
 #: A MEANING HIT BELOW THIS IS NO ANSWER. Without it the closest piece always "matches", and
 #: "invoice" on calls that never mentioned one returned three "Okay. Bye" pieces. EmbeddingGemma 2
 #: scores everything higher than version 1 did, so this moved with it. Measured 2026-10-09 at 512
-#: numbers, on the Q8 file through llama-server: right answers 0.733-0.82, the five no-answer
-#: topics 0.634-0.704. On 37 pieces of real calls the same day: right answers 0.723-0.782, and
-#: topics no call was about 0.59-0.65 — except "job interview", 0.718, against two office meetups.
-#: Thin at the top; re-fit it on more real calls when they show it wrong.
+#: numbers on the LiteRT file: on 37 pieces of real calls, right answers 0.737-0.791 and topics no
+#: call was about 0.619-0.670 — except "job interview", 0.728, against two office meetups, which
+#: this is set just above. The bake-off's synthetic passages ran lower (right answers from 0.709,
+#: non-answers to 0.699), so its weakest right answers fall under it; keyword search still finds
+#: exact words. Thin at the top; re-fit it on more real calls when they show it wrong.
 #: Keyword hits are never cut by it.
-MIN_SIMILARITY = 0.72
+MIN_SIMILARITY = 0.73
 
 #: How often the indexer looks for calls whose transcripts changed. Woken sooner after a transcript.
 POLL_SECONDS = 300
 
 DB = paths.RUN / "search.db"
 _db_lock = threading.Lock()
-_server = None
+_engine = None
+_engine_lock = threading.Lock()
 
 
 def folder():
@@ -77,10 +80,10 @@ def folder():
 
 
 def ready() -> bool:
-    """The model is here and so is the server to run it in."""
-    from . import llamaserver
+    """The model is here and so is the engine to run it in."""
+    from . import litert
     f = folder() / FILE
-    return f.is_file() and f.stat().st_size == SIZE and llamaserver.binary() is not None
+    return f.is_file() and f.stat().st_size == SIZE and litert.available()
 
 
 def _drop_old() -> None:
@@ -133,9 +136,15 @@ def progress() -> dict:
 # ---- the model, in the slot --------------------------------------------------------------------
 
 def _unload() -> None:
-    if _server is None or not _server.running():
-        return
-    _server.stop()
+    global _engine
+    with _engine_lock:
+        if _engine is None:
+            return
+        try:
+            _engine.close()
+        except Exception:
+            pass
+        _engine = None
     from . import slot
     slot.released(slot.EMBED)
     logger.info("search model unloaded")
@@ -152,22 +161,23 @@ _register_slot()
 def embed(texts: list[str]) -> "list[list[float]] | None":
     """Each text as DIMS numbers, unit length. None when the model may not run now (a call is on —
     slot.py) or is not here."""
-    from . import llamaserver, slot
-    global _server
+    from . import slot
+    global _engine
     if not texts or not ready() or not slot.claim(slot.EMBED):
         return None
     import numpy as np
-    if _server is None:
-        # EACH PIECE IN ONE PASS: an embedding model sees a whole text at once, so the batch sizes
-        # match the context. A piece is at most a few turns (MAX_CHARS), far inside 2048 tokens.
-        _server = llamaserver.Server("embed", folder() / FILE, [
-            "--embeddings", "-c", "2048", "-b", "2048", "-ub", "2048", "-np", "1",
-            "-ngl", "99" if sys.platform == "darwin" else "0"])
-    got = _server.post("/v1/embeddings", {"input": list(texts)})
-    if got is None:
-        return None
-    v = np.array([d["embedding"] for d in sorted(got["data"], key=lambda d: d["index"])],
-                 dtype=np.float32)[:, :DIMS]
+    import litert_lm as lm
+    with _engine_lock:
+        if _engine is None:
+            # THE CPU, on purpose: it loads in 0.1 s against 1.8 s on the GPU, never competes with
+            # Gemma or speech for it, and indexes 33 pieces in ~1.2 s — nothing waits on indexing.
+            from . import litert
+            lm.set_min_log_severity(lm.LogSeverity.ERROR)
+            _engine = lm.EmbeddingEngine(str(folder() / FILE), backend=lm.Backend.CPU(),
+                                         cache_dir=str(litert.cache_dir()))
+            logger.info("search model loaded")
+        got = _engine.compute_embedding_batch(list(texts), lm.EmbeddingOptions(normalize=True))
+    v = np.array([r.embedding for r in got], dtype=np.float32)[:, :DIMS]
     slot.touch(slot.EMBED)
     v /= np.linalg.norm(v, axis=1, keepdims=True) + 1e-12
     return v
@@ -177,7 +187,8 @@ def embed(texts: list[str]) -> "list[list[float]] | None":
 
 #: BUMPED WHEN THE LAYOUT OR THE MODEL CHANGES: the index is derived, so it is simply rebuilt.
 #: 3 = EmbeddingGemma 2 at 512 numbers (2026-10-09); its vectors mean nothing next to version 1's.
-SCHEMA = 3
+#: 4 = the same model as LiteRT's text-only file, whose vectors differ from the GGUF's.
+SCHEMA = 4
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS pieces (
