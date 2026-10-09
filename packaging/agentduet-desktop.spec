@@ -171,6 +171,21 @@ try:
 except Exception as _exc:
     print(f"NOTE: llama_cpp not collected ({_exc}) — this binary has no local models")
 
+# LITERT-LM, which runs the Gemma E-models (litert.py). Its one library sits INSIDE the package and
+# is found there through importlib.resources, so it goes to the same place in the bundle.
+_litert_binaries = []
+try:
+    if RECORDER:
+        raise ImportError("the recorder edition has no local model")
+    import litert_lm as _lrt
+    _lrt_root = Path(_lrt.__file__).parent
+    _litert_binaries = [(str(_l), "litert_lm") for _p in ("*.dylib", "*.so", "*.dll")
+                        for _l in _lrt_root.glob(_p)]
+    if not _litert_binaries:
+        print("WARNING: litert_lm found but its library is not — Gemma will not run")
+except Exception as _exc:
+    print(f"NOTE: litert_lm not collected ({_exc}) — this binary runs no Gemma E-model")
+
 hiddenimports = [
     # OUR OWN modules, all of them. Several are imported lazily inside functions (`web` from the
     # daemon, `tools`/`brain`/`canvas` from each other) to keep import order and startup cost
@@ -209,6 +224,7 @@ hiddenimports = [
     # THE LOCAL LLM. Imported inside models.load() and probed with find_spec in
     # models.available() — so PyInstaller sees neither, exactly like faster_whisper above.
     *collect_submodules("llama_cpp"),
+    *(collect_submodules("litert_lm") if not RECORDER else []),
     "diskcache", "jinja2",      # llama_cpp's own runtime dependencies, imported lazily by it
 ]
 
@@ -273,7 +289,7 @@ a = Analysis(
     [str(Path(SPECPATH).parent / "entry.py")],
     pathex=[str(Path(SPECPATH).parent / "src")],
     datas=datas,
-    binaries=_wasm_binaries + _stt_libs + _llama_binaries,
+    binaries=_wasm_binaries + _stt_libs + _llama_binaries + _litert_binaries,
     hiddenimports=hiddenimports,
     excludes=excludes,
     noarchive=False,

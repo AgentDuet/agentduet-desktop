@@ -193,6 +193,13 @@ class _Local:
                 if engine is None:
                     raise RuntimeError(msg)
                 gate.before(engine, prio)
+                if models.engine_of(self.model) == "litert":
+                    # AGREEMENT, NOT PROBABILITY: LiteRT has no usable confidence (litert.pick).
+                    # An answer that survives the options being reversed counts as sure.
+                    from . import litert
+                    with models.using():
+                        got = litert.pick(engine, prompt, names)
+                    return (got, 1.0) if got else None
                 import llama_cpp
                 import numpy as np
                 from llama_cpp.llama_chat_format import Jinja2ChatFormatter
@@ -239,6 +246,9 @@ class _Local:
                 if engine is None:
                     raise RuntimeError(msg)
                 gate.before(engine, prio)
+                if models.engine_of(self.model) == "litert":
+                    return self._litert_chat(engine, messages, tools)
+                messages = [{k: v for k, v in m.items() if k != "key"} for m in messages]
                 try:
                     out = self._generate(engine, messages, tools=tools, stop=["<|tool_response>"])
                 except Exception as exc:
@@ -249,12 +259,28 @@ class _Local:
             finally:
                 gate.release(ticket)
 
+    def _litert_chat(self, engine, messages: list[dict], tools: list[dict]) -> str:
+        """The assistant's turn in LiteRT's kept conversation (litert.Chat). Its tool calls come
+        back structured; they are written out in Gemma's own syntax, so the assistant's parser
+        and every gate on the way to a tool are the same for both engines."""
+        from . import litert, models
+        try:
+            with models.using():
+                got = litert.CHAT.ask(engine, messages, tools)
+        except Exception as exc:
+            raise RuntimeError(_local_failure(exc, self.model)) from exc
+        calls = "".join(f"<|tool_call>call:{c['name']}{{{_gemma_args(c['arguments'])}}}<tool_call|>"
+                        for c in got["calls"])
+        return calls or _thought_answer(got["text"], self.model, False)
+
     def prewarm(self, prompt: str) -> None:
         """Read `prompt` now, while idle, so the next question that starts with it is fast.
 
         Skipped when a question is already waiting: then the question itself does the reading.
         """
-        from . import gate
+        from . import gate, models
+        if models.engine_of(self.model) == "litert":
+            return          # nothing to warm: the assistant's conversation is kept (litert.Chat)
         with gate.priority(gate.PREWARM):
             ticket = gate.acquire(gate.PREWARM)
             try:
@@ -294,6 +320,18 @@ class _Local:
         if models.thinks(self.model) and not think:
             msgs.append({"role": "system", "content": "/no_think"})
         msgs.append({"role": "user", "content": prompt})
+        if models.engine_of(self.model) == "litert":
+            from . import litert
+            try:
+                with models.using():
+                    answer = litert.generate(engine, msgs, think=think, max_tokens=max_tokens or 2048,
+                                             cancel=None if prio in (gate.QUESTION, gate.PREWARM)
+                                             else ticket.cancel)
+            except litert._Cancelled:
+                raise gate.Preempted()
+            except Exception as exc:
+                raise RuntimeError(_local_failure(exc, self.model)) from exc
+            return _thought_answer(answer, self.model, think)
         try:
             if prio in (gate.QUESTION, gate.PREWARM):
                 out = self._generate(engine, msgs, think, max_tokens)
@@ -365,6 +403,21 @@ class _Local:
             return chunks()
         with models.using():
             return engine.create_chat_completion(**kw)
+
+
+def _gemma_args(args: dict) -> str:
+    """Arguments in Gemma 4's own call syntax: strings fenced `<|"|>…<|"|>`, numbers bare —
+    what assistant._native_calls reads."""
+    out = []
+    for k, v in (args or {}).items():
+        if isinstance(v, bool):
+            v = str(v).lower()
+        elif isinstance(v, (int, float)):
+            v = str(v)
+        else:
+            v = '<|"|>' + str(v) + '<|"|>'
+        out.append(f"{k}:{v}")
+    return ",".join(out)
 
 
 def _local_failure(exc: Exception, model: str) -> str:

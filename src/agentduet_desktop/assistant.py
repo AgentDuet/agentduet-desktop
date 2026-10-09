@@ -1061,7 +1061,11 @@ class OwnerChat:
         """
         from . import recall
         mem = recall.for_prompt()
-        msgs = [{"role": "system", "content": self.native_system + ("\n\n" + mem if mem else "")}]
+        # KEYED for an engine that keeps the conversation between calls (litert.Chat): the
+        # memory under the instructions is re-folded after every turn, and the context below is
+        # rebuilt for every question, so neither may count as a change to what was said before.
+        msgs = [{"role": "system", "content": self.native_system + ("\n\n" + mem if mem else ""),
+                 "key": self.native_system}]
         start = getattr(self, "_turn_start", len(history))
         pending = list(getattr(self, "_call_args", []))
 
@@ -1098,6 +1102,7 @@ class OwnerChat:
         first_now = len(msgs)
         add(history[start:], True)
         if context and first_now < len(msgs) and msgs[first_now]["role"] == "user":
+            msgs[first_now]["key"] = msgs[first_now]["content"]
             msgs[first_now]["content"] = context.strip() + "\n\n" + msgs[first_now]["content"]
         return msgs
 
