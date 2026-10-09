@@ -1139,6 +1139,23 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       **Left:** Gemma 4 (chat, tools, streaming, `save_state`, the picker's logits) and Qwen3-ASR
       (audio through `--mmproj`) still run in `llama-cpp-python`; move them in the same shape, then
       drop the package. Unproven: the server inside a signed, notarized `.app`.
+- [ ] **Gemma 4 in Google's LiteRT-LM instead of llama.cpp? MEASURED 2026-10-09, not decided.** Same
+      model (`litert-community/gemma-4-E4B-it-litert-lm`, the file Google AI Edge Foresight runs),
+      same 1,081-token prompt of five real calls, on the M5. LiteRT on the GPU, warm: **41 tok/s
+      against 20, first token 1.7 s against 3.0, and about 1 GB resident for one conversation
+      against 5.7 GB** — it keeps the per-layer embeddings on disk and reads the rows it needs, where
+      llama.cpp maps the whole file in. Answers of the same quality (it also caught the fee-waiver
+      request llama.cpp missed). MEASURE RSS, NOT FOOTPRINT: llama.cpp's mapped model is outside
+      `phys_footprint` (0.9 GB "footprint" at 5.7 GB resident), so footprint alone flatters it.
+      Costs: a first load builds a 2.1 GB GPU weight cache on disk (5 s, once); a 64 MB
+      `liblitert-lm.dylib`, macOS 14, Apache-2.0. The API has streaming, tools with an approve hook,
+      several conversations at once (our `save_state` stand-in, at a KV cache each — 2.2 GB with
+      three), repetition penalty, cancel and constrained output. **Two gaps:** no save/restore
+      (`clone()` is a TODO in the package), and `run_text_scoring` takes ONE target per fresh
+      session (~1 s for four options) and is far less sure than llama.cpp's next-token
+      probabilities — Thai 0.62 and Vietnamese 0.43 where llama.cpp gave 0.997 and 1.0 — so the
+      language picker's 0.9 bar cannot carry over unchanged. Qwen3-ASR has no LiteRT build and
+      stays on llama.cpp.
 - [ ] **Confirm the lead family on QUALITY.** Gemma 4 leads on speed, measured 2026-09-23 on the
       M5: E4B read a 1.6k-token call and wrote the reply in 8.7 s, against 15.2 s for Qwen3.5 9B and
       13.8 s for today's Qwen3 8B. Quality is unmeasured — a blind comparison on our own calls can
