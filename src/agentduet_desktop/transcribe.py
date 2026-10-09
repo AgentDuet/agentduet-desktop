@@ -998,6 +998,12 @@ def qwen_context(other: str = "") -> str:
     who = [f"The owner of this phone is {me}."] if me and me != owner.DEFAULT_NAME else []
     if other:
         who.append(f"The other party is probably {other}.")
+    # THE OWNER'S OWN WORDS, taught by correcting a transcript (vocab.py) — a handful at most,
+    # because a long list measurably made transcripts worse.
+    from . import vocab
+    taught = vocab.hint()
+    if taught:
+        who.append(taught)
     return " ".join([out] + who).strip() if out or who else ""
 
 

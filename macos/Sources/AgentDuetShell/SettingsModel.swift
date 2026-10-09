@@ -121,6 +121,10 @@ import Foundation
             group.addTask { let v = await api.get("/api/setup/stt"); await MainActor.run { self.stt = v } }
             group.addTask { let v = await api.get("/api/setup/decider"); await MainActor.run { self.decider = v } }
             group.addTask { let v = await api.get("/api/setup/search"); await MainActor.run { self.searchModel = v } }
+            group.addTask {
+                let v = await api.get("/api/vocabulary")
+                await MainActor.run { self.vocabulary = v["words"] as? [String] ?? [] }
+            }
             #endif
         }
     }
@@ -182,6 +186,16 @@ import Foundation
     var language: String { cur.str("language").isEmpty ? "en" : cur.str("language") }
 
     #if !RECORDER
+    /// The words the speech model listens for, which the owner added by correcting a transcript.
+    @Published private(set) var vocabulary: [String] = []
+
+    func forgetWord(_ word: String) {
+        Task {
+            let r = await api.post("/api/vocabulary", ["remove": word])
+            vocabulary = r["words"] as? [String] ?? vocabulary
+        }
+    }
+
     func setLanguage(_ code: String) {
         Task {
             say(.calls, await api.post("/api/setup/setting", ["field": "language", "value": code]))

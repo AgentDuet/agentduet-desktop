@@ -796,6 +796,12 @@ derived from no longer exists, it is the only place that says so.
       **Unproven:** the frozen `.app` (only source-run so far); long-call memory with Gemma also
       resident (~2.5 + ~5.6 GB); the repeated "You have failed" at the end of the 222 s call, which
       may be a real repetition or a model loop; and the Thai call, which nobody here can read.
+      **THE OWNER'S WORDS ARE HINTS TOO, and only theirs** (2026-10-09, `vocab.py`): correcting a
+      transcript by hand offers the words put in ("dinner" -> "dim sum"); ticked ones join a list of
+      at most 10 the speech model is told. Measured on that call and nine other sides: thirty
+      built-in regional words made it WORSE (Mandarin translated into English, a 27-fold "Huh?"
+      loop, 2.2x the time); the one word fixed both sides of the call at no cost, though any hint
+      change nudges a few unrelated words. So there is no built-in list, and no model edits text.
       **THE HINT LEAKED INTO A TRANSCRIPT, fixed 2026-10-06:** on a piece the model could not make
       out it read the context back as speech ("The owner of this phone is Power Mobile."; the full
       hint, twice, on a re-run). `_strip_context` removes every hint sentence in `qwen_piece`, and a

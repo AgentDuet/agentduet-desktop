@@ -436,6 +436,25 @@ import Foundation
         }
     }
 
+    /// Correct Transcript…: the whole transcript of one call, as the editor opens it.
+    func callTranscript(_ id: String) async -> String {
+        (await api.get("/api/call/transcript", query: ["call": id])).str("text")
+    }
+
+    /// The owner's own text, saved as typed. Returns what went wrong, or nil and the words they
+    /// put in — offered for the speech model's list, never added without a tick.
+    func saveTranscript(_ id: String, _ text: String) async -> (String?, [String]) {
+        let r = await api.post("/api/call/transcript", ["call": id, "text": text])
+        await load()
+        if r["ok"] as? Bool == true { return (nil, r["suggest"] as? [String] ?? []) }
+        return (r.str("message").isEmpty ? "The transcript was not saved." : r.str("message"), [])
+    }
+
+    /// The ticked words, for the speech model to listen for in future calls.
+    func listenFor(_ words: [String]) async {
+        _ = await api.post("/api/vocabulary", ["add": words])
+    }
+
     /// Correct… on the Summary card. The model rewrites the summary around the owner's words, so
     /// this takes seconds; nil on success, else what went wrong.
     func correctSummary(_ who: String, _ correction: String) async -> String? {

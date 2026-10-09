@@ -327,6 +327,64 @@ def routes(ctx) -> tuple[list, list]:
         return web.json_response({"ok": msg.startswith("Corrected"), "message": msg,
                                   "summary": _brief.load(who).get("summary", "")})
 
+    def _call_txt(call_id: str):
+        """(path of the call's transcript, its body), or (None, why) — the merged file only."""
+        from . import calls as _calls, carry
+        row = _calls.get(call_id) if call_id else None
+        if row is None:
+            return None, "No such call."
+        folder, names = carry.call_audio(row.get("recordings", []), call_id)
+        if not names or folder == carry.legs():
+            return None, "This call is still being transcribed."
+        path = (folder / names[0]).with_suffix(".txt")
+        if not path.is_file():
+            return None, "This call has no transcript yet."
+        return path, carry.read_body(path)
+
+    async def api_call_transcript(request):
+        """A call's transcript, whole (GET), or the owner's correction of it (POST).
+
+        BY HAND: the owner's text replaces the body as typed, and no model touches it. The header
+        the recorder wrote is kept, and the file is written by rename (merge.write_txt's rule:
+        another app may be watching it). The reply offers the words put in, for the speech
+        model's list (vocab.py); nothing joins it until the owner ticks one.
+        """
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import carry
+        if request.method == "GET":
+            path, body = _call_txt(request.query.get("call", ""))
+            return web.json_response({"ok": path is not None, "text": body if path else "",
+                                      "message": "" if path else body})
+        data = await request.json()
+        path, old = _call_txt(str(data.get("call") or ""))
+        if path is None:
+            return web.json_response({"ok": False, "message": old})
+        new = str(data.get("text") or "").strip()
+        if not new:
+            return web.json_response({"ok": False, "message": "A transcript cannot be empty."})
+        head, _ = carry.split_txt(path.read_text(encoding="utf-8"))
+        tmp = path.with_name(f".{path.name}.part")
+        tmp.write_text(((head + "\n\n") if head else "") + new + "\n", encoding="utf-8")
+        tmp.replace(path)
+        logger.info("transcript of %s corrected by the owner", path.stem)
+        from . import search, vocab
+        search.wake()                       # the index notices the changed file and reads it again
+        return web.json_response({"ok": True, "suggest": vocab.suggest(old, new)})
+
+    async def api_vocabulary(request):
+        """The words the speech model listens for: GET them; POST {"add": [...]} or {"remove": w}."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import vocab
+        if request.method == "POST":
+            data = await request.json()
+            if data.get("add"):
+                vocab.add(list(data["add"]))
+            if data.get("remove"):
+                vocab.remove(str(data["remove"]))
+        return web.json_response({"words": vocab.words(), "max": vocab.MAX})
+
     async def api_setup_decider(request):
         """The decision model's download: GET its progress, POST to start it (decider.py)."""
         if not authed(request):
@@ -1164,6 +1222,10 @@ def routes(ctx) -> tuple[list, list]:
         web.get("/api/setup/stt", api_setup_stt),
         web.post("/api/setup/stt", api_setup_stt),
         web.post("/api/summary/correct", api_summary_correct),
+        web.get("/api/call/transcript", api_call_transcript),
+        web.post("/api/call/transcript", api_call_transcript),
+        web.get("/api/vocabulary", api_vocabulary),
+        web.post("/api/vocabulary", api_vocabulary),
         web.get("/api/setup/decider", api_setup_decider),
         web.post("/api/setup/decider", api_setup_decider),
         web.get("/api/setup/questions", api_setup_questions),
