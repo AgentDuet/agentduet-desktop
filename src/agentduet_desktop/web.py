@@ -775,9 +775,32 @@ def make_app(token: str) -> web.Application:
                 + [m["at"] for m in p["messages"] if m.get("them") and m.get("at")]
                 + ([p["last_in"]] if p.get("last_in") else []))
 
+    #: FROM WHEN a placed call's transcript counts as news: the first time this code ran. Without
+    #: it every person viewed between a call ending and its transcript landing lit up the day it
+    #: shipped — correct by the rule, and noise (2026-10-09). Kept in seen.json, as the marks are.
+    _NEWS_SINCE = "_placed_news_since"
+
+    def _news_since() -> str:
+        seen = _seen()
+        # NOT ON A NEW INSTALL: creating seen.json here would skip the first look's "everyone
+        # starts as seen" (`_mark_unread`), which writes this key itself.
+        if seen is None:
+            return datetime.now().isoformat(timespec="seconds")
+        since = seen.get(_NEWS_SINCE, "")
+        if not since:
+            since = datetime.now().isoformat(timespec="seconds")
+            seen[_NEWS_SINCE] = since
+            try:
+                SEEN.parent.mkdir(parents=True, exist_ok=True)
+                SEEN.write_text(json.dumps(seen))
+            except OSError:
+                pass
+        return since
+
     def _transcript_at(r: dict) -> str:
-        """When an OUTGOING call's transcript landed, "" if it has none. Only the AI half writes
-        transcripts, so in the recorder a call the owner placed is never news."""
+        """When an OUTGOING call's transcript landed, "" if it has none or it landed before this
+        rule began (`_NEWS_SINCE`). Only the AI half writes transcripts, so in the recorder a
+        call the owner placed is never news."""
         if not r.get("outgoing") or not edition.ai():
             return ""
         from . import carry
@@ -785,7 +808,8 @@ def make_app(token: str) -> web.Application:
         for n in files:
             t = (af / n).with_suffix(".txt")
             if t.is_file() and carry.read_body(t):
-                return datetime.fromtimestamp(t.stat().st_mtime).isoformat(timespec="seconds")
+                at = datetime.fromtimestamp(t.stat().st_mtime).isoformat(timespec="seconds")
+                return at if at > _news_since() else ""
         return ""
 
     def _seen() -> dict | None:
@@ -805,6 +829,7 @@ def make_app(token: str) -> web.Application:
         first = seen is None
         if first:
             seen = {p["who"]: max(_incoming(p) or [""]) for p in people}
+            seen[_NEWS_SINCE] = datetime.now().isoformat(timespec="seconds")
             try:
                 SEEN.parent.mkdir(parents=True, exist_ok=True)
                 SEEN.write_text(json.dumps(seen))
