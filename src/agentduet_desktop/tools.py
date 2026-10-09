@@ -392,6 +392,7 @@ def who_is(asker: str) -> str:
     # as an identity, and answered "no profile" over a brief that existed. On the recorder the
     # brief is most of what is known about someone.
     from . import brief, names
+    asker = _who_number(asker)
     who = names.resolve(asker) or asker
     rec = brief.load(who)
     summary = (f"\n\nSummary (a running brief, as of {rec.get('updated', '')[:16].replace('T', ' ')}):\n"
@@ -568,6 +569,15 @@ def save_provider_key(provider: str, key: str) -> tuple[bool, str, list[str]]:
     return True, why, models
 
 
+def _who_number(who: str) -> str:
+    """The phone number in `who`, or `who` as given. The tools print people as "Pauline
+    (+6598768643)", and a model passes that label straight back — read_call then matched nothing
+    and answered "no transcript" for a call whose transcript was ready (2026-10-09)."""
+    import re as _re
+    m = _re.search(r"\+?\d[\d ]{6,}\d", who or "")
+    return m.group(0).replace(" ", "") if m else (who or "").strip()
+
+
 def _caller_label(number: str) -> str:
     """ "Cen Lee (+6596918851)" where the number has a name, else the number. Both, so the
     model can search by either and the owner can check which number it meant."""
@@ -583,7 +593,7 @@ def list_calls(days: str = "7", who: str = "") -> str:
     # ONE PERSON'S CALLS when asked (2026-10-09): "how many calls came from +6596918851?" read off
     # a list of sixteen came back as 4, with "×6" in the line above it. Asked for that person
     # alone, the answer is one line holding the count.
-    only = names.resolve(who) if who else ""
+    only = names.resolve(_who_number(who)) if who else ""
     if who and not only:
         return f"No one matches {who!r}. Give their number, or the name the hub shows."
     try:
@@ -591,7 +601,7 @@ def list_calls(days: str = "7", who: str = "") -> str:
     except ValueError:
         cut = datetime.now() - timedelta(days=7)
     folder = carry.recordings()
-    out, per, newest = [], {}, ""
+    out, per, newest, placed = [], {}, "", {}
     for r in _calls.since(cut.isoformat(timespec="seconds")):
         at = r.get("at", "")
         try:
@@ -606,8 +616,16 @@ def list_calls(days: str = "7", who: str = "") -> str:
         done = any(carry.read_body((folder / n).with_suffix(".txt")) for n in files)
         label = _caller_label(r.get("caller") or "")
         per[label] = per.get(label, 0) + 1
+        if r.get("outgoing"):
+            placed[label] = placed.get(label, 0) + 1
         newest = max(newest, r.get("started") or at)
-        out.append(f"- {at}  {label}  "
+        # WHICH WAY IT WENT, on every line (2026-10-09). Without it "who called today?" was
+        # answered "Pauline called" about a call the owner placed to her.
+        # "THE OWNER", never "you": the model is the one this text is addressed to, and read
+        # "you called Pauline" as Pauline calling (2026-10-09).
+        way = f"the owner called {label}" if r.get("outgoing") else f"{label} called the owner"
+        missed = " (not answered)" if (r.get("note") or "").startswith("missed") else ""
+        out.append(f"- {at}  {way}{missed}  "
                    f"({'transcript ready' if done else 'no transcript yet'})")
     if not out and only:
         # AND WHEN THEIR LAST ONE WAS, for the same reason as below: asked "when did they last
@@ -630,18 +648,26 @@ def list_calls(days: str = "7", who: str = "") -> str:
     # Gemma counted the lines of its own earlier answer and said 4; the list held 6. A model this
     # size counts badly however it is told, so it is handed the counts to quote.
     ranked = sorted(per.items(), key=lambda kv: (-kv[1], kv[0]))
-    head = (f"{len(out)} call{'s' if len(out) != 1 else ''} with {len(per)} "
-            f"{'people' if len(per) != 1 else 'person'} in the last {days} days: "
-            + ", ".join(f"{who} ×{n}" for who, n in ranked))
+    # WHICH WAY, LEADING THE LINE THE MODEL QUOTES (2026-10-09). "you called Pauline" on the
+    # call's own line, and then "×1, all placed by you" in this one, were both read past: asked
+    # "who called today?", it answered "Pauline called". The question assumes calls coming IN, so
+    # the answer to it is stated first and on its own: how many came in, from whom.
+    def _list(counts: dict) -> str:
+        return ", ".join(f"{w} ×{n}" for w, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
+    came = {w: n - placed.get(w, 0) for w, n in per.items() if n - placed.get(w, 0)}
+    head = (f"Calls TO the owner in the last {days} days: {sum(came.values())}"
+            + (f" — {_list(came)}" if came else " (nobody called the owner)")
+            + f". Calls the owner PLACED: {sum(placed.values())}"
+            + (f" — {_list(placed)}" if placed else "") + ".")
     # AND WHEN THEIR LAST CALL WAS, for one person: read off the list, "when did they last
     # call?" came back a day out (2026-10-01 for 2026-09-30, the next line down being the 1st).
     if only and newest:
-        head += f". Their most recent call: {newest[:16].replace('T', ' ')}"
+        head += f" Their most recent call: {newest[:16].replace('T', ' ')}."
     return head + "\n" + "\n".join(out)
 def read_brief(who: str) -> str:
     """A person's summary: who they are, what is open with them, and the last contact."""
     from . import brief, names
-    target = names.resolve(who)
+    target = names.resolve(_who_number(who))
     if not target:
         return f"No one matches {who!r}. Give their number, or the name the hub shows."
     rec = brief.load(target)
@@ -654,7 +680,7 @@ def read_brief(who: str) -> str:
 def correct_brief(who: str, correction: str) -> str:
     """Fix a person's brief with the owner's correction, in the owner's own words."""
     from . import brief, names
-    target = names.resolve(who)
+    target = names.resolve(_who_number(who))
     if not target:
         return f"No one matches {who!r}. Give their number, or the name the hub shows."
     return brief.correct(target, correction)
@@ -721,7 +747,7 @@ def search_conversations(query: str, who: str = "") -> str:
     words, in any language. Use it to answer "who mentioned…", "when did someone say…", or to find
     a call or a message by what was in it. `who` narrows it to one person."""
     from . import names, search
-    target = names.resolve(who) if who else ""
+    target = names.resolve(_who_number(who)) if who else ""
     if who and not target:
         return f"No one matches {who!r}. Give their number, or the name the hub shows."
     hits = search.search(query, target)
@@ -740,6 +766,7 @@ def read_call(who: str = "", when: str = "") -> str:
     """The transcript of a recorded call. `who` is the caller; `when` narrows to one date."""
     from . import calls as _calls, carry
     hits = []
+    who = _who_number(who)
     for r in _calls.recent(None):              # every call: asked rarely, and must not miss one
         # BY NAME TOO, since list_calls shows one (#8's rule, for calls).
         if who and not _is_them(who, r.get("caller") or "", None):
@@ -757,7 +784,9 @@ def read_call(who: str = "", when: str = "") -> str:
                     # The header is OURS — the timestamp and the caller come from call metadata, not
                     # from anything said. Only the body is the stranger's, so only the body is marked;
                     # marking the header too would let a transcript forge a plausible one.
-                    hits.append(f"--- {r.get('at','')} with {_caller_label(r.get('caller') or '')} ---\n"
+                    way = "the owner placed to" if r.get("outgoing") else "from"
+                    hits.append(f"--- {r.get('at','')}, a call {way} "
+                                f"{_caller_label(r.get('caller') or '')} ---\n"
                                 + untrusted(carry.read_body(t)[:4000]))
                 except OSError:
                     pass
@@ -817,6 +846,7 @@ def read_messages(who: str = "", limit: int = 20, days: int = 0) -> str:
     model that holds knowledge writes. Anyone who can message a public business slug can put
     text in front of this assistant.
     """
+    who = _who_number(who)
     cutoff = ""
     if days and int(days) > 0:
         cutoff = (datetime.now() - timedelta(days=int(days))).isoformat(timespec="seconds")
@@ -901,7 +931,9 @@ def note_about(who: str, note: str) -> str:
         return "Nothing to note."
     if not (who or "").strip():
         return "Say who this is about — a note with no one attached is a claim, not an observation."
-    return people.add_note(who.strip(), "Who", note)
+    # FILED UNDER THE NUMBER when given the printed label: "Pauline (+6598768643)" would
+    # otherwise become a person of its own (_who_number).
+    return people.add_note(_who_number(who), "Who", note)
 # ---- skills: how the owner wants the assistant to WORK ------------------------------------
 #
 # A skill is a TECHNIQUE, not a fact and not a tool. Stanley's example is the one that makes the
