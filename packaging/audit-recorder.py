@@ -75,7 +75,7 @@ def main(app: pathlib.Path) -> int:
         if f.is_file() and AI_LIBS.search(f.name) and f.suffix in (".dylib", ".so", ".dll", ""):
             if f.suffix or f.stat().st_mode & 0o111:
                 finding(f"AI runtime library {f.relative_to(app)}")
-    for helper in ("agentduet-stt",):
+    for helper in ("agentduet-stt", "llama-server"):
         if (contents / "MacOS" / helper).exists():
             finding(f"speech helper Contents/MacOS/{helper}")
 

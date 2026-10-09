@@ -2,12 +2,14 @@
 (2026-10-03).
 
 TWO HALVES, MERGED:
-  - MEANING. EmbeddingGemma 300M turns each piece of a transcript into 256 numbers; a question is
+  - MEANING. EmbeddingGemma 2 turns each piece of a transcript into 512 numbers; a question is
     turned the same way, and the closest pieces are its answers. It matches across languages and
     through speech-recognition slips: "who hasn't paid" finds a Vietnamese "hóa đơn … chưa thanh
-    toán" and "the in voice is over due". Chosen by a bake-off on call-shaped passages
-    (2026-10-03): 14/14 first-place answers, against 12/14 for Qwen3-Embedding 0.6B at twice the
-    size — and still 14/14 at 256 numbers instead of 768 (EmbeddingGemma is trained for that).
+    toán" and "the in voice is over due". EmbeddingGemma 300M won the first bake-off (2026-10-03:
+    14/14, against 12/14 for Qwen3-Embedding 0.6B); version 2 replaced it on 2026-10-09 after a
+    harder one — 33 passages with Thai, romanised Tamil, Singlish, Indonesian and a near-miss
+    distractor, 7 of 21 queries held out: 21/21 first place, against 19/21. It is Apache-2.0, where
+    the first was under the Gemma Terms.
   - KEYWORDS. SQLite's full-text index, with the TRIGRAM tokenizer: exact names, numbers and
     amounts, and Chinese, which has no spaces between words to split on.
 A result found by both ranks above one found by either (reciprocal rank fusion).
@@ -17,7 +19,8 @@ THE INDEX (`run/search.db`) is derived from the transcripts: a call is (re)index
 transcripts do not, and it lives in this instance, never in the recorder's folder.
 
 THE MODEL is one of the occasional ones (slot.py): loaded to index or to answer a question, then
-unloaded when idle or when speech or the decision model needs the room. During a call it waits —
+unloaded when idle or when speech or the decision model needs the room. It runs in llama.cpp's
+own server (llamaserver.py), because no `llama-cpp-python` release could load version 2. During a call it waits —
 so a search then falls back to keywords only, and indexing waits for the call to end.
 """
 from __future__ import annotations
@@ -26,18 +29,22 @@ import asyncio
 import logging
 import re
 import sqlite3
+import sys
 import threading
 
 from . import paths
 
 logger = logging.getLogger("secretary.search")
 
-REPO = "ggml-org/embeddinggemma-300m-qat-q8_0-GGUF"
+REPO = "ggml-org/embeddinggemma-2-GGUF"
 #: PINNED: the file is checked by size, so a new upload must be a deliberate bump.
-REVISION = "66f974f8cd48cc3b9c41c516b95508e75b4bee64"
-FILE, SIZE = "embeddinggemma-300m-qat-Q8_0.gguf", 328577056
-#: The first DIMS of the model's 768 numbers, renormalised (Matryoshka). Measured: no loss at 256.
-DIMS = 256
+REVISION = "bfcd298762cc34d0357ece5ebdd31791a3a374d8"
+FILE, SIZE = "embeddinggemma-2-Q8_0.gguf", 309855456
+#: The model this one replaced, deleted once the new one is here.
+OLD_FILES = ("embeddinggemma-300m-qat-Q8_0.gguf",)
+#: The first DIMS of the model's 768 numbers, renormalised (Matryoshka). 512, not 256: at 256 the
+#: weakest right answer and the strongest non-answer were 0.003 apart, at 512 0.029 (2026-10-09).
+DIMS = 512
 #: What the model is told each text is, in its own prompt format.
 QUERY, DOC = "task: search result | query: {}", "title: none | text: {}"
 
@@ -48,19 +55,21 @@ TURNS, OVERLAP = 3, 1
 MAX_CHARS = 600
 
 #: A MEANING HIT BELOW THIS IS NO ANSWER. Without it the closest piece always "matches", and
-#: "invoice" on calls that never mentioned one returned three "Okay. Bye" pieces. Measured
-#: 2026-10-03: right answers scored 0.457-0.697 (bake-off) and 0.48-0.59 (real calls); topics with
-#: no answer 0.399-0.472 and 0.40-0.42. They overlap a little — no line is perfect — so this keeps
-#: every right answer seen and drops most non-answers. Keyword hits are never cut by it.
-MIN_SIMILARITY = 0.45
+#: "invoice" on calls that never mentioned one returned three "Okay. Bye" pieces. EmbeddingGemma 2
+#: scores everything higher than version 1 did, so this moved with it. Measured 2026-10-09 at 512
+#: numbers, on the Q8 file through llama-server: right answers 0.733-0.82, the five no-answer
+#: topics 0.634-0.704. On 37 pieces of real calls the same day: right answers 0.723-0.782, and
+#: topics no call was about 0.59-0.65 — except "job interview", 0.718, against two office meetups.
+#: Thin at the top; re-fit it on more real calls when they show it wrong.
+#: Keyword hits are never cut by it.
+MIN_SIMILARITY = 0.72
 
 #: How often the indexer looks for calls whose transcripts changed. Woken sooner after a transcript.
 POLL_SECONDS = 300
 
 DB = paths.RUN / "search.db"
 _db_lock = threading.Lock()
-_model = None
-_model_lock = threading.Lock()
+_server = None
 
 
 def folder():
@@ -68,8 +77,15 @@ def folder():
 
 
 def ready() -> bool:
+    """The model is here and so is the server to run it in."""
+    from . import llamaserver
     f = folder() / FILE
-    return f.is_file() and f.stat().st_size == SIZE
+    return f.is_file() and f.stat().st_size == SIZE and llamaserver.binary() is not None
+
+
+def _drop_old() -> None:
+    for name in OLD_FILES:
+        (folder() / name).unlink(missing_ok=True)
 
 
 _fetching = threading.Lock()
@@ -82,6 +98,7 @@ def fetch() -> bool:
     try:
         folder().mkdir(parents=True, exist_ok=True)
         models.fetch_file(f"https://huggingface.co/{REPO}/resolve/{REVISION}/{FILE}", folder() / FILE, SIZE)
+        _drop_old()
         return True
     except Exception as exc:
         logger.warning("search model download stopped: %s", exc)
@@ -93,6 +110,7 @@ def fetch() -> bool:
 def start() -> bool:
     """Start the download unless it is running or done — setup's call. True when one is running."""
     if ready():
+        _drop_old()
         return False
     if not _fetching.locked():
         logger.info("fetching the search model (%d MB) in the background", SIZE // 2**20)
@@ -115,15 +133,9 @@ def progress() -> dict:
 # ---- the model, in the slot --------------------------------------------------------------------
 
 def _unload() -> None:
-    global _model
-    with _model_lock:
-        if _model is None:
-            return
-        try:
-            _model.close()
-        except Exception:
-            pass
-        _model = None
+    if _server is None or not _server.running():
+        return
+    _server.stop()
     from . import slot
     slot.released(slot.EMBED)
     logger.info("search model unloaded")
@@ -140,21 +152,22 @@ _register_slot()
 def embed(texts: list[str]) -> "list[list[float]] | None":
     """Each text as DIMS numbers, unit length. None when the model may not run now (a call is on —
     slot.py) or is not here."""
-    from . import slot
-    global _model
+    from . import llamaserver, slot
+    global _server
     if not texts or not ready() or not slot.claim(slot.EMBED):
         return None
     import numpy as np
-    with _model_lock:
-        if _model is None:
-            from llama_cpp import Llama
-            from . import machine
-            from . import models
-            with models._load_lock:                # one llama.cpp load at a time (models.py)
-                _model = Llama(model_path=str(folder() / FILE), embedding=True, n_ctx=2048,
-                               n_gpu_layers=-1 if machine.can_offload() else 0, verbose=False)
-            logger.info("search model loaded")
-        v = np.array(_model.embed(texts, normalize=True), dtype=np.float32)[:, :DIMS]
+    if _server is None:
+        # EACH PIECE IN ONE PASS: an embedding model sees a whole text at once, so the batch sizes
+        # match the context. A piece is at most a few turns (MAX_CHARS), far inside 2048 tokens.
+        _server = llamaserver.Server("embed", folder() / FILE, [
+            "--embeddings", "-c", "2048", "-b", "2048", "-ub", "2048", "-np", "1",
+            "-ngl", "99" if sys.platform == "darwin" else "0"])
+    got = _server.post("/v1/embeddings", {"input": list(texts)})
+    if got is None:
+        return None
+    v = np.array([d["embedding"] for d in sorted(got["data"], key=lambda d: d["index"])],
+                 dtype=np.float32)[:, :DIMS]
     slot.touch(slot.EMBED)
     v /= np.linalg.norm(v, axis=1, keepdims=True) + 1e-12
     return v
@@ -162,8 +175,9 @@ def embed(texts: list[str]) -> "list[list[float]] | None":
 
 # ---- the index ---------------------------------------------------------------------------------
 
-#: BUMPED WHEN THE LAYOUT CHANGES: the index is derived, so a different one is simply rebuilt.
-SCHEMA = 2
+#: BUMPED WHEN THE LAYOUT OR THE MODEL CHANGES: the index is derived, so it is simply rebuilt.
+#: 3 = EmbeddingGemma 2 at 512 numbers (2026-10-09); its vectors mean nothing next to version 1's.
+SCHEMA = 3
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS pieces (
