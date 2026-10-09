@@ -77,11 +77,6 @@ for e in "${STOP[@]}"; do
 done
 
 (cd macos && swift build -c release -Xswiftc -warnings-as-errors ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"}) | tail -1
-# THE LOCAL MODELS' SERVER (llamaserver.py), built once — a few minutes the first time. The daemon
-# here runs src/, which finds it in packaging/bin. The recorder has no local models.
-if [ "$EDITION" != "recorder" ] && [ ! -x packaging/bin/llama-server ]; then
-  LLAMA_CPP_SRC="$HOME/.cache/agentduet-llama.cpp" packaging/build-llama-server.sh packaging/bin
-fi
 
 # The daemon, as the shell expects to find it beside itself: an executable named
 # `agentduet-desktop`. `exec`, so the pid the shell holds IS the daemon and Quit stops it.

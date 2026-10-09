@@ -106,15 +106,6 @@ if [ -f "$_stt" ] && [ "$EDITION" != "recorder" ]; then
   echo "  $APP/Contents/MacOS/agentduet-stt"
 fi
 
-# THE LOCAL MODELS' SERVER (llamaserver.py), when packaging/build-llama-server.sh built it.
-# NEVER IN THE RECORDER, which runs no model.
-_llama="$(cd "$(dirname "$0")" && pwd)/bin/llama-server"
-if [ -f "$_llama" ] && [ "$EDITION" != "recorder" ]; then
-  cp "$_llama" "$APP/Contents/MacOS/llama-server"
-  chmod +x "$APP/Contents/MacOS/llama-server"
-  echo "  $APP/Contents/MacOS/llama-server"
-fi
-
 chmod +x "$APP/Contents/MacOS/$APP_NAME" "$APP/Contents/MacOS/agentduet-desktop"
 
 # ---- the icon ------------------------------------------------------------------------------

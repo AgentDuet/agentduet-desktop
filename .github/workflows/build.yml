@@ -385,13 +385,6 @@ jobs:
             swift build -c release -Xswiftc -warnings-as-errors
           fi
 
-      # THE LOCAL MODELS' SERVER (2026-10-09): llama.cpp's own llama-server, built from the commit
-      # pinned in the script, and copied in by make-macos-app.sh. Not for the recorder, which runs
-      # no model. See src/agentduet_desktop/llamaserver.py for why it replaced llama-cpp-python.
-      - name: Build llama-server (macOS)
-        if: runner.os == 'macOS' && inputs.shell != 'pyinstaller' && env.EDITION != 'recorder'
-        run: packaging/build-llama-server.sh packaging/bin
-
       - name: Wrap it around the daemon (macOS)
         if: runner.os == 'macOS' && inputs.shell != 'pyinstaller'
         run: |
@@ -431,10 +424,6 @@ jobs:
           pip-licenses --with-license-file --no-license-path --with-notice-file --format=plain-vertical \
             --ignore-packages pip-licenses prettytable wcwidth pip setuptools wheel \
             --output-file "$R/THIRD-PARTY-NOTICES.txt"
-          if [ -f "dist-bin/$APP_NAME.app/Contents/MacOS/llama-server" ]; then
-            { echo; echo "----------------------------------------------------------------"; \
-              cat packaging/bin/llama-server.LICENSES.txt; } >> "$R/THIRD-PARTY-NOTICES.txt"
-          fi
           test -s "$R/THIRD-PARTY-NOTICES.txt"
           grep -c "^License" "$R/THIRD-PARTY-NOTICES.txt" || true
 
