@@ -2367,7 +2367,7 @@ def test_release_ships_the_native_shell() -> None:
     ok("the shell steps are not gated on == 'native'",
        "inputs.shell == 'native'" not in wf)
     ok("they are gated so an empty input still builds it",
-       wf.count("inputs.shell != 'pyinstaller'") == 2)
+       wf.count("inputs.shell != 'pyinstaller'") == 3)    # the shell, llama-server, the wrap
     # And the wrapper must not be handed its own output: it deletes that bundle before writing.
     ok("PyInstaller's bundle is staged aside before wrapping",
        "pyinstaller-stage.app" in wf)
@@ -7443,8 +7443,9 @@ def test_build_lock_and_floor() -> None:
     ok("the full NOTICE says which licence each downloaded model carries",
        all(m in notice for m in ("Gemma 4", "EmbeddingGemma", "Qwen3-ASR", "Strands Decider")))
     terms = (root / "src/agentduet_desktop/legal/terms.md").read_text()
-    ok("and the terms do not put Gemma 4 under the Gemma Terms (it is Apache-2.0; EmbeddingGemma is not)",
-       "including Google's Gemma 4, are under\nthe Apache License 2.0" in terms)
+    ok("and the terms put every downloaded model under Apache-2.0, with no Gemma Terms left",
+       "including Google's Gemma 4 and EmbeddingGemma 2, are under the Apache License 2.0" in terms
+       and "gemma/terms" not in terms and "Gemma Terms" not in notice)
     sv = (root / "macos/Sources/AgentDuetShell/SettingsView.swift").read_text()
     ok("Settings shows the texts agreed to, again", 'Button("Terms of Use")' in sv
        and 'Button("Privacy Policy")' in sv and '"/api/terms"' in sv)
@@ -7638,6 +7639,78 @@ def test_search() -> None:
     ok("and what it finds is marked as a caller's words", "search_conversations" in _a.TAINTING)
 
 
+def test_llama_server() -> None:
+    """Local models in llama.cpp's own server: private, and never outliving us (llamaserver.py)."""
+    print("\n  -- llama-server --")
+    import os as _os
+    import subprocess as _sp
+    import sys as _sys
+    import time as _time
+    from agentduet_desktop import llamaserver, search
+    src = (pathlib.Path(__file__).parent.parent / "src/agentduet_desktop/llamaserver.py").read_text()
+    ok("it listens on a socket, never a TCP port", '"--host", self._sock' in src
+       and "--port" not in src and "127.0.0.1" not in src)
+    ok("its key is in a 0600 file, never on the command line where ps shows it",
+       '"--api-key-file"' in src and "0o600" in src and '"--api-key",' not in src)
+    ok("it serves only the file it was given", '"--offline"' in src and '"--no-webui"' in src)
+
+    # THE WATCHER: closing its pipe stops the server, and so does the parent dying.
+    def alive(pid):
+        try:
+            _os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+
+    def child_of(sh_pid):
+        out = _sp.run(["pgrep", "-P", str(sh_pid)], capture_output=True, text=True).stdout.split()
+        return int(out[0]) if out else 0
+
+    p = _sp.Popen(["/bin/sh", "-c", llamaserver._WATCH, "sleep", "300"], stdin=_sp.PIPE,
+                  start_new_session=True)
+    _time.sleep(0.3)
+    kid = child_of(p.pid)
+    ok("the watcher runs the server", kid and alive(kid))
+    p.stdin.close()
+    p.wait(timeout=5)
+    _time.sleep(0.2)
+    ok("closing its pipe stops the server", kid and not alive(kid))
+
+    probe = ("import subprocess, sys, time\n"
+             "p = subprocess.Popen(['/bin/sh', '-c', sys.argv[1], 'sleep', '300'], stdin=subprocess.PIPE,"
+             " start_new_session=True)\n"
+             "time.sleep(0.3); print(p.pid, flush=True)\n"
+             "import os; os._exit(0)\n")
+    out = _sp.run([_sys.executable, "-c", probe, llamaserver._WATCH], capture_output=True, text=True,
+                  timeout=20).stdout.split()
+    _time.sleep(0.5)
+    sh = int(out[0]) if out else 0
+    ok("and so does the daemon dying without a word (os._exit)", sh and not alive(sh)
+       and not _sp.run(["pgrep", "-f", "sleep 300"], capture_output=True, text=True).stdout.strip())
+
+    with tempfile.TemporaryDirectory() as t:
+        fake = pathlib.Path(t) / "llama-server"
+        fake.write_text("#!/bin/sh\n")
+        fake.chmod(0o755)
+        _os.environ["AGENTDUET_LLAMA_SERVER"] = str(fake)
+        try:
+            eq("AGENTDUET_LLAMA_SERVER names the binary", llamaserver.binary(), fake)
+        finally:
+            del _os.environ["AGENTDUET_LLAMA_SERVER"]
+    ok("search waits for the server as well as the model", "llamaserver.binary() is not None" in
+       (pathlib.Path(__file__).parent.parent / "src/agentduet_desktop/search.py").read_text())
+    eq("search keeps 512 numbers, where version 2 separates answers from non-answers best",
+       (search.DIMS, search.MIN_SIMILARITY), (512, 0.72))
+    root = pathlib.Path(__file__).parent.parent
+    build = (root / ".github/workflows/build.yml").read_text()
+    ok("CI builds it for every edition but the recorder",
+       "packaging/build-llama-server.sh packaging/bin" in build and "env.EDITION != 'recorder'" in build)
+    ok("its licences go into THIRD-PARTY-NOTICES.txt", "llama-server.LICENSES.txt" in build)
+    ok("and the recorder's audit refuses one", '"llama-server"' in (root / "packaging/audit-recorder.py").read_text())
+    ok("make-macos-app.sh leaves it out of the recorder",
+       'if [ -f "$_llama" ] && [ "$EDITION" != "recorder" ]' in (root / "packaging/make-macos-app.sh").read_text())
+
+
 def main() -> None:
     print("\n  Model-free rules — bounds, conflicts, gates. No API calls, no cost.")
     test_no_undefined_names()
@@ -7660,6 +7733,7 @@ def main() -> None:
     test_call_language_default()
     test_export_with_a_call()
     test_search()
+    test_llama_server()
     test_assistant_memory()
     test_budget_split()
     test_unread_badge()

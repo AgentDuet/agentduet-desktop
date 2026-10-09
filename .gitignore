@@ -57,3 +57,6 @@ macos/.build-ai/
 
 # Finder folder metadata
 .DS_Store
+
+# llama-server, built by packaging/build-llama-server.sh
+packaging/bin/

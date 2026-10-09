@@ -1124,19 +1124,21 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       decider alone named only 4/9. Thai was added for AIS. **Open:** the fact-or-plan sort is not wired yet; the
       frozen `.app` has not run it (CI's `status` gate checks the runtime imports); and ~90 MB of
       ONNX Runtime + tokenizers joins the `[local]` extra.
-- [ ] **Move search to EmbeddingGemma 2 when `llama-cpp-python` can load it.** Measured 2026-10-09
-      against today's EmbeddingGemma 300M on the bake-off set, grown to 33 passages (Thai,
-      romanised Tamil, Singlish, Indonesian, Chinese-English, a near-miss distractor) and 21 queries,
-      7 of them held out: **21/21 first place at 768 and at 256 numbers, against 19 and 18**, and
-      its five no-answer queries all scored below every right answer, where the old model's did
-      not. Apache-2.0, so the Gemma Terms line in the legal texts can go too. Text-only GGUF
-      `ggml-org/embeddinggemma-2-GGUF` Q8, 310 MB.
-      **Blocked:** its architecture (`gemma-embedding2`) reached llama.cpp on 2026-10-06 (#30054),
-      after `llama-cpp-python` 0.3.36 — measured through sentence-transformers at full precision,
-      not our Q8 path. **When it lands:** re-measure on the Q8 GGUF; bump `search.SCHEMA` so the
-      index is rebuilt; and re-fit `MIN_SIMILARITY`, because its scores sit far higher (right answers
-      0.72-0.80, non-answers up to 0.74 at 256 numbers), so 0.45 would cut nothing and the margin is
-      thin — 512 or 768 numbers may be the better trade.
+- [ ] **Move the local models to llama.cpp's own `llama-server` — SEARCH DONE 2026-10-09.**
+      `llama-cpp-python` is one maintainer and trails llama.cpp by weeks (0.3.35 on 17 Aug, 0.3.36
+      on 1 Oct), and EmbeddingGemma 2 (llama.cpp #30054, 6 Oct) was blocked on it. `llamaserver.py`
+      runs one model per `llama-server` process, built by `packaging/build-llama-server.sh` from a
+      pinned commit (static, Metal, macOS 14, no TLS, no web UI) and copied into `Contents/MacOS` —
+      never the recorder's. It listens on a UNIX SOCKET in a 0700 folder with a key in a 0600 file,
+      so no TCP port exists and `ps` shows no key, and it runs under a shell that kills it when our
+      pipe closes, so a SIGKILLed daemon leaves no model holding memory.
+      **Search moved to EmbeddingGemma 2 with it** (Apache-2.0; the Gemma Terms line left the terms
+      and NOTICE): 21/21 first place on a 33-passage bake-off with 7 held-out queries, against 19/21
+      for version 1, the same on the Q8 file through the server as at full precision. 512 numbers,
+      cutoff 0.72 (the measurements are beside `search.MIN_SIMILARITY`).
+      **Left:** Gemma 4 (chat, tools, streaming, `save_state`, the picker's logits) and Qwen3-ASR
+      (audio through `--mmproj`) still run in `llama-cpp-python`; move them in the same shape, then
+      drop the package. Unproven: the server inside a signed, notarized `.app`.
 - [ ] **Confirm the lead family on QUALITY.** Gemma 4 leads on speed, measured 2026-09-23 on the
       M5: E4B read a 1.6k-token call and wrote the reply in 8.7 s, against 15.2 s for Qwen3.5 9B and
       13.8 s for today's Qwen3 8B. Quality is unmeasured — a blind comparison on our own calls can

@@ -18,7 +18,7 @@ specific language governing permissions and limitations under the License.
 
 Binary distributions of this software bundle third-party components under their own
 licences: the Python runtime and the libraries the app is built with — among them llama.cpp
-(llama-cpp-python, MIT), ONNX Runtime (MIT), Hugging Face tokenizers (Apache-2.0), NumPy
+(llama-cpp-python and llama-server, MIT), ONNX Runtime (MIT), Hugging Face tokenizers (Apache-2.0), NumPy
 (BSD-3-Clause), aiohttp (Apache-2.0), wasmtime (Apache-2.0 WITH LLVM-exception), pywebview
 (BSD-3-Clause), PyObjC (MIT) and the agentduet SDK. Their full licence and notice texts are in
 THIRD-PARTY-NOTICES.txt, inside the app (Contents/Resources), generated at build time from the
@@ -28,6 +28,6 @@ MODELS DOWNLOADED AT RUN TIME are not distributed with this software. Each carri
 licence, which applies to whoever downloads and uses it:
 
   Gemma 4 (Google)                        Apache-2.0
-  EmbeddingGemma 300M (Google)            Gemma Terms of Use: https://ai.google.dev/gemma/terms
+  EmbeddingGemma 2 (Google)               Apache-2.0
   Qwen3-ASR 1.7B (Alibaba Qwen)           Apache-2.0
   Strands Decider 2B (Strands Labs)       Apache-2.0
