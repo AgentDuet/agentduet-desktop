@@ -1124,6 +1124,19 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       decider alone named only 4/9. Thai was added for AIS. **Open:** the fact-or-plan sort is not wired yet; the
       frozen `.app` has not run it (CI's `status` gate checks the runtime imports); and ~90 MB of
       ONNX Runtime + tokenizers joins the `[local]` extra.
+- [ ] **Move search to EmbeddingGemma 2 when `llama-cpp-python` can load it.** Measured 2026-10-09
+      against today's EmbeddingGemma 300M on the bake-off set, grown to 33 passages (Thai,
+      romanised Tamil, Singlish, Indonesian, Chinese-English, a near-miss distractor) and 21 queries,
+      7 of them held out: **21/21 first place at 768 and at 256 numbers, against 19 and 18**, and
+      its five no-answer queries all scored below every right answer, where the old model's did
+      not. Apache-2.0, so the Gemma Terms line in the legal texts can go too. Text-only GGUF
+      `ggml-org/embeddinggemma-2-GGUF` Q8, 310 MB.
+      **Blocked:** its architecture (`gemma-embedding2`) reached llama.cpp on 2026-10-06 (#30054),
+      after `llama-cpp-python` 0.3.36 — measured through sentence-transformers at full precision,
+      not our Q8 path. **When it lands:** re-measure on the Q8 GGUF; bump `search.SCHEMA` so the
+      index is rebuilt; and re-fit `MIN_SIMILARITY`, because its scores sit far higher (right answers
+      0.72-0.80, non-answers up to 0.74 at 256 numbers), so 0.45 would cut nothing and the margin is
+      thin — 512 or 768 numbers may be the better trade.
 - [ ] **Confirm the lead family on QUALITY.** Gemma 4 leads on speed, measured 2026-09-23 on the
       M5: E4B read a 1.6k-token call and wrote the reply in 8.7 s, against 15.2 s for Qwen3.5 9B and
       13.8 s for today's Qwen3 8B. Quality is unmeasured — a blind comparison on our own calls can
