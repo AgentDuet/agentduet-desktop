@@ -745,7 +745,7 @@ def register(sm, owner_name: str) -> bool:
     from agentduet_adapters.qwen import QwenVoice
 
     async def _on_call(noti) -> None:
-        caller = getattr(noti.participant, "value", str(noti.participant))
+        caller = getattr(noti.from_address, "value", str(noti.from_address))
         network = getattr(noti, "network", None)
         verified = people.default_verified(str(getattr(network, "name", network) or "TELCO"))
         convo = f"call-{noti.call_id}"
@@ -782,8 +782,8 @@ def register(sm, owner_name: str) -> bool:
         # object to both the bridge and the tools. `_bridge` is private for the same reason
         # `_handle_call` is: the SDK only exposes this path through serve(), which would open
         # a second client on the connector. Worth asking for a public entry point.
-        status.set_number(noti.subscriber)
-        session = await sm.open_session(uuid.uuid4().hex, noti.subscriber)
+        status.set_number(noti.subscriber_id)
+        session = await sm.open_session(uuid.uuid4().hex, noti.subscriber_id)
         call = await session.process_call(noti)
         live["call"] = call
         ms = await model.open()
@@ -839,7 +839,7 @@ def register(sm, owner_name: str) -> bool:
                 f"{about}.\n"
                 f"Then stop talking. Do not ask questions. Do not offer anything.")
             try:
-                session2 = await sm.open_session(uuid.uuid4().hex, noti.subscriber)
+                session2 = await sm.open_session(uuid.uuid4().hex, noti.subscriber_id)
                 out = await session2.make_call(Address.telco(number))
                 if not await out.dial(ring_time_seconds=CALLBACK_RING_SECONDS):
                     logger.warning("callback to the owner was not answered — it stays in the "

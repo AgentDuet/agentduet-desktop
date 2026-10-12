@@ -419,21 +419,22 @@ async def handle(sm, noti) -> None:
     SIM in their hand. `session.process_call` accepts both and the call operations are identical.
     """
     call_id = getattr(noti, "call_id", "?")
-    # `participant` is the OTHER party in both directions: whoever rang in, or whoever was rung.
-    other = getattr(getattr(noti, "participant", None), "value", "?")
     outgoing = isinstance(noti, OutgoingCallNotification)
+    # The OTHER party: whoever was rung on a call this line placed, whoever rang in otherwise.
+    other = getattr(getattr(noti, "to_address" if outgoing else "from_address", None),
+                    "value", "?")
     # "from +65…" or "to +65…", so every line below reads correctly in either
     # direction. The format strings must NOT also say "from" — that produced
     # "call c1 from from +6591234567".
     who = f"{'to' if outgoing else 'from'} {other}"
-    # THE LINE, LEARNED FROM EVERY CALL, in and out. `subscriber` is this connector's own number
+    # THE LINE, LEARNED FROM EVERY CALL, in and out. `subscriber_id` is this connector's own number
     # in both directions (the platform's session log shows it on each), and until now only the
     # answering path recorded it — so a carrying install never learned its own number.
     from . import status as _status
-    _status.set_number(getattr(noti, "subscriber", "") or "")
+    _status.set_number(getattr(noti, "subscriber_id", "") or "")
     try:
         import uuid
-        session = await sm.open_session(uuid.uuid4().hex, noti.subscriber)
+        session = await sm.open_session(uuid.uuid4().hex, noti.subscriber_id)
         call = await session.process_call(noti)
     except Exception as exc:
         logger.error("call %s %s: could not attach (%s: %s)",

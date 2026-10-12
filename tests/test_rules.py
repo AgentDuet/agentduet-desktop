@@ -3098,7 +3098,7 @@ def test_the_hub_does_not_invent_a_sign_in_state() -> None:
        "$('phone').textContent = D.phone || D.line || '';" in web_page
        and "setLink('number')" not in web_page)
     ok("carried calls teach the app its line, both directions",
-       '_status.set_number(getattr(noti, "subscriber", "") or "")'
+       '_status.set_number(getattr(noti, "subscriber_id", "") or "")'
        in (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "carry.py").read_text())
     ok("and the empty state goes somewhere", 'href="/settings?t=${T}"' in web_page)
 
@@ -5932,8 +5932,8 @@ def test_a_call_can_be_answered_in_the_app() -> None:
         async def open_session(sid, sub): return _t.SimpleNamespace(process_call=process_call)
         return _t.SimpleNamespace(open_session=open_session)
 
-    noti = _t.SimpleNamespace(call_id="cHere", subscriber="s",
-                              participant=_t.SimpleNamespace(value="+6590000000"))
+    noti = _t.SimpleNamespace(call_id="cHere", subscriber_id="s",
+                              from_address=_t.SimpleNamespace(value="+6590000000"))
     home = pathlib.Path(tempfile.mkdtemp(prefix="phone-test-"))
     rows = []
 
