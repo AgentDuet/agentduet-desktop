@@ -424,7 +424,7 @@ async def run_channel() -> None:
             result = await brain.handle_query(asker, opening, "DDUET", verified=verified,
                                               conversation=dd.session_uid)
             logger.info("→ [%s] %s", result["outcome"], result["reply"])
-            send = await (await session_for(msg.subscriber)).send_message(
+            send = await (await session_for(msg.subscriber_id)).send_message(
                 _dduet_text(result["reply"], to=asker, session_uid=dd.session_uid,
                             ba_uid=dd.ba_uid))
             if not send.success:
@@ -437,15 +437,15 @@ async def run_channel() -> None:
                 # and impossible to test against. TELCO arrives as a CALL through
                 # voice.register(), not here.
                 logger.info("ignored a %s message from %s (subscriber %s) — only WA and DDUET "
-                            "are answered on this channel", msg.network, msg.participant.value,
-                            msg.subscriber)
+                            "are answered on this channel", msg.network, msg.from_address.value,
+                            msg.subscriber_id)
                 return
 
-            # `participant` is the OTHER party and nexus keeps it sticky across a conversation,
+            # `from_address` is the OTHER party and nexus keeps it sticky across a conversation,
             # so it is who to answer on both channels. On WA it is their phone number; on DDUET
             # it is their Nexus account uid — an identifier, never an email, because the relay
             # carries account uids only.
-            asker = msg.participant.value
+            asker = msg.from_address.value
             conversation = None
             dd = msg.dduet if msg.network is Network.DDUET else None
             if dd is not None:
@@ -472,7 +472,7 @@ async def run_channel() -> None:
                     # HOLD IT, do not act on it. Nexus usually sends the real message a moment
                     # later; only when it does not is the title all we will ever get.
                     _pending_openings[dd.session_uid] = opening
-                    remember_session(asker, msg.subscriber, network="DDUET",
+                    remember_session(asker, msg.subscriber_id, network="DDUET",
                                      session_uid=dd.session_uid, ba_uid=dd.ba_uid,
                                      display=_display_name(dd))
                     asyncio.create_task(use_opening_if_unclaimed(dd, msg, asker))
@@ -481,7 +481,7 @@ async def run_channel() -> None:
                     # Remember the session ANYWAY. This frame carries everything a reply needs —
                     # participant, session_uid, ba_uid — so recording it here means the owner can
                     # answer the conversation even if the person never sends another word.
-                    remember_session(asker, msg.subscriber, network="DDUET",
+                    remember_session(asker, msg.subscriber_id, network="DDUET",
                                      session_uid=dd.session_uid, ba_uid=dd.ba_uid,
                                      display=_display_name(dd))
                     logger.info("DDUET: %s event on session %s — noted, not answered",
@@ -535,7 +535,7 @@ async def run_channel() -> None:
                 # the model, which has no send tool by design, and false of the product.
                 sent = assistant_module.send_if_asked(chat_now, question)
                 if sent is not None:
-                    back = await (await session_for(msg.subscriber)).send_message(
+                    back = await (await session_for(msg.subscriber_id)).send_message(
                         _wa_text(sent, to=asker))
                     if not back.success:
                         logger.error("could not confirm the send to the owner: %s",
@@ -553,7 +553,7 @@ async def run_channel() -> None:
                 except asyncio.TimeoutError:
                     logger.info("[WA] the owner's turn is past %ss — acknowledging it",
                                 OWNER_ACK_AFTER)
-                    ack = await (await session_for(msg.subscriber)).send_message(
+                    ack = await (await session_for(msg.subscriber_id)).send_message(
                         _wa_text("Working on that.", to=asker))
                     if not ack.success:
                         logger.error("could not acknowledge the owner: %s", ack.error_code)
@@ -565,7 +565,7 @@ async def run_channel() -> None:
                 # receive a bare paragraph and have to guess both who it is for and how to
                 # release it. This is the affordance, not an explanation of one.
                 answer = _owner_draft_note(chat_now, answer)
-                back = await (await session_for(msg.subscriber)).send_message(
+                back = await (await session_for(msg.subscriber_id)).send_message(
                     _wa_text(answer, to=asker))
                 if not back.success:
                     # The owner asked and got nothing. Loud, because they are waiting.
@@ -573,7 +573,7 @@ async def run_channel() -> None:
                                  back.error_code, back.error_content)
                 return
 
-            remember_session(asker, msg.subscriber,
+            remember_session(asker, msg.subscriber_id,
                              network=("DDUET" if dd is not None else "WA"),
                              session_uid=(dd.session_uid if dd is not None else ""),
                              ba_uid=(dd.ba_uid if dd is not None else ""),
@@ -625,7 +625,7 @@ async def run_channel() -> None:
             outbound = (_dduet_text(reply, to=asker, session_uid=dd.session_uid,
                                     ba_uid=dd.ba_uid) if dd is not None
                         else _wa_text(reply, to=asker))
-            send = await (await session_for(msg.subscriber)).send_message(outbound)
+            send = await (await session_for(msg.subscriber_id)).send_message(outbound)
             if not send.success:
                 logger.error("reply failed: %s (%s)", send.error_code, send.error_content)
 
