@@ -632,8 +632,11 @@ def list_calls(days: str = "7", who: str = "") -> str:
         # call?", the model asks for the 7-day default, and a bare "none" became the answer.
         prev = (_calls.for_person(only, limit=1) or [{}])[0]
         when = (prev.get("started") or prev.get("at") or "")[:16].replace("T", " ")
+        # AND THE NEXT STEP, as the branch below gives one: told the date, "translate their last
+        # call" still stopped here (2026-10-14) instead of reading it.
         return (f"No calls with {_caller_label(only)} in the last {days} days."
-                + (f" Their most recent call was on {when}." if when else " They have never called."))
+                + (f" Their most recent call was on {when} — read_call with who={only} reads it."
+                   if when else " They have never called."))
     if not out:
         # SAY WHEN THE LAST ONE WAS. A follow-up ("which of those called most?") is asked again
         # with the 7-day default whatever period the question before it used — measured, and an
