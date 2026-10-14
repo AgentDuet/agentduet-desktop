@@ -862,8 +862,13 @@ private struct Conversation: View {
                     // A CALL NOT YET IN THE HISTORY shows here, with its captions as they come.
                     ForEach(liveNow, id: \.0) { id, c in
                         VStack(alignment: .leading, spacing: 10) {
-                            Label(c.ended ? "Call ended" : "On a call", systemImage: "phone.fill")
-                                .font(.subheadline.weight(.semibold)).foregroundStyle(c.ended ? Color.secondary : Color.green)
+                            HStack(spacing: 8) {
+                                Label(c.ended ? "Call ended" : "On a call", systemImage: "phone.fill")
+                                    .font(.subheadline.weight(.semibold)).foregroundStyle(c.ended ? Color.secondary : Color.green)
+                                #if !RECORDER
+                                if !(phone.captions[id] ?? []).isEmpty { CaptionMark(ended: c.ended) }
+                                #endif
+                            }
                             #if !RECORDER
                             ForEach(phone.captions[id] ?? []) { cap in Balloon(text: cap.text, mine: cap.mine, caption: "") }
                             #endif
@@ -1088,6 +1093,24 @@ private struct CorrectSheet: View {
 
 // MARK: - a call
 
+#if !RECORDER
+/// WHAT THE CAPTIONS ARE, said as a state rather than a process (2026-10-14): "Live" while the
+/// call is on, "Draft" once it has ended and the turn-by-turn transcript is still to replace them,
+/// with a spinner for the work in hand. Nothing once the transcript lands.
+private struct CaptionMark: View {
+    let ended: Bool
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if ended { ProgressView().controlSize(.mini) }
+            Text(ended ? "Draft" : "Live")
+        }
+        .font(.caption.weight(.medium))
+        .foregroundStyle(ended ? Color.secondary : Color.green)
+    }
+}
+#endif
+
 private struct CallCard: View {
     @ObservedObject var model: HubModel
     let call: JSON
@@ -1132,6 +1155,7 @@ private struct CallCard: View {
             }
             #else
             if call.str("transcript").isEmpty, !captions.isEmpty {
+                CaptionMark(ended: true)
                 ForEach(captions) { c in Balloon(text: c.text, mine: c.mine, caption: "") }
             } else if let state = HubModel.callState(call) {
                 Text(state).foregroundStyle(.secondary).italic()
