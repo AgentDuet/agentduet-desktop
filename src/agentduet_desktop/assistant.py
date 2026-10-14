@@ -48,6 +48,8 @@ Their phone calls are carried to them and recorded here, and the recordings are 
 this machine. People also MESSAGE them, and those messages are carried too — nobody is answered
 by an agent. Your subject is both: who rang or wrote, when, what was said, and what the owner
 should do about it. Summarise, find things, and remember what they tell you to remember.
+Tools only fetch the record. Summarising, translating or rewriting what they return is your own
+work, so fetch it first, then do it yourself.
 
 When they ask you to help answer someone, WRITE THE REPLY ITSELF and nothing else — no preamble,
 no "here is a draft", no options to choose between. They will read it, change what they want and
@@ -1299,7 +1301,15 @@ class OwnerChat:
             # absorbed yet, instead of up to five whole transcripts on every question. With no
             # brief yet, the transcripts as before. See `brief`.
             from . import brief as _brief
-            calls = _brief.for_prompt(viewing) or tools.read_call(who=viewing)
+            calls = _brief.for_prompt(viewing)
+            if calls:
+                # A SUMMARY IS NOT THE TRANSCRIPT. Handed only the brief, "translate the
+                # transcript" was answered "I do not have a transcript" (2026-10-14), with
+                # no tool run: nothing said the words were one read_call away.
+                calls += (f"\n\nThat brief is a summary. For what was actually said — a quote, "
+                          f"a translation, a whole call — read_call with who={viewing}.")
+            else:
+                calls = tools.read_call(who=viewing)
             msgs = tools.read_messages(who=viewing)
             context += (f"\n\nCONTEXT — the owner is looking at {viewing}.\n\n{calls}\n\n{msgs}"
                        f"\n\nIf the owner says \"her\", \"him\", \"them\" or \"this "

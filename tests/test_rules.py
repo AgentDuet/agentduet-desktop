@@ -7816,7 +7816,7 @@ def test_list_calls_counts() -> None:
                                                                        "started": "2026-09-30T15:05:10"}]), \
          mock.patch.object(tools, "_caller_label", lambda x: x):
         eq("none in the period still says when their last call was", tools.list_calls("7", "+6592222222"),
-           "No calls with +6592222222 in the last 7 days. Their most recent call was on 2026-09-30 15:05.")
+           "No calls with +6592222222 in the last 7 days. Their most recent call was on 2026-09-30 15:05 — read_call with who=+6592222222 reads it.")
     ok("asked about one person, it counts theirs and says when their last call was",
        one.splitlines()[0].startswith("Calls TO the owner in the last 7 days: 2 — +6592222222 ×2. Calls the owner PLACED: 0. "
                                       "Their most recent call: " + rows[3]["at"][:16].replace("T", " ")),
