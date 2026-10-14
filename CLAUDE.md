@@ -1121,6 +1121,10 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       (but INVENTS relationships, 0.94 sure), Qwen3.5-2B untrained 43, its base 38-44 — the
       training is what makes the 2B useful. The adapter and head cannot move to Gemma without
       retraining (`strands-labs/strands-decider`, Qwen3.5-2B-Base only).
+      **THE PROFILE'S LANGUAGE LINE WAS REMOVED 2026-10-14** (Stanley): the transcripts already show
+      what was spoken, nothing else read the line, and it cost a decider + Gemma run per call. The
+      About pass now writes a language only when the owner said it. `llm._Local.pick` and
+      `litert.pick` stay, unused. What follows is the record of how it worked.
       **LANGUAGES IN THE ENGLISH ALPHABET — WIRED 2026-10-06** (`brief._latin_language`): where the
       script rule finds none, the decider says "not English" and GEMMA NAMES IT through
       `llm._Local.pick` (next-token probabilities over numbered options, read with

@@ -6835,8 +6835,10 @@ def test_briefs_are_about_the_right_person() -> None:
     ok("a summary never carries their name, so a rename cannot leave it stale",
        "NEVER WRITE THEIR NAME OR NUMBER:" in bsrc and "rename:" not in web_src)
     ok("and the assistant is told whose it is, alongside", "WHAT YOU KNOW ABOUT {label}" in bsrc)
-    ok("the About pass is told languages are not its job",
-       "Never write which language they speak: that is kept separately" in bsrc)
+    ok("the About pass writes a language only when the owner said it",
+       "Never write which language they speak unless {owner} said it" in bsrc)
+    ok("and nothing counts languages any more (removed 2026-10-14)",
+       "_tally_languages" not in bsrc and "languages_on" not in bsrc)
     ok("About is lasting facts, even ones that came up in a plan, and never a guess",
        "ABOUT is LASTING facts about the person" in bsrc and "  Who:" not in bsrc
        and "counts even when it came up while making a plan" in bsrc and "never guess it" in bsrc)
@@ -6854,30 +6856,6 @@ def test_briefs_are_about_the_right_person() -> None:
        brief._dated_by({"when": "2026-10-02 09:00"}, [("2026-09-28T10:00:00", "them: Friday at nine")])
        and not brief._dated_by({"when": "2026-10-05"}, [("2026-09-29T09:00:00", "them: if we do lunch")])
        and brief._dated_by({"when": "2026-09-30"}, [("2026-09-29T11:00:00", "them: it comes tomorrow")]))
-    lt = brief._language_turns
-    ok("a whole turn in a language counts, by characters for Chinese",
-       lt("them: 我们星期五还是九点吗？") == {"Chinese": [10]} and lt("you: 我们星期五还是九点吗？") == {})
-    ok("a filler the speech engine misread is not a language",
-       lt("them: 嗯。 Okay, sounds good, see you on Friday then.\nthem: 啊, bye.") == {})
-    ok("nor a mixed turn that is mostly English",
-       lt("them: OK, 没问题, we can do Friday at nine, see you there") == {})
-    ok("a short turn misheard into a script is not enough", lt("them: 你好吗") == {})
-    ok("a whole Vietnamese turn counts, by words",
-       "Vietnamese" in lt("them: Dạ em chào anh, em muốn hỏi về lịch hẹn ngày mai lúc mười giờ ạ"))
-    ok("French accents are not Vietnamese",
-       lt("them: Je voudrais réserver une table pour deux personnes à huit heures du soir") == {})
-    rec = {}
-    brief._tally_languages(rec, [("2026-09-30T15:00:00", "them: 我们星期五还是九点吗？")])
-    eq("one turn on one call is tallied but not shown", brief._language_line(rec), "")
-    brief._tally_languages(rec, [("2026-10-01T15:00:00",
-                                  "them: 我明天下午三点到你的办公室可以吗\nthem: 好的，我会带上合同过来的")])
-    eq("three turns over two calls: said firmly", brief._language_line(rec), "Speaks Chinese.")
-    ok("and code writes it into About, not the model",
-       brief._render({**rec, "about": "Drives."}).startswith("About: Drives. Speaks Chinese."))
-    brief._language_correction(rec, "She doesn't speak Chinese")
-    eq("the owner's correction turns it off, and the tally cannot undo that", brief._language_line(rec), "")
-    brief._tally_languages(rec, [("2026-10-02T15:00:00", "them: 我们下个星期再见面吧谢谢你")])
-    eq("not even with more turns", brief._language_line(rec), "")
     ok("each call is given the week's dates, so a weekday is never counted by the model",
        "The week after it: {_week(at)}" in bsrc)
     ok("the card labels About, and still reads an older Who", '["About", "Who", "Open", "Last contact"]' in hub_src)
@@ -7337,70 +7315,6 @@ def test_small_mac() -> None:
        _pf.system() != "Darwin" or (mi.get("chip") and mi.get("macos")), mi)
     ok("and whether speech and the assistant take turns",
        "speech_and_assistant_take_turns" in mi.get("models", {}), mi.get("models"))
-
-
-def test_latin_languages() -> None:
-    """A language written in the English alphabet: the decision model says it is not English,
-    Gemma names it, and only a sure name joins the tally — so one call never shows (brief.py)."""
-    print("\n  -- a language the script rule cannot see --")
-    import unittest.mock as _m
-    from agentduet_desktop import brief, decider, llm
-    MALAY = "them: Hello Stanley, saya nak tanya pasal invois bulan lepas, boleh tolong semak?\nyou: Sure."
-
-    class Picker:
-        def __init__(self, ans): self.ans, self.asked = ans, []
-        def pick(self, prompt, names):
-            self.asked.append(names); return self.ans
-
-    def run(gate_choice, ans, text=MALAY, ready=True):
-        pk = Picker(ans)
-        with _m.patch.object(decider, "ready", lambda: ready), \
-             _m.patch.object(decider, "ask", lambda s, q: {"lang": {"choice": gate_choice}}), \
-             _m.patch.object(llm, "client", lambda *a: pk):
-            return brief._latin_language(text), pk
-    got, pk = run("another language", ("Malay", 0.98))
-    ok("not English, and Gemma sure: the language is named", got == "Malay")
-    ok("from the list, with a way out", pk.asked and pk.asked[0][-1] == "another language"
-       and "Thai" in pk.asked[0])
-    ok("DENIED when Gemma is not sure (a measured miss sat at 0.69)",
-       run("another language", ("Indonesian", 0.69))[0] == "")
-    g, pk = run("English", ("Malay", 0.99))
-    ok("denied when the decision model hears English, and Gemma is not even asked", g == "" and not pk.asked)
-    ok("denied for 'another language' — nothing to name", run("another language", ("another language", 0.99))[0] == "")
-    ok("denied with no decision model", run("another language", ("Malay", 0.99), ready=False)[0] == "")
-    ok("denied for a pick that failed", run("another language", None)[0] == "")
-    ok("no caller turns, no question", run("another language", ("Malay", 0.99), text="you: hello")[0] == "")
-
-    rec = {}
-    with _m.patch.object(brief, "_latin_language", lambda t: "Malay"):
-        brief._tally_languages(rec, [("2026-10-06T10:00:00", MALAY)])
-        ok("ONE CALL NEVER SHOWS a language", brief._language_line(rec) == "", brief._language_line(rec))
-        brief._tally_languages(rec, [("2026-10-07T10:00:00", MALAY)])
-        ok("a second call shows it gently", brief._language_line(rec) == "Has spoken some Malay on calls.",
-           brief._language_line(rec))
-        brief._tally_languages(rec, [("2026-10-08T10:00:00", MALAY)])
-        ok("a third says it firmly", brief._language_line(rec) == "Speaks Malay.", brief._language_line(rec))
-    with _m.patch.object(brief, "_latin_language", lambda t: (_ for _ in ()).throw(AssertionError("asked"))):
-        r2 = {}
-        brief._tally_languages(r2, [("2026-10-06T10:00:00", "them: " + "สวัสดีครับ ผมโทรมาสอบถามเรื่องใบแจ้งหนี้เดือนที่แล้วครับ")])
-        ok("THAI IN ITS OWN SCRIPT stays the script rule's — no model is asked", "Thai" in r2["languages"])
-    r3 = {"languages_on": [], "languages_off": []}
-    brief._language_correction(r3, "she is from Malaysia")
-    ok("an owner's word is matched whole: 'Malaysia' is not Malay", "Malay" not in r3["languages_on"])
-    brief._language_correction(r3, "she doesn't speak Malay")
-    ok("and 'doesn't speak Malay' turns it off", "Malay" in r3["languages_off"])
-    r4 = {}
-    brief._language_correction(r4, "Tony speaks English, Chinese and Malay")
-    eq("ENGLISH IS KEPT when the owner names it, with the others", brief._language_line(r4),
-       "Speaks Chinese, English and Malay.")
-    r5 = {}
-    brief._language_correction(r5, "He speaks English and Malay, not Thai")
-    ok("a negation reaches only its own clause", r5["languages_on"] == ["English", "Malay"]
-       and r5["languages_off"] == ["Thai"], r5)
-    r6 = {}
-    brief._language_correction(r6, "She doesn't speak Mandarin or Tamil but speaks Malay")
-    ok("and covers every language after it in that clause", r6["languages_off"] == ["Chinese", "Tamil"]
-       and r6["languages_on"] == ["Malay"], r6)
 
 
 def test_codeql_fixes() -> None:
@@ -7957,7 +7871,6 @@ def main() -> None:
     test_model_slot()
     test_terms()
     test_small_mac()
-    test_latin_languages()
     test_codeql_fixes()
     test_build_lock_and_floor()
     test_hint_never_spoken()
