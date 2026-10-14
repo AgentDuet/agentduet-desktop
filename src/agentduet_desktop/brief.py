@@ -568,10 +568,15 @@ def _language_line(rec: dict) -> str:
         (firm if t["calls"] >= 2 and t["turns"] >= LANGUAGE_FIRM_TURNS else some).append(name)
     out = []
     if firm:
-        out.append(f"Speaks {' and '.join(firm)}.")
+        out.append(f"Speaks {_listed(firm)}.")
     if some:
-        out.append(f"Has spoken some {' and '.join(some)} on calls.")
+        out.append(f"Has spoken some {_listed(some)} on calls.")
     return " ".join(out)
+
+
+def _listed(names: list[str]) -> str:
+    """"Chinese", "Chinese and Malay", "Chinese, English and Malay"."""
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
 
 
 _NEGATION = re.compile(r"\b(not|no|never|don't|doesn't|dont|doesnt|isn't|cannot|can't)\b", re.I)
@@ -592,17 +597,32 @@ def _relation_correction(rec: dict, said: str) -> None:
                 rec["relation"] = {"label": kind, "confidence": 1.0, "by": "owner"}
 
 
+#: Languages an owner may name in a correction. ENGLISH IS HERE though no call ever counts it
+#: (it is the default, so the tally has no subject): left out, "speaks English, Chinese and Malay"
+#: kept the other two and dropped the one the owner said first (2026-10-14).
+_CORRECTABLE = ("English",)
+_ALIASES = {"Chinese": r"chinese|mandarin|cantonese"}
+#: A negation reaches only to the end of its clause, so in "speaks English and Malay, not Thai"
+#: only Thai is turned off, and "doesn't speak Chinese but speaks Malay" turns Malay on.
+_CLAUSE = re.compile(r"[,;.]|\bbut\b", re.I)
+
+
 def _language_correction(rec: dict, said: str) -> None:
-    """An owner's correction naming a language turns it off (with a negation) or on."""
-    for name in dict.fromkeys([n for n, _ in _SCRIPTS] + list(LATIN_LANGUAGES)):
-        # WHOLE WORDS: "Malaysia" is not Malay, "Thailand" is not Thai.
-        if re.search(rf"\b{name}\b", said, re.I) or (name == "Chinese" and re.search(r"mandarin|cantonese", said, re.I)):
-            on, off = set(rec.get("languages_on") or []), set(rec.get("languages_off") or [])
-            if _NEGATION.search(said):
+    """An owner's correction naming a language turns it on, or off when a negation comes before it
+    in the same clause."""
+    names = dict.fromkeys(list(_CORRECTABLE) + [n for n, _ in _SCRIPTS] + list(LATIN_LANGUAGES))
+    on, off = set(rec.get("languages_on") or []), set(rec.get("languages_off") or [])
+    for clause in _CLAUSE.split(said):
+        for name in names:
+            # WHOLE WORDS: "Malaysia" is not Malay, "Thailand" is not Thai.
+            m = re.search(rf"\b(?:{_ALIASES.get(name, re.escape(name))})\b", clause, re.I)
+            if not m:
+                continue
+            if _NEGATION.search(clause[: m.start()]):
                 off.add(name); on.discard(name)
             else:
                 on.add(name); off.discard(name)
-            rec["languages_on"], rec["languages_off"] = sorted(on), sorted(off)
+    rec["languages_on"], rec["languages_off"] = sorted(on), sorted(off)
 
 
 def _week(at: str) -> str:
