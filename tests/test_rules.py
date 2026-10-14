@@ -7389,6 +7389,18 @@ def test_latin_languages() -> None:
     ok("an owner's word is matched whole: 'Malaysia' is not Malay", "Malay" not in r3["languages_on"])
     brief._language_correction(r3, "she doesn't speak Malay")
     ok("and 'doesn't speak Malay' turns it off", "Malay" in r3["languages_off"])
+    r4 = {}
+    brief._language_correction(r4, "Tony speaks English, Chinese and Malay")
+    eq("ENGLISH IS KEPT when the owner names it, with the others", brief._language_line(r4),
+       "Speaks Chinese, English and Malay.")
+    r5 = {}
+    brief._language_correction(r5, "He speaks English and Malay, not Thai")
+    ok("a negation reaches only its own clause", r5["languages_on"] == ["English", "Malay"]
+       and r5["languages_off"] == ["Thai"], r5)
+    r6 = {}
+    brief._language_correction(r6, "She doesn't speak Mandarin or Tamil but speaks Malay")
+    ok("and covers every language after it in that clause", r6["languages_off"] == ["Chinese", "Tamil"]
+       and r6["languages_on"] == ["Malay"], r6)
 
 
 def test_codeql_fixes() -> None:
