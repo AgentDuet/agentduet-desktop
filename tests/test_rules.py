@@ -6226,6 +6226,18 @@ def test_qwen3_asr_is_the_speech_engine() -> None:
        text, "Can you waive my bill? Yes.")
     eq("and every kept piece carries its time", len(t.segments_for(wav)), 2)
 
+    # MALAY AND INDONESIAN ARE ONE FAMILY for this rule: Qwen mixes them up more than any other
+    # pair. A long Malay piece confirms a short one reported as Indonesian; Thai is still dropped.
+    answers = iter(["language Malay<asr_text>Saya nak tukar tarikh mesyuarat.",
+                    "language Indonesian<asr_text>Ya, betul.",
+                    "language Thai<asr_text>ครับ"])
+    with mock.patch.object(t, "_qwen_model", lambda: fake):
+        text = t._qwen(wav)
+    eq("a short piece reported as Indonesian survives on a Malay call, a stray language does not",
+       text, "Saya nak tukar tarikh mesyuarat. Ya, betul.")
+    ok("live captions use the same family", "transcribe.language_family(lang)"
+       in (pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop" / "live.py").read_text())
+
 
 def test_live_captions_while_a_call_is_on() -> None:
     """A call in progress is marked on the person, and each side is captioned piece by piece."""

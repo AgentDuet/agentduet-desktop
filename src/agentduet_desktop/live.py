@@ -195,9 +195,10 @@ async def worker() -> None:
         # "Hi" before anything longer has been said — acceptable in a preview, and the after-call
         # transcript still has it if it was real.
         seen = _confirmed.setdefault(call_id, set())
+        family = transcribe.language_family(lang)
         if secs >= transcribe.PIECE_SURE and lang:
-            seen.add(lang)
-        elif lang and lang not in seen:
+            seen.add(family)
+        elif lang and family not in seen:
             continue
         cap = {"leg": leg, "at": at, "text": said}
         _calls[call_id]["captions"].append(cap)

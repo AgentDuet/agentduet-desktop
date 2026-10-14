@@ -789,6 +789,17 @@ PIECE_GAP = 1.2             # this much silence ends a piece
 TURN_GAP = 0.3
 #: A piece shorter than this is not trusted to name its own language — see `_qwen`.
 PIECE_SURE = 3.0
+#: LANGUAGES QWEN CANNOT TELL APART, counted as one where a short piece needs a longer one to
+#: confirm its language. Qwen's own report names Malay mistaken for Indonesian as most of its
+#: remaining language errors, and our FLEURS Malay run (2026-10-14) had one Malay clip reported as
+#: Indonesian — so without this, a quick "ya, betul" on a Malay call could be dropped as an
+#: unconfirmed language while its text was right.
+_SAME_LANGUAGE = {"Indonesian": "Malay"}
+
+
+def language_family(lang: str) -> str:
+    """`lang` as the short-piece rule compares it: Indonesian counts as Malay."""
+    return _SAME_LANGUAGE.get(lang, lang)
 PIECE_MAX = 25.0            # never hand the model more than this in one piece
 PIECE_MIN = 0.4             # anything shorter is a click, not speech
 PIECE_PAD = 0.15            # keep a little either side so the first and last sounds survive
@@ -1140,10 +1151,10 @@ def _qwen(path: pathlib.Path) -> str:
     # at 3.4 s as Thai, "Hi" as Cantonese. A short piece in a language some LONGER piece of this
     # recording also has is kept, so a quick "Đúng rồi" in a Vietnamese call survives; one in a
     # language nothing else confirms is dropped. With no long piece at all, nothing is dropped.
-    sure = {lang for s0, e0, lang, _t in heard if e0 - s0 >= PIECE_SURE and lang}
+    sure = {language_family(lang) for s0, e0, lang, _t in heard if e0 - s0 >= PIECE_SURE and lang}
     segs, langs, dropped = [], set(), 0
     for s0, e0, lang, said in heard:
-        if sure and e0 - s0 < PIECE_SURE and lang and lang not in sure:
+        if sure and e0 - s0 < PIECE_SURE and lang and language_family(lang) not in sure:
             dropped += 1
             continue
         segs.append((s0, e0, said))
