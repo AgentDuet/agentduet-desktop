@@ -64,7 +64,8 @@ of the place they work if it was said.
 - KEEP every fact already in ABOUT unless the new information changes it. The newer one wins, and
   {owner}'s word outranks theirs.
 - Say who they are to {owner} (a customer, a friend) ONLY if it was said — never guess it.
-- Never write which language they speak: that is kept separately, from what code counts.
+- Never write which language they speak unless {owner} said it: the speech engine mishears a
+  "mm" as Chinese, and the transcripts already show what was spoken.
 - Use only what is below. Do not guess.
 - At most {words} words, as short plain sentences.
 
@@ -152,7 +153,7 @@ def _upcoming(items: list[dict]) -> list[dict]:
 
 def _render(rec: dict) -> str:
     """The three parts as the card and the assistant read them. Code writes this, not a model."""
-    about = " ".join(x for x in (rec.get("about") or "", _language_line(rec)) if x).strip()
+    about = (rec.get("about") or "").strip()
     lines = ["About: " + (about or "Nothing yet."), "Open:"]
     for it in _upcoming(rec.get("open") or []):
         when = datetime.fromisoformat(it["when"])
@@ -421,164 +422,6 @@ def _passes(who: str, rec: dict, items: list[str], correction: str = "",
     return (about or rec.get("about", "")), items_out
 
 
-#: Scripts a caller's words can be in, and the language each says. CODE SEES THIS, so the model
-#: only has to keep it (2026-10-01): asked to "say which language they spoke", it never did —
-#: a caller's Mandarin went unremarked in every run, with every wording.
-_SCRIPTS = (("Chinese", re.compile(r"[\u4e00-\u9fff]")), ("Japanese", re.compile(r"[\u3040-\u30ff]")),
-            ("Korean", re.compile(r"[\uac00-\ud7af]")), ("Thai", re.compile(r"[\u0e00-\u0e7f]")),
-            ("Tamil", re.compile(r"[\u0b80-\u0bff]")), ("Hindi", re.compile(r"[\u0900-\u097f]")),
-            # Letters ONLY Vietnamese uses — not French or Spanish é, à, ñ, so they cannot trip it.
-            ("Vietnamese", re.compile(r"[ăắằẳẵặâấầẩẫậđêếềểễệôốồổỗộơớờởỡợưứừửữựảạẻẹẽỉịĩỏọủụũỷỵỹ]", re.I)))
-
-
-#: A LANGUAGE MUST BE SPOKEN, NOT GLIMPSED (Stanley, 2026-10-01). The speech engine misreads short
-#: sounds — an English "mm" or "ah" can come back as 嗯 or 啊, a "Hi" as Cantonese — and once
-#: About holds "speaks Chinese" every later update keeps it. A misread is a short piece inside an
-#: English turn; someone who really speaks a language says at least one whole turn in it. So a
-#: language counts only for a TURN that is LANGUAGE_SHARE in it, with LANGUAGE_MIN of it —
-#: characters for scripts written without spaces (Chinese, Japanese, Thai, Korean…), words for
-#: Vietnamese. Fillers never count. A code-switcher who mixes inside every turn is missed: the
-#: cautious direction.
-LANGUAGE_SHARE = 0.8
-LANGUAGE_MIN = 10
-#: Vietnamese is measured by WORDS carrying a Vietnamese-only letter, and many of its words carry
-#: no mark at all ("em", "anh", "mai") — a sentence wholly in Vietnamese scores about half.
-VIETNAMESE_SHARE = 0.3
-_FILLERS = re.compile(r"[嗯啊哦呃嘛吧呀哈喔噢唉诶欸咯啦呢]")
-_PUNCT = re.compile(r"[\s\W_]+", re.U)
-
-
-def _turn_language(turn: str) -> tuple[str, int]:
-    """(the language a turn is spoken in, how much of it) if it is one of _SCRIPTS — or ("", 0)."""
-    turn = _FILLERS.sub("", turn)
-    for name, pat in _SCRIPTS:
-        if name == "Vietnamese":
-            words = [w for w in re.split(r"\s+", turn) if re.search(r"\w", w)]
-            units = sum(1 for w in words if pat.search(w))
-            total = len(words)
-        else:
-            letters = _PUNCT.sub("", turn)
-            units = len(pat.findall(letters))
-            # Latin words count as one unit each against the script's characters.
-            total = units + len(re.findall(r"[A-Za-z]+", turn))
-        share = VIETNAMESE_SHARE if name == "Vietnamese" else LANGUAGE_SHARE
-        enough = (total if name == "Vietnamese" else units) >= LANGUAGE_MIN
-        if enough and units / max(1, total) >= share:
-            return name, (total if name == "Vietnamese" else units)
-    return "", 0
-
-
-def _language_turns(text: str) -> dict[str, list[int]]:
-    """{language: [size of each of the caller's turns spoken in it]} for one call."""
-    out: dict[str, list[int]] = {}
-    for line in (text or "").splitlines():
-        if line.startswith("them:"):
-            name, size = _turn_language(line[len("them:"):])
-            if name:
-                out.setdefault(name, []).append(size)
-    return out
-
-
-#: THE LANGUAGE IS CODE'S, NOT THE MODEL'S (Stanley, 2026-10-01). A tally per person, across
-#: calls, and a sentence only past a threshold — so one misheard sentence never lands, and one
-#: that slips through is diluted by the next calls rather than repeated by the model.
-#: Shown with LANGUAGE_SHOW_TURNS turns AND (LANGUAGE_SHOW_CALLS calls OR one turn of
-#: LANGUAGE_LONG); said firmly ("Speaks X.") with LANGUAGE_FIRM_TURNS turns over the calls.
-LANGUAGE_SHOW_TURNS = 2
-LANGUAGE_SHOW_CALLS = 2
-LANGUAGE_LONG = 20
-LANGUAGE_FIRM_TURNS = 3
-
-
-#: LANGUAGES WRITTEN IN THE ENGLISH ALPHABET, which `_SCRIPTS` cannot see (2026-10-06): Malay
-#: and Indonesian, Tagalog, and Tamil, Thai or Vietnamese when the transcript spells them out
-#: ("Sawasdee krub", "Vanakkam"). Two models and a bar, and the answer is NOTHING unless all agree:
-#:   1. the DECISION MODEL says the caller speaks another language — measured 13/13, and 8/8 on
-#:      held-out calls, where the script rule saw 5/8 (it is blind to Malay);
-#:   2. GEMMA names it, from this list (`llm._Local.pick`) — 11/13, every miss below 0.70 and
-#:      every right answer at 0.95 or above, so LANGUAGE_NAME_SURE drops the misses;
-#:   3. the name joins the same tally as a script language, at one turn per call — so it shows
-#:      only from a second call ("Has spoken some Malay on calls.") and is said firmly from a
-#:      third: one call never puts a language in About.
-#: The decision model alone could not name it (4/9: Malay as Indonesian, Tamil as Malay).
-LATIN_LANGUAGES = ("Malay", "Indonesian", "Tagalog", "Tamil", "Thai", "Vietnamese")
-LANGUAGE_NAME_SURE = 0.9
-
-
-def _latin_language(text: str) -> str:
-    """The language a caller spoke in a call the script rule found none in, or "" — which is
-    also the answer whenever a model is missing, unsure, or says English."""
-    if "them:" not in (text or ""):
-        return ""
-    try:
-        from . import decider, llm
-        if not decider.ready():
-            return ""
-        gate_q = decider.choice(
-            "Which language does the caller (the lines starting 'them:') mostly speak?",
-            {"English": "the caller speaks English, perhaps with a few odd words or names",
-             "another language": "the caller speaks whole sentences in another language"})
-        got = (decider.ask(text, {"lang": gate_q}) or {}).get("lang") or {}
-        if got.get("choice") != "another language":
-            return ""
-        model = llm.client()
-        if model is None or not hasattr(model, "pick"):
-            return ""
-        named = model.pick(
-            f"{text.strip()}\n\nThe caller (the lines starting 'them:') speaks a language other "
-            f"than English. Which language is it? It may be written in the English alphabet.",
-            list(LATIN_LANGUAGES) + ["another language"])
-    except Exception as exc:                     # a language is a nicety; a summary must not fail
-        logger.info("could not name a caller's language (%s: %s)", type(exc).__name__, exc)
-        return ""
-    if not named or named[0] == "another language" or named[1] < LANGUAGE_NAME_SURE:
-        return ""
-    return named[0]
-
-
-def _tally_languages(rec: dict, calls: list[tuple[str, str]]) -> None:
-    """Add these calls' qualifying turns to the person's tally: the script rule's, or else, for a
-    language written in the English alphabet, one turn per call (`_latin_language`)."""
-    seen = rec.setdefault("languages", {})
-    for at, text in calls:
-        found = _language_turns(text)
-        if not found:
-            name = _latin_language(text)
-            found = {name: [1]} if name else {}
-        for name, sizes in found.items():
-            t = seen.setdefault(name, {"turns": 0, "calls": 0, "longest": 0, "last": ""})
-            t["turns"] += len(sizes)
-            t["calls"] += 1
-            t["longest"] = max(t["longest"], max(sizes))
-            t["last"] = max(t["last"], at)
-
-
-def _language_line(rec: dict) -> str:
-    """The language sentence for About, from the tally and the owner's corrections, or ""."""
-    off = set(rec.get("languages_off") or [])
-    forced = [n for n in rec.get("languages_on") or [] if n not in off]
-    firm, some = list(forced), []
-    for name, t in sorted((rec.get("languages") or {}).items()):
-        if name in off or name in forced:
-            continue
-        shown = t["turns"] >= LANGUAGE_SHOW_TURNS and (t["calls"] >= LANGUAGE_SHOW_CALLS
-                                                       or t["longest"] >= LANGUAGE_LONG)
-        if not shown:
-            continue
-        (firm if t["calls"] >= 2 and t["turns"] >= LANGUAGE_FIRM_TURNS else some).append(name)
-    out = []
-    if firm:
-        out.append(f"Speaks {_listed(firm)}.")
-    if some:
-        out.append(f"Has spoken some {_listed(some)} on calls.")
-    return " ".join(out)
-
-
-def _listed(names: list[str]) -> str:
-    """"Chinese", "Chinese and Malay", "Chinese, English and Malay"."""
-    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
-
-
 _NEGATION = re.compile(r"\b(not|no|never|don't|doesn't|dont|doesnt|isn't|cannot|can't)\b", re.I)
 
 
@@ -595,34 +438,6 @@ def _relation_correction(rec: dict, said: str) -> None:
                     rec.pop("relation", None)
             else:
                 rec["relation"] = {"label": kind, "confidence": 1.0, "by": "owner"}
-
-
-#: Languages an owner may name in a correction. ENGLISH IS HERE though no call ever counts it
-#: (it is the default, so the tally has no subject): left out, "speaks English, Chinese and Malay"
-#: kept the other two and dropped the one the owner said first (2026-10-14).
-_CORRECTABLE = ("English",)
-_ALIASES = {"Chinese": r"chinese|mandarin|cantonese"}
-#: A negation reaches only to the end of its clause, so in "speaks English and Malay, not Thai"
-#: only Thai is turned off, and "doesn't speak Chinese but speaks Malay" turns Malay on.
-_CLAUSE = re.compile(r"[,;.]|\bbut\b", re.I)
-
-
-def _language_correction(rec: dict, said: str) -> None:
-    """An owner's correction naming a language turns it on, or off when a negation comes before it
-    in the same clause."""
-    names = dict.fromkeys(list(_CORRECTABLE) + [n for n, _ in _SCRIPTS] + list(LATIN_LANGUAGES))
-    on, off = set(rec.get("languages_on") or []), set(rec.get("languages_off") or [])
-    for clause in _CLAUSE.split(said):
-        for name in names:
-            # WHOLE WORDS: "Malaysia" is not Malay, "Thailand" is not Thai.
-            m = re.search(rf"\b(?:{_ALIASES.get(name, re.escape(name))})\b", clause, re.I)
-            if not m:
-                continue
-            if _NEGATION.search(clause[: m.start()]):
-                off.add(name); on.discard(name)
-            else:
-                on.add(name); off.discard(name)
-    rec["languages_on"], rec["languages_off"] = sorted(on), sorted(off)
 
 
 def _week(at: str) -> str:
@@ -683,7 +498,6 @@ def update(who: str) -> bool:
     if done is None:
         return True
     rec["about"], rec["open"] = done
-    _tally_languages(rec, [(at, t) for at, t in calls if t])
     newest = items[-1][0]
     rec["last"] = {"at": newest,
                    "how": "a call" if any(at == newest for at, t in calls if t) else "a message"}
@@ -723,7 +537,6 @@ def correct(who: str, correction: str) -> str:
     if done is None:
         return "The model returned nothing, so the brief is unchanged."
     rec["about"], rec["open"] = done
-    _language_correction(rec, said)
     _relation_correction(rec, said)
     rec.pop("summary", None)
     rec["updated"] = _now().isoformat(timespec="seconds")
