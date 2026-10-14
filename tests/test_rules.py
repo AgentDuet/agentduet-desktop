@@ -3067,6 +3067,18 @@ def test_a_person_is_a_number_not_a_direction() -> None:
        "them: Is Tuesday still fine?" in text and "you: Yes, Tuesday morning." in text)
     # AND ONE COPY OF IT. Two readers now, and a second inline loop would drift — the page
     # would show one text while the model judged another.
+    # NOT WHILE A MERGE IS COMING: the legs as two blocks replaced the live captions, then broke
+    # into turns a few seconds later (2026-10-14). Once marked — a failed merge — they show.
+    with tempfile.TemporaryDirectory() as d:
+        lg = pathlib.Path(d)
+        (lg / "s-2-caller.txt").write_text("Is Tuesday still fine?")
+        (lg / "s-2-callee.txt").write_text("Yes, Tuesday morning.")
+        with __import__("unittest.mock").mock.patch.object(_carry, "legs", lambda: lg):
+            pending = _carry.transcript_of(["s-2-caller.wav", "s-2-callee.wav"], lg)
+            (lg / "s-2.merged").write_text("")
+            failed = _carry.transcript_of(["s-2-caller.wav", "s-2-callee.wav"], lg)
+    eq("legs waiting for their merge show nothing, so the captions stay", pending, "")
+    ok("legs a merge gave up on still show", "them: Is Tuesday still fine?" in failed, failed)
     ok("the page routes through the one helper", "carry.transcript_of(" in web)
     ok("and keeps no loop of its own", "parts.append" not in web)
 

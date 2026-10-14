@@ -181,6 +181,13 @@ def transcript_of(names: list[str], folder: pathlib.Path) -> str:
     from . import edition
     if not edition.ai():
         return ""
+    # NOTHING WHILE THE MERGE IS STILL COMING (2026-10-14). The legs are transcribed a few seconds
+    # before they are merged, and in that gap this read them as two long blocks — the whole of
+    # each side in one balloon — which replaced the live captions and then broke back into turns
+    # when the merge landed. A merge not yet done leaves the legs in `legs()` with no marker; a
+    # failed one marks them and keeps them, so that fallback still shows what each side said.
+    if folder == legs() and any(not (legs() / f"{stem_of(n)}.merged").exists() for n in names):
+        return ""
     # THE OTHER PARTY FIRST. There is no timing to order legs by — that is what the merged
     # transcript is for — so this is sorted, and plain sorting puts `-callee` (the owner's own
     # side) above `-caller`. Their words are the ones carrying the information, and an inbound
