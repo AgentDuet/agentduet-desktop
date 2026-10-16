@@ -647,6 +647,8 @@ Break one of these and the secretary is a different product.
 - **`docs/limits.md`** — what grows per call, where each part stops, and what a shared system of
   ~500 users would break. Measured numbers are marked; update it when a limit moves.
 - **The checklist below** — what is not built, who owns it, what would unblock it.
+- **`docs/features.md`** — the short feature list to share, in plain words. Update it in the same
+  commit as a feature that ships or goes.
 
 **The checklist keeps lying, and that is the thing to watch.** Five items in it have claimed
 outstanding work that was already finished, and the OAuth entry said "ours is not built" for a
