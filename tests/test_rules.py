@@ -4512,8 +4512,11 @@ def test_one_call_one_file() -> None:
     from agentduet_desktop import merge as _merge
     ROW = {"call_id": "callX", "caller": "+6591112222", "outgoing": False,
            "started": "2026-09-09T12:00:00"}
+    from agentduet_desktop import audiofile as _af
+    # WAV HERE, so the samples are exact: this checks the merge, and AAC is checked on its own.
     with mock.patch.object(carry, "recordings", lambda: R), \
          mock.patch.object(carry, "legs", lambda: L), \
+         mock.patch.object(_af, "extension", lambda: ".wav"), \
          mock.patch.object(_merge, "_row", lambda s: dict(ROW)):
         stem = "20260909T120000-callX"
         tone(L / f"{stem}-caller.wav", 440, 1.0)
@@ -4529,7 +4532,7 @@ def test_one_call_one_file() -> None:
         eq("the call is ready to merge", transcribe.merge_ready(), [stem])
         eq("and one is written", transcribe.merge_once(), 1)
 
-        with _wave.open(str(carry.merged_wav(stem)), "rb") as w:
+        with _wave.open(str(carry.merged_audio(stem)), "rb") as w:
             eq("the merge is STEREO, not a sum", w.getnchannels(), 2)
             rate, n = w.getframerate(), w.getnframes()
             raw = w.readframes(n)
@@ -4796,14 +4799,14 @@ def test_a_deleted_call_is_gone() -> None:
             eq("the merge runs", merge.once(), 1)
         ok("and the merge leaves no legs", not merge.leg_files(stem))
         ok("the recording and its .txt are in the owner's folder",
-           carry.merged_wav(stem).is_file() and carry.merged_txt(stem).is_file())
+           carry.merged_audio(stem).is_file() and carry.merged_txt(stem).is_file())
 
         eq("an id that is not one is refused", erase.delete_call("../x")["ok"], False)
         eq("an unknown call is refused", erase.delete_call("cNope")["ok"], False)
         got = erase.delete_call("cNew")
         eq("Delete Call says so", (got["ok"], got["message"]), (True, "Call deleted."))
         ok("the recording and .txt are gone",
-           not carry.merged_wav(stem).exists() and not carry.merged_txt(stem).exists())
+           not carry.merged_audio(stem).exists() and not carry.merged_txt(stem).exists())
         eq("the call is out of the record", calls.get("cNew"), None)
         ok("and out of the file, not only the index",
            "cNew" not in (home / "calls.jsonl").read_text())
@@ -7825,6 +7828,55 @@ def test_placed_call_news() -> None:
        'if not r.get("outgoing") or not edition.ai():' in src)
 
 
+def test_recordings_are_aac_on_a_mac() -> None:
+    """The kept recording is AAC `.m4a` where macOS's encoder is, WAV otherwise (audiofile.py)."""
+    print("\n  -- the recording the owner keeps: .m4a on a Mac, never lost to a format --")
+    import math
+    import struct
+    import subprocess as _sp
+    import unittest.mock as mock
+    from agentduet_desktop import audiofile, carry
+    d = pathlib.Path(tempfile.mkdtemp())
+    rate = 24000
+    pcm = b"".join(struct.pack("<hh", int(9000 * math.sin(2 * math.pi * 440 * i / rate)), 0)
+                   for i in range(rate * 3))
+    eq("a stem is the same whichever format it was saved in",
+       {carry.stem_of("20261016T090000-c1.m4a"), carry.stem_of("20261016T090000-c1.wav")},
+       {"20261016T090000-c1"})
+    ok("both formats count as a recording, a transcript does not",
+       audiofile.is_recording("a.m4a") and audiofile.is_recording("a.wav")
+       and not audiofile.is_recording("a.txt"))
+
+    with mock.patch.object(audiofile, "_afconvert", lambda: None):
+        eq("with no encoder a new recording is WAV", audiofile.extension(), ".wav")
+        got = audiofile.write(d / "plain.m4a", 2, rate, 2, pcm)
+        eq("and asking for .m4a still keeps the call, as WAV", got and got.name, "plain.wav")
+
+    def refuse(*a, **k):
+        raise _sp.CalledProcessError(1, "afconvert")
+    with mock.patch.object(audiofile, "_afconvert", lambda: "/usr/bin/afconvert"), \
+         mock.patch.object(audiofile.subprocess, "run", refuse):
+        got = audiofile.write(d / "broken.m4a", 2, rate, 2, pcm)
+        eq("an encoder that fails keeps the call as WAV", got and got.name, "broken.wav")
+        ok("and leaves no half-written file", not list(d.glob(".*.part")))
+
+    if audiofile._afconvert():
+        eq("on a Mac a new recording is .m4a", audiofile.extension(), ".m4a")
+        got = audiofile.write(d / "call.m4a", 2, rate, 2, pcm)
+        eq("written as .m4a", got and got.name, "call.m4a")
+        ok("at a fraction of the WAV's size", got and got.stat().st_size < len(pcm) / 8,
+           str(got and got.stat().st_size))
+        secs = audiofile.seconds(got)
+        ok("its length is read back", secs is not None and abs(secs - 3.0) < 0.05, str(secs))
+        channels, r, width, frames = audiofile.read(got)
+        eq("and it decodes to stereo 16-bit at the call's rate", (channels, r, width), (2, rate, 2))
+        ok("the same length", abs(len(frames) / 4 / r - 3.0) < 0.05, str(len(frames) / 4 / r))
+        eq("find() prefers the .m4a", audiofile.find(d, "call"), got)
+    else:
+        print("  (no afconvert here: the AAC half is checked on a Mac)")
+    shutil.rmtree(d, ignore_errors=True)
+
+
 def test_vocabulary() -> None:
     """Words the owner teaches the speech model by correcting a transcript (vocab.py)."""
     print("\n  -- correcting a transcript, and the words it teaches --")
@@ -7980,6 +8032,7 @@ def main() -> None:
     test_a_deleted_call_is_gone()
     test_briefs_are_about_the_right_person()
     test_the_decider_checks_relationships()
+    test_recordings_are_aac_on_a_mac()
     # EVERY TEST MUST BE CALLED. They are invoked by hand above, so a new `test_*`
     # function is dead until someone adds a line — and a dead test is worse than no
     # test, because the count still goes up and the suite still says it passed. I

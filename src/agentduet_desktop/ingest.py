@@ -1,7 +1,7 @@
 """AgentDuet AI's way in: the recordings AgentDuet Recorder leaves in the AgentDuet folder.
 
 AgentDuet AI has no phone line (see `edition.py`). It finds a call by its files: the stereo
-recording the recorder merged, and the `.txt` beside it whose header the recorder wrote
+recording the recorder merged (`.m4a`, or `.wav` from builds before 2026-10-16 and off a Mac), and the `.txt` beside it whose header the recorder wrote
 (`carry.HEADER_FIRST`, `merge.write_txt`). Nothing else is accepted — not a file the owner drops
 in, not one without that header — because the header is what says who the call was with, and a
 recording that cannot say so is not one this app can file.
@@ -30,7 +30,7 @@ import re
 import wave
 from datetime import datetime
 
-from . import carry, paths
+from . import audiofile, carry, paths
 
 logger = logging.getLogger("secretary.ingest")
 
@@ -84,7 +84,7 @@ def found() -> list[tuple[str, dict, bool]]:
     folder = carry.recordings()
     if not folder.is_dir():
         return out
-    for wav in sorted(folder.glob("*.wav")):
+    for wav in sorted(p for p in folder.glob("*.*") if audiofile.is_recording(p.name)):
         txt = wav.with_suffix(".txt")
         if not txt.is_file():
             continue                        # not merged yet, or not the recorder's
@@ -107,16 +107,16 @@ def split(stem: str) -> bool:
     Left is the caller and right the owner — the recorder's merge put them there, already
     aligned, so both legs start at zero.
     """
-    src = carry.recordings() / f"{stem}.wav"
+    src = audiofile.find(carry.recordings(), stem)
+    if src is None:
+        return False
     try:
-        with wave.open(str(src), "rb") as r:
-            if r.getnchannels() != 2 or r.getsampwidth() != 2:
-                logger.warning("ingest %s: not a two-channel 16-bit recording", stem)
-                return False
-            rate = r.getframerate()
-            frames = r.readframes(r.getnframes())
-    except (OSError, EOFError, wave.Error) as exc:
+        channels, rate, width, frames = audiofile.read(src)
+    except OSError as exc:
         logger.warning("ingest %s: cannot read the recording (%s)", stem, exc)
+        return False
+    if channels != 2 or width != 2:
+        logger.warning("ingest %s: not a two-channel 16-bit recording", stem)
         return False
     both = array.array("h")
     both.frombytes(frames)
@@ -148,7 +148,7 @@ def once() -> int:
             continue                        # tried again next pass
         call_id = stem.split("-", 1)[1] if "-" in stem else stem
         ended = (f["started"] + f["seconds"]) if f["started"] else None
-        calls.record(call_id, f["number"], "carried", recordings=[f"{stem}.wav"],
+        calls.record(call_id, f["number"], "carried", recordings=[f["recording"]],
                      outgoing=f["outgoing"], started=f["started"], at=ended)
         seen.add(stem)
         _remember(seen)

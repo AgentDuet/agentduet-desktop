@@ -34,7 +34,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 import unittest.mock as mock                                            # noqa: E402
 
-from agentduet_desktop import calls, carry, edition, ingest, merge, paths, transcribe  # noqa: E402
+from agentduet_desktop import audiofile, calls, carry, edition, ingest, merge, paths, transcribe  # noqa: E402
 
 passed = failed = 0
 
@@ -62,6 +62,13 @@ def stereo(path: pathlib.Path, secs: float = 2.0, rate: int = 24000) -> None:
             struct.pack("<hh", int(9000 * math.sin(2 * math.pi * 440 * i / rate)),
                         int(9000 * math.sin(2 * math.pi * 880 * i / rate)))
             for i in range(int(rate * secs))))
+
+
+def _tone_pcm(secs: float = 2.0, rate: int = 24000) -> bytes:
+    return b"".join(
+        struct.pack("<hh", int(9000 * math.sin(2 * math.pi * 440 * i / rate)),
+                    int(9000 * math.sin(2 * math.pi * 880 * i / rate)))
+        for i in range(int(rate * secs)))
 
 
 def digest(path: pathlib.Path) -> str:
@@ -142,6 +149,33 @@ with mock.patch.object(carry, "recordings", lambda: FOLDER):
     check("and it is not done twice", transcribe.merge_ready() == [])
     check("the hub reads it as any call", carry.transcript_of(
         *reversed(carry.call_audio([f"{rec}.wav"], "cH"))) == body)
+
+    if audiofile.extension() == ".m4a":
+        print("\n-- a recording saved as .m4a (a Mac, from 2026-10-16) --")
+        aac = "20261016T090000-cA"
+        out = audiofile.write(FOLDER / f"{aac}.m4a", 2, 24000, 2, _tone_pcm())
+        check("the recorder's writer made an .m4a", out is not None and out.suffix == ".m4a", out)
+        (FOLDER / f"{aac}.txt").write_text(
+            "Call: +6597776666\nDirection: incoming\nStarted: 2026-10-16 09:00:00\n"
+            f"Length: 0:02\nRecording: {aac}.m4a\n\n")
+        check("it is found", aac in {s for s, _, _ in ingest.found()})
+        check("and filed", ingest.once() == 1)
+        r = {r["call_id"]: r for r in calls.recent()}.get("cA", {})
+        check("pointing at the .m4a", r.get("recordings") == [f"{aac}.m4a"], r)
+        sides = {}
+        for leg in ("caller", "callee"):
+            with wave.open(str(carry.legs() / f"{aac}-{leg}.wav"), "rb") as w:
+                sides[leg] = (w.getnchannels(), w.getnframes() / w.getframerate(),
+                              struct.unpack("<%dh" % w.getnframes(), w.readframes(w.getnframes())))
+        check("split into two mono legs, the length of the call",
+              all(c == 1 and abs(secs - 2.0) < 0.05 for c, secs, _ in sides.values()),
+              {k: v[:2] for k, v in sides.items()})
+        # LEFT IS THE CALLER after a trip through AAC too: 440 Hz crosses zero 880 times a
+        # second, the owner's 880 Hz twice as often.
+        cross = lambda xs: sum(1 for a, b in zip(xs, xs[1:]) if (a < 0) != (b < 0)) / 2.0
+        check("and the caller is still the left channel",
+              abs(cross(sides["caller"][2]) - 880) < 40 and abs(cross(sides["callee"][2]) - 1760) < 80,
+              (cross(sides["caller"][2]), cross(sides["callee"][2])))
 
 
 print("\n-- the daemon runs with no line --")

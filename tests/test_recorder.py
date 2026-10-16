@@ -142,17 +142,20 @@ part.write_text("")
 assert merge.once() == 0, "merged while a leg was still being written"
 part.unlink()
 assert merge.once() == 1
-out = carry.merged_wav(stem)
-with wave.open(str(out), "rb") as f:
-    assert f.getnchannels() == 2, f.getnchannels()
-    assert f.getnframes() == int(carry.SAMPLE_RATE * 1.5), f.getnframes()
+from agentduet_desktop import audiofile
+out = carry.merged_audio(stem)
+# AAC on a Mac, WAV elsewhere: the recorder keeps the small format too (audiofile.py).
+assert out.suffix == audiofile.extension(), out
+channels, rate, _, frames = audiofile.read(out)
+assert channels == 2, channels
+assert abs(len(frames) / 4 / rate - 1.5) < 0.05, len(frames) / 4 / rate
 text = carry.merged_txt(stem).read_text()
 head, body = carry.split_txt(text)
 assert head.startswith("Call: +6591234567") and "Direction: outgoing" in head, text
-assert "Length: 0:02" in head and f"Recording: {stem}.wav" in head, text
+assert "Length: 0:02" in head and f"Recording: {out.name}" in head, text
 assert body == "", "a transcript appeared in the recorder: " + body
 assert not list(carry.recordings().glob(".*.part")), "a half-written file was left"
-assert carry.transcript_of([f"{stem}.wav"], carry.recordings()) == ""
+assert carry.transcript_of([out.name], carry.recordings()) == ""
 assert merge.once() == 0, "merged twice"
 assert not merge.leg_files(stem), "the legs were kept after the merge"
 from agentduet_desktop import erase
