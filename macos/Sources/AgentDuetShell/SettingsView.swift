@@ -297,7 +297,7 @@ private struct CallsPane: View {
             .confirmationDialog("Sync recordings to iCloud?", isPresented: $confirmICloud.value) {
                 Button("Sync to iCloud") { model.setSyncICloud(true) }
             } message: {
-                Text("Your recordings and transcripts will be copied to your iCloud account and stored by Apple. Anyone who can sign in to your Apple Account can open them, and the people you recorded may not have agreed to that.")
+                Text("Everything in this folder will be copied to your iCloud account and stored by Apple. Anyone who can sign in to your Apple Account can open it, and the people you recorded may not have agreed to that.")
             }
             #if RECORDER
             Section {} footer: { NoticeFooter(notice: model.notice[.calls]) }
