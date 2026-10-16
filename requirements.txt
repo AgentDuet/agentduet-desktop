@@ -2,7 +2,7 @@
 #    packaging/lock.sh
 abxbus==2.5.74
     # via agentduet
-agentduet==1.1.0b7
+agentduet==1.1.0b8
     # via
     #   -r packaging/requirements.in
     #   agentduet-adapters
