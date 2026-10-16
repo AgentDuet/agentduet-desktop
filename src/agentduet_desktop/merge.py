@@ -14,7 +14,7 @@ import pathlib
 import time
 import wave
 
-from . import carry
+from . import audiofile, carry
 
 logger = logging.getLogger("secretary")
 
@@ -60,7 +60,7 @@ def ready(settled) -> list[str]:
 
 
 def audio(stem: str, wavs: list[pathlib.Path]) -> bool:
-    """Write one stereo WAV: caller left, callee right, aligned by their start sidecars."""
+    """Write the call's stereo recording: caller left, callee right, aligned by their start sidecars."""
     sides: dict[str, pathlib.Path] = {}
     for w in wavs:
         for leg in ("caller", "callee"):
@@ -95,21 +95,12 @@ def audio(stem: str, wavs: list[pathlib.Path]) -> bool:
         return False
     left = frames.get("caller", b"").ljust(n * width, b"\x00")
     right = frames.get("callee", b"").ljust(n * width, b"\x00")
-    out = carry.merged_wav(stem)
-    try:
-        out.parent.mkdir(parents=True, exist_ok=True)
-        with wave.open(str(out), "wb") as w:
-            w.setnchannels(2)
-            w.setsampwidth(width)
-            w.setframerate(rate)
-            # Interleave the two channels: L,R,L,R… CALLER IS LEFT and callee right, always,
-            # so a listener can tell the parties apart by ear and a splitter by index.
-            w.writeframes(b"".join(left[i:i + width] + right[i:i + width]
-                                   for i in range(0, n * width, width)))
-    except (OSError, wave.Error) as exc:
-        logger.warning("merge %s: could not write %s (%s)", stem, out.name, exc)
-        return False
-    return True
+    # Interleave the two channels: L,R,L,R… CALLER IS LEFT and callee right, always,
+    # so a listener can tell the parties apart by ear and a splitter by index.
+    pcm = b"".join(left[i:i + width] + right[i:i + width] for i in range(0, n * width, width))
+    # AAC `.m4a` on a Mac, WAV elsewhere or if encoding fails — see `audiofile`.
+    out = carry.recordings() / f"{stem}{audiofile.extension()}"
+    return audiofile.write(out, 2, rate, width, pcm) is not None
 
 
 def recorded(wav: pathlib.Path) -> bool:
@@ -136,11 +127,10 @@ def _row(stem: str) -> dict | None:
 
 
 def _length(path: pathlib.Path) -> str:
-    try:
-        with wave.open(str(path), "rb") as w:
-            s = round(w.getnframes() / float(w.getframerate() or 1))
-    except (OSError, EOFError, wave.Error):
+    secs = audiofile.seconds(path)
+    if secs is None:
         return ""
+    s = round(secs)
     return f"{s // 60}:{s % 60:02d}"
 
 
@@ -164,10 +154,10 @@ def header(stem: str, row: dict | None) -> str:
         lines.append(f"Direction: {'outgoing' if row.get('outgoing') else 'incoming'}")
     if started:
         lines.append(f"Started: {started}")
-    wav = carry.merged_wav(stem)
-    if length := _length(wav):
+    rec = carry.merged_audio(stem)
+    if length := _length(rec):
         lines.append(f"Length: {length}")
-    lines.append(f"Recording: {wav.name}")
+    lines.append(f"Recording: {rec.name}")
     return "\n".join(lines)
 
 

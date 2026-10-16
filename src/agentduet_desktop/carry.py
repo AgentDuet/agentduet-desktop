@@ -82,16 +82,22 @@ def legs() -> pathlib.Path:
 
 def stem_of(name: str) -> str:
     """`20260909T103616-<uuid>-caller.wav` -> `20260909T103616-<uuid>`."""
-    base = name[:-4] if name.endswith(".wav") or name.endswith(".txt") else name
+    base = name[:-4] if name.endswith((".wav", ".m4a", ".txt")) else name
     for suffix in ("-caller", "-callee", "-agent"):
         if base.endswith(suffix):
             return base[: -len(suffix)]
     return base
 
 
-def merged_wav(stem: str) -> pathlib.Path:
-    """The one file per call the owner keeps: both parties, one channel each."""
-    return recordings() / f"{stem}.wav"
+def merged_audio(stem: str) -> pathlib.Path:
+    """The one file per call the owner keeps: both parties, one channel each.
+
+    The file already saved, `.m4a` or an older `.wav`; else where a new one would go
+    (`audiofile.extension`).
+    """
+    from . import audiofile
+    return (audiofile.find(recordings(), stem)
+            or recordings() / f"{stem}{audiofile.extension()}")
 
 
 def merged_txt(stem: str) -> pathlib.Path:
@@ -223,6 +229,7 @@ def call_audio(names: list[str], call_id: str = "") -> tuple[pathlib.Path, list[
     cannot assume either one: asking only for the merged name would report a just-finished call
     as "No recording.", which is a false claim about audio that is sitting on disk.
     """
+    from . import audiofile
     # A ROW THAT NAMES NOTHING IS NOT PROOF THERE IS NOTHING. The index globbed the wrong
     # folder for a few minutes on 2026-09-09 and wrote `recordings: []` for a call whose audio,
     # transcripts and merge were all on disk — and an empty list reads as "No recording.", which
@@ -232,13 +239,14 @@ def call_audio(names: list[str], call_id: str = "") -> tuple[pathlib.Path, list[
     if not names and call_id:
         names = sorted(p.name for p in legs().glob(f"*{call_id}*.wav"))
         if not names:
-            names = sorted(p.name for p in recordings().glob(f"*{call_id}*.wav"))
+            names = sorted(p.name for p in recordings().glob(f"*{call_id}*")
+                           if p.suffix in (".wav", ".m4a"))
     stems = {stem_of(n) for n in names}
     # THE FOLDER IT WAS MERGED INTO, which may not be today's: choosing a new folder moves
     # nothing ("anything already recorded stays where it is"), so a call from before the change
     # is still in the default one. Without this its merge vanished from the hub (2026-09-30).
     for folder in dict.fromkeys([recordings(), paths.RUN / "recordings"]):
-        merged = [f"{st}.wav" for st in sorted(stems) if (folder / f"{st}.wav").is_file()]
+        merged = [p.name for st in sorted(stems) if (p := audiofile.find(folder, st))]
         if merged:
             return folder, merged
     here = [n for n in names if (legs() / n).is_file()]

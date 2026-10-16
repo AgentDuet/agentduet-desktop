@@ -64,12 +64,10 @@ def _playable(folder, names) -> dict:
     from . import carry
     if len(names) != 1 or folder == carry.legs():
         return {}
+    from . import audiofile
     path = folder / names[0]
-    try:
-        import wave
-        with wave.open(str(path), "rb") as w:
-            seconds = w.getnframes() / float(w.getframerate() or 1)
-    except (OSError, EOFError, wave.Error):
+    seconds = audiofile.seconds(path)
+    if seconds is None:
         return {}
     return {"audio": str(path), "seconds": round(seconds, 1)}
 
@@ -570,7 +568,7 @@ def make_app(token: str) -> web.Application:
                 return []
             out = []
             for f in sorted(folder.glob("*.*"), key=lambda x: x.stat().st_mtime, reverse=True):
-                if f.suffix.lower() not in (".wav", ".json", ".txt"):
+                if f.suffix.lower() not in (".m4a", ".wav", ".json", ".txt"):
                     continue
                 out.append({"name": f.name, "kind": f.suffix.lstrip(".").upper(),
                             "bytes": f.stat().st_size})

@@ -101,12 +101,14 @@ every carry, recording, Contacts or sign-in fix twice. Instead:
 
 **AGENTDUET AI IS THE THIRD EDITION** (`ai`, 2026-10-03): the AI half with no phone line, run
 BESIDE AgentDuet Recorder.
-- **What it reads:** the recorder's calls, and nothing else. A call is a `.wav` with its
-  header'd `.txt` in the AgentDuet folder; the folder is chosen in its setup and Settings.
+- **What it reads:** the recorder's calls, and nothing else. A call is a recording with its
+  header'd `.txt` in the AgentDuet folder; the folder is chosen in its setup and Settings. The
+  recording is AAC `.m4a` on a Mac since 2026-10-16 (`audiofile.py`), `.wav` before that and
+  elsewhere, and the header's `Recording:` names which.
 - **How it reads them:** `ingest.py` polls the folder and files each call in its own
   `calls.jsonl`. It splits the stereo recording into the two sides for the ordinary
-  transcription queue, then writes only the transcript, below the header. The `.wav` is never
-  written.
+  transcription queue, then writes only the transcript, below the header. The recording is
+  never written.
 - **What it lacks:** sign-in, a connection and calls (`edition.calls()` is false; Swift
   `-D AI_ONLY`).
 - **What it has of its own:** `~/.agentduet-ai`, `com.b3networks.agentduet-ai`, and any free port (it never signs in, so nothing needs a fixed number; the shell reads `run/site-url`).
