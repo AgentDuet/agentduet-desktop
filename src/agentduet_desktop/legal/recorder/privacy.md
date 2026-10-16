@@ -26,6 +26,9 @@ This data stays in the folder you choose and in the App's own folder on your com
 no access to it.** It is deleted when you delete it; uninstalling the App does not delete your
 recordings.
 
+On a Mac, the App keeps that folder out of iCloud. If you turn on **Sync to iCloud** in Settings,
+macOS copies the folder to your iCloud account, where Apple stores it under its own terms.
+
 **For this data, you are responsible**: if you use the App for a business, as the organisation
 responsible under the PDPA and similar laws. That means telling the people on your calls,
 getting their consent where required, keeping it secure, and answering their requests about it.

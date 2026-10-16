@@ -223,6 +223,18 @@ import Foundation
         }
     }
 
+    var syncICloud: Bool { cur.bool("sync_icloud") }
+    /// Whether the folder is somewhere iCloud Drive syncs, so the switch changes anything.
+    var inICloud: Bool { cur.bool("in_icloud") }
+
+    func setSyncICloud(_ on: Bool) {
+        Task {
+            let r = await api.post("/api/setup/setting", ["field": "sync_icloud", "value": on ? "yes" : "no"])
+            await poll()
+            if r["ok"] as? Bool == false { say(.calls, r) } else { notice[.calls] = nil }
+        }
+    }
+
     func showFolder() {
         guard !storage.isEmpty else { return }
         NSWorkspace.shared.open(URL(fileURLWithPath: storage))
