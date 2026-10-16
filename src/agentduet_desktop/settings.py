@@ -33,6 +33,9 @@ SETTING_FIELDS = {"name": "Name", "pronoun": "Pronoun", "voice": "Voice",
                   # Where the audio goes. An absolute path; anything else falls back to the
                   # default rather than raising — see owner.recordings_dir().
                   "recordings": "Recordings",
+                  # Whether that folder may sync to iCloud. Off unless an explicit yes — see
+                  # owner.sync_icloud().
+                  "sync_icloud": "Sync to iCloud",
                   # Whether a reasoning model monologues first. Only meaningful on some models
                   # (llm.supports_thinking), and off unless the value is an explicit yes —
                   # measured at ~100x slower on a question it answers correctly without.

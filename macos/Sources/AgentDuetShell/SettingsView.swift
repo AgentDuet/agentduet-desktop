@@ -256,6 +256,7 @@ private struct SignInSheet: View {
 
 private struct CallsPane: View {
     @ObservedObject var model: SettingsModel
+    @StateObject private var confirmICloud = Local(false)
 
     #if !RECORDER
     static let languages = [("en", "English"), ("vi", "Vietnamese"), ("zh", "Chinese"),
@@ -284,6 +285,19 @@ private struct CallsPane: View {
                     .fixedSize()
                     .help(abbreviated(model.storage))
                 }
+                // OFF UNLESS ASKED, and asked only past a warning: turning it on hands every call
+                // to Apple (macperms.sync_choice). Turning it off needs no warning.
+                Toggle("Sync to iCloud", isOn: Binding(
+                    get: { model.syncICloud },
+                    set: { on in if on { confirmICloud.value = true } else { model.setSyncICloud(false) } }))
+                if model.syncICloud && !model.inICloud {
+                    Text("This folder is not in iCloud Drive.").foregroundStyle(.secondary)
+                }
+            }
+            .confirmationDialog("Sync recordings to iCloud?", isPresented: $confirmICloud.value) {
+                Button("Sync to iCloud") { model.setSyncICloud(true) }
+            } message: {
+                Text("Your recordings and transcripts will be copied to your iCloud account and stored by Apple. Anyone who can sign in to your Apple Account can open them, and the people you recorded may not have agreed to that.")
             }
             #if RECORDER
             Section {} footer: { NoticeFooter(notice: model.notice[.calls]) }

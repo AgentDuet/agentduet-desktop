@@ -12,6 +12,8 @@ the folder is marked `com.apple.fileprovider.ignore#P`, which iCloud honours. Me
 folder never became an iCloud item, nor did a subfolder made later inside it; the mark survived
 a rename; and marking an already-synced folder took it out of iCloud within 25 s. It is set
 again on first use in every process, so the protection comes back if something strips it.
+The owner may switch it off: Settings' "Sync to iCloud" (`## Sync to iCloud`, off unless an
+explicit yes) removes the mark from the folder in use, after a warning about what Apple then holds.
 
 THE PERMISSION. Documents is privacy-protected: the first access asks "AgentDuet would like to
 access files in your Documents folder" and BLOCKS until answered. There is no API to read the
@@ -50,6 +52,8 @@ PRIVACY = {
 
 _asking = threading.Event()
 _marked: set[str] = set()
+#: (folder, sync) pairs already applied in this process — see `sync_choice`.
+_applied: set[tuple[str, bool]] = set()
 
 
 def applies() -> bool:
@@ -124,12 +128,77 @@ def mark_local(folder: pathlib.Path) -> bool:
     return rc == 0
 
 
+def unmark(folder: pathlib.Path) -> bool:
+    """Let iCloud sync `folder` again. True when the mark is off, including when it never was."""
+    if not applies():
+        return False
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.removexattr.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
+    if libc.removexattr(os.fsencode(str(folder)), IGNORE_XATTR.encode(), 0) == 0:
+        return True
+    return ctypes.get_errno() == 93          # ENOATTR: it was not marked
+
+
+def sync_choice(folder: pathlib.Path) -> None:
+    """Put the owner's iCloud choice on `folder`: the mark, unless `## Sync to iCloud` says yes.
+
+    OFF IS THE DEFAULT AND IT IS ENFORCED, not assumed: the folder is marked whatever iCloud is
+    doing, because "Desktop & Documents" sync can be switched on at any time after setup. Once
+    per folder and choice in a process, so the hot path costs a set lookup; a failure is retried
+    on the next lookup. A changed setting applies at the next lookup, since the value is part of
+    the key; saving it calls `forget_choice` so it is applied again even when unchanged.
+    """
+    if not applies():
+        return
+    from . import owner
+    want = owner.sync_icloud()
+    key = (str(folder), want)
+    if key in _applied:
+        return
+    if unmark(folder) if want else mark_local(folder):
+        _applied.add(key)
+
+
+def forget_choice() -> None:
+    """The setting changed: apply it again at the next lookup."""
+    _applied.clear()
+
+
+def _cloud_domain(path: pathlib.Path) -> bool:
+    """Whether macOS has put `path` in iCloud Drive's File Provider domain — which it does to
+    Desktop and Documents while "Desktop & Documents Folders" is on (seen 2026-10-16)."""
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.getxattr.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_void_p,
+                              ctypes.c_size_t, ctypes.c_uint32, ctypes.c_int]
+    libc.getxattr.restype = ctypes.c_ssize_t
+    buf = ctypes.create_string_buffer(512)
+    n = libc.getxattr(os.fsencode(str(path)), b"com.apple.file-provider-domain-id", buf, 512, 0, 0)
+    return n > 0 and b"CloudDocs" in buf.raw[:n]
+
+
+def in_icloud(folder: pathlib.Path) -> bool:
+    """Whether `folder` is somewhere iCloud Drive syncs: iCloud Drive itself, or Desktop or
+    Documents while they sync. Only then does `## Sync to iCloud` change anything."""
+    if not applies():
+        return False
+    home = pathlib.Path.home()
+    try:
+        f = folder.resolve()
+        if f.is_relative_to((home / "Library" / "Mobile Documents").resolve()):
+            return True
+        return any(f.is_relative_to((home / top).resolve()) and _cloud_domain(home / top)
+                   for top in ("Desktop", "Documents"))
+    except OSError:
+        return False
+
+
 def _open_documents() -> None:
-    """Create and mark the folder. The first call is the one macOS asks about."""
+    """Create the folder and put the iCloud choice on it. The first call is the one macOS asks
+    about."""
     folder = documents_folder()
     folder.mkdir(parents=True, exist_ok=True)
     os.listdir(folder)
-    mark_local(folder)
+    sync_choice(folder)
     _marked.add(str(folder))
 
 

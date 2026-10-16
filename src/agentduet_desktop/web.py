@@ -207,7 +207,7 @@ def make_app(token: str) -> web.Application:
                       "record_calls": "Call recording", "language": "Language",
                       "transcription": "Transcription quality",
                       "recordings": "Recordings folder", "thinking": "Thinking",
-                      "answer_here": "Answer calls here"}
+                      "answer_here": "Answer calls here", "sync_icloud": "Sync to iCloud"}
 
     def _saved(field: str, value: str) -> str:
         """How the page says a setting was stored. The ONLY phrasing for it."""
@@ -230,6 +230,11 @@ def make_app(token: str) -> web.Application:
         out = settings.set_setting(field, value)
         if out.lower().startswith("unknown"):
             return web.json_response({"ok": False, "message": out})
+        if field == "sync_icloud":
+            # NOW, not at the next call: the owner who just said no expects the upload to stop.
+            from . import macperms
+            macperms.forget_choice()
+            await asyncio.to_thread(_own.recordings_dir)
         return web.json_response({"ok": True, "message": _saved(field, value)})
 
     async def logo(request):
@@ -492,6 +497,10 @@ def make_app(token: str) -> web.Application:
         cur["start_at_login_state"] = _actual or ""
         cur["recordings_dir"] = str(carry.recordings() / carry.ANSWERED)
         cur["carried_dir"] = str(carry.recordings())
+        from . import macperms as _mp
+        cur["sync_icloud"] = _own.sync_icloud()
+        # Whether the switch changes anything: only a folder iCloud Drive syncs can be synced.
+        cur["in_icloud"] = _mp.in_icloud(carry.recordings())
         # False until the backend has a sign-in endpoint. The page uses it to decide whether to
         # lead with "Sign in" or with the manual fields — see connector.OAUTH_URL.
         # Whether setup has been FINISHED before. The page uses it to decide that "Complete"

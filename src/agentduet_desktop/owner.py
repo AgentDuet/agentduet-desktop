@@ -333,6 +333,17 @@ def recordings_set() -> str:
 
 
 def recordings_dir() -> pathlib.Path:
+    """The folder below, with the owner's iCloud choice on it (`macperms.sync_choice`): kept out
+    of iCloud unless `## Sync to iCloud` says yes. Applied to EVERY folder in use, a chosen one
+    too — the mark used to go only on `~/Documents/AgentDuet`, so a folder picked in Settings
+    inside a synced Documents uploaded every call."""
+    folder = _recordings_dir()
+    from . import macperms
+    macperms.sync_choice(folder)
+    return folder
+
+
+def _recordings_dir() -> pathlib.Path:
     """Where call audio and transcripts are written. Default `$AGENTDUET_HOME/run/recordings`,
     or `~/Documents/AgentDuet` on a Mac that granted it in setup — see `macperms`.
 
@@ -406,6 +417,13 @@ def record_calls() -> bool:
     """
     first = _first_line(_strip_guidance(_sections().get("Record calls", ""))).strip().lower()
     return first not in ("no", "off", "false")
+
+
+def sync_icloud() -> bool:
+    """Whether the recordings folder may sync to iCloud. Default OFF, and only an explicit yes
+    turns it on: a typo must not start copying every call to Apple. See `macperms.sync_choice`."""
+    first = _first_line(_strip_guidance(_sections().get("Sync to iCloud", ""))).strip().lower()
+    return first in ("yes", "on", "true")
 
 
 def start_at_login() -> bool:

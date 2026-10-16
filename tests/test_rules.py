@@ -6389,6 +6389,33 @@ def test_documents_permission() -> None:
             out = __import__("subprocess").run(["xattr", "-p", macperms.IGNORE_XATTR, str(f)],
                                                capture_output=True, text=True).stdout.strip()
             eq("and reads back", out, "1")
+            # SYNC TO iCLOUD: off marks whatever folder is in use, on removes the mark.
+            from agentduet_desktop import owner as _ow
+            g = tmp / "chosen"
+            g.mkdir()
+            def mark():
+                return __import__("subprocess").run(["xattr", "-p", macperms.IGNORE_XATTR, str(g)],
+                                                    capture_output=True, text=True).stdout.strip()
+            macperms.forget_choice()
+            with _m.patch.object(_ow, "sync_icloud", return_value=False):
+                macperms.sync_choice(g)
+            eq("off by default, a chosen folder is marked too", mark(), "1")
+            with _m.patch.object(_ow, "sync_icloud", return_value=True):
+                macperms.sync_choice(g)
+            eq("on: the next lookup removes the mark", mark(), "")
+            __import__("subprocess").run(["xattr", "-w", macperms.IGNORE_XATTR, "1", str(g)])
+            with _m.patch.object(_ow, "sync_icloud", return_value=True):
+                macperms.sync_choice(g)
+                eq("applied once per process: a mark put back stays", mark(), "1")
+                macperms.forget_choice()
+                macperms.sync_choice(g)
+            eq("until the setting is saved again", mark(), "")
+            ok("unmarking an unmarked folder is not a failure", macperms.unmark(g))
+            ok("a temp folder is not in iCloud", not macperms.in_icloud(g))
+            for raw, want in (("", False), ("yes", True), ("on", True), ("yse", False), ("no", False)):
+                with _m.patch.object(_ow, "_sections", return_value={"Sync to iCloud": raw}):
+                    eq(f"## Sync to iCloud {raw!r}", _ow.sync_icloud(), want)
+            macperms.forget_choice()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
