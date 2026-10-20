@@ -95,6 +95,10 @@ sandbox that cannot choose its own destination.
 - **SMS archiving does not exist**, and the cloud-summary path is not wired.
 - **Apple Silicon only** on macOS. No Windows build yet.
 
+## Contributing
+
+Pull requests are welcome; every commit must be signed off. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Recording other people
 
 Carrying a call records two people talking. Whether they must be told, and by whom, depends on
