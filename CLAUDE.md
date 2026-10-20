@@ -265,13 +265,15 @@ released under its own tag, and attached from its own run. Each app's update che
 its own prefix (`update.PREFIX`), so a recorder is never linked to a page offering another app.
 Windows and Linux are not built. The full app still ships: Singtel is one telco of many.
 
-**THE TAG TRIGGERS THE BUILD HERE.** `build.yml` runs on `push: tags: ["v*"]`, so the tag is
-what produces the DMG. The global rule that "the deploy pipeline creates the git tag, not you"
-belongs to the microservices and is WRONG in this repo — do not reason with it here.
-
-The consequence people get backwards: a tag is not a label you apply afterwards, it is a
-trigger. So do not tag to mark a build you have already checked, and do not tag hoping the
-build works.
+**A TAG BUILDS NOTHING (since 2026-10-20).** It used to: `build.yml` ran on `push: tags`, so
+every release built each app twice, and the tag's build was never the one shipped (step 4 attaches
+the verified dispatch run). That second build cost a third of a release's macOS minutes, and the
+tags also re-ran `macos-shell.yml`; Steve and Luk flagged the Actions usage the same day. It is
+still free while this repo is public, on standard runners, so the cut was about not paying for
+nothing if that changes. So `build.yml` runs on `workflow_dispatch` only, `macos-shell.yml` on
+branch pushes only, and `tests/test_rules.py` pins both. The global rule that "the deploy
+pipeline creates the git tag, not you" belongs to the microservices and is WRONG here: we tag,
+after verifying.
 
 **The order that works:**
 
@@ -331,9 +333,9 @@ makes the promise before the check.
 **So: a green `status` says nothing about whether the binary runs.** The smoke step now boots
 the daemon and waits for it to bind, and that assertion is the one that matters. Keep it.
 
-**Pushing the tag fires a SECOND build**, because of the trigger above. That is wasted minutes,
-not a problem — but attach the artifacts from the run you VERIFIED, never from the tag's build.
-PyInstaller output is not reproducible byte-for-byte, so they are different files.
+**Attach the run you VERIFIED, and check what landed.** PyInstaller output is not reproducible
+byte-for-byte, so a rebuild of the same commit is a different file. After attaching, download each
+release asset and compare its SHA-256 with the file you checked (done for b11).
 
 ## Working rules
 
