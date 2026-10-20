@@ -2355,11 +2355,16 @@ def test_gpu_offload() -> None:
 
 
 def test_release_ships_the_native_shell() -> None:
-    """A tag push must build the Swift shell — and a dispatch default cannot achieve that."""
+    """Releases build the Swift shell, from a dispatch only — a tag push builds nothing."""
     print("\n  -- releases carry the native shell --")
     wf = (pathlib.Path(__file__).parent.parent / ".github" / "workflows" / "build.yml").read_text()
 
     ok("native is the default for a dispatch", "default: native" in wf)
+    # A RELEASE ATTACHES THE VERIFIED DISPATCH RUN, so a tag must not build again (2026-10-20):
+    # that build was never shipped and cost a third of a release's macOS minutes.
+    ok("a tag push does not start a build", "tags:" not in wf and "\n  push:" not in wf)
+    shell = (pathlib.Path(__file__).parent.parent / ".github" / "workflows" / "macos-shell.yml").read_text()
+    ok("nor the shell's compile check", 'branches: ["**"]' in shell)
     # THE TRAP. workflow_dispatch input defaults do NOT apply to a `push` event, and the release
     # trigger IS a tag push — so `inputs.shell` is EMPTY there. Gated `== 'native'` the shell
     # steps are skipped on every release while the default claims otherwise: a build that looks

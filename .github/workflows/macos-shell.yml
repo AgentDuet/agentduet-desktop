@@ -12,6 +12,9 @@ name: macos-shell
 on:
   workflow_dispatch:
   push:
+    # BRANCHES ONLY: a release's tags point at a commit this already checked, and three tags
+    # meant three more macOS runs for nothing (2026-10-20).
+    branches: ["**"]
     paths:
       - "macos/**"
       - "packaging/make-macos-app.sh"

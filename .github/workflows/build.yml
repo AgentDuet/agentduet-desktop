@@ -1,8 +1,10 @@
 # Build the desktop binaries on the OS they run on. PyInstaller cannot cross-compile, so a Mac
 # build needs a Mac — that is the whole reason this workflow exists rather than a local script.
 #
-# Triggered by hand (or by a tag) rather than on every push: a build takes minutes and produces
-# a 40 MB+ artifact nobody needs per commit.
+# Triggered by hand only, not on every push: a build takes minutes and produces a 40 MB+
+# artifact nobody needs per commit. NOT ON A TAG EITHER (2026-10-20): a release attaches the
+# dispatch run that was verified (attach-release.yml), so a tag's own build was never shipped,
+# and it cost a third of a release's macOS minutes. Tag only after verifying, as before.
 name: build
 
 on:
@@ -15,16 +17,13 @@ on:
         default: native
       # THE RECORDER EDITION (src/agentduet_desktop/edition.py): the recorder with NO AI in it,
       # for a partner whose review treats transcription as AI. macOS only — it is a native app,
-      # and it ships no HTML pages for another platform to show. A tag push leaves this empty,
-      # which is the full edition: releases are unchanged.
+      # and it ships no HTML pages for another platform to show.
       edition:
         description: "full (everything), recorder (calls only, no AI in it) or ai (AgentDuet AI: no line)"
         type: choice
         options: [full, recorder, ai]
         default: full
   # ONE RELEASE PER APP: the tag's prefix says which app it builds (see EDITION below).
-  push:
-    tags: ["v*", "recorder-v*", "ai-v*"]
 
 jobs:
   build:
@@ -93,11 +92,10 @@ jobs:
       # packaging/check-minos.py fails the build if any binary in the bundle needs newer.
       MACOSX_DEPLOYMENT_TARGET: "14.0"
       # ONE NAME PER EDITION, used by every step below so the signing, DMG and notarization
-      # path is shared rather than copied. `inputs.edition` is empty on a tag push → full.
-      # FROM THE INPUT on a dispatch, FROM THE TAG'S PREFIX on a tag push (recorder-v…, ai-v…).
-      EDITION: ${{ inputs.edition || (startsWith(github.ref_name, 'recorder-v') && 'recorder') || (startsWith(github.ref_name, 'ai-v') && 'ai') || 'full' }}
-      APP_NAME: ${{ (inputs.edition == 'recorder' || startsWith(github.ref_name, 'recorder-v')) && 'AgentDuet Recorder' || (inputs.edition == 'ai' || startsWith(github.ref_name, 'ai-v')) && 'AgentDuet AI' || 'AgentDuet Desktop' }}
-      ARTIFACT: ${{ (inputs.edition == 'recorder' || startsWith(github.ref_name, 'recorder-v')) && 'agentduet-recorder' || (inputs.edition == 'ai' || startsWith(github.ref_name, 'ai-v')) && 'agentduet-ai' || 'agentduet-desktop' }}
+      # path is shared rather than copied. From the dispatch input; empty means full.
+      EDITION: ${{ inputs.edition || 'full' }}
+      APP_NAME: ${{ inputs.edition == 'recorder' && 'AgentDuet Recorder' || inputs.edition == 'ai' && 'AgentDuet AI' || 'AgentDuet Desktop' }}
+      ARTIFACT: ${{ inputs.edition == 'recorder' && 'agentduet-recorder' || inputs.edition == 'ai' && 'agentduet-ai' || 'agentduet-desktop' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -358,9 +356,10 @@ jobs:
       #
       # `!= 'pyinstaller'` RATHER THAN `== 'native'`, and this is the whole reason the flip is
       # more than a default. A workflow_dispatch input default does NOT apply to a `push` event,
-      # and the release trigger IS a tag push — so `inputs.shell` is empty there. Written as
-      # `== 'native'` the native steps would have been skipped on every release while the
-      # default said otherwise, which is the failure that looks correct.
+      # and until 2026-10-20 a tag push built releases — so `inputs.shell` was empty there. Written
+      # as `== 'native'` the native steps would have been skipped on every release while the
+      # default said otherwise, which is the failure that looks correct. Kept, so that any
+      # trigger added later without inputs still builds the shipping shell.
       #
       # It was opt-in until somebody had launched it on a real Mac. That happened 2026-09-02:
       # menu bar item, no Dock icon, survives the window closing, starts its own daemon, signs
