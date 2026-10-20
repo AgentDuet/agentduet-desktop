@@ -3,7 +3,7 @@
 Last updated: 5 October 2026
 
 This policy explains what personal data AgentDuet Recorder (the "App") handles, where it goes,
-and who is responsible for it. The App is provided by B3 Networks Pte Ltd ("B3", "we").
+and who is responsible for it. The App is provided by B3Networks Pte Ltd ("B3", "we").
 
 ## The short version
 
@@ -83,5 +83,5 @@ changes in the App.
 
 ## 9. Contact
 
-B3 Networks Pte Ltd, Singapore. To reach our Data Protection Officer, see
+B3Networks Pte Ltd, Singapore. To reach our Data Protection Officer, see
 [b3networks.com/data-policy](https://www.b3networks.com/data-policy).
