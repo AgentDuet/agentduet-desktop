@@ -2,7 +2,7 @@
 
 Last updated: 5 October 2026
 
-These terms are an agreement between you and B3 Networks Pte Ltd ("B3", "we") about your use of
+These terms are an agreement between you and B3Networks Pte Ltd ("B3", "we") about your use of
 AgentDuet or AgentDuet AI (the "App"). By installing or using the App, you
 agree to them. If you use the App for a business, you agree for that business, and "you" means
 both of you.
@@ -140,4 +140,4 @@ jurisdiction.
 
 ## 14. Contact
 
-B3 Networks Pte Ltd, Singapore. Contact us through [b3networks.com](https://www.b3networks.com).
+B3Networks Pte Ltd, Singapore. Contact us through [b3networks.com](https://www.b3networks.com).
