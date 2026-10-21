@@ -5548,6 +5548,24 @@ def test_the_catalogue_carries_gemma_4_and_says_what_was_measured() -> None:
             eq(f"a {key} install still runs locally", llm.provider(key), "local")
 
 
+def test_a_model_path_stays_in_the_store() -> None:
+    """path_of never returns a path outside the model store, whatever the name or filename."""
+    print("\n  -- a model's path stays inside the store --")
+    import unittest.mock as _m
+    from agentduet_desktop import models
+    cases = {"good": {"filename": "m.gguf"}, "../../etc": {"filename": "passwd"},
+             "x": {"filename": "../../../outside.bin"}, "abs": {"filename": "/etc/passwd"},
+             "owner/repo": {"filename": "w.gguf"}}
+    with _m.patch.object(models, "spec_of", side_effect=lambda m: cases.get(m)):
+        eq("a normal model", models.path_of("good"), models.STORE / "good" / "m.gguf")
+        eq("a Hugging Face owner/repo name", models.path_of("owner/repo"),
+           models.STORE / "owner" / "repo" / "w.gguf")
+        eq("a name that climbs out", models.path_of("../../etc"), None)
+        eq("a filename that climbs out", models.path_of("x"), None)
+        eq("an absolute filename", models.path_of("abs"), None)
+        eq("an unknown model", models.path_of("nope"), None)
+
+
 def test_the_machine_picks_the_model() -> None:
     """The app chooses; the owner is not asked. Checked across machines, not just this one."""
     print("\n  -- the machine picks the model --")
@@ -8047,6 +8065,7 @@ def main() -> None:
     test_the_native_settings_window_speaks_the_daemons_api()
     test_signing_out_closes_a_live_channel()
     test_the_catalogue_carries_gemma_4_and_says_what_was_measured()
+    test_a_model_path_stays_in_the_store()
     test_the_machine_picks_the_model()
     test_one_place_decides_the_model_and_hosted_is_quarantined()
     test_the_pages_offer_the_pick_not_a_picker()
