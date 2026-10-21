@@ -357,21 +357,29 @@ release asset and compare its SHA-256 with the file you checked (done for b11).
 
 The global conventions are written for the B3 microservices: several teams, a monthly deploy
 train, and a prod that other people depend on between trains. None of that is true here. This is
-a pre-1.0 product with one maintainer, no train, and releases cut by hand when there is something
-worth shipping. Three of those rules are therefore OFF, and the reasons are not interchangeable —
+a pre-1.0 product with three maintainers, no train, and releases cut by hand when there is something
+worth shipping. Two of those rules are therefore OFF, and the reasons are not interchangeable —
 do not generalise one into the others.
 
-- **PUSH WITHOUT ASKING.** The global rule gates `git push` on the user typing "push", because
-  there push is what lands work on a shared master that a train will carry to prod. Here the loop
-  is push → CI → download → test, and a Windows or macOS binary CANNOT be built or tested any
-  other way — PyInstaller does not cross-compile. Asking before every push makes a round trip out
-  of a build step. So: commit finished work and push it.
-- **STILL DO THE SQUASH REVIEW.** This is the part that stays. Before pushing, read
+- **EVERY CHANGE GOES THROUGH A PULL REQUEST WITH A SECOND REVIEW (since 2026-10-21).** This
+  replaced "push without asking", which held while Stanley was the only maintainer. The
+  open-source release procedure (security-grc, sections 3.6-3.8) makes a second maintainer's
+  review the standard, and the `main` ruleset enforces it: 1 approval from someone other than the
+  author, approvals dismissed on a new push, and the `DCO` and `tests` checks required.
+  Maintainers: Stanley, Samip (`samip4444`, admin) and Harshal (`harshal-ships`, maintain).
+  So: commit on a branch (`stanley/<topic>`), sign off (`git commit -s`), push the branch and open
+  a PR. Pushing the BRANCH needs no go-ahead; it is still how CI gets to build. Version bumps go
+  through a PR too, and `gh workflow run build.yml --ref main` builds only what is merged.
+  **Self-merge is the exception, not the routine.** The `direct-push` team (Stanley) can still
+  merge a PR without review, and only through a PR: its bypass is "pull requests only", so nobody
+  pushes straight to `main`. Use it only when no maintainer can review in time, say why in the PR,
+  and expect bypasses to be reviewed quarterly.
+- **STILL DO THE SQUASH REVIEW.** This is the part that stays. Before opening the PR, read
   `git log origin/main..HEAD` and reshape what should be reshaped — the test is unchanged: commits
   where a later one replaces what an earlier one built are one arc and belong together, and a
   commit a bisect should land on stays separate. Losing the ceremony around push is not licence
-  to push a mess. Note that an already-pushed commit is NOT squashable, so the review is worth
-  something only while the work is still local.
+  to push a mess. A PR branch may still be reshaped and force-pushed before review; once a
+  reviewer has approved it, a new push dismisses that approval, so reshape before asking.
 - **NO RELEASE-NOTES DRAFT TO MAINTAIN.** There is no per-push obligation to update a GitHub
   draft. Release notes here are written when a release is actually cut, from what the release
   contains. (The published notes are owner-facing prose — see *Releasing* above — not a changelog
