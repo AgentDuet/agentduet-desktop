@@ -45,8 +45,7 @@ Force-push only your own pull request branch.
 
 ## Reporting a vulnerability
 
-Please do not open a public issue for a security problem. Email **security@b3networks.com** with
-what you found and how to reproduce it.
+Please do not open a public issue for a security problem. See [SECURITY.md](SECURITY.md).
 
 ## Licence
 
