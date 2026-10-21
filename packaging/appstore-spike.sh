@@ -2,6 +2,9 @@
 # The App Store SPIKE: build the real app from this checkout, with Apple's sandbox switched on,
 # so what the sandbox breaks can be found by running it rather than guessed.
 #
+# NEEDS THE DEVELOPER ID KEYCHAIN, which no dev Mac has since 2026-10-21 (signing is CI-only).
+# To run the spike again, move its signing into CI first.
+#
 # NOT a release path. It signs with the Developer ID, not the App Store certificate, and makes
 # no .pkg — the point is only to run the app sandboxed. It gets its own bundle id
 # (`.sandbox`), so macOS keeps its container, permissions and login item apart from the

@@ -1244,8 +1244,13 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       was finished. a7 ships signed, notarized and stapled: Gatekeeper answers `accepted /
       source=Notarized Developer ID` with a quarantine attribute applied, `stapler validate`
       passes, and it boots. INSTALL.md no longer tells anyone to right-click.
-      Signing also works LOCALLY now (`packaging/sign-macos.sh`), so an artifact can be verified
-      before a tag exists rather than after — see the Releasing section.
+      Signing worked LOCALLY from 2026-09-02 (`packaging/sign-macos.sh`) until **2026-10-21, when it
+      became CI-only**: the open-source release procedure (security-grc, 3.6-3.8) keeps signing
+      credentials in CI, so the Developer ID keychain and `~/.apple-signing/` were deleted from
+      Stanley's Mac. An artifact is still verified before its tag exists — the CI build's, as in
+      the Releasing section. `sign-macos.sh` and `appstore-spike.sh` stay, and need credentials
+      that are no longer on any dev Mac. The certificate (CI secret `APPLE_CERT_P12`) expires
+      2027-02-02.
       **We are NOT going to the Mac App Store**, unchanged: it requires the sandbox, which this
       app's loopback server, home-directory writes and model download would each have to be
       granted around. Deferred, not rejected.

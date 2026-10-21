@@ -3,6 +3,10 @@
 # Sign, notarize and staple a locally built .app — the same sequence build.yml runs, so that a
 # developer with a Mac can produce a shippable DMG without pushing.
 #
+# NOT RUNNABLE ON A DEV MAC SINCE 2026-10-21: signing credentials live only in CI (the
+# open-source release procedure, security-grc 3.6-3.8), so ~/.apple-signing and the
+# agentduet-signing keychain this reads were deleted. CI's build.yml is the signing path.
+#
 # WHY THIS EXISTS: CI is the only thing that has ever signed a build, and CI builds the REMOTE.
 # So proving a fix works and proving the signed artifact works were two different builds, and
 # for a while neither one was both. Locally this is one command.
