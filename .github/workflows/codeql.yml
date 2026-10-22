@@ -9,7 +9,7 @@
 # Default setup must be OFF while this exists (repo › Settings › Code security): GitHub refuses to
 # process an advanced configuration's results while default setup is on.
 #
-# Triage the same way as the first run (SRK79, B3Networks/security-grc#35): a real finding is
+# Triage the same way as the first run (risk SRK79): a real finding is
 # fixed; a false positive is dismissed on the alert with the reason written down.
 name: CodeQL
 

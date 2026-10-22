@@ -3314,7 +3314,7 @@ def test_inbound_whatsapp_shape() -> None:
     from agentduet_desktop import secretary_agent as sa
 
     # VERBATIM from the platform's own logs, 2026-09-07 03:41:23Z — the message that finally
-    # settled this. `wss-edge`'s the inbound controller forwards `request.content.content`, so what
+    # settled this. wss-edge forwards the request's content untouched, so what
     # reaches the SDK is Meta's webhook envelope untouched. Kept in full rather than trimmed:
     # the nesting IS the finding, and a reader needs to see how deep the body sits.
     REAL = {

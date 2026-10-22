@@ -30,7 +30,7 @@ colleague's reply sent *as* that BA from web or mobile, which lands as ordinary 
 
 Demoing this means messaging the BA, not the person.
 
-*Established by reading `the platform's BaChat API definitions`, 2026-08-27; confirmed
+*Established by reading the platform's BaChat API definitions, 2026-08-27; confirmed
 independently by Tuan in #AI-Product: "the friend-to-friend on dduet doesn't go through to
 agentduet, only msg sent to BA".*
 
@@ -103,7 +103,7 @@ Defined in `ba_chat_http.proto`:
 - **`QueryBaChatMessages`** — history; a blank `session_uid` means every session the caller is a
   member of.
 
-**wss-edge wires exactly one baChat path: `the agent's post-message call`.** The 2026-08-10
+**wss-edge wires exactly one baChat path, the agent's post-message call.** The 2026-08-10
 adaptation design puts `agentListSessions`/`agentQueryMessages` under *"Out of scope,
 deliberately"*. So this is a plumbing gap, not a missing capability — the ask upstream is to
 expose what exists.
@@ -120,13 +120,13 @@ not so a whole customer list can be harvested in one call"*. Do not design aroun
 may be minted against it *instead of* an account uid. So discovery is a URL anyone can hold, and
 reaching it requires SSO.
 
-Ours is `dduet.com/our production BA`, provisioned by Hallie 2026-08-31.
+Ours was provisioned by the platform team on 2026-08-31.
 
 **Environments do not mix.** exp AgentDuet talks to staging DDUET, prod to prod. A staging BA
 relays to a staging connector; a `wss-prod` client never sees it.
 
-*Hallie, #AI-Product 2026-08-31: "1 BA can connect with 1 connector but 1 connector can connect
-with multiple BAs" — which is why every outbound send passes `ba_uid`, or the server answers
+*The platform team, 2026-08-31: one BA connects to one connector, but one connector can serve
+several BAs — which is why every outbound send passes `ba_uid`, or the server answers
 `AMBIGUOUS_BA`.*
 
 ## Outbound has no window and no templates
@@ -140,30 +140,22 @@ carrying both channels rather than treating WA as the replacement.
 
 ## WhatsApp inbound: three hops, and the routing decision is NOT in wss-edge
 
-**Established 2026-09-07 by reading the platform's own OpenSearch logs, then the `wss-edge` tree
-over the GitHub API.** Cost about an hour, after three test messages vanished with our app
+**Established 2026-09-07 from the platform's own logs and source.** Cost about an hour, after three test messages vanished with our app
 connected and listening.
 
 ```
-Meta ──▶ inbox                          ──▶ wss-edge                                    ──▶ SDK
-         POST the platform's webhook endpoint      POST the platform's inbound endpoint
-         (decides WHICH connector)           (is TOLD the connector uuid)
+Meta ──▶ an upstream service       ──▶ wss-edge                      ──▶ SDK
+         (decides WHICH connector)        (is TOLD the connector uuid)
 ```
 
-**`wss-edge` does no lookup.** `the inbound service.the inbound handler(String connectorUuid, …)`
-takes the uuid as a parameter, and `the inbound controller` reads it from the request body. Its
-`WAChannelConfig` holds only an outbound webhook url. So the business-account → connector
-binding lives UPSTREAM, in `inbox`, and reading `wss-edge` cannot answer "which connector does
-this BA route to". Files: `server/src/main/java/the platform source`
-and `.../service/wa/{the inbound service,WaConnectorClient,WaMetrics}.java`.
+**wss-edge does no lookup.** It takes the connector uuid from the request it is given, and holds
+only an outbound webhook url. So the business-account → connector binding lives UPSTREAM, and
+reading wss-edge cannot answer "which connector does this BA route to".
 
-**The connector's environment is baked in at creation.** `the platform's onboarding script`
-creates one with `POST the platform's connector endpoint`, whose body carries
-`sbcNodes[].httpNotifyEndpoint` = `{host, path: internal/v1/call/notify, path4wa:
-internal/v1/connector/wa/inboundMessage, port}` — with the prod host `an internal address` and a
-commented-out dev `an internal address`. The api key comes from
-`POST the platform's key endpoint` with the connector uuid. This is what Hallie
-meant on 2026-08-28 by a connector "routing to exp AgentDuet's environment".
+**The connector's environment is baked in at creation.** The platform's onboarding creates a
+connector with the call and WhatsApp notify endpoints of ONE environment's servers, and issues its
+api key separately. This is what the platform team meant on 2026-08-28 by a connector "routing to
+exp AgentDuet's environment".
 
 **A connector with no BA bound to it receives nothing, silently.** OAuth minted
 `bff72a4e-…` and it verified, connected, and subscribed with `inbound_message=True` — and three
@@ -171,8 +163,7 @@ messages Meta had delivered went nowhere, because the shared BA forwards to a di
 connector. Everything reports healthy on both sides. The only way to see it is the platform log,
 where the inbound POST names the connector it went to.
 
-**The payload we receive is Meta's envelope, untouched** — `the inbound controller` forwards
-`request.content.content`:
+**The payload we receive is Meta's envelope, untouched**, forwarded as it arrived:
 
 ```
 entry[0].changes[0].value.messages[0].text.body       the message
@@ -194,21 +185,20 @@ receiving.
 
 ## OAuth: built, working, dev-only
 
-wss-edge merged desktop OAuth to `main` on **2026-08-25** — `vonhutuan-b3`, PR #53, PKCE plus
-federated login, rotating refresh tokens, Bearer at the SM-WS and REST doors. 33 files, plus
-`./gradlew :server:the end-to-end test` covering the negative cases against a stub IdP.
+wss-edge merged desktop OAuth on **2026-08-25**: PKCE plus federated login, rotating refresh
+tokens, and a Bearer token at the session and REST doors, with an end-to-end test covering the
+negative cases against a stub IdP.
 
 **Proven end to end from here, 2026-08-31**, against dev: a real Google consent screen, and a
 connector **auto-provisioned** because that identity had none — which is the "connector
 provisioning" blocker closing itself.
 
-**"Needs VPN" is not true from this machine.** `the dev server` resolves to
-`an internal address` and answers on **:8080 over plain HTTP** — the same SD-WAN route that reaches
-`an internal gateway` and the a shared GPU server. **Port 443 times out**, which is exactly what makes it look
-unreachable if you only try HTTPS, and exactly what was tried first.
+**"Needs VPN" is not true from a machine on B3's internal network.** The dev server answers there
+over **plain HTTP**; **HTTPS times out**, which is exactly what makes it look unreachable if you
+only try HTTPS, and exactly what was tried first.
 
 `agentduet-desktop` is already a registered client there, and the loopback redirect
-(`http://127.0.0.1:<port>/callback`) passes their `the loopback redirect check`.
+(`http://127.0.0.1:<port>/callback`) passes their loopback redirect check.
 
 **Not on prod.** Behind a VPN the feature cannot do its job: the whole point is that an owner
 installs the binary and clicks Google, and only B3 staff can reach a VPN'd host.
