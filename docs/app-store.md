@@ -3,7 +3,9 @@
 Started 2026-09-29 (Stanley). The Developer ID DMG stays the way betas ship; this records what an
 App Store build needs, what a sandboxed spike has **proven**, and what is still only expected.
 
-Run the spike: `packaging/appstore-spike.sh --run`. It builds this checkout, signs it the App Store
+Run the spike: `packaging/appstore-spike.sh --run`. **Not runnable since 2026-10-21:** it signs
+with the local Developer ID keychain, and signing credentials now live only in CI. Move its
+signing into CI before running it again. It builds this checkout, signs it the App Store
 way (sandbox on, no hardened runtime) with the Developer ID, as `AgentDuet Sandbox` under its own
 bundle id `com.b3networks.agentduet-desktop.sandbox`, and opens it. Its data lives in
 `~/Library/Containers/com.b3networks.agentduet-desktop.sandbox/Data/.agentduet-desktop`, because a
