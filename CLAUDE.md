@@ -227,8 +227,8 @@ the daemon, never in a UI, so a change to what a setting does is made there once
 
 **MAC FIRST (Stanley, 2026-09-29): UI work lands in Swift only, and the HTML pages are FROZEN.**
 Do not keep them in step — changes are ported when another platform is taken up. The HTML was
-last brought in line at `3f89266`, so the Mac-only UI changes to port are the Swift commits
-after it (`git log 3f89266.. -- macos/`). A daemon change is still made once, for everyone,
+last brought in line at `b6755fa`, so the Mac-only UI changes to port are the Swift commits
+after it (`git log b6755fa.. -- macos/`). A daemon change is still made once, for everyone,
 and must not break the pages that are frozen. Reasoning, and what would reverse it:
 `docs/design.md`, *Native UI per platform*.
 

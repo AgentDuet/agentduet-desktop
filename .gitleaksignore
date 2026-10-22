@@ -1,3 +1,3 @@
 # gitleaks false positives, triaged per the engineering handbook (devops/secret-scanning.md).
 # tests/test_rules.py: key = "unsloth_…" is a model name in a variable called key, not a credential.
-48b9fc27cacba09f4a935fb3c53ffb1a76151d8d:tests/test_rules.py:generic-api-key:5082
+2fa1c5749c0d553e9ccf577c5d9745ffc1214d0a:tests/test_rules.py:generic-api-key:5082

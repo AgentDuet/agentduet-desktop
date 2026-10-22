@@ -25,7 +25,7 @@ TWO GITHUB TRAPS, both of which produce a confident wrong answer rather than an 
    so that endpoint answers 404 for this repo — checked 2026-09-09 — and a check built on it
    would report "no releases" forever. `/releases` returns them, newest first.
 2. **A REUSED TAG DEFEATS A VERSION COMPARISON.** a13 was overwritten rather than superseded
-   (installed `0f5996a`, released `29ade2d`), so an install can be behind the release that
+   (installed `bf4523c`, released `7446b72`), so an install can be behind the release that
    carries its own version number. Comparing tags alone says "up to date" about a binary that
    is not the one shipped. So when the versions match, the build STAMP decides: `__built__` is
    a UTC timestamp baked in by the spec, and a release published after it means this copy is
