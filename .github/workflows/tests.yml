@@ -47,7 +47,7 @@ jobs:
           pip install wasmtime pyflakes
           # numpy: the speech-engine checks cut real audio arrays (test_qwen3_asr_is_the_speech_engine).
           # The app gets it from its [local] extra, which this job does not install, so the rules
-          # suite died on an ImportError mid-run from a3d051a on.
+          # suite died on an ImportError mid-run from aacbdde on.
           pip install numpy
 
       # Six suites, each run even if an earlier one fails. A single `&&` chain would report the
