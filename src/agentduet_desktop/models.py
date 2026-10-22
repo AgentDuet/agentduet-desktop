@@ -325,9 +325,22 @@ def spec_of(model: str) -> dict | None:
 
 
 def path_of(model: str) -> pathlib.Path | None:
-    """Where this model's weights would live, or None if we do not know it."""
+    """Where this model's weights would live, or None if we do not know it — or if the name or
+    filename would put it outside `STORE`.
+
+    INSIDE THE STORE, CHECKED (2026-10-21). A name has to be in the catalogue or registered by the
+    owner, and a registered filename comes from Hugging Face; but nothing checked that `..` or an
+    absolute path could not walk out of the folder, and CodeQL rightly flagged it (py/path-injection).
+    """
     spec = spec_of(model)
-    return (STORE / model / spec["filename"]) if spec else None
+    if not spec:
+        return None
+    # normpath, not realpath: a model folder may be a symlink to another drive, and that is fine.
+    store = os.path.normpath(os.path.abspath(STORE))
+    full = os.path.normpath(os.path.join(store, model, spec["filename"]))
+    if not full.startswith(store + os.sep):
+        return None
+    return pathlib.Path(full)
 
 
 def is_downloaded(model: str) -> bool:
