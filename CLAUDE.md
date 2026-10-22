@@ -289,7 +289,7 @@ after verifying.
 
    - **macOS** — on a Mac, per the checks below.
    - **Linux** — run the binary anywhere with a Linux box.
-   - **Windows** — run the `.exe`; the VM at `a Windows 11 VM` exists for this.
+   - **Windows** — run the `.exe`; a Windows 11 VM exists for this.
 
    **What must hold, and is the whole point:** every artifact attached was verified by someone,
    and the RUN ID attached is the run that was verified. Carry the run id with the verification
@@ -472,7 +472,7 @@ Break one of these and the secretary is a different product.
 - **Voice is SPEECH-TO-SPEECH, not a cascade** (decided 2026-07-31). A cascade (STT → the text
   model → TTS) would have preserved every invariant, because the brain would still see text and
   `brain.handle_query` would still run before anything was said. It was rejected on latency:
-  CPU-only is far too slow and depending on the a shared GPU server is not acceptable for a product. So a
+  CPU-only is far too slow and depending on a shared GPU server is not acceptable for a product. So a
   hosted realtime model answers calls directly.
 
   **Know what that costs.** The realtime model IS the agent on a call, so:
@@ -693,8 +693,8 @@ derived from no longer exists, it is the only place that says so.
       **THE CONNECTOR CLAIM RIDES THE TOKEN FAMILY, which cost an afternoon.** Sign-in kept
       returning `9410b337-…` — the connector the DEV server minted on 2026-08-31 — instead of
       the production `bb27e3d4-…`, and it CONNECTED to `wss-prod` happily, so nothing looked
-      wrong. Tuan Phan: "the connectorUuid is bound to token and i forgot to revoke the old
-      token". Re-signing-in reissues the same claim until the old refresh chain is revoked. So
+      wrong. The platform team's answer: the connector is bound to the token, and the old token
+      had not been revoked. Re-signing-in reissues the same claim until the old refresh chain is revoked. So
       after any connector change upstream, the token family must be revoked or the app keeps
       the stale connector — and a signed-in install IGNORES `AGENTDUET_CONNECTOR_UUID`, so
       there is no local override to fall back on.
@@ -1212,17 +1212,16 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       `bff72a4e-…`, which verified and connected perfectly and received NOTHING: three WhatsApp
       messages were delivered by Meta and vanished, because no business account is bound to
       that connector. A connector is necessary and not sufficient. The binding lives outside
-      `wss-edge` (whose `the inbound handler` is TOLD the uuid by its caller) — `inbox` receives
-      Meta's webhook at `POST the platform's webhook endpoint` and decides which connector to forward
-      to. So provisioning must ALSO bind the new connector to a BA, or a signed-in owner gets a
-      working channel that no message can reach. Ask Hallie, who owns the WhatsApp side.
+      wss-edge, which is TOLD the connector by its caller: an upstream service receives Meta's
+      webhook and decides which connector to forward to. So provisioning must ALSO bind the new
+      connector to a BA, or a signed-in owner gets a working channel that no message can reach.
+      Ask the platform team's WhatsApp owner.
 
 
 - [x] ~~**Publish the SDK.**~~ **RESOLVED 2026-08-11, by dropping the requirement.** `agentduet`
       `1.0.0` shipped to PyPI on 2026-08-10 and still has **no DDUET at all** — its API is
-      unchanged from `1.0.0b10`, so publishing did not help. DDUET lives only on
-      `the SDK's private repo` `feature/dduet-channel` (`1.0.1b1`), a PRIVATE repo, which is
-      why CI carried a committed wheel in `vendor/`.
+      unchanged from `1.0.0b10`, so publishing did not help. DDUET lived only on an unreleased
+      SDK branch (`1.0.1b1`), which is why CI carried a committed wheel in `vendor/`.
       **So the channel was swapped to WhatsApp instead** — `Network.WA` + `SendWAMessage`, both
       in the released SDK. `vendor/` is deleted and `pyproject.toml` asks for `agentduet>=1.0.0`.
       Neither onboarding path in the August flow used DDUET anyway. This also removed the
@@ -1283,34 +1282,30 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
 - [ ] **OAuth sign-in — BUILT ON BOTH SIDES. What is missing is a deployed URL.**
       **This entry said "the backend contract is SETTLED, ours is not built" until 2026-08-31,
       and both halves were wrong by then.** wss-edge merged the whole thing to `main` on
-      2026-08-25 — `vonhutuan-b3`, PR #53, "desktop OAuth sign-in — PKCE + federated login,
-      rotating refresh tokens, Bearer at the SM-WS and REST doors", 33 files under
-      `server/.../oauth/`, plus `./gradlew :server:the end-to-end test` covering authorize, callback,
-      provisioning, code exchange, refresh, PKCE-negative, code-replay and
+      2026-08-25: desktop OAuth sign-in, with PKCE, federated login, rotating refresh tokens and
+      a Bearer token at the session and REST doors, plus an end-to-end test covering authorize,
+      callback, provisioning, code exchange, refresh, PKCE-negative, code-replay and
       stale-refresh-revokes-family against a stub IdP. Tuan said he would build independently
       first and he did; nobody closed the loop back to us.
       **Ours is built too:** `oauth.py` has PKCE `begin()`, the token exchange, the store,
       `signed_in()`, `sign_out()`, `connector_uuid()`, and a loopback `/callback` on an
-      ephemeral port — which is why their side carries a `the loopback redirect check`.
+      ephemeral port — which is why their side validates loopback redirect URIs.
       **PROVEN WORKING END TO END, 2026-08-31, against the dev server.** Not a claim from
-      reading code any more: a real Google consent screen, `SIGNED IN AS stanley@b3networks.com`,
-      and a connector **auto-provisioned** — `9410b337-f753-4ab4-a566-48bbe6a62aaf`, minted by
-      `the provisioning call` because that identity had none. Run in a throwaway
+      reading code any more: a real Google consent screen, a signed-in B3 staff account, and a
+      connector **auto-provisioned** (`9410b337-…`), minted because that identity had none. Run in a throwaway
       `AGENTDUET_HOME`; the real instance kept `bb27e3d4-…` and grew no token store.
       **So the gap is one environment variable, and one deploy.** `AGENTDUET_OAUTH_URL` is unset,
       so `oauth.available()` is false and the sign-in buttons stay hidden.
       **Tuan, 2026-08-31: it is on the DEV server, behind VPN, "not on prod yet".** Being behind
       a VPN is what makes dev useless as the product path — the whole point is that an owner
       installs the binary and clicks Google, and only B3 staff can reach a VPN'd host.
-      **"Needs VPN" is not true from THIS machine.** `the dev server` resolves
-      to `an internal address` and answers on **:8080 over plain HTTP** — the same SD-WAN route that
-      reaches `an internal gateway` and the a shared GPU server. Port 443 times out, which is what makes it
-      look unreachable if you only try HTTPS. A GET to `/oauth/authorize` with our real
+      **"Needs VPN" is not true from a machine on B3's internal network.** The dev server answers
+      there over **plain HTTP**; HTTPS times out, which is what makes it look unreachable if you
+      only try HTTPS. A GET to `/oauth/authorize` with our real
       `client_id` returns `302 → /oauth2/authorization/google`, so **`agentduet-desktop` is
       already a registered client there** and the loopback redirect passes validation.
       **THE TRAP, and it is a live-money one:** sign-in provisions a connector on WHATEVER
-      ENVIRONMENT that URL points at (`the provisioning call`, only when the user has
-      none). Point it at dev or staging and this install silently moves off its production
+      ENVIRONMENT that URL points at (only when the user has none). Point it at dev or staging and this install silently moves off its production
       connector — the one the DID and the production BA route to. Check
       `connector.environment()` before and after.
       **What it closes:** the "Connector provisioning" release blocker above. A new user signs
@@ -1392,19 +1387,18 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       and should override it the day it is readable.
 - [ ] **Directory/discovery — REOPENED 2026-08-27, then DEFERRED 2026-09-09 with the people
       list above (same decision, same reason: no effort now, no use case yet).** It was closed on the
-      belief that the DDUET surface was gone. It is not: `PostBaChatMessageRequest.profile_url`
-      in `wss-edge`'s `the platform's BaChat API definitions` is a **public BA slug**
+      belief that the DDUET surface was gone. It is not: the BaChat post request's `profile_url`
+      is a **public BA slug**
       (`dduet.com/<slug>`), and a message may be minted against it INSTEAD of an account uid. So
       discovery is a URL anyone can hold, and the question is ours again: which slug an install
       gets, who mints it, and whether a stranger reaching it is a verified asker.
 - [ ] **The DDUET people list and history exist in Nexus; the connector cannot reach them.**
-      Found 2026-08-27 by reading `wss-edge`'s vendored
-      `server/src/main/proto/the platform's BaChat API definitions` rather than the SDK. Three RPCs
+      Found 2026-08-27 by reading the platform's own BaChat API definitions rather than the SDK. Three RPCs
       are defined: **`GetBaChatUserInfo`** (`ba_uid` required; a blank `account_uid` returns the
       BA's WHOLE user list, paginated, sortable by display name), **`ListBaChatSessions`** (the
       inbox — members, title, `last_message_at`) and **`QueryBaChatMessages`** (history; a blank
       `session_uid` means every session the caller is a member of).
-      **`wss-edge` wires exactly ONE baChat path — `the agent's post-message call`.** The
+      **wss-edge wires exactly ONE baChat path, the agent's post-message call.** The
       2026-08-10 adaptation design puts `agentListSessions`/`agentQueryMessages` under "Out of
       scope, deliberately", so this is a plumbing gap, not a missing capability.
       **DEFERRED BY DECISION, 2026-09-09 (Stanley, from the meetings): the SDK is NOT going to
@@ -1448,8 +1442,8 @@ reverse it, is in `docs/design.md`, *The model: local, and the machine picks it*
       months while the SDK enum is "WA", so the intent had never fired. It grants the profile and
       their own history; `knowledge/` is public to everyone either way, so disclosure is unchanged.
 - [x] ~~**Confirm the INBOUND WhatsApp payload shape.**~~ **DONE 2026-09-07, and all three
-      guesses were wrong.** `wss-edge` passes Meta's webhook envelope straight through
-      (`the inbound controller` forwards `request.content.content`), so the body is four levels
+      guesses were wrong.** wss-edge passes Meta's webhook envelope straight through, so the
+      body is four levels
       down: `entry[0].changes[0].value.messages[0].text.body`. `participant` is
       `contacts[0].wa_id`. None of the shapes `_first_text` accepted — flat `text.body`, a
       top-level `messages` array, the old Nexus `parts` — matched it, so the first real message
@@ -1596,7 +1590,7 @@ claim anyway, because it is the one a regulated buyer is actually asking about.
       wire. Recorded as the usual caller/callee legs, so merge and transcription are unchanged.
       **Pass-through is the platform default** (Stanley, 2026-09-24): with no WSS client the
       backend passes a call through by itself, so the app is only a capture layer and a closed
-      app strands nothing. The multi-destination question to Cedric is ON HOLD because of it.
+      app strands nothing. The multi-destination question to the platform team is ON HOLD because of it.
       **PROVEN 2026-09-25:** hang-up from the app ends the call for the caller (after the fix that
       checks `disconnect()`'s result), and a call that rings out in the app passes through to the
       phone — the fallback that was the riskiest unknown. **Speaker and microphone: settled by
