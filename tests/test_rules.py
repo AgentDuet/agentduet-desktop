@@ -3895,6 +3895,50 @@ def test_sign_in_uses_the_owners_own_browser() -> None:
     ok("one pending-signin store", web.count("_pending_signin.update(state=state") == 2)
 
 
+def test_sign_in_is_dduet_only() -> None:
+    """2026-10-23: one provider, dduet, named by the daemon and never by a page."""
+    print("\n  -- sign-in is dduet only --")
+    import urllib.parse as _up
+    from agentduet_desktop import oauth
+    # A printed or returned string mentioning dduet, e.g. print("… sign in with dduet.").
+    _re_dd = re.compile(r'(print\(|return |= )f?"[^"\n]*dduet', re.I)
+
+    src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    web = _site_src(src)
+    eq("the one provider is nexus", oauth.PROVIDER, "nexus")
+    saved = os.environ.get("AGENTDUET_OAUTH_URL")
+    os.environ["AGENTDUET_OAUTH_URL"] = "https://auth.example.test"
+    try:
+        url, _, _ = oauth.begin(8899)
+    finally:
+        if saved is None:
+            os.environ.pop("AGENTDUET_OAUTH_URL", None)
+        else:
+            os.environ["AGENTDUET_OAUTH_URL"] = saved
+    eq("and every authorize asks for it",
+       _up.parse_qs(_up.urlparse(url).query).get("provider"), ["nexus"])
+    # THE DAEMON DOES NOT READ ONE. A page that still sends `provider=google` gets dduet too,
+    # rather than a refusal naming a provider the owner never chose.
+    ok("neither sign-in route reads a provider", 'request.query.get("provider")' not in web)
+    ok("and neither refuses one", "only Google is" not in web)
+
+    # A DDUET ACCOUNT MAY CARRY NO EMAIL, and a sentence must still name someone.
+    real = oauth._read
+    try:
+        oauth._read = lambda: {"refresh_token": "r", "email": ""}
+        eq("an email-less account is still named", oauth.account_label(), oauth.UNNAMED_ACCOUNT)
+        oauth._read = lambda: {"refresh_token": "r", "email": "a@b.test"}
+        eq("and one with an email is named by it", oauth.account_label(), "a@b.test")
+    finally:
+        oauth._read = real
+    init_src = (src / "init.py").read_text()
+    ok("the console names the account, not a bare email",
+       "oauth.account_label()" in init_src and "Signed in as {oauth.email()}" not in init_src)
+    ok("and no sign-in text it prints names dduet",
+       "dduet" not in oauth.UNNAMED_ACCOUNT
+       and not _re_dd.search(init_src) and not _re_dd.search((src / "oauth.py").read_text()))
+
+
 def test_about_answers_which_build_this_is() -> None:
     """A tester must be able to answer "which build?" without a terminal."""
     print("\n  -- the About card --")
@@ -5260,10 +5304,17 @@ def test_a_caller_is_named_by_the_owner_then_contacts_then_the_message() -> None
     ok("the hub opens Settings as a dialog", 'id="setFrame"' in hub and "&embed=1" in hub)
     # SIGNED OUT, Settings shows the wizard's sign-in; signed in, only who and Sign out.
     css = (src / "app.css").read_text()
-    ok("the sign-in buttons' look is shared, in app.css", ".sso.apple{" in css
-       and ".sso.apple{" not in setup)
-    ok("Settings offers the same three buttons signed out",
-       all(f'data-p="{p_}"' in settings for p_ in ("Apple", "Google", "Microsoft")))
+    ok("the sign-in button's look is shared, in app.css", ".sso{" in css
+       and ".sso{" not in setup)
+    # ONE PROVIDER (2026-10-23): dduet, and one button for it, in both pages.
+    ok("Settings offers the same one button signed out",
+       settings.count('class="sso"') == 1 and 'data-p="dduet"' in settings
+       and setup.count('class="sso"') == 1 and 'data-p="dduet"' in setup)
+    ok("and it reads plain Sign in",
+       all("<span>Sign in</span></button>" in p_ and "Sign in with" not in p_
+           for p_ in (settings, setup)))
+    ok("and neither page names a provider to the daemon",
+       "provider=" not in settings and "provider=" not in setup)
     ok("and no API-key link while signed in", "Use an API key instead" not in settings)
     ok("it closes with Done, as a Mac sheet does, not a top-right ×",
        '<button class="btn setdone" id="setClose">Done</button>' in hub)
@@ -5336,10 +5387,14 @@ def test_the_native_settings_window_speaks_the_daemons_api() -> None:
     ok("signed out, Settings offers one Sign In… button",
        'Button("Sign In…") { editingKey.value = true }' in view)
     signin = swift["SignIn.swift"]
-    ok("the buttons read Sign in with…, the wording all three providers allow",
-       all(f'"Sign in with {p_}"' in signin for p_ in ("Apple", "Google", "Microsoft"))
+    # PLAIN "Sign in" (2026-10-23): the login page is being rebranded AgentDuet, so no text the
+    # owner reads names dduet. Comments may; quoted strings may not.
+    ok("one button, plain Sign in",
+       'Text("Sign in")' in signin and '"Sign in with' not in signin
        and "Continue with" not in signin)
-    ok("Google and Microsoft carry their own marks", "GoogleMark()" in signin and "MicrosoftMark()" in signin)
+    ok("no sign-in text names dduet",
+       not _re.search(r'"[^"\n]*dduet[^"\n]*"', signin + view, _re.I))
+    ok("and it names no provider: the daemon does", '"provider"' not in signin)
     ok("setup's last button is Done", 'Button("Done") { model.finish() }' in swift["SetupView.swift"])
     for page in ("setup.html", "settings.html"):
         ok(f"{page} uses the same wording", "Continue with" not in (root / "src/agentduet_desktop" / page).read_text())
@@ -8018,6 +8073,7 @@ def main() -> None:
     test_the_spec_collects_native_libraries_by_every_name()
     test_the_icon_font_ships_in_the_binary()
     test_sign_in_uses_the_owners_own_browser()
+    test_sign_in_is_dduet_only()
     test_about_answers_which_build_this_is()
     test_the_update_check_is_quiet_and_cannot_lie()
     test_a_link_tool_cannot_choose_a_destination()
