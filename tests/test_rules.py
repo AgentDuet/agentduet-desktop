@@ -8024,6 +8024,42 @@ print(json.dumps([edition.name(), before, after]))
        'Toggle("Transcripts and assistant"' in _sv
        and "if model.settings.aiOn {" in (_hub / "SetupView.swift").read_text()
        and "if settings.aiOn { startDownloads() }" in (_hub / "SetupModel.swift").read_text())
+    # MP3 WHEN THE OWNER INSTALLED LAME (Samip, 2026-10-23), in AgentDuet Team only. The app runs
+    # their `lame`; it ships none, since LAME is LGPL. The real encode runs only where it exists.
+    mp3_probe = r"""
+import json, math, pathlib, shutil, struct, tempfile
+from unittest import mock
+from agentduet_desktop import audiofile, edition
+out = {}
+with mock.patch.object(audiofile, "_lame", lambda: "/x/lame"):
+    out["with"] = audiofile.extension()
+with mock.patch.object(audiofile, "_lame", lambda: None):
+    out["without"] = audiofile.extension()
+out["listed"] = audiofile.is_recording("a.mp3")
+if audiofile._lame() and shutil.which("afconvert") and edition.name() == edition.TEAM:
+    d = pathlib.Path(tempfile.mkdtemp())
+    pcm = b"".join(struct.pack("<hh", int(8000 * math.sin(i / 9)), 0) for i in range(24000 * 3))
+    got = audiofile.write(d / "c.mp3", 2, 24000, 2, pcm)
+    out["real"] = [got and got.suffix, round(audiofile.seconds(got) or 0),
+                   audiofile.read(got)[0]]
+print(json.dumps(out))
+"""
+    def mp3_state(ed: str) -> dict:
+        env = dict(os.environ, AGENTDUET_EDITION=ed, AGENTDUET_HOME=tempfile.mkdtemp(),
+                   PYTHONPATH=str(pathlib.Path(__file__).parent.parent / "src"))
+        out = _sp.run([sys.executable, "-c", mp3_probe], env=env, capture_output=True, text=True)
+        try:
+            return json.loads(out.stdout.strip().splitlines()[-1])
+        except (IndexError, ValueError):
+            return {"probe failed": out.stderr[-200:]}
+    team_mp3, full_mp3 = mp3_state("team"), mp3_state("full")
+    ok("a team recording is MP3 when the owner has lame, and not otherwise",
+       team_mp3.get("with") == ".mp3" and team_mp3.get("without") in (".m4a", ".wav"))
+    ok("the full app never saves MP3", full_mp3.get("with") in (".m4a", ".wav"))
+    ok("every reader takes an .mp3", team_mp3.get("listed") is True)
+    if "real" in team_mp3:
+        eq("and a real one is written, measured and read back as stereo",
+           team_mp3["real"], [".mp3", 3, 2])
     ok("the team hub asks for one line's calls, and lists the lines first",
        'ask["line"] = line' in (_hub / "HubModel.swift").read_text()
        and "Edition.team && model.line == nil" in (_hub / "HubView.swift").read_text())

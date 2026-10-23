@@ -168,7 +168,7 @@ def _call_files(call_id: str) -> dict[str, "pathlib.Path"] | None:
         carry.stem_of(p.name) for p in carry.legs().glob(f"*{call_id}*")}
     out: dict = {}
     for st in sorted(stems):
-        for ext in (".m4a", ".wav", ".txt"):
+        for ext in (".m4a", ".mp3", ".wav", ".txt"):
             for where in dict.fromkeys([folder, carry.recordings(), paths.RUN / "recordings"]):
                 f = where / f"{st}{ext}"
                 if f.is_file():

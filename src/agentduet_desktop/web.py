@@ -580,7 +580,7 @@ def make_app(token: str) -> web.Application:
                 return []
             out = []
             for f in sorted(folder.glob("*.*"), key=lambda x: x.stat().st_mtime, reverse=True):
-                if f.suffix.lower() not in (".m4a", ".wav", ".json", ".txt"):
+                if f.suffix.lower() not in (".m4a", ".mp3", ".wav", ".json", ".txt"):
                     continue
                 out.append({"name": f.name, "kind": f.suffix.lstrip(".").upper(),
                             "bytes": f.stat().st_size})

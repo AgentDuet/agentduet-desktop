@@ -82,7 +82,7 @@ def legs() -> pathlib.Path:
 
 def stem_of(name: str) -> str:
     """`20260909T103616-<uuid>-caller.wav` -> `20260909T103616-<uuid>`."""
-    base = name[:-4] if name.endswith((".wav", ".m4a", ".txt")) else name
+    base = name[:-4] if name.endswith((".wav", ".m4a", ".mp3", ".txt")) else name
     for suffix in ("-caller", "-callee", "-agent"):
         if base.endswith(suffix):
             return base[: -len(suffix)]
@@ -278,6 +278,7 @@ def call_audio(names: list[str], call_id: str = "") -> tuple[pathlib.Path, list[
     cannot assume either one: asking only for the merged name would report a just-finished call
     as "No recording.", which is a false claim about audio that is sitting on disk.
     """
+    from . import audiofile
     # A ROW THAT NAMES NOTHING IS NOT PROOF THERE IS NOTHING. The index globbed the wrong
     # folder for a few minutes on 2026-09-09 and wrote `recordings: []` for a call whose audio,
     # transcripts and merge were all on disk — and an empty list reads as "No recording.", which
@@ -288,7 +289,7 @@ def call_audio(names: list[str], call_id: str = "") -> tuple[pathlib.Path, list[
         names = sorted(p.name for p in legs().glob(f"*{call_id}*.wav"))
         if not names:
             names = sorted(p.name for p in recordings().glob(f"*{call_id}*")
-                           if p.suffix in (".wav", ".m4a"))
+                           if audiofile.is_recording(p.name))
     stems = {stem_of(n) for n in names}
     # THE FOLDER IT WAS MERGED INTO, which may not be today's: choosing a new folder moves
     # nothing ("anything already recorded stays where it is"), so a call from before the change
