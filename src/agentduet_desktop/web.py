@@ -716,6 +716,9 @@ def make_app(token: str) -> web.Application:
         # A CALLER WITHOUT `open` — the frozen HTML pages — still gets every call of the newest
         # 200 in full, exactly as before.
         open_who = request.query.get("open")
+        # ONE EMPLOYEE'S CALLS (AgentDuet Team, 2026-10-23): `line` is the number dialled or
+        # dialling on our side. Absent means every call, as before.
+        line = request.query.get("line") if edition.name() == edition.TEAM else None
         people = []
         if open_who is None:
             for who, rows in calls.by_person().items():
@@ -724,9 +727,9 @@ def make_app(token: str) -> web.Application:
                                "last": items[0]["at"] if items else ""})
         else:
             marks = _seen() or {}
-            for who, s in calls.summary(marks).items():
+            for who, s in calls.summary(marks, line).items():
                 if who == open_who:
-                    items = [_call(r) for r in calls.for_person(who)]
+                    items = [_call(r) for r in calls.for_person(who, line=line)]
                     people.append({"who": who, "calls": items, "messages": [], "last": s["last"]})
                 else:
                     mark = marks.get(who, "")
@@ -764,7 +767,12 @@ def make_app(token: str) -> web.Application:
             p["last"] = max([x for x in latest if x] or [""])
         _mark_unread(people)
         people.sort(key=lambda p: p["last"], reverse=True)
-        return web.json_response({"people": people, "folder": str(folder)})
+        out = {"people": people, "folder": str(folder)}
+        # THE EMPLOYEES, for AgentDuet Team's first level: each line with its counts and a name.
+        if edition.name() == edition.TEAM:
+            out["lines"] = [{**ln, "display": _names.name_for(ln["line"], seen) if ln["line"] else ""}
+                            for ln in calls.lines()]
+        return web.json_response(out)
 
     #: WHAT THE OWNER HAS SEEN, per person: the newest item's time when they last opened that
     #: person's history. Kept by the daemon, not the page, so the badge survives a restart and

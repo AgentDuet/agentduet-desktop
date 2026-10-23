@@ -34,6 +34,11 @@ import Foundation
     @Published private(set) var people: [JSON] = []
     @Published private(set) var panel: JSON = [:]
     @Published var picked: String? = HubModel.home
+    /// AGENTDUET TEAM'S EMPLOYEES (2026-10-23): one per line — the number dialled, or dialling, on
+    /// our side of the trunk — and the one open. Nil is the list of them; the people list then shows
+    /// only that line's callers. Always empty and nil outside the team edition.
+    @Published private(set) var lines: [JSON] = []
+    @Published private(set) var line: String?
     #if !RECORDER
     /// The assistant's conversation (run/owner_chat.json, on the daemon).
     @Published private(set) var turns: [JSON] = []
@@ -114,10 +119,14 @@ import Foundation
     func load() async {
         // ONE PERSON IN FULL: the one open. Everyone else comes back light — enough for the list
         // — so the poll does not grow with every call ever made (web.api_threads, `open`).
-        async let t = api.get("/api/threads", query: ["open": picked ?? ""])
+        var ask = ["open": picked ?? ""]
+        if Edition.team, let line { ask["line"] = line }
+        let query = ask
+        async let t = api.get("/api/threads", query: query)
         async let p = api.get("/api/panel")
         let (threads, panel) = await (t, p)
         people = threads["people"] as? [JSON] ?? []
+        lines = threads["lines"] as? [JSON] ?? []
         self.panel = panel
         #if !RECORDER
         async let h = api.get("/api/chat_history")
@@ -313,6 +322,22 @@ import Foundation
         let msgs = (p["messages"] as? [JSON] ?? []).map { $0.str("at") }
         let newest = (calls + msgs).max() ?? ""
         Task { _ = await api.post("/api/seen", ["who": p.str("who"), "at": newest]) }
+    }
+
+    /// Open one employee's calls, or the list of employees (nil). Their newest caller is not
+    /// opened for them: the page stays where it was until someone is chosen.
+    func pickLine(_ l: String?) {
+        guard l != line else { return }
+        line = l
+        search = ""
+        if picked != Self.assistant { picked = Self.home }
+        Task { await load() }
+    }
+
+    /// An employee as shown: their name from Contacts, else the number, else what it is.
+    static func lineName(_ l: JSON) -> String {
+        if !l.str("display").isEmpty { return l.str("display") }
+        return l.str("line").isEmpty ? "Unknown line" : l.str("line")
     }
 
     func pick(_ who: String?) {

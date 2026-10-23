@@ -7114,10 +7114,10 @@ def test_calls_index() -> None:
     # THE HUB ASKS FOR ONE PERSON IN FULL, and the rest light.
     web = _site_src(pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop")
     ok("the hub reads its list from the index, one person in full",
-       'calls.summary(marks)' in web
-       and "calls.for_person(who)" in web)
+       'calls.summary(marks, line)' in web
+       and "calls.for_person(who, line=line)" in web)
     hub = (pathlib.Path(__file__).parent.parent / "macos/Sources/AgentDuetShell/HubModel.swift").read_text()
-    ok("and the Mac hub names who is open", 'query: ["open": picked ?? ""]' in hub)
+    ok("and the Mac hub names who is open", 'var ask = ["open": picked ?? ""]' in hub)
 
 
 def test_model_slot() -> None:
@@ -7940,6 +7940,59 @@ print(json.dumps(out))
     ok("the hub still finds it from the call's legs", [k for k in shown if k.startswith(name)] != [])
     eq("the call id reads back out of the name", cid, "01a167d9-a66e-7808-aa9a-936e10fd09a7")
     eq("and deleting the call removes it", after, [])
+
+    # ONE EMPLOYEE AT A TIME (Stanley, 2026-10-23): the hub lists the lines on the trunk, and one
+    # line opens that employee's callers. An index made before `line` gains it from the rows.
+    lines_probe = r"""
+import json, sqlite3
+from agentduet_desktop import calls
+calls.record("a1", "+6591111111", "carried", line="+6560000001")
+calls.record("a2", "+6592222222", "carried", line="+6560000002")
+calls.record("a3", "+6591111111", "carried", line="+6560000002")
+by = {l["line"]: (l["calls"], l["people"]) for l in calls.lines()}
+two = sorted(calls.summary({}, "+6560000002"))
+one = [r["call_id"] for r in calls.for_person("+6591111111", line="+6560000001")]
+# AN OLDER INDEX, with no `line` column, built as the code before it did: it gains the column,
+# filled from each call's own row. (Not by DROP COLUMN, which older SQLite cannot do here.)
+for f in (calls.DB, calls.DB.with_name(calls.DB.name + "-wal"), calls.DB.with_name(calls.DB.name + "-shm")):
+    f.unlink(missing_ok=True)
+con = sqlite3.connect(str(calls.DB))
+con.executescript(
+    "CREATE TABLE calls (id INTEGER PRIMARY KEY, at TEXT NOT NULL, call_id TEXT, caller TEXT,"
+    " person TEXT NOT NULL, mode TEXT, outgoing INTEGER, recordings TEXT, note TEXT, started TEXT,"
+    " row TEXT NOT NULL);"
+    "CREATE TABLE persons (person TEXT PRIMARY KEY, calls INTEGER NOT NULL, last TEXT NOT NULL,"
+    " last_in TEXT NOT NULL);"
+    "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);")
+for text in calls.LOG.read_text().splitlines():
+    r = json.loads(text)
+    con.execute("INSERT INTO calls (at, call_id, caller, person, mode, outgoing, recordings, note,"
+                " started, row) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (r["at"], r["call_id"], r["caller"], calls.person_of(r), r["mode"],
+                 int(r["outgoing"]), "[]", r["note"], r["started"], text))
+con.execute("INSERT INTO meta VALUES ('log_bytes', ?)", (str(calls.LOG.stat().st_size),))
+con.execute("INSERT INTO meta VALUES ('persons', '1')")
+con.commit(); con.close()
+again = {l["line"]: l["calls"] for l in calls.lines()}
+print(json.dumps([by, two, one, again]))
+"""
+    env = dict(os.environ, AGENTDUET_EDITION="team", AGENTDUET_HOME=tempfile.mkdtemp(),
+               PYTHONPATH=str(pathlib.Path(__file__).parent.parent / "src"))
+    got = _sp.run([sys.executable, "-c", lines_probe], env=env, capture_output=True, text=True)
+    try:
+        by, two, one, again = json.loads(got.stdout.strip().splitlines()[-1])
+    except (IndexError, ValueError):
+        by, two, one, again = {}, [], [], {"probe failed": got.stderr[-300:]}
+    eq("each line counts its own calls and people",
+       by, {"+6560000001": [1, 1], "+6560000002": [2, 2]})
+    eq("one line's list holds only its callers", two, ["+6591111111", "+6592222222"])
+    eq("and a caller's calls are only those on that line", one, ["a1"])
+    eq("an index from before `line` is filled in from its rows", again,
+       {"+6560000001": 1, "+6560000002": 2})
+    _hub = (pathlib.Path(__file__).parent.parent / "macos" / "Sources" / "AgentDuetShell")
+    ok("the team hub asks for one line's calls, and lists the lines first",
+       'ask["line"] = line' in (_hub / "HubModel.swift").read_text()
+       and "Edition.team && model.line == nil" in (_hub / "HubView.swift").read_text())
 
 
 def test_recordings_are_aac_on_a_mac() -> None:
