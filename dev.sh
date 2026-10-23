@@ -40,9 +40,11 @@ if [ -n "$WINDOW" ]; then
 else
   nohup "$VENV/bin/python" -m agentduet_desktop.cli run --no-window "$@" > "$LOG" 2>&1 &
 fi
+# THE EDITION'S OWN INSTANCE (AGENTDUET_EDITION=team runs AgentDuet Team, ~/.agentduet-team).
+H="${AGENTDUET_HOME:-$HOME/$("$VENV/bin/python" -c 'from agentduet_desktop import edition; print(edition.home_name())')}"
 for _ in $(seq 20); do
   sleep 1
-  URL=$(cat "${AGENTDUET_HOME:-$HOME/.agentduet-desktop}/run/site-url" 2>/dev/null || true)
+  URL=$(cat "$H/run/site-url" 2>/dev/null || true)
   [ -n "$URL" ] && break
 done
 

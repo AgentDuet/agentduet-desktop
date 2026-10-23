@@ -1591,10 +1591,14 @@ def test_setup_mode() -> None:
     ok("the shell answers the register flag",
        "--register-login-item" in (pathlib.Path(__file__).parent.parent / "macos" / "Sources"
                                    / "AgentDuetShell" / "main.swift").read_text())
+    _shell = pathlib.Path(__file__).parent.parent / "macos" / "Sources" / "AgentDuetShell"
     ok("and clears the plist when it registers, so only one survives",
-       "LaunchAgents/com.b3networks.agentduet-desktop.plist"
-       in (pathlib.Path(__file__).parent.parent / "macos" / "Sources" / "AgentDuetShell"
-           / "main.swift").read_text())
+       "LaunchAgents/\\(Edition.launchAgentLabel).plist" in (_shell / "main.swift").read_text())
+    # THE SHELL AND THE DAEMON NAME THE SAME LABEL, per edition (2026-10-23): AgentDuet Team keeps
+    # its own, or registering its login item would remove AgentDuet's on a Mac that runs both.
+    _ed = (_shell / "Edition.swift").read_text()
+    ok("the shell's login-item label is the daemon's",
+       f'"{_li.LABEL}"' in _ed and '"com.b3networks.agentduet-team"' in _ed)
     ok("applying it still takes no path from any caller",
        "def apply(want: bool)" in login_src)
 
@@ -7110,10 +7114,10 @@ def test_calls_index() -> None:
     # THE HUB ASKS FOR ONE PERSON IN FULL, and the rest light.
     web = _site_src(pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop")
     ok("the hub reads its list from the index, one person in full",
-       'calls.summary(marks)' in web
-       and "calls.for_person(who)" in web)
+       'calls.summary(marks, line)' in web
+       and "calls.for_person(who, line=line)" in web)
     hub = (pathlib.Path(__file__).parent.parent / "macos/Sources/AgentDuetShell/HubModel.swift").read_text()
-    ok("and the Mac hub names who is open", 'query: ["open": picked ?? ""]' in hub)
+    ok("and the Mac hub names who is open", 'var ask = ["open": picked ?? ""]' in hub)
 
 
 def test_model_slot() -> None:
@@ -7878,6 +7882,189 @@ def test_placed_call_news() -> None:
        'if not r.get("outgoing") or not edition.ai():' in src)
 
 
+def test_the_team_edition_has_its_own_identity() -> None:
+    """AgentDuet Team is the full app with its own instance, port and login item (edition.py)."""
+    print("\n  -- AgentDuet Team runs beside AgentDuet: nothing of it may be shared --")
+    import subprocess as _sp
+    probe = ("from agentduet_desktop import edition as e, loginitem as l, owner as o, update as u;"
+             "import json; print(json.dumps([e.name(), e.home_name(), e.port(), e.ai(), e.calls(),"
+             " l.LABEL, o.calls(), u._own('team-v1'), u._own('v1')]))")
+    def run(ed: str) -> list:
+        env = dict(os.environ, AGENTDUET_EDITION=ed, AGENTDUET_HOME=tempfile.mkdtemp(),
+                   PYTHONPATH=str(pathlib.Path(__file__).parent.parent / "src"))
+        out = _sp.run([sys.executable, "-c", probe], env=env, capture_output=True, text=True)
+        return json.loads(out.stdout.strip().splitlines()[-1])
+    team, full = run("team"), run("full")
+    eq("its own name and instance", team[:2], ["team", ".agentduet-team"])
+    eq("any free port, since AgentDuet holds 8899", (team[2], full[2]), (0, 8899))
+    ok("the full app's AI and a phone line", team[3] and team[4])
+    eq("its own login item, so registering it never removes AgentDuet's",
+       (team[5], full[5]), ("com.b3networks.agentduet-team", "com.b3networks.agentduet-desktop"))
+    eq("it carries calls, it never answers them", team[6], "carry")
+    eq("it reads only its own releases, and AgentDuet never reads its",
+       (team[7], team[8], full[7], full[8]), ("v1", None, None, "v1"))
+
+    # ITS RECORDINGS ARE NAMED FOR PEOPLE (Stanley, 2026-10-23): date, time, from, to, length and
+    # id, digits only. A real merge in a throwaway instance, then every reader that looks one up.
+    merge_probe = r"""
+import json, time, wave
+from agentduet_desktop import calls, carry, erase, merge
+cid = "01a167d9-a66e-7808-aa9a-936e10fd09a7"
+stem = "20261023T140500-" + cid
+carry.legs().mkdir(parents=True, exist_ok=True)
+for leg in ("caller", "callee"):
+    with wave.open(str(carry.legs() / f"{stem}-{leg}.wav"), "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(24000)
+        w.writeframes(b"\x10\x00" * 24000 * 192)
+calls.record(cid, "+6591234567", "carried", line="+6567891234",
+             recordings=sorted(p.name for p in carry.legs().glob("*.wav")))
+merge.once(settled=lambda w: True)
+kept = sorted(p.name for p in carry.recordings().iterdir())
+_, shown = carry.call_audio(calls.get(cid)["recordings"], cid)
+out = [kept, shown, carry.merged_txt(stem).name, carry.call_id_of(kept[0].rsplit(".", 1)[0])]
+erase.delete_call(cid)
+out.append(sorted(p.name for p in carry.recordings().iterdir()))
+print(json.dumps(out))
+"""
+    env = dict(os.environ, AGENTDUET_EDITION="team", AGENTDUET_HOME=tempfile.mkdtemp(),
+               PYTHONPATH=str(pathlib.Path(__file__).parent.parent / "src"))
+    got = _sp.run([sys.executable, "-c", merge_probe], env=env, capture_output=True, text=True)
+    try:
+        kept, shown, txt, cid, after = json.loads(got.stdout.strip().splitlines()[-1])
+    except (IndexError, ValueError):
+        kept, shown, txt, cid, after = [], [], "", "", ["probe failed: " + got.stderr[-300:]]
+    name = "2026-10-23_1405_6591234567_to_6567891234_3m12s_01a167d9-a66e-7808-aa9a-936e10fd09a7"
+    ok("a team recording is named date, time, from, to, length and id, with no +",
+       any(k.startswith(name + ".") for k in kept))
+    ok("its .txt is beside it under the same name", txt == name + ".txt" and txt in kept)
+    ok("the hub still finds it from the call's legs", [k for k in shown if k.startswith(name)] != [])
+    eq("the call id reads back out of the name", cid, "01a167d9-a66e-7808-aa9a-936e10fd09a7")
+    eq("and deleting the call removes it", after, [])
+
+    # ONE EMPLOYEE AT A TIME (Stanley, 2026-10-23): the hub lists the lines on the trunk, and one
+    # line opens that employee's callers. An index made before `line` gains it from the rows.
+    lines_probe = r"""
+import json, sqlite3
+from agentduet_desktop import calls
+calls.record("a1", "+6591111111", "carried", line="+6560000001")
+calls.record("a2", "+6592222222", "carried", line="+6560000002")
+calls.record("a3", "+6591111111", "carried", line="+6560000002")
+by = {l["line"]: (l["calls"], l["people"]) for l in calls.lines()}
+two = sorted(calls.summary({}, "+6560000002"))
+one = [r["call_id"] for r in calls.for_person("+6591111111", line="+6560000001")]
+# AN OLDER INDEX, with no `line` column, built as the code before it did: it gains the column,
+# filled from each call's own row. (Not by DROP COLUMN, which older SQLite cannot do here.)
+for f in (calls.DB, calls.DB.with_name(calls.DB.name + "-wal"), calls.DB.with_name(calls.DB.name + "-shm")):
+    f.unlink(missing_ok=True)
+con = sqlite3.connect(str(calls.DB))
+con.executescript(
+    "CREATE TABLE calls (id INTEGER PRIMARY KEY, at TEXT NOT NULL, call_id TEXT, caller TEXT,"
+    " person TEXT NOT NULL, mode TEXT, outgoing INTEGER, recordings TEXT, note TEXT, started TEXT,"
+    " row TEXT NOT NULL);"
+    "CREATE TABLE persons (person TEXT PRIMARY KEY, calls INTEGER NOT NULL, last TEXT NOT NULL,"
+    " last_in TEXT NOT NULL);"
+    "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);")
+for text in calls.LOG.read_text().splitlines():
+    r = json.loads(text)
+    con.execute("INSERT INTO calls (at, call_id, caller, person, mode, outgoing, recordings, note,"
+                " started, row) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (r["at"], r["call_id"], r["caller"], calls.person_of(r), r["mode"],
+                 int(r["outgoing"]), "[]", r["note"], r["started"], text))
+con.execute("INSERT INTO meta VALUES ('log_bytes', ?)", (str(calls.LOG.stat().st_size),))
+con.execute("INSERT INTO meta VALUES ('persons', '1')")
+con.commit(); con.close()
+again = {l["line"]: l["calls"] for l in calls.lines()}
+print(json.dumps([by, two, one, again]))
+"""
+    env = dict(os.environ, AGENTDUET_EDITION="team", AGENTDUET_HOME=tempfile.mkdtemp(),
+               PYTHONPATH=str(pathlib.Path(__file__).parent.parent / "src"))
+    got = _sp.run([sys.executable, "-c", lines_probe], env=env, capture_output=True, text=True)
+    try:
+        by, two, one, again = json.loads(got.stdout.strip().splitlines()[-1])
+    except (IndexError, ValueError):
+        by, two, one, again = {}, [], [], {"probe failed": got.stderr[-300:]}
+    eq("each line counts its own calls and people",
+       by, {"+6560000001": [1, 1], "+6560000002": [2, 2]})
+    eq("one line's list holds only its callers", two, ["+6591111111", "+6592222222"])
+    eq("and a caller's calls are only those on that line", one, ["a1"])
+    eq("an index from before `line` is filled in from its rows", again,
+       {"+6560000001": 1, "+6560000002": 2})
+    _hub = (pathlib.Path(__file__).parent.parent / "macos" / "Sources" / "AgentDuetShell")
+    # A CALL RECORDER UNTIL TURNED ON (Samip, 2026-10-23): transcripts and the assistant are one
+    # switch, off by default in AgentDuet Team, and on wherever else the AI is in the bundle.
+    ai_probe = r"""
+import json
+from agentduet_desktop import edition, owner, settings
+before = owner.ai_on()
+settings.set_setting("ai", "yes")
+after = owner.ai_on()
+print(json.dumps([edition.name(), before, after]))
+"""
+    def ai_state(ed: str) -> list:
+        env = dict(os.environ, AGENTDUET_EDITION=ed, AGENTDUET_HOME=tempfile.mkdtemp(),
+                   PYTHONPATH=str(pathlib.Path(__file__).parent.parent / "src"))
+        out = _sp.run([sys.executable, "-c", ai_probe], env=env, capture_output=True, text=True)
+        try:
+            return json.loads(out.stdout.strip().splitlines()[-1])
+        except (IndexError, ValueError):
+            return ["probe failed: " + out.stderr[-200:]]
+    eq("the team app starts with transcripts and the assistant off, and the switch turns them on",
+       ai_state("team"), ["team", False, True])
+    eq("the full app has them on", ai_state("full")[:2], ["full", True])
+    eq("the recorder never has them", ai_state("recorder"), ["recorder", False, False])
+    _src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    _tw = (_src / "transcribe.py").read_text()
+    ok("with it off the queue only merges, so nothing is transcribed",
+       "if not _own.ai_on():" in _tw and "await asyncio.to_thread(_merge.once)" in _tw)
+    _sa = (_src / "secretary_agent.py").read_text()
+    ok("and nothing is downloaded at start",
+       "if _llm.configured() and _own.ai_on():" in _sa and "if _own.ai_on():\n            _search.fetch_in_background()" in _sa)
+    _sv = (_hub / "SettingsView.swift").read_text()
+    ok("Settings has the switch, and setup ends before the downloads while it is off",
+       'Toggle("Transcripts and assistant"' in _sv
+       and "if model.settings.aiOn {" in (_hub / "SetupView.swift").read_text()
+       and "if settings.aiOn { startDownloads() }" in (_hub / "SetupModel.swift").read_text())
+    # MP3 WHEN THE OWNER INSTALLED LAME (Samip, 2026-10-23), in AgentDuet Team only. The app runs
+    # their `lame`; it ships none, since LAME is LGPL. The real encode runs only where it exists.
+    mp3_probe = r"""
+import json, math, pathlib, shutil, struct, tempfile
+from unittest import mock
+from agentduet_desktop import audiofile, edition
+out = {}
+with mock.patch.object(audiofile, "_lame", lambda: "/x/lame"):
+    out["with"] = audiofile.extension()
+with mock.patch.object(audiofile, "_lame", lambda: None):
+    out["without"] = audiofile.extension()
+out["listed"] = audiofile.is_recording("a.mp3")
+if audiofile._lame() and shutil.which("afconvert") and edition.name() == edition.TEAM:
+    d = pathlib.Path(tempfile.mkdtemp())
+    pcm = b"".join(struct.pack("<hh", int(8000 * math.sin(i / 9)), 0) for i in range(24000 * 3))
+    got = audiofile.write(d / "c.mp3", 2, 24000, 2, pcm)
+    out["real"] = [got and got.suffix, round(audiofile.seconds(got) or 0),
+                   audiofile.read(got)[0]]
+print(json.dumps(out))
+"""
+    def mp3_state(ed: str) -> dict:
+        env = dict(os.environ, AGENTDUET_EDITION=ed, AGENTDUET_HOME=tempfile.mkdtemp(),
+                   PYTHONPATH=str(pathlib.Path(__file__).parent.parent / "src"))
+        out = _sp.run([sys.executable, "-c", mp3_probe], env=env, capture_output=True, text=True)
+        try:
+            return json.loads(out.stdout.strip().splitlines()[-1])
+        except (IndexError, ValueError):
+            return {"probe failed": out.stderr[-200:]}
+    team_mp3, full_mp3 = mp3_state("team"), mp3_state("full")
+    ok("a team recording is MP3 when the owner has lame, and not otherwise",
+       team_mp3.get("with") == ".mp3" and team_mp3.get("without") in (".m4a", ".wav"))
+    ok("the full app never saves MP3", full_mp3.get("with") in (".m4a", ".wav"))
+    ok("every reader takes an .mp3", team_mp3.get("listed") is True)
+    if "real" in team_mp3:
+        eq("and a real one is written, measured and read back as stereo",
+           team_mp3["real"], [".mp3", 3, 2])
+    ok("the team hub asks for one line's calls, and lists the lines first",
+       'ask["line"] = line' in (_hub / "HubModel.swift").read_text()
+       and "Edition.team && model.line == nil" in (_hub / "HubView.swift").read_text())
+
+
 def test_recordings_are_aac_on_a_mac() -> None:
     """The kept recording is AAC `.m4a` where macOS's encoder is, WAV otherwise (audiofile.py)."""
     print("\n  -- the recording the owner keeps: .m4a on a Mac, never lost to a format --")
@@ -8084,6 +8271,7 @@ def main() -> None:
     test_briefs_are_about_the_right_person()
     test_the_decider_checks_relationships()
     test_recordings_are_aac_on_a_mac()
+    test_the_team_edition_has_its_own_identity()
     # EVERY TEST MUST BE CALLED. They are invoked by hand above, so a new `test_*`
     # function is dead until someone adds a line — and a dead test is worse than no
     # test, because the count still goes up and the suite still says it passed. I

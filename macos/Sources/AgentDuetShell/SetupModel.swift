@@ -162,7 +162,9 @@ import Foundation
             // already set up it would be a daemon restart for no reason.
             if rerun { onFinish?(); return }
             #if !RECORDER
-            startDownloads()
+            // NOT WHILE AGENTDUET TEAM'S SWITCH IS OFF: it records only, and Settings fetches them
+            // when the switch is turned on.
+            if settings.aiOn { startDownloads() }
             #endif
             // BEFORE HANDOVER, which may stand this daemon down for the installed copy.
             _ = await api.post("/api/setup/login-item", ["want": atLogin])

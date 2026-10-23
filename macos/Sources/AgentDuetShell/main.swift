@@ -84,7 +84,7 @@ if CommandLine.arguments.contains("--register-login-item") {
         // BOTH REGISTERED MEANS TWO DAEMONS AT LOGIN, and the loser of the race for 8899 exits
         // silently. The menu bar toggle clears this same plist for the same reason.
         let plist = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/LaunchAgents/com.b3networks.agentduet-desktop.plist")
+            .appendingPathComponent("Library/LaunchAgents/\(Edition.launchAgentLabel).plist")
         if FileManager.default.fileExists(atPath: plist.path) {
             let unload = Process()
             unload.executableURL = URL(fileURLWithPath: "/bin/launchctl")

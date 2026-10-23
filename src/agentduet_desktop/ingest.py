@@ -146,7 +146,7 @@ def once() -> int:
             continue
         if not transcribed and not split(stem):
             continue                        # tried again next pass
-        call_id = stem.split("-", 1)[1] if "-" in stem else stem
+        call_id = carry.call_id_of(stem)
         ended = (f["started"] + f["seconds"]) if f["started"] else None
         calls.record(call_id, f["number"], "carried", recordings=[f["recording"]],
                      outgoing=f["outgoing"], started=f["started"], at=ended)

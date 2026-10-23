@@ -301,7 +301,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     /// survived. One mechanism per machine.
     private func removeLegacyLaunchAgent() {
         let plist = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/LaunchAgents/com.b3networks.agentduet-desktop.plist")
+            .appendingPathComponent("Library/LaunchAgents/\(Edition.launchAgentLabel).plist")
         guard FileManager.default.fileExists(atPath: plist.path) else { return }
         let unload = Process()
         unload.executableURL = URL(fileURLWithPath: "/bin/launchctl")

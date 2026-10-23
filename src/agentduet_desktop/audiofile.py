@@ -12,7 +12,12 @@ so the full app's transcript never comes from compressed audio. Only the owner's
 compressed — and AgentDuet AI transcribes that copy, through `read` (the cost: see `BITRATE`).
 
 ELSEWHERE, OR IF THE ENCODER FAILS, the recording stays WAV: a call is never lost to a format.
-Older recordings stay WAV too; every reader takes both (`EXTENSIONS`).
+Older recordings stay WAV too; every reader takes every kind (`EXTENSIONS`).
+
+MP3 IN AGENTDUET TEAM, WHEN LAME IS INSTALLED (2026-10-23). AIS's customers are used to MP3
+(Samip). LAME is LGPL, which the open-source procedure does not allow in the app, so the app
+contains none of it: it runs a `lame` the OWNER installed (`brew install lame`), as a separate
+program, the way it runs `afconvert`. With none found, a team recording is `.m4a` as elsewhere.
 """
 from __future__ import annotations
 
@@ -28,7 +33,15 @@ import wave
 logger = logging.getLogger("secretary")
 
 #: Every extension a kept recording may have, preferred first.
-EXTENSIONS = (".m4a", ".wav")
+EXTENSIONS = (".m4a", ".mp3", ".wav")
+
+#: MP3 bit rate for the stereo recording: 32 kbps a party, ~0.47 MB a minute. MP3 needs more than
+#: AAC (`BITRATE`) for the same speech; never transcribed from (see BITRATE), so it is for people.
+MP3_BITRATE = 64_000
+
+#: WHERE A `lame` THE OWNER INSTALLED LIVES. An app opened from Finder runs with a PATH that does
+#: not include Homebrew's, so `which` alone would miss it there and find it in a terminal.
+LAME_PLACES = ("/opt/homebrew/bin/lame", "/usr/local/bin/lame")
 
 #: AAC bit rate for the stereo recording: 24 kbps a party, ~0.36 MB a minute (16x smaller).
 #: MEASURED 2026-10-16 on three real calls (English, Mandarin, Malay), each side transcribed by
@@ -48,8 +61,18 @@ def _afconvert() -> str | None:
     return shutil.which("afconvert")
 
 
+def _lame() -> str | None:
+    """The owner's own `lame`, or None. Never one of ours: the app ships no MP3 encoder."""
+    if found := shutil.which("lame"):
+        return found
+    return next((p for p in LAME_PLACES if os.access(p, os.X_OK)), None)
+
+
 def extension() -> str:
     """The extension a NEW recording gets on this machine."""
+    from . import edition
+    if edition.name() == edition.TEAM and _lame():
+        return ".mp3"
     return ".m4a" if _afconvert() else ".wav"
 
 
@@ -73,6 +96,22 @@ def write(out: pathlib.Path, channels: int, rate: int, width: int, frames: bytes
     and must never read half a file.
     """
     out.parent.mkdir(parents=True, exist_ok=True)
+    if out.suffix == ".mp3" and (lame := _lame()):
+        final = out.with_suffix(".mp3")
+        part = final.with_name(f".{final.name}.part")
+        with tempfile.TemporaryDirectory() as tmp:
+            src = pathlib.Path(tmp) / "call.wav"
+            _write_wav(src, channels, rate, width, frames)
+            try:
+                subprocess.run([lame, "--quiet", "-b", str(MP3_BITRATE // 1000), str(src), str(part)],
+                               check=True, capture_output=True, timeout=TIMEOUT_SECONDS)
+                os.replace(part, final)
+                return final
+            except (OSError, subprocess.SubprocessError) as exc:
+                part.unlink(missing_ok=True)
+                # AAC NEXT, then WAV: a call is never lost to a format.
+                logger.warning("could not encode %s as MP3 (%s) — trying AAC", final.name, exc)
+                out = out.with_suffix(".m4a")
     if out.suffix == ".m4a" and (tool := _afconvert()):
         final = out.with_suffix(".m4a")
         part = final.with_name(f".{final.name}.part")
@@ -110,10 +149,10 @@ def _write_wav(path: pathlib.Path, channels: int, rate: int, width: int, frames:
 
 def read(path: pathlib.Path) -> tuple[int, int, int, bytes]:
     """(channels, rate, sample width, PCM frames) of a kept recording. Raises OSError."""
-    if path.suffix.lower() == ".m4a":
+    if path.suffix.lower() in (".m4a", ".mp3"):           # macOS reads both; it writes AAC only
         tool = _afconvert()
         if not tool:
-            raise OSError(f"{path.name}: no AAC decoder on this machine")
+            raise OSError(f"{path.name}: no decoder on this machine")
         with tempfile.TemporaryDirectory() as tmp:
             pcm = pathlib.Path(tmp) / "call.wav"
             try:
@@ -153,7 +192,7 @@ def seconds(path: pathlib.Path) -> float | None:
 
 
 def _seconds(path: pathlib.Path) -> float | None:
-    if path.suffix.lower() == ".m4a":
+    if path.suffix.lower() in (".m4a", ".mp3"):
         tool = shutil.which("afinfo")
         if not tool:
             return None

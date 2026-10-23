@@ -38,6 +38,45 @@ what is coming.
 | Transcription speed | **measured** 9.3 s for a 222 s call (M5) | ~24x realtime |
 | Summary per call | **measured** ~8.7 s (Gemma 4 E4B, M5) | |
 
+## One company, one Mac: calls at once (AgentDuet Team, 2026-10-23)
+
+AgentDuet Team records a whole company over one trunk connector, so calls arrive **at the same
+time**, which every earlier call through this app never did. The design target is **10 at once**.
+
+**Measured** on an M5 by `tests/test_concurrency.py`: N calls of 30 s through the real
+`carry.handle` at once, on fake SDK objects streaming 24 kHz audio in real time, then the queue
+saving them. Three runs, with other work on the machine, so a range:
+
+| Calls at once | Recording CPU (share of one core) | Peak memory | Queue: all N saved as MP3 | Recordings correct |
+|---|---|---|---|---|
+| 1 | 0.8–1.2% | 155 MB | 0.2 s | 1/1 |
+| 10 | 4–9% | ~210 MB | 1.7–2.0 s | 10/10 |
+| 25 | 11–12% | 270–290 MB | 4.3–6.3 s | 25/25 |
+| 50 | 17–23% | 410–430 MB | 8.6–10.7 s | 50/50 |
+
+"Correct": the right name and length, and each side holding its own call's audio, so nothing
+crossed between calls.
+
+**Per call:**
+- **Real-time recording:** ~0.35–0.45% of one core, about **0.9%** with the SDK receiving the
+  audio, which is not in the test (binary frames, about as cheap as our side; doubled to be safe).
+- **Memory:** ~5.5 MB on top of ~155 MB.
+- **Network and disk:** 96 KB/s.
+- **The queue** saves one call at a time after it ends, so it is not real time: MP3 encoding costs
+  ~0.7% of a call's length, and one core keeps up with ~150 minutes of calls ending per minute.
+
+**Where it stops:** recording runs on one Python event loop, so ONE core is the ceiling: **~100
+calls at once** before it nears 90% (estimate, from the per-call figure). An older Mac mini at half
+the speed: ~50. Memory at 100 calls is ~700 MB, and network ~10 MB/s; neither comes first.
+
+**The platform:** wss-edge caps a connector at `maxActiveSessions`, default **100**
+(`ChannelConfig.DEFAULT_MAX_ACTIVE_SESSIONS`), settable per connector. One carried call takes
+one session.
+
+**Not covered:** transcription (off by default in the team app; with it on, speech is one queue
+on the GPU at ~24x realtime, the row above), and the real network. Re-run the test after any
+change to `carry.py` or the merge.
+
 ## A shared system with ~500 users — what would break
 
 This is a **different architecture**, not more of the same app. AgentDuet Desktop runs one

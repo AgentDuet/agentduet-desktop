@@ -31,7 +31,13 @@ import pathlib
 import subprocess
 import sys
 
-LABEL = "com.b3networks.agentduet-desktop"
+from . import edition as _edition
+
+#: AGENTDUET TEAM HAS ITS OWN (2026-10-23). The shell removes a plist with this label when it
+#: registers its own login item, so a team app sharing it would remove AgentDuet's on a Mac that
+#: runs both. The shell's `Edition.launchAgentLabel` is the same name.
+_SLUG = "agentduet-team" if _edition.name() == _edition.TEAM else "agentduet-desktop"
+LABEL = f"com.b3networks.{_SLUG}"
 
 #: macOS. A LaunchAgent (user scope, ~/Library) rather than a LaunchDaemon (root, /Library):
 #: nothing here needs root, and a root daemon answering a stranger's phone call is a much larger
@@ -39,13 +45,13 @@ LABEL = "com.b3networks.agentduet-desktop"
 MAC_PLIST = pathlib.Path.home() / "Library/LaunchAgents" / f"{LABEL}.plist"
 
 #: Linux. A systemd USER unit, so it needs no sudo and starts with the owner's session.
-LINUX_UNIT = pathlib.Path.home() / ".config/systemd/user/agentduet-desktop.service"
+LINUX_UNIT = pathlib.Path.home() / f".config/systemd/user/{_SLUG}.service"
 
 #: Windows. The per-user Startup folder. Task Scheduler would be tidier, but it means shelling out
 #: to schtasks with an XML payload, and a .cmd in Startup is inspectable by the owner — which for
 #: a thing that runs at every login is worth more than tidiness.
 WIN_STARTUP = (pathlib.Path(os.environ.get("APPDATA", pathlib.Path.home()))
-               / "Microsoft/Windows/Start Menu/Programs/Startup" / "agentduet-desktop.cmd")
+               / "Microsoft/Windows/Start Menu/Programs/Startup" / f"{_SLUG}.cmd")
 
 
 def _target() -> pathlib.Path | None:

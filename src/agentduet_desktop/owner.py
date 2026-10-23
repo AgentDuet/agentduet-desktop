@@ -426,6 +426,24 @@ def sync_icloud() -> bool:
     return first in ("yes", "on", "true")
 
 
+def ai_on() -> bool:
+    """Whether transcripts and the assistant are in use: on in AgentDuet and AgentDuet AI, absent in
+    the Recorder, and AgentDuet Team's own switch.
+
+    AGENTDUET TEAM STARTS AS A CALL RECORDER (Samip, 2026-10-23): the AI is in its bundle, behind
+    one switch that is OFF unless `## Transcripts and assistant` says yes. While it is off nothing
+    is transcribed or summarised and no model is downloaded; calls recorded meanwhile stay
+    untranscribed.
+    """
+    from . import edition
+    if not edition.ai():
+        return False
+    if edition.name() != edition.TEAM:
+        return True
+    first = _first_line(_strip_guidance(_sections().get("Transcripts and assistant", ""))).strip().lower()
+    return first in ("yes", "on", "true")
+
+
 def start_at_login() -> bool:
     """Whether this machine should launch the app when the owner logs in. Default OFF.
 

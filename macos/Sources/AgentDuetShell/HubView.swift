@@ -179,6 +179,7 @@ private struct PeopleList: View {
     var body: some View {
         VStack(spacing: 6) {
             #if !RECORDER
+            if model.aiOn {
             row(on: model.onAssistant, tap: { model.pick(HubModel.assistant) }) {
                 HStack(spacing: 10) {
                     ZStack {
@@ -191,7 +192,25 @@ private struct PeopleList: View {
                 }
                 .padding(.vertical, 6)
             }
+            }
             #endif
+            // AGENTDUET TEAM: THE EMPLOYEES FIRST (Stanley, 2026-10-23), each opening their own
+            // callers. The list of people below is then that one line's.
+            if Edition.team && model.line == nil {
+                LineList(model: model, row: row)
+            } else {
+            if Edition.team, let line = model.line {
+                row(on: false, tap: { model.pickLine(nil) }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.left").font(.caption.weight(.semibold))
+                        Text(HubModel.lineName(model.lines.first { $0.str("line") == line }
+                                               ?? ["line": line]))
+                            .font(.body.weight(.semibold)).lineLimit(1)
+                        Spacer()
+                    }
+                    .padding(.vertical, 6)
+                }
+            }
             SearchField(text: $model.search)
             ScrollView {
                 LazyVStack(spacing: 2) {
@@ -219,6 +238,7 @@ private struct PeopleList: View {
                     }
                     #endif
                 }
+            }
             }
         }
         .padding(8)
@@ -254,6 +274,47 @@ private struct PeopleList: View {
                 .fill(on ? Color.primary.opacity(0.12) : Color.clear))
             .contentShape(Rectangle())
             .onTapGesture(perform: tap)
+    }
+}
+
+/// AgentDuet Team's employees: one row per line, with how many calls and people it has.
+private struct LineList<R: View>: View {
+    @ObservedObject var model: HubModel
+    let row: (Bool, @escaping () -> Void, () -> AnyView) -> R
+
+    init(model: HubModel, row: @escaping (Bool, @escaping () -> Void, () -> AnyView) -> R) {
+        self.model = model
+        self.row = row
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 2) {
+                ForEach(model.lines.indices, id: \.self) { i in
+                    let l = model.lines[i]
+                    row(false, { model.pickLine(l.str("line")) }) {
+                        AnyView(HStack(spacing: 10) {
+                            Image(systemName: "person.crop.circle").font(.system(size: 26))
+                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(HubModel.lineName(l)).lineLimit(1)
+                                Text(Self.counts(l)).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .padding(.vertical, 6))
+                    }
+                }
+                if model.lines.isEmpty {
+                    Text("No calls yet.").foregroundStyle(.secondary).padding(.top, 8)
+                }
+            }
+        }
+    }
+
+    static func counts(_ l: JSON) -> String {
+        let c = Int(l.num("calls")), p = Int(l.num("people"))
+        return "\(c) call\(c == 1 ? "" : "s") · \(p) \(p == 1 ? "person" : "people")"
     }
 }
 
@@ -415,7 +476,8 @@ extension View {
         #if RECORDER
         self
         #else
-        modifier(WithAssistant(model: model))
+        // NOR IN AGENTDUET TEAM while its switch is off.
+        if model.aiOn { modifier(WithAssistant(model: model)) } else { self }
         #endif
     }
 }
@@ -1154,7 +1216,12 @@ private struct CallCard: View {
                 Text(state).foregroundStyle(.secondary).italic()
             }
             #else
-            if call.str("transcript").isEmpty, !captions.isEmpty {
+            if !model.aiOn {
+                // AGENTDUET TEAM WITH ITS SWITCH OFF says what the recorder says, and no more.
+                if let state = HubModel.callState(call, ai: false) {
+                    Text(state).foregroundStyle(.secondary).italic()
+                }
+            } else if call.str("transcript").isEmpty, !captions.isEmpty {
                 CaptionMark(ended: true)
                 ForEach(captions) { c in Balloon(text: c.text, mine: c.mine, caption: "") }
             } else if let state = HubModel.callState(call) {

@@ -82,11 +82,58 @@ def legs() -> pathlib.Path:
 
 def stem_of(name: str) -> str:
     """`20260909T103616-<uuid>-caller.wav` -> `20260909T103616-<uuid>`."""
-    base = name[:-4] if name.endswith((".wav", ".m4a", ".txt")) else name
+    base = name[:-4] if name.endswith((".wav", ".m4a", ".mp3", ".txt")) else name
     for suffix in ("-caller", "-callee", "-agent"):
         if base.endswith(suffix):
             return base[: -len(suffix)]
     return base
+
+
+#: AGENTDUET TEAM'S KEPT NAME (2026-10-23): `2026-10-23_1405_6591234567_to_6567891234_3m12s_<id>`.
+#: Date, time, from, to, length and call id, digits only, so the folder reads without the app.
+_TEAM_STEM = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{4}_.*_(?P<id>[^_]+)$")
+
+
+def call_id_of(stem: str) -> str:
+    """The call id inside a stem: `<stamp>-<id>`, or a team name ending `_<id>`."""
+    if m := _TEAM_STEM.match(stem):
+        return m["id"]
+    return stem.split("-", 1)[1] if "-" in stem else stem
+
+
+def kept_stem(stem: str, row: dict | None, seconds: float) -> str:
+    """The name the owner's copy is saved under: the stem itself, or AgentDuet Team's long form.
+
+    ONLY THE KEPT FILES TAKE IT. The legs keep `<stamp>-<id>-<leg>.wav`, and every reader finds a
+    kept file by its call id (`find_kept`), so the long name changes nothing that looks one up.
+    """
+    from . import edition
+    if edition.name() != edition.TEAM:
+        return stem
+    row = row or {}
+    try:
+        when = datetime.strptime(stem.split("-", 1)[0], "%Y%m%dT%H%M%S").strftime("%Y-%m-%d_%H%M")
+    except ValueError:
+        return stem
+    other = re.sub(r"\D", "", row.get("caller") or "") or "unknown"
+    line = re.sub(r"\D", "", row.get("line") or "") or "unknown"
+    frm, to = (line, other) if row.get("outgoing") else (other, line)
+    s = max(0, round(seconds))
+    return f"{when}_{frm}_to_{to}_{s // 60}m{s % 60:02d}s_{call_id_of(stem)}"
+
+
+def find_kept(folder: pathlib.Path, stem: str) -> pathlib.Path | None:
+    """The kept recording for `stem` in `folder`, under its own name or AgentDuet Team's."""
+    from . import audiofile
+    if hit := audiofile.find(folder, stem):
+        return hit
+    call_id = call_id_of(stem)
+    if not call_id or call_id == stem or not folder.is_dir():
+        return None
+    for p in sorted(folder.glob(f"*_{call_id}.*")):
+        if audiofile.is_recording(p.name) and _TEAM_STEM.match(p.stem):
+            return p
+    return None
 
 
 def merged_audio(stem: str) -> pathlib.Path:
@@ -96,12 +143,14 @@ def merged_audio(stem: str) -> pathlib.Path:
     (`audiofile.extension`).
     """
     from . import audiofile
-    return (audiofile.find(recordings(), stem)
+    return (find_kept(recordings(), stem)
             or recordings() / f"{stem}{audiofile.extension()}")
 
 
 def merged_txt(stem: str) -> pathlib.Path:
-    return recordings() / f"{stem}.txt"
+    """The call's `.txt`, beside its recording — whichever name that was saved under."""
+    hit = find_kept(recordings(), stem)
+    return hit.with_suffix(".txt") if hit else recordings() / f"{stem}.txt"
 
 
 #: THE CALL'S DETAILS head its `.txt` (2026-10-03): who, which way, when, how long, which audio —
@@ -240,13 +289,13 @@ def call_audio(names: list[str], call_id: str = "") -> tuple[pathlib.Path, list[
         names = sorted(p.name for p in legs().glob(f"*{call_id}*.wav"))
         if not names:
             names = sorted(p.name for p in recordings().glob(f"*{call_id}*")
-                           if p.suffix in (".wav", ".m4a"))
+                           if audiofile.is_recording(p.name))
     stems = {stem_of(n) for n in names}
     # THE FOLDER IT WAS MERGED INTO, which may not be today's: choosing a new folder moves
     # nothing ("anything already recorded stays where it is"), so a call from before the change
     # is still in the default one. Without this its merge vanished from the hub (2026-09-30).
     for folder in dict.fromkeys([recordings(), paths.RUN / "recordings"]):
-        merged = [p.name for st in sorted(stems) if (p := audiofile.find(folder, st))]
+        merged = [p.name for st in sorted(stems) if (p := find_kept(folder, st))]
         if merged:
             return folder, merged
     here = [n for n in names if (legs() / n).is_file()]
@@ -442,6 +491,10 @@ async def handle(sm, noti) -> None:
     # direction. The format strings must NOT also say "from" — that produced
     # "call c1 from from +6591234567".
     who = f"{'to' if outgoing else 'from'} {other}"
+    # THIS SIDE'S NUMBER: the one dialled on a call in, the one dialling on a call out. On a trunk
+    # it is the employee's, which is how one install tells their calls apart (2026-10-23).
+    line = (getattr(getattr(noti, "from_address" if outgoing else "to_address", None), "value", "")
+            or getattr(noti, "subscriber_id", "") or "")
     # THE LINE, LEARNED FROM EVERY CALL, in and out. `subscriber_id` is this connector's own number
     # in both directions (the platform's session log shows it on each), and until now only the
     # answering path recorded it — so a carrying install never learned its own number.
@@ -504,7 +557,8 @@ async def handle(sm, noti) -> None:
         if decision == "gone":
             logger.info("call %s %s: the caller hung up while it rang in the app", call_id, who)
             from . import calls as _calls
-            _calls.record(call_id, other, "carried", note="missed in the app", started=taken)
+            _calls.record(call_id, other, "carried", note="missed in the app", started=taken,
+                          line=line)
             return
         logger.info("call %s %s: %s in the app — passing it through", call_id, who, decision)
 
@@ -626,7 +680,7 @@ async def handle(sm, noti) -> None:
         # audio is sitting on disk. Caught before the first live call, by adding the
         # empty-leg cleanup and asking what the index would then have to work with.
         _calls.record(call_id, other, "carried", outgoing=outgoing, note=outcome, started=taken,
-                      recordings=sorted(
+                      line=line, recordings=sorted(
             str(p.name) for p in legs().glob(f"*{call_id}*.wav")))
         # TRANSCRIBE IT NOW, not at the next poll: the legs are closed and on disk. (The
         # recorder edition has no transcription; its merge worker picks the call up on its own.)
@@ -647,12 +701,13 @@ async def _live_start(call_id: str, other: str):
     None when captions cannot run (the speech engine is not Qwen, or its model is not here), and
     never raises: a preview must not be able to cost the call or its recording.
     """
-    from . import calls as _calls, edition, oncall
+    from . import calls as _calls, oncall
     try:
         who = _calls.person_of({"caller": other})
         # THE RECORDER EDITION marks the call and stops: captions are speech recognition, and
-        # it has none.
-        if not edition.ai():
+        # it has none. Nor does AgentDuet Team while its switch is off (owner.ai_on).
+        from . import owner as _own
+        if not _own.ai_on():
             await oncall.start(call_id, who)
             return None
         from . import live
@@ -667,9 +722,10 @@ async def _live_start(call_id: str, other: str):
 
 
 async def _live_end(call_id: str) -> None:
-    from . import edition, oncall
+    from . import oncall, owner as _own
     try:
-        if not edition.ai():
+        if not _own.ai_on():                     # as `_live_start` chose
+
             await oncall.end(call_id)
             return
         from . import live

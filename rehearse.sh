@@ -3,7 +3,8 @@
 # Park the instance so the WIZARD runs again, for rehearsing a fresh install. Reversible:
 # nothing is deleted, and a same-volume rename moves gigabytes of models instantly.
 #
-# IT TOUCHES ONLY WHAT THE APP OWNS — `$AGENTDUET_HOME`, default ~/.agentduet-desktop — and
+# IT TOUCHES ONLY WHAT THE APP OWNS — `$AGENTDUET_HOME`, default the edition's own instance
+# (~/.agentduet-desktop; EDITION=team for ~/.agentduet-team) — and
 # WITHIN that it leaves `models/` alone: downloaded weights are cache, not configuration, and
 # re-fetching gigabytes is not a reasonable price for testing a wizard. So it moves everything
 # else out and leaves the models where they are, which also means a download in flight is never
@@ -20,10 +21,13 @@
 #   mv ~/.connector ~/.connector.away; mv ~/.agentduet ~/.agentduet.away
 set -euo pipefail
 
-H="${AGENTDUET_HOME:-$HOME/.agentduet-desktop}"
+case "${EDITION:-full}" in recorder) _h=.agentduet-recorder ;; ai) _h=.agentduet-ai ;; team) _h=.agentduet-team ;; *) _h=.agentduet-desktop ;; esac
+H="${AGENTDUET_HOME:-$HOME/$_h}"
 BAK="$H.parked"
 
-_running() { pgrep -f "AgentDuet Desktop|agentduet-desktop run" >/dev/null 2>&1; }
+# BY THIS INSTANCE'S PID FILE, not by name (2026-10-23): every edition's daemon has the same
+# command line, and AgentDuet Team may be running beside this one.
+_running() { [ -f "$H/run/secretary.pid" ] && kill -0 "$(cat "$H/run/secretary.pid")" 2>/dev/null; }
 
 case "${1:-}" in
   park)

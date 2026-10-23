@@ -24,6 +24,11 @@ FULL, RECORDER = "full", "recorder"
 #: and takes no calls; it reads the recordings the recorder leaves in the AgentDuet folder, and
 #: nothing else, and writes their transcripts into each call's `.txt` (see `ingest.py`).
 AI_ONLY = "ai"
+#: AGENTDUET TEAM (2026-10-23): call recording for a whole company, on one Mac, asked for by AIS.
+#: The FULL bundle with its own identity: its own instance, bundle id, login item and any free
+#: port, so it runs on the same Mac as AgentDuet. It only carries calls (`owner.calls()`), as
+#: every edition but the full one does. Name provisional.
+TEAM = "team"
 
 #: Everything that is AI, or exists only to serve it. The recorder build excludes each of these,
 #: and the core may reach one only behind `ai()`. Kept here, in the core, because the build and
@@ -70,27 +75,28 @@ def _built() -> str:
 
 
 def name() -> str:
-    """The edition. The build decides; AGENTDUET_EDITION=recorder (or ai) runs one from source."""
-    if _built() in (RECORDER, AI_ONLY):
+    """The edition. The build decides; AGENTDUET_EDITION=recorder (or ai, team) runs one from source."""
+    if _built() in (RECORDER, AI_ONLY, TEAM):
         return _built()                         # a single-edition binary cannot be talked out of it
     asked = os.getenv("AGENTDUET_EDITION", "").strip().lower()
-    return asked if asked in (RECORDER, AI_ONLY) else FULL
+    return asked if asked in (RECORDER, AI_ONLY, TEAM) else FULL
 
 
 def ai() -> bool:
     """Whether the AI half is part of this product."""
-    return name() in (FULL, AI_ONLY)
+    return name() in (FULL, AI_ONLY, TEAM)
 
 
 def calls() -> bool:
     """Whether this product has a phone line: it takes and records calls. Not AgentDuet AI."""
-    return name() in (FULL, RECORDER)
+    return name() in (FULL, RECORDER, TEAM)
 
 
 def home_name() -> str:
     """The instance folder under the home directory. Each edition keeps its own, so two of them
     on one Mac never share one (the shell resolves the same names, Daemon.swift)."""
-    return {RECORDER: ".agentduet-recorder", AI_ONLY: ".agentduet-ai"}.get(name(), ".agentduet-desktop")
+    return {RECORDER: ".agentduet-recorder", AI_ONLY: ".agentduet-ai",
+            TEAM: ".agentduet-team"}.get(name(), ".agentduet-desktop")
 
 
 def port() -> int:
@@ -101,5 +107,9 @@ def port() -> int:
     callback the AgentDuet server checks — and this app never signs in. So it can never clash
     with the recorder, or with anything else. The two apps with a line keep 8899 until the
     server is confirmed to accept any loopback port.
+
+    AGENTDUET TEAM TAKES ANY TOO (2026-10-23), although it signs in: it runs beside AgentDuet,
+    which holds 8899. The sign-in contract accepts any loopback port (oauth.py, "CONTRACT NOTES");
+    the first team sign-in is what proves it.
     """
-    return 0 if name() == AI_ONLY else 8899
+    return 0 if name() in (AI_ONLY, TEAM) else 8899

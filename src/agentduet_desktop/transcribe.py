@@ -1067,12 +1067,12 @@ def qwen_piece(a, context: str = "") -> tuple[str, str]:
 
 def _other_name(path: pathlib.Path) -> str:
     """The name the owner knows the other party by (typed, or from Contacts), or ""."""
-    from . import calls, names
+    from . import calls, carry, names
     stem = path.name
     for suffix in ("-caller.wav", "-callee.wav"):
         if stem.endswith(suffix):
             stem = stem[: -len(suffix)]
-    call_id = stem.split("-", 1)[1] if "-" in stem else ""
+    call_id = carry.call_id_of(stem) if "-" in stem or "_" in stem else ""
     row = calls.get(call_id) if call_id else None
     return names.name_for(str(row.get("caller") or "")) if row else ""
 
@@ -1330,6 +1330,16 @@ async def worker() -> None:
     requeued_at = 0.0
     while True:
         await _nap(POLL_SECONDS)
+        # AGENTDUET TEAM WITH ITS SWITCH OFF IS A RECORDER (owner.ai_on): merge each call, as the
+        # recorder's queue does, and transcribe nothing. Asked every pass, so the switch needs no
+        # restart. A call merged while it is off stays untranscribed.
+        from . import merge as _merge, owner as _own
+        if not _own.ai_on():
+            try:
+                await asyncio.to_thread(_merge.once)
+            except Exception as exc:
+                logger.error("the merge step hit %s: %s", type(exc).__name__, exc)
+            continue
         if _time.time() - requeued_at > REQUEUE_SECONDS:
             requeued_at = _time.time()
             try:

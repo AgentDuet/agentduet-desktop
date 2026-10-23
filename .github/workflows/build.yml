@@ -19,9 +19,9 @@ on:
       # for a partner whose review treats transcription as AI. macOS only — it is a native app,
       # and it ships no HTML pages for another platform to show.
       edition:
-        description: "full (everything), recorder (calls only, no AI in it) or ai (AgentDuet AI: no line)"
+        description: "full (everything), recorder (calls only, no AI in it), ai (AgentDuet AI: no line) or team (AgentDuet Team: full, own identity)"
         type: choice
-        options: [full, recorder, ai]
+        options: [full, recorder, ai, team]
         default: full
   # ONE RELEASE PER APP: the tag's prefix says which app it builds (see EDITION below).
 
@@ -94,8 +94,8 @@ jobs:
       # ONE NAME PER EDITION, used by every step below so the signing, DMG and notarization
       # path is shared rather than copied. From the dispatch input; empty means full.
       EDITION: ${{ inputs.edition || 'full' }}
-      APP_NAME: ${{ inputs.edition == 'recorder' && 'AgentDuet Recorder' || inputs.edition == 'ai' && 'AgentDuet AI' || 'AgentDuet Desktop' }}
-      ARTIFACT: ${{ inputs.edition == 'recorder' && 'agentduet-recorder' || inputs.edition == 'ai' && 'agentduet-ai' || 'agentduet-desktop' }}
+      APP_NAME: ${{ inputs.edition == 'recorder' && 'AgentDuet Recorder' || inputs.edition == 'ai' && 'AgentDuet AI' || inputs.edition == 'team' && 'AgentDuet Team' || 'AgentDuet Desktop' }}
+      ARTIFACT: ${{ inputs.edition == 'recorder' && 'agentduet-recorder' || inputs.edition == 'ai' && 'agentduet-ai' || inputs.edition == 'team' && 'agentduet-team' || 'agentduet-desktop' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -380,6 +380,9 @@ jobs:
           elif [ "$EDITION" = "ai" ]; then
             # AgentDuet AI: no sign-in, no connection, its own name and instance (Edition.swift).
             swift build -c release -Xswiftc -warnings-as-errors -Xswiftc -DAI_ONLY
+          elif [ "$EDITION" = "team" ]; then
+            # AgentDuet Team: the full app with its own name, instance and login item (Edition.swift).
+            swift build -c release -Xswiftc -warnings-as-errors -Xswiftc -DTEAM
           else
             swift build -c release -Xswiftc -warnings-as-errors
           fi

@@ -36,6 +36,9 @@ SETTING_FIELDS = {"name": "Name", "pronoun": "Pronoun", "voice": "Voice",
                   # Whether that folder may sync to iCloud. Off unless an explicit yes — see
                   # owner.sync_icloud().
                   "sync_icloud": "Sync to iCloud",
+                  # AgentDuet Team's switch for transcripts and the assistant. Off unless an
+                  # explicit yes — see owner.ai_on().
+                  "ai": "Transcripts and assistant",
                   # Whether a reasoning model monologues first. Only meaningful on some models
                   # (llm.supports_thinking), and off unless the value is an explicit yes —
                   # measured at ~100x slower on a question it answers correctly without.

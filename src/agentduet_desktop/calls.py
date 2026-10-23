@@ -51,7 +51,8 @@ CREATE TABLE IF NOT EXISTS calls (
     recordings TEXT,           -- JSON list
     note TEXT,
     started TEXT,
-    row TEXT NOT NULL          -- the line as written, so a field added later is never lost
+    row TEXT NOT NULL,         -- the line as written, so a field added later is never lost
+    line TEXT NOT NULL DEFAULT ''  -- this side's number (record's `line`): on a trunk, the employee
 );
 CREATE INDEX IF NOT EXISTS calls_person_at ON calls (person, at);
 CREATE INDEX IF NOT EXISTS calls_at ON calls (at);
@@ -73,7 +74,15 @@ def _connect() -> sqlite3.Connection:
     con = sqlite3.connect(str(DB), timeout=10)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA journal_mode=WAL")      # readers never wait on the writer
+    # `line` CAME LATER (2026-10-23). An index made before it gains the column and fills it from
+    # each call's own row, which always held every field written — so nothing is re-read from LOG.
+    if (con.execute("SELECT 1 FROM sqlite_master WHERE name='calls'").fetchone()
+            and "line" not in {c[1] for c in con.execute("PRAGMA table_info(calls)")}):
+        con.execute("ALTER TABLE calls ADD COLUMN line TEXT NOT NULL DEFAULT ''")
+        con.execute("UPDATE calls SET line = COALESCE(json_extract(row, '$.line'), '')")
+        con.commit()
     con.executescript(_SCHEMA)
+    con.execute("CREATE INDEX IF NOT EXISTS calls_line_person ON calls (line, person, at)")
     return con
 
 
@@ -86,10 +95,10 @@ def _insert(con: sqlite3.Connection, row: dict) -> None:
         (person_of(row), at, at if incoming else ""))
     con.execute(
         "INSERT INTO calls (at, call_id, caller, person, mode, outgoing, recordings, note, started,"
-        " row) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        " row, line) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         (row.get("at", ""), row.get("call_id", ""), row.get("caller", ""), person_of(row),
          row.get("mode", ""), int(bool(row.get("outgoing"))), json.dumps(row.get("recordings") or []),
-         row.get("note", ""), row.get("started", ""), json.dumps(row)))
+         row.get("note", ""), row.get("started", ""), json.dumps(row), row.get("line") or ""))
 
 
 def _catch_up(con: sqlite3.Connection) -> None:
@@ -155,7 +164,7 @@ def _query(sql: str, args: tuple = ()) -> list[dict]:
 
 def record(call_id: str, caller: str, mode: str, *, recordings: list[str] | None = None,
            note: str = "", outgoing: bool = False, started: float | None = None,
-           at: float | None = None) -> None:
+           at: float | None = None, line: str = "") -> None:
     """Append one call. Never raises: losing the audio matters, losing the index does not."""
     try:
         paths.RUN.mkdir(parents=True, exist_ok=True)
@@ -173,6 +182,9 @@ def record(call_id: str, caller: str, mode: str, *, recordings: list[str] | None
                 # WHICH WAY THE CALL WENT, as a field. It briefly lived inside `caller` as a
                 # "to "/"from " prefix, which split one person into several — see carry.handle.
                 "outgoing": outgoing,
+                # THIS SIDE'S NUMBER (2026-10-23): dialled on a call in, dialling on a call out.
+                # On AgentDuet Team's trunk it is the employee's. "" on rows from before.
+                "line": line or "",
                 "recordings": recordings or [],
                 "note": note,
                 # WHEN IT BEGAN. `at` is when the call was FILED — its end — and stays that, since
@@ -248,11 +260,13 @@ def since(cut: str) -> list[dict]:
     return _query("SELECT row FROM calls WHERE at >= ? ORDER BY at DESC, id DESC", (cut,))
 
 
-def for_person(who: str, limit: int | None = None) -> list[dict]:
-    """One person's calls, newest first."""
-    sql = "SELECT row FROM calls WHERE person = ? ORDER BY at DESC, id DESC"
+def for_person(who: str, limit: int | None = None, line: str | None = None) -> list[dict]:
+    """One person's calls, newest first; only those on `line` when given (AgentDuet Team)."""
+    sql = "SELECT row FROM calls WHERE person = ?" + (" AND line = ?" if line is not None else "")
+    args: tuple = (who,) + ((line,) if line is not None else ())
+    sql += " ORDER BY at DESC, id DESC"
     return _query(sql + (" LIMIT ?" if limit is not None else ""),
-                  (who, limit) if limit is not None else (who,))
+                  args + ((limit,) if limit is not None else ()))
 
 
 def outgoing_since(who: str, since: str) -> list[dict]:
@@ -267,7 +281,7 @@ def get(call_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def summary(seen: dict[str, str]) -> dict[str, dict]:
+def summary(seen: dict[str, str], line: str | None = None) -> dict[str, dict]:
     """Per person, for the hub's list: how many calls, the newest, and how many are UNREAD.
 
     READ FROM `persons`, one row per person kept as calls are added, so the list costs the same
@@ -278,18 +292,26 @@ def summary(seen: dict[str, str]) -> dict[str, dict]:
     incoming call, which the first look at the list marks as seen.
     """
     out: dict[str, dict] = {}
+    # ONE EMPLOYEE'S LINE (AgentDuet Team, 2026-10-23): the same shape, counted from the calls on
+    # that line. `persons` is per person across every line, so it cannot answer this.
+    tally = ("SELECT person, calls, last, last_in FROM persons ORDER BY last DESC" if line is None
+             else "SELECT person, COUNT(*) AS calls, MAX(at) AS last, COALESCE(MAX(CASE WHEN "
+                  "outgoing = 0 THEN at END), '') AS last_in FROM calls WHERE line = ? "
+                  "GROUP BY person ORDER BY last DESC")
+    on_line = "" if line is None else " AND line = ?"
     try:
         with _lock:
             con = _connect()
             try:
                 _catch_up(con)
-                for r in con.execute("SELECT person, calls, last, last_in FROM persons "
-                                     "ORDER BY last DESC"):
+                for r in con.execute(tally, () if line is None else (line,)):
                     unread = 0
                     if r["last_in"] and r["last_in"] > seen.get(r["person"], ""):
                         unread = con.execute(
                             "SELECT COUNT(*) FROM calls WHERE person = ? AND outgoing = 0 "
-                            "AND at > ?", (r["person"], seen.get(r["person"], ""))).fetchone()[0]
+                            "AND at > ?" + on_line,
+                            (r["person"], seen.get(r["person"], ""))
+                            + (() if line is None else (line,))).fetchone()[0]
                     out[r["person"]] = {"calls": r["calls"], "last": r["last"],
                                         "last_in": r["last_in"], "unread": unread}
             finally:
@@ -297,6 +319,24 @@ def summary(seen: dict[str, str]) -> dict[str, dict]:
     except sqlite3.Error as exc:
         logger.warning("calls: the index could not be read (%s)", exc)
     return out
+
+
+def lines() -> list[dict]:
+    """AgentDuet Team's employees: each line with calls, newest first — how many, how many
+    people, and the newest call. A call from before `line` was recorded is under ""."""
+    try:
+        with _lock:
+            con = _connect()
+            try:
+                _catch_up(con)
+                return [dict(r) for r in con.execute(
+                    "SELECT line, COUNT(*) AS calls, COUNT(DISTINCT person) AS people, "
+                    "MAX(at) AS last FROM calls GROUP BY line ORDER BY last DESC")]
+            finally:
+                con.close()
+    except sqlite3.Error as exc:
+        logger.warning("calls: the index could not be read (%s)", exc)
+        return []
 
 
 def people() -> dict[str, str]:

@@ -35,7 +35,8 @@ import Foundation
             switch self {
             case .account: return "Account"
             // THE RECORDER RECORDS AND NOTHING MORE: no transcription to name.
-            case .calls: return Edition.recorder ? "Recording" : Edition.aiOnly ? "Recordings" : "Record & Transcribe"
+            case .calls: return Edition.recorder || Edition.team ? "Recording"
+                : Edition.aiOnly ? "Recordings" : "Record & Transcribe"
             case .permissions: return "Permissions"
             case .advanced: return "Advanced"
             case .about: return "About"
@@ -224,6 +225,9 @@ import Foundation
     }
 
     var syncICloud: Bool { cur.bool("sync_icloud") }
+    /// AGENTDUET TEAM'S SWITCH for transcripts and the assistant (owner.ai_on). Always on in the
+    /// full app and AgentDuet AI; the recorder has none of it.
+    var aiOn: Bool { !Edition.team || cur.bool("ai_on") }
     /// Whether the folder is somewhere iCloud Drive syncs, so the switch changes anything.
     var inICloud: Bool { cur.bool("in_icloud") }
 
@@ -234,6 +238,25 @@ import Foundation
             if r["ok"] as? Bool == false { say(.calls, r) } else { notice[.calls] = nil }
         }
     }
+
+    #if !RECORDER
+    /// Turning it on fetches what setup would have: the assistant's model, the speech model, the
+    /// decision model and search. Turning it off keeps them, so on again is immediate.
+    func setAI(_ on: Bool) {
+        Task {
+            let r = await api.post("/api/setup/setting", ["field": "ai", "value": on ? "yes" : "no"])
+            await poll()
+            if r["ok"] as? Bool == false { say(.calls, r); return }
+            notice[.calls] = nil
+            guard on else { return }
+            if !pick.str("model").isEmpty && !pick.bool("downloaded") && pickJob == nil { downloadPick() }
+            if !stt.str("model").isEmpty && !stt.bool("cached") && !stt.bool("running") { downloadStt() }
+            if !decider.bool("ready") && !decider.bool("running") { _ = await api.post("/api/setup/decider") }
+            if !searchModel.bool("ready") && !searchModel.bool("running") { _ = await api.post("/api/setup/search") }
+            await poll()
+        }
+    }
+    #endif
 
     func showFolder() {
         guard !storage.isEmpty else { return }

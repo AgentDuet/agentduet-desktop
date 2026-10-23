@@ -59,8 +59,12 @@ def ready(settled) -> list[str]:
     return out
 
 
-def audio(stem: str, wavs: list[pathlib.Path]) -> bool:
-    """Write the call's stereo recording: caller left, callee right, aligned by their start sidecars."""
+def audio(stem: str, wavs: list[pathlib.Path], row: dict | None = None) -> bool:
+    """Write the call's stereo recording: caller left, callee right, aligned by their start sidecars.
+
+    Saved under `carry.kept_stem`: the stem, or AgentDuet Team's name with the call's numbers and
+    length, which is known only here, once both legs are read.
+    """
     sides: dict[str, pathlib.Path] = {}
     for w in wavs:
         for leg in ("caller", "callee"):
@@ -99,7 +103,7 @@ def audio(stem: str, wavs: list[pathlib.Path]) -> bool:
     # so a listener can tell the parties apart by ear and a splitter by index.
     pcm = b"".join(left[i:i + width] + right[i:i + width] for i in range(0, n * width, width))
     # AAC `.m4a` on a Mac, WAV elsewhere or if encoding fails — see `audiofile`.
-    out = carry.recordings() / f"{stem}{audiofile.extension()}"
+    out = carry.recordings() / f"{carry.kept_stem(stem, row, n / rate)}{audiofile.extension()}"
     return audiofile.write(out, 2, rate, width, pcm) is not None
 
 
@@ -123,7 +127,7 @@ ROW_WAIT_SECONDS = 600
 
 def _row(stem: str) -> dict | None:
     from . import calls
-    return calls.get(stem.split("-", 1)[1] if "-" in stem else stem)
+    return calls.get(carry.call_id_of(stem))
 
 
 def _length(path: pathlib.Path) -> str:
@@ -213,7 +217,7 @@ def once(settled=None, text=None, audio_too: bool = True) -> int:
         row = _row(stem)
         if row is None and wavs and time.time() - max(w.stat().st_mtime for w in wavs) < ROW_WAIT_SECONDS:
             continue
-        merged = audio(stem, wavs)
+        merged = audio(stem, wavs, row)
         if merged:
             write_txt(stem, row=row or {})
             if text is not None:

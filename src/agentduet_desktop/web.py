@@ -207,7 +207,8 @@ def make_app(token: str) -> web.Application:
                       "record_calls": "Call recording", "language": "Language",
                       "transcription": "Transcription quality",
                       "recordings": "Recordings folder", "thinking": "Thinking",
-                      "answer_here": "Answer calls here", "sync_icloud": "Sync to iCloud"}
+                      "answer_here": "Answer calls here", "sync_icloud": "Sync to iCloud",
+                      "ai": "Transcripts and assistant"}
 
     def _saved(field: str, value: str) -> str:
         """How the page says a setting was stored. The ONLY phrasing for it."""
@@ -515,6 +516,8 @@ def make_app(token: str) -> web.Application:
         cur["edition"] = edition.name()
         # The native wizard asks this BESIDE needs_setup, not inside it — see legal.py.
         cur["terms_agreed"] = legal.agreed()
+        # AGENTDUET TEAM'S SWITCH: whether transcripts and the assistant are in use (owner.ai_on).
+        cur["ai_on"] = owner.ai_on()
         if edition.ai():
             from . import web_ai
             web_ai.setup_current_extras(cur)
@@ -577,7 +580,7 @@ def make_app(token: str) -> web.Application:
                 return []
             out = []
             for f in sorted(folder.glob("*.*"), key=lambda x: x.stat().st_mtime, reverse=True):
-                if f.suffix.lower() not in (".m4a", ".wav", ".json", ".txt"):
+                if f.suffix.lower() not in (".m4a", ".mp3", ".wav", ".json", ".txt"):
                     continue
                 out.append({"name": f.name, "kind": f.suffix.lstrip(".").upper(),
                             "bytes": f.stat().st_size})
@@ -634,6 +637,8 @@ def make_app(token: str) -> web.Application:
                             # says why in red while the switch is on and it is not "ok".
                             "mic": _phone_mic()},
         }
+        # Polled by the hub, which hides the assistant and transcripts while it is off.
+        out["ai_on"] = owner.ai_on()
         if edition.ai():
             from . import web_ai
             web_ai.panel_extras(out)
@@ -716,6 +721,9 @@ def make_app(token: str) -> web.Application:
         # A CALLER WITHOUT `open` — the frozen HTML pages — still gets every call of the newest
         # 200 in full, exactly as before.
         open_who = request.query.get("open")
+        # ONE EMPLOYEE'S CALLS (AgentDuet Team, 2026-10-23): `line` is the number dialled or
+        # dialling on our side. Absent means every call, as before.
+        line = request.query.get("line") if edition.name() == edition.TEAM else None
         people = []
         if open_who is None:
             for who, rows in calls.by_person().items():
@@ -724,9 +732,9 @@ def make_app(token: str) -> web.Application:
                                "last": items[0]["at"] if items else ""})
         else:
             marks = _seen() or {}
-            for who, s in calls.summary(marks).items():
+            for who, s in calls.summary(marks, line).items():
                 if who == open_who:
-                    items = [_call(r) for r in calls.for_person(who)]
+                    items = [_call(r) for r in calls.for_person(who, line=line)]
                     people.append({"who": who, "calls": items, "messages": [], "last": s["last"]})
                 else:
                     mark = marks.get(who, "")
@@ -764,7 +772,12 @@ def make_app(token: str) -> web.Application:
             p["last"] = max([x for x in latest if x] or [""])
         _mark_unread(people)
         people.sort(key=lambda p: p["last"], reverse=True)
-        return web.json_response({"people": people, "folder": str(folder)})
+        out = {"people": people, "folder": str(folder)}
+        # THE EMPLOYEES, for AgentDuet Team's first level: each line with its counts and a name.
+        if edition.name() == edition.TEAM:
+            out["lines"] = [{**ln, "display": _names.name_for(ln["line"], seen) if ln["line"] else ""}
+                            for ln in calls.lines()]
+        return web.json_response(out)
 
     #: WHAT THE OWNER HAS SEEN, per person: the newest item's time when they last opened that
     #: person's history. Kept by the daemon, not the page, so the badge survives a restart and
