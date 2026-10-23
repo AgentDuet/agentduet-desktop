@@ -216,8 +216,8 @@ Send in their mail client.
 
 **Why not the APIs.** Both need an OAuth token with a scope Google treats as sensitive
 (`calendar.events`, `gmail.send`), which means a verified app and a consent screen — and our
-sign-in is FEDERATED. The app authenticates to wss-edge and wss-edge talks to Google, so what an
-install holds is an AgentDuet token, never a Google one. There is nothing here to call Google
+sign-in is FEDERATED. The app authenticates to wss-edge and wss-edge talks to dduet (Google
+until 2026-10-23), so what an install holds is an AgentDuet token, never a Google one. There is nothing here to call Google
 with. A link needs nothing: the owner is already signed in in their browser.
 
 **The security property is the one above, moved one layer out.** `wasm_host.resolve_url` holds

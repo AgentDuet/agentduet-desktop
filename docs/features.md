@@ -24,7 +24,7 @@ out when it goes.
 - Drafts a calendar event or email for you to send.
 
 **Everyday**
-- Sign in with Google, and nothing to configure.
+- Sign in, and nothing to configure.
 - A menu bar icon that keeps running when the window is closed, and can start at login.
 - Right-click a call to delete its recording and transcript.
 - Tells you when a new version is out.

@@ -262,7 +262,7 @@ def sign_in(interactive: bool = True) -> bool:
     """
     from . import oauth
     if oauth.signed_in():
-        print(f"\n  Signed in as {oauth.email()}.")
+        print(f"\n  Signed in as {oauth.account_label()}.")
         return True
     if not oauth.available() or not interactive:
         return False
@@ -271,7 +271,7 @@ def sign_in(interactive: bool = True) -> bool:
         print("  Use a connector key below instead — it does the same job.")
         return False
 
-    print("\n  You can sign in with Google instead of typing a connector.")
+    print("\n  You can sign in instead of typing a connector.")
     print("  Signing in creates your connector for you; there is nothing to copy.")
     if _prompt("  Sign in now? [Y/n] ").strip().lower().startswith("n"):
         return False

@@ -32,9 +32,13 @@ CONTRACT NOTES worth not re-deriving (wss-edge#52, as shipped 2026-08-25):
   before every connect.
 - **`invalid_grant` on refresh means signed out.** Not retryable. Clear the store and show the
   sign-in screen.
-- **Google only, today.** Microsoft is refused upstream because Entra does not issue
-  `email_verified`, and the verified email is the identity-linking key — an unflagged one is an
-  account-takeover path. Apple was never in v1. Both stay stubs in the UI.
+- **dduet only (2026-10-23).** The owner signs in with their dduet account, which wss-edge
+  federates to Nexus; there is no other provider to choose, so there is one button. wss-edge
+  keys the account on `(provider, sub)`, not on email, so the token response's `email` is a
+  display copy and **may be absent** for a dduet account. Show `account_label()`, never key on
+  it. A Google sign-in is a different account upstream, with its own connectors.
+  **No user-facing text names dduet**: the login page is being rebranded AgentDuet, so the
+  button is plain "Sign in" and an email-less account is "your account".
 """
 
 import json
@@ -51,8 +55,11 @@ logger = logging.getLogger("dduet.oauth")
 #: Our registered public client. One client, no secret.
 CLIENT_ID = "agentduet-desktop"
 
-#: The only provider that works today. See the module docstring.
-PROVIDER = "google"
+#: The one provider, sent on every authorize. See the module docstring.
+PROVIDER = "nexus"
+
+#: What to call an account whose sign-in carried no email, which a dduet one may not.
+UNNAMED_ACCOUNT = "your account"
 
 #: Fixed by the server's redirect validation — not a preference.
 REDIRECT_HOST = "127.0.0.1"
@@ -121,6 +128,11 @@ def signed_in() -> bool:
 
 def email() -> str:
     return _read().get("email", "")
+
+
+def account_label() -> str:
+    """Who is signed in, for a sentence. The email when the sign-in carried one."""
+    return email() or UNNAMED_ACCOUNT
 
 
 def connector_uuid() -> str:
@@ -205,7 +217,7 @@ def _post_token(form: dict) -> dict:
 
 
 def complete(code: str, verifier: str, port: int) -> str:
-    """Exchange the authorization code. Returns the email signed in as."""
+    """Exchange the authorization code. Returns who signed in, for a sentence."""
     body = _post_token({
         "grant_type": "authorization_code",
         "code": code,
@@ -215,7 +227,7 @@ def complete(code: str, verifier: str, port: int) -> str:
     })
     _save(body)
     logger.info("signed in as %s; connector %s", body.get("email"), body.get("connector_uuid"))
-    return body.get("email", "")
+    return body.get("email") or UNNAMED_ACCOUNT
 
 
 def refresh() -> str:
@@ -313,7 +325,7 @@ def browser_available() -> bool:
 
 
 def sign_in_interactive(timeout: int = 180) -> str:
-    """Run the whole flow from a terminal. Returns the email, or raises.
+    """Run the whole flow from a terminal. Returns who signed in, or raises.
 
     Serves ONE request on an ephemeral port and stops. `init` may run with no daemon, so it
     cannot borrow the site's `/callback` — and a listener that outlives the sign-in would be a
@@ -348,7 +360,7 @@ def sign_in_interactive(timeout: int = 180) -> str:
     url, state, verifier = begin(port)
 
     threading.Thread(target=httpd.handle_request, daemon=True).start()
-    print("\n  Opening your browser to sign in with Google.")
+    print("\n  Opening your browser to sign in.")
     print(f"  If nothing opens, paste this into a browser ON THIS MACHINE:\n\n    {url}\n")
     try:
         webbrowser.open(url, new=2)

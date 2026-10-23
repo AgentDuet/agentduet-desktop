@@ -916,16 +916,9 @@ def make_app(token: str) -> web.Application:
             return web.json_response(
                 {"ok": False, "message": "Sign-in is not available yet. Enter the key manually."})
 
-        provider = (request.query.get("provider") or "").lower()
-        # ONLY GOOGLE WORKS UPSTREAM. Microsoft is refused because Entra does not issue
-        # `email_verified`, and that flag is the identity-linking key — accepting an unverified
-        # address is an account-takeover path. Apple was never in v1. Say which, rather than
-        # letting the provider return an error the owner cannot act on.
-        if provider and provider != oauth.PROVIDER:
-            return web.json_response({"ok": False, "message":
-                f"{provider.title()} sign-in is not available yet — only Google is. "
-                "Use 'Set it up by hand' for now."})
-
+        # NO PROVIDER IS READ FROM THE REQUEST: there is one, dduet, and `begin` names it. A
+        # page that still sends `provider=` (an older one, or a frozen HTML page) signs in with
+        # dduet like every other.
         url, state, verifier = oauth.begin(PORT)
         _pending_signin.clear()
         _pending_signin.update(state=state, verifier=verifier)
@@ -947,10 +940,6 @@ def make_app(token: str) -> web.Application:
         if not oauth.available():
             return web.json_response({"ok": False, "message":
                 "Sign-in is not available yet. Enter the key manually."})
-        provider = (request.query.get("provider") or "").lower()
-        if provider and provider != oauth.PROVIDER:
-            return web.json_response({"ok": False, "message":
-                f"{provider.title()} sign-in is not available yet — only Google is."})
         url, state, verifier = oauth.begin(PORT)
         _pending_signin.clear()
         _pending_signin.update(state=state, verifier=verifier)

@@ -146,7 +146,8 @@ private struct AccountPane: View {
                 if model.signedIn {
                     LabeledContent("Signed in as") {
                         HStack {
-                            Text(model.oauth.str("email"))
+                            // A dduet sign-in may carry no email.
+                            Text(model.oauth.str("email").isEmpty ? "your account" : model.oauth.str("email"))
                             Button("Sign Out…") { confirmSignOut.value = true }
                         }
                     }
