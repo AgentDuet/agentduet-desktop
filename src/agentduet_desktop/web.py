@@ -207,7 +207,8 @@ def make_app(token: str) -> web.Application:
                       "record_calls": "Call recording", "language": "Language",
                       "transcription": "Transcription quality",
                       "recordings": "Recordings folder", "thinking": "Thinking",
-                      "answer_here": "Answer calls here", "sync_icloud": "Sync to iCloud"}
+                      "answer_here": "Answer calls here", "sync_icloud": "Sync to iCloud",
+                      "ai": "Transcripts and assistant"}
 
     def _saved(field: str, value: str) -> str:
         """How the page says a setting was stored. The ONLY phrasing for it."""
@@ -515,6 +516,8 @@ def make_app(token: str) -> web.Application:
         cur["edition"] = edition.name()
         # The native wizard asks this BESIDE needs_setup, not inside it — see legal.py.
         cur["terms_agreed"] = legal.agreed()
+        # AGENTDUET TEAM'S SWITCH: whether transcripts and the assistant are in use (owner.ai_on).
+        cur["ai_on"] = owner.ai_on()
         if edition.ai():
             from . import web_ai
             web_ai.setup_current_extras(cur)
@@ -634,6 +637,8 @@ def make_app(token: str) -> web.Application:
                             # says why in red while the switch is on and it is not "ok".
                             "mic": _phone_mic()},
         }
+        # Polled by the hub, which hides the assistant and transcripts while it is off.
+        out["ai_on"] = owner.ai_on()
         if edition.ai():
             from . import web_ai
             web_ai.panel_extras(out)

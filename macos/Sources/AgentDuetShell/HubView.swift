@@ -179,6 +179,7 @@ private struct PeopleList: View {
     var body: some View {
         VStack(spacing: 6) {
             #if !RECORDER
+            if model.aiOn {
             row(on: model.onAssistant, tap: { model.pick(HubModel.assistant) }) {
                 HStack(spacing: 10) {
                     ZStack {
@@ -190,6 +191,7 @@ private struct PeopleList: View {
                     Spacer()
                 }
                 .padding(.vertical, 6)
+            }
             }
             #endif
             // AGENTDUET TEAM: THE EMPLOYEES FIRST (Stanley, 2026-10-23), each opening their own
@@ -474,7 +476,8 @@ extension View {
         #if RECORDER
         self
         #else
-        modifier(WithAssistant(model: model))
+        // NOR IN AGENTDUET TEAM while its switch is off.
+        if model.aiOn { modifier(WithAssistant(model: model)) } else { self }
         #endif
     }
 }
@@ -1213,7 +1216,12 @@ private struct CallCard: View {
                 Text(state).foregroundStyle(.secondary).italic()
             }
             #else
-            if call.str("transcript").isEmpty, !captions.isEmpty {
+            if !model.aiOn {
+                // AGENTDUET TEAM WITH ITS SWITCH OFF says what the recorder says, and no more.
+                if let state = HubModel.callState(call, ai: false) {
+                    Text(state).foregroundStyle(.secondary).italic()
+                }
+            } else if call.str("transcript").isEmpty, !captions.isEmpty {
                 CaptionMark(ended: true)
                 ForEach(captions) { c in Balloon(text: c.text, mine: c.mine, caption: "") }
             } else if let state = HubModel.callState(call) {

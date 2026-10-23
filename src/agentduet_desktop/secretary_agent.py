@@ -363,7 +363,6 @@ def remember_session(asker: str, subscriber: str, *, network: str = "WA",
 
 async def run_channel() -> None:
     """One attempt at the AgentDuet channel. Raises if it cannot connect, so main() can retry."""
-    from . import edition
     # 24 kHz, NOT the SDK's 16 kHz default. The Qwen adapter declares
     # output_audio_format="pcm24" and emits 24 kHz mono; negotiating 16 kHz meant every sample
     # was played 1.5x too slowly with the pitch dropped about a fifth. Symptom on a real call:
@@ -686,7 +685,8 @@ async def run_channel() -> None:
         # message handling at all — a message is the secretary's or the assistant's, never the
         # recorder's. So it asks the connector for no messages rather than receiving and dropping
         # them.
-        messages_on = edition.ai()
+        from . import owner as _own
+        messages_on = _own.ai_on()
         if messages_on:
             sm.on_incoming_message(on_message)
         from . import owner as owner_settings
@@ -949,8 +949,10 @@ async def main() -> None:
         # THE DECISION MODEL the summary checks relationships with (decider.py). Only where a
         # local model is set up — a summary needs one anyway — and in the background: nothing
         # waits on it, and until it lands the summary uses its word rule.
-        from . import decider as _dec, llm as _llm
-        if _llm.configured():
+        from . import decider as _dec, llm as _llm, owner as _own
+        # NOTHING IS DOWNLOADED OR LOADED while AgentDuet Team's switch is off (owner.ai_on):
+        # turning it on in Settings starts the same fetches setup does.
+        if _llm.configured() and _own.ai_on():
             _dec.fetch_in_background()
             # THE ASSISTANT'S MODEL, LOADED NOW and kept (slot.py): the first question no longer
             # waits seconds for it. On a thread — gigabytes are read — and never awaited.
@@ -959,7 +961,8 @@ async def main() -> None:
         # SEARCH (search.py): its model in the background, and the indexer that keeps up with
         # transcripts. Needs no assistant model — it is its own, small one.
         from . import search as _search
-        _search.fetch_in_background()
+        if _own.ai_on():
+            _search.fetch_in_background()
         asyncio.create_task(_search.worker())
 
     # AGENTDUET AI HAS NO LINE: it reads the recordings AgentDuet Recorder leaves in the folder

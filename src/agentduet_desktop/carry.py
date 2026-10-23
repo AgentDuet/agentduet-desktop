@@ -700,12 +700,13 @@ async def _live_start(call_id: str, other: str):
     None when captions cannot run (the speech engine is not Qwen, or its model is not here), and
     never raises: a preview must not be able to cost the call or its recording.
     """
-    from . import calls as _calls, edition, oncall
+    from . import calls as _calls, oncall
     try:
         who = _calls.person_of({"caller": other})
         # THE RECORDER EDITION marks the call and stops: captions are speech recognition, and
-        # it has none.
-        if not edition.ai():
+        # it has none. Nor does AgentDuet Team while its switch is off (owner.ai_on).
+        from . import owner as _own
+        if not _own.ai_on():
             await oncall.start(call_id, who)
             return None
         from . import live
@@ -720,9 +721,10 @@ async def _live_start(call_id: str, other: str):
 
 
 async def _live_end(call_id: str) -> None:
-    from . import edition, oncall
+    from . import oncall, owner as _own
     try:
-        if not edition.ai():
+        if not _own.ai_on():                     # as `_live_start` chose
+
             await oncall.end(call_id)
             return
         from . import live

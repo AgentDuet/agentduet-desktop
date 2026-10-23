@@ -276,9 +276,18 @@ private struct BottomBar: View {
                     .keyboardShortcut(.defaultAction)
                     .disabled(!model.documentsAllowed || model.finishing)
                 #else
-                Button("Continue") { model.toQuick() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!model.documentsAllowed)
+                // AGENTDUET TEAM WITH ITS SWITCH OFF ends here too, as the recorder does: nothing to
+                // name or download until transcripts and the assistant are turned on in Settings.
+                if model.settings.aiOn {
+                    Button("Continue") { model.toQuick() }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(!model.documentsAllowed)
+                } else {
+                    if model.finishing { ProgressView().controlSize(.small) }
+                    Button("Done") { model.finish() }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(!model.documentsAllowed || model.finishing)
+                }
                 #endif
             case .quick:
                 Button("Back") { model.step = .permissions }

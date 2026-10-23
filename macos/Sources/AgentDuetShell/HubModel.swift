@@ -73,7 +73,7 @@ import Foundation
     func runSearch(_ text: String) {
         searchTask?.cancel()
         let q = text.trimmingCharacters(in: .whitespaces)
-        guard q.count >= 3 else { hits = []; return }
+        guard q.count >= 3, aiOn else { hits = []; return }
         searchTask = Task {
             try? await Task.sleep(nanoseconds: 350_000_000)
             if Task.isCancelled { return }
@@ -146,8 +146,10 @@ import Foundation
            !(picked.map { onLine($0) } ?? false) {
             picked = Self.home
         }
-        // THE RECORDER OPENS ON SOMEONE: it has no assistant page to stand on.
-        if picked == nil, Edition.recorder { picked = people.first?.str("who") }
+        // THE RECORDER OPENS ON SOMEONE: it has no assistant page to stand on. Nor has AgentDuet
+        // Team while its switch is off.
+        if picked == Self.assistant, !aiOn { picked = nil }
+        if picked == nil, Edition.recorder || !aiOn { picked = people.first?.str("who") }
         markSeen()
     }
 
@@ -237,12 +239,16 @@ import Foundation
     }
 
     /// What a call with no transcript to show says instead, or nil when it has one.
-    static func callState(_ c: JSON) -> String? {
+    /// AGENTDUET TEAM'S SWITCH (owner.ai_on), from the panel this polls: off, the hub is a
+    /// recorder's — no assistant, no message box, no search by meaning, no transcript states.
+    var aiOn: Bool { !Edition.team || panel.bool("ai_on") }
+
+    static func callState(_ c: JSON, ai: Bool = true) -> String? {
         if c.bool("norecording") && c.bool("missed") { return c.bool("outgoing") ? "No answer." : "Missed call." }
         if c.bool("norecording") { return "No recording." }
         if c.bool("silent") { return "No audio." }
         #if !RECORDER
-        if c.str("transcript").isEmpty {
+        if ai, c.str("transcript").isEmpty {
             return c.bool("transcript_failed") ? "Transcript failed." : "Transcript pending."
         }
         #endif

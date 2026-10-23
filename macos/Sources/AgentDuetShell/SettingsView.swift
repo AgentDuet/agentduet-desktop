@@ -299,9 +299,22 @@ private struct CallsPane: View {
             } message: {
                 Text("Everything in this folder will be copied to your iCloud account and stored by Apple. Anyone who can sign in to your Apple Account can open it, and the people you recorded may not have agreed to that.")
             }
+            #if !RECORDER
+            // AGENTDUET TEAM STARTS AS A CALL RECORDER (2026-10-23): one switch turns on transcripts
+            // and the assistant, and fetches their models.
+            if Edition.team {
+                Section {
+                    Toggle("Transcripts and assistant", isOn: Binding(
+                        get: { model.aiOn }, set: { model.setAI($0) }))
+                }
+            }
+            #endif
             #if RECORDER
             Section {} footer: { NoticeFooter(notice: model.notice[.calls]) }
             #else
+            if !model.aiOn {
+                Section {} footer: { NoticeFooter(notice: model.notice[.calls]) }
+            } else {
             // THE LANGUAGE IS THE SPEECH ENGINE'S HINT, so the recorder has no such row.
             Section {
                 Picker("Language of your calls", selection: Binding(
@@ -325,6 +338,7 @@ private struct CallsPane: View {
                             .help("Remove")
                     }
                 }
+            }
             }
             #endif
         }
@@ -439,6 +453,9 @@ private struct AdvancedPane: View {
             #if RECORDER
             Section {} footer: { NoticeFooter(notice: model.notice[.advanced]) }
             #else
+            if !model.aiOn {
+                Section {} footer: { NoticeFooter(notice: model.notice[.advanced]) }
+            } else {
             Section {
                 LabeledContent("AI model") {
                     HStack {
@@ -472,6 +489,7 @@ private struct AdvancedPane: View {
                 Text("For developers")
             } footer: {
                 NoticeFooter(notice: model.notice[.advanced])
+            }
             }
             #endif
         }
@@ -571,8 +589,10 @@ private struct AboutPane: View {
                     Text(model.version).textSelection(.enabled)
                 }
                 #if !RECORDER
-                LabeledContent("AI model") { aiModel }
-                LabeledContent("Speech model") { speechModel }
+                if model.aiOn {
+                    LabeledContent("AI model") { aiModel }
+                    LabeledContent("Speech model") { speechModel }
+                }
                 #endif
             } footer: {
                 NoticeFooter(notice: model.notice[.about])

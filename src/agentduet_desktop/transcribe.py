@@ -1330,6 +1330,16 @@ async def worker() -> None:
     requeued_at = 0.0
     while True:
         await _nap(POLL_SECONDS)
+        # AGENTDUET TEAM WITH ITS SWITCH OFF IS A RECORDER (owner.ai_on): merge each call, as the
+        # recorder's queue does, and transcribe nothing. Asked every pass, so the switch needs no
+        # restart. A call merged while it is off stays untranscribed.
+        from . import merge as _merge, owner as _own
+        if not _own.ai_on():
+            try:
+                await asyncio.to_thread(_merge.once)
+            except Exception as exc:
+                logger.error("the merge step hit %s: %s", type(exc).__name__, exc)
+            continue
         if _time.time() - requeued_at > REQUEUE_SECONDS:
             requeued_at = _time.time()
             try:

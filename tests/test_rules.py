@@ -7990,6 +7990,40 @@ print(json.dumps([by, two, one, again]))
     eq("an index from before `line` is filled in from its rows", again,
        {"+6560000001": 1, "+6560000002": 2})
     _hub = (pathlib.Path(__file__).parent.parent / "macos" / "Sources" / "AgentDuetShell")
+    # A CALL RECORDER UNTIL TURNED ON (Samip, 2026-10-23): transcripts and the assistant are one
+    # switch, off by default in AgentDuet Team, and on wherever else the AI is in the bundle.
+    ai_probe = r"""
+import json
+from agentduet_desktop import edition, owner, settings
+before = owner.ai_on()
+settings.set_setting("ai", "yes")
+after = owner.ai_on()
+print(json.dumps([edition.name(), before, after]))
+"""
+    def ai_state(ed: str) -> list:
+        env = dict(os.environ, AGENTDUET_EDITION=ed, AGENTDUET_HOME=tempfile.mkdtemp(),
+                   PYTHONPATH=str(pathlib.Path(__file__).parent.parent / "src"))
+        out = _sp.run([sys.executable, "-c", ai_probe], env=env, capture_output=True, text=True)
+        try:
+            return json.loads(out.stdout.strip().splitlines()[-1])
+        except (IndexError, ValueError):
+            return ["probe failed: " + out.stderr[-200:]]
+    eq("the team app starts with transcripts and the assistant off, and the switch turns them on",
+       ai_state("team"), ["team", False, True])
+    eq("the full app has them on", ai_state("full")[:2], ["full", True])
+    eq("the recorder never has them", ai_state("recorder"), ["recorder", False, False])
+    _src = pathlib.Path(__file__).parent.parent / "src" / "agentduet_desktop"
+    _tw = (_src / "transcribe.py").read_text()
+    ok("with it off the queue only merges, so nothing is transcribed",
+       "if not _own.ai_on():" in _tw and "await asyncio.to_thread(_merge.once)" in _tw)
+    _sa = (_src / "secretary_agent.py").read_text()
+    ok("and nothing is downloaded at start",
+       "if _llm.configured() and _own.ai_on():" in _sa and "if _own.ai_on():\n            _search.fetch_in_background()" in _sa)
+    _sv = (_hub / "SettingsView.swift").read_text()
+    ok("Settings has the switch, and setup ends before the downloads while it is off",
+       'Toggle("Transcripts and assistant"' in _sv
+       and "if model.settings.aiOn {" in (_hub / "SetupView.swift").read_text()
+       and "if settings.aiOn { startDownloads() }" in (_hub / "SetupModel.swift").read_text())
     ok("the team hub asks for one line's calls, and lists the lines first",
        'ask["line"] = line' in (_hub / "HubModel.swift").read_text()
        and "Edition.team && model.line == nil" in (_hub / "HubView.swift").read_text())
