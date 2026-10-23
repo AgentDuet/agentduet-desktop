@@ -7904,6 +7904,43 @@ def test_the_team_edition_has_its_own_identity() -> None:
     eq("it reads only its own releases, and AgentDuet never reads its",
        (team[7], team[8], full[7], full[8]), ("v1", None, None, "v1"))
 
+    # ITS RECORDINGS ARE NAMED FOR PEOPLE (Stanley, 2026-10-23): date, time, from, to, length and
+    # id, digits only. A real merge in a throwaway instance, then every reader that looks one up.
+    merge_probe = r"""
+import json, time, wave
+from agentduet_desktop import calls, carry, erase, merge
+cid = "01a167d9-a66e-7808-aa9a-936e10fd09a7"
+stem = "20261023T140500-" + cid
+carry.legs().mkdir(parents=True, exist_ok=True)
+for leg in ("caller", "callee"):
+    with wave.open(str(carry.legs() / f"{stem}-{leg}.wav"), "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(24000)
+        w.writeframes(b"\x10\x00" * 24000 * 192)
+calls.record(cid, "+6591234567", "carried", line="+6567891234",
+             recordings=sorted(p.name for p in carry.legs().glob("*.wav")))
+merge.once(settled=lambda w: True)
+kept = sorted(p.name for p in carry.recordings().iterdir())
+_, shown = carry.call_audio(calls.get(cid)["recordings"], cid)
+out = [kept, shown, carry.merged_txt(stem).name, carry.call_id_of(kept[0].rsplit(".", 1)[0])]
+erase.delete_call(cid)
+out.append(sorted(p.name for p in carry.recordings().iterdir()))
+print(json.dumps(out))
+"""
+    env = dict(os.environ, AGENTDUET_EDITION="team", AGENTDUET_HOME=tempfile.mkdtemp(),
+               PYTHONPATH=str(pathlib.Path(__file__).parent.parent / "src"))
+    got = _sp.run([sys.executable, "-c", merge_probe], env=env, capture_output=True, text=True)
+    try:
+        kept, shown, txt, cid, after = json.loads(got.stdout.strip().splitlines()[-1])
+    except (IndexError, ValueError):
+        kept, shown, txt, cid, after = [], [], "", "", ["probe failed: " + got.stderr[-300:]]
+    name = "2026-10-23_1405_6591234567_to_6567891234_3m12s_01a167d9-a66e-7808-aa9a-936e10fd09a7"
+    ok("a team recording is named date, time, from, to, length and id, with no +",
+       any(k.startswith(name + ".") for k in kept))
+    ok("its .txt is beside it under the same name", txt == name + ".txt" and txt in kept)
+    ok("the hub still finds it from the call's legs", [k for k in shown if k.startswith(name)] != [])
+    eq("the call id reads back out of the name", cid, "01a167d9-a66e-7808-aa9a-936e10fd09a7")
+    eq("and deleting the call removes it", after, [])
+
 
 def test_recordings_are_aac_on_a_mac() -> None:
     """The kept recording is AAC `.m4a` where macOS's encoder is, WAV otherwise (audiofile.py)."""

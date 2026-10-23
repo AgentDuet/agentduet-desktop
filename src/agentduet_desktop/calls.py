@@ -155,7 +155,7 @@ def _query(sql: str, args: tuple = ()) -> list[dict]:
 
 def record(call_id: str, caller: str, mode: str, *, recordings: list[str] | None = None,
            note: str = "", outgoing: bool = False, started: float | None = None,
-           at: float | None = None) -> None:
+           at: float | None = None, line: str = "") -> None:
     """Append one call. Never raises: losing the audio matters, losing the index does not."""
     try:
         paths.RUN.mkdir(parents=True, exist_ok=True)
@@ -173,6 +173,9 @@ def record(call_id: str, caller: str, mode: str, *, recordings: list[str] | None
                 # WHICH WAY THE CALL WENT, as a field. It briefly lived inside `caller` as a
                 # "to "/"from " prefix, which split one person into several — see carry.handle.
                 "outgoing": outgoing,
+                # THIS SIDE'S NUMBER (2026-10-23): dialled on a call in, dialling on a call out.
+                # On AgentDuet Team's trunk it is the employee's. "" on rows from before.
+                "line": line or "",
                 "recordings": recordings or [],
                 "note": note,
                 # WHEN IT BEGAN. `at` is when the call was FILED — its end — and stays that, since

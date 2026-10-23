@@ -50,8 +50,9 @@ def _stems(call_id: str) -> set[str]:
     for folder in [carry.legs()] + _folders():
         if folder.is_dir():
             stems |= {_stem(f.name) for f in folder.iterdir()
-                      if not f.name.startswith(".") and _stem(f.name).endswith("-" + call_id)}
-    return {s for s in stems if s.endswith("-" + call_id)}
+                      if not f.name.startswith(".") and carry.call_id_of(_stem(f.name)) == call_id}
+    # BY THE CALL ID INSIDE THE NAME: `<stamp>-<id>`, or AgentDuet Team's `…_<id>` (carry.kept_stem).
+    return {s for s in stems if carry.call_id_of(s) == call_id}
 
 
 def _forget_ai(call_id: str, row: dict) -> None:

@@ -1067,12 +1067,12 @@ def qwen_piece(a, context: str = "") -> tuple[str, str]:
 
 def _other_name(path: pathlib.Path) -> str:
     """The name the owner knows the other party by (typed, or from Contacts), or ""."""
-    from . import calls, names
+    from . import calls, carry, names
     stem = path.name
     for suffix in ("-caller.wav", "-callee.wav"):
         if stem.endswith(suffix):
             stem = stem[: -len(suffix)]
-    call_id = stem.split("-", 1)[1] if "-" in stem else ""
+    call_id = carry.call_id_of(stem) if "-" in stem or "_" in stem else ""
     row = calls.get(call_id) if call_id else None
     return names.name_for(str(row.get("caller") or "")) if row else ""
 
