@@ -1591,10 +1591,14 @@ def test_setup_mode() -> None:
     ok("the shell answers the register flag",
        "--register-login-item" in (pathlib.Path(__file__).parent.parent / "macos" / "Sources"
                                    / "AgentDuetShell" / "main.swift").read_text())
+    _shell = pathlib.Path(__file__).parent.parent / "macos" / "Sources" / "AgentDuetShell"
     ok("and clears the plist when it registers, so only one survives",
-       "LaunchAgents/com.b3networks.agentduet-desktop.plist"
-       in (pathlib.Path(__file__).parent.parent / "macos" / "Sources" / "AgentDuetShell"
-           / "main.swift").read_text())
+       "LaunchAgents/\\(Edition.launchAgentLabel).plist" in (_shell / "main.swift").read_text())
+    # THE SHELL AND THE DAEMON NAME THE SAME LABEL, per edition (2026-10-23): AgentDuet Team keeps
+    # its own, or registering its login item would remove AgentDuet's on a Mac that runs both.
+    _ed = (_shell / "Edition.swift").read_text()
+    ok("the shell's login-item label is the daemon's",
+       f'"{_li.LABEL}"' in _ed and '"com.b3networks.agentduet-team"' in _ed)
     ok("applying it still takes no path from any caller",
        "def apply(want: bool)" in login_src)
 
@@ -7878,6 +7882,29 @@ def test_placed_call_news() -> None:
        'if not r.get("outgoing") or not edition.ai():' in src)
 
 
+def test_the_team_edition_has_its_own_identity() -> None:
+    """AgentDuet Team is the full app with its own instance, port and login item (edition.py)."""
+    print("\n  -- AgentDuet Team runs beside AgentDuet: nothing of it may be shared --")
+    import subprocess as _sp
+    probe = ("from agentduet_desktop import edition as e, loginitem as l, owner as o, update as u;"
+             "import json; print(json.dumps([e.name(), e.home_name(), e.port(), e.ai(), e.calls(),"
+             " l.LABEL, o.calls(), u._own('team-v1'), u._own('v1')]))")
+    def run(ed: str) -> list:
+        env = dict(os.environ, AGENTDUET_EDITION=ed, AGENTDUET_HOME=tempfile.mkdtemp(),
+                   PYTHONPATH=str(pathlib.Path(__file__).parent.parent / "src"))
+        out = _sp.run([sys.executable, "-c", probe], env=env, capture_output=True, text=True)
+        return json.loads(out.stdout.strip().splitlines()[-1])
+    team, full = run("team"), run("full")
+    eq("its own name and instance", team[:2], ["team", ".agentduet-team"])
+    eq("any free port, since AgentDuet holds 8899", (team[2], full[2]), (0, 8899))
+    ok("the full app's AI and a phone line", team[3] and team[4])
+    eq("its own login item, so registering it never removes AgentDuet's",
+       (team[5], full[5]), ("com.b3networks.agentduet-team", "com.b3networks.agentduet-desktop"))
+    eq("it carries calls, it never answers them", team[6], "carry")
+    eq("it reads only its own releases, and AgentDuet never reads its",
+       (team[7], team[8], full[7], full[8]), ("v1", None, None, "v1"))
+
+
 def test_recordings_are_aac_on_a_mac() -> None:
     """The kept recording is AAC `.m4a` where macOS's encoder is, WAV otherwise (audiofile.py)."""
     print("\n  -- the recording the owner keeps: .m4a on a Mac, never lost to a format --")
@@ -8084,6 +8111,7 @@ def main() -> None:
     test_briefs_are_about_the_right_person()
     test_the_decider_checks_relationships()
     test_recordings_are_aac_on_a_mac()
+    test_the_team_edition_has_its_own_identity()
     # EVERY TEST MUST BE CALLED. They are invoked by hand above, so a new `test_*`
     # function is dead until someone adds a line — and a dead test is worse than no
     # test, because the count still goes up and the suite still says it passed. I

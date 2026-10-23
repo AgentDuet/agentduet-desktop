@@ -24,6 +24,8 @@
 # Same $AGENTDUET_HOME as the installed app and dev.sh, so it is the owner's real instance. For
 # a throwaway, prefix with AGENTDUET_HOME=/tmp/whatever SECRETARY_WEB_PORT=8901.
 #
+# AGENTDUET TEAM: `EDITION=team ./dev-app.sh` builds "AgentDuet Team Dev" (-D TEAM, ~/.agentduet-team,
+# any free port). It runs beside the others, so it quits and stops only its own.
 # THE RECORDER EDITION: `EDITION=recorder ./dev-app.sh` builds "AgentDuet Recorder Dev" — the shell
 # compiled with -D RECORDER, the daemon told AGENTDUET_EDITION=recorder, and its own instance at
 # ~/.agentduet-recorder (src/agentduet_desktop/edition.py). The AI modules are still on disk here,
@@ -44,6 +46,10 @@ elif [ "$EDITION" = "ai" ]; then
   NAME="AgentDuet AI Dev"; BUNDLE="com.b3networks.agentduet-ai.dev"
   SWIFT_FLAGS=(-Xswiftc -DAI_ONLY --build-path .build-ai)
   BUILT=macos/.build-ai/release/AgentDuetShell
+elif [ "$EDITION" = "team" ]; then
+  NAME="AgentDuet Team Dev"; BUNDLE="com.b3networks.agentduet-team.dev"
+  SWIFT_FLAGS=(-Xswiftc -DTEAM --build-path .build-team)
+  BUILT=macos/.build-team/release/AgentDuetShell
 else
   NAME="AgentDuet Dev"; BUNDLE="com.b3networks.agentduet-desktop.dev"
   SWIFT_FLAGS=()
@@ -57,9 +63,12 @@ fi
 # a bare `quit app` launches an app that is not running just to quit it.
 # WHAT THIS ONE CLASHES WITH. The full app and the recorder share port 8899 (and a phone line),
 # so either replaces the other. AgentDuet AI runs BESIDE the recorder — its own port, no line —
-# so it replaces only its own.
+# so it replaces only its own. AgentDuet Team runs beside them all — its own instance, port and
+# line — so it too replaces only its own.
 if [ "$EDITION" = "ai" ]; then
   APPS=("AgentDuet AI" "AgentDuet AI Dev"); STOP=(ai)
+elif [ "$EDITION" = "team" ]; then
+  APPS=("AgentDuet Team" "AgentDuet Team Dev"); STOP=(team)
 else
   APPS=("AgentDuet Desktop" "AgentDuet Dev" "AgentDuet Recorder" "AgentDuet Recorder Dev")
   STOP=(full recorder)
@@ -70,7 +79,7 @@ for a in "${APPS[@]}"; do
 done
 # An edition's daemon only if it has an instance: importing the package seeds one where none is.
 for e in "${STOP[@]}"; do
-  case "$e" in recorder) h=.agentduet-recorder ;; ai) h=.agentduet-ai ;; *) h=.agentduet-desktop ;; esac
+  case "$e" in recorder) h=.agentduet-recorder ;; ai) h=.agentduet-ai ;; team) h=.agentduet-team ;; *) h=.agentduet-desktop ;; esac
   [ "$e" != "full" ] && [ ! -d "$HOME/$h" ] && continue
   AGENTDUET_EDITION=$e PYTHONPATH=src "$VENV/bin/python" -m agentduet_desktop.cli stop \
     2>/dev/null || true
@@ -121,5 +130,5 @@ if [ -n "$IDENTITY" ]; then echo "  signed: Developer ID"; else echo "  signed: 
 
 open "$APP"
 echo "  $NAME is up — the native window, daemon from source"
-case "$EDITION" in recorder) _home=.agentduet-recorder ;; ai) _home=.agentduet-ai ;; *) _home=.agentduet-desktop ;; esac
+case "$EDITION" in recorder) _home=.agentduet-recorder ;; ai) _home=.agentduet-ai ;; team) _home=.agentduet-team ;; *) _home=.agentduet-desktop ;; esac
 echo "  log: ${AGENTDUET_HOME:-$HOME/$_home}/run/daemon-start.log"

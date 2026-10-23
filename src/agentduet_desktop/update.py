@@ -50,8 +50,8 @@ FEED = "https://api.github.com/repos/AgentDuet/agentduet-desktop/releases?per_pa
 #: ONE RELEASE PER APP (2026-10-03): `v0.1.0b7` is AgentDuet, `recorder-v0.1.0b7` AgentDuet
 #: Recorder, `ai-v0.1.0b7` AgentDuet AI. Each app looks only at its own, so a recorder is never
 #: told about — or linked to a page offering — another app. Thirty a page, since three apps'
-#: releases now share the list.
-PREFIX = {"recorder": "recorder-", "ai": "ai-"}
+#: releases now share the list. AgentDuet Team's are `team-v…` (2026-10-23).
+PREFIX = {"recorder": "recorder-", "ai": "ai-", "team": "team-"}
 
 
 def _own(tag: str) -> str | None:

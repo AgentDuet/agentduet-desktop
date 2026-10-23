@@ -30,7 +30,8 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 sys.path.insert(0, str(Path(SPECPATH).parent / "src"))
 from agentduet_desktop import edition as _edition_mod                     # noqa: E402
 _ASKED = os.environ.get("AGENTDUET_EDITION", "").strip().lower()
-EDITION = _ASKED if _ASKED in (_edition_mod.RECORDER, _edition_mod.AI_ONLY) else _edition_mod.FULL
+EDITION = (_ASKED if _ASKED in (_edition_mod.RECORDER, _edition_mod.AI_ONLY, _edition_mod.TEAM)
+           else _edition_mod.FULL)
 RECORDER = EDITION == _edition_mod.RECORDER
 # STAMPED INTO THE PACKAGE, like the build id below, and written for BOTH editions: a stale
 # `_edition.py` from a recorder build would otherwise turn the next full build into a recorder.

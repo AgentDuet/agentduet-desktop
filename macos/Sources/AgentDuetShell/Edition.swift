@@ -10,6 +10,10 @@ import Foundation
 /// AGENTDUET AI is compiled with `-D AI_ONLY`: the AI half with no phone line. It reads the
 /// recorder's calls from the AgentDuet folder, so it has no sign-in, no connection and no calls of
 /// its own (`calls` is false); everything else is the full app's.
+///
+/// AGENTDUET TEAM is compiled with `-D TEAM` (2026-10-23): the full app with its own identity —
+/// name, instance and login item — so it runs on the same Mac as AgentDuet. Every view is the full
+/// app's; only the names below differ.
 enum Edition {
     #if RECORDER
     static let recorder = true
@@ -23,6 +27,12 @@ enum Edition {
     static let aiOnly = false
     #endif
 
+    #if TEAM
+    static let team = true
+    #else
+    static let team = false
+    #endif
+
     /// Whether this app has a phone line: it signs in, connects, and takes calls.
     static let calls = !aiOnly
 
@@ -34,6 +44,8 @@ enum Edition {
     static let product = "AgentDuet Recorder"
     #elseif AI_ONLY
     static let product = "AgentDuet AI"
+    #elseif TEAM
+    static let product = "AgentDuet Team"      // provisional (2026-10-23)
     #else
     static let product = "AgentDuet"
     #endif
@@ -43,14 +55,22 @@ enum Edition {
     static let homeName = ".agentduet-recorder"
     #elseif AI_ONLY
     static let homeName = ".agentduet-ai"
+    #elseif TEAM
+    static let homeName = ".agentduet-team"
     #else
     static let homeName = ".agentduet-desktop"
     #endif
 
+    /// The legacy LaunchAgent's label — the same name as `loginitem.LABEL`. The shell removes a
+    /// plist with this label when it registers its own login item, so AgentDuet Team keeps its
+    /// own: sharing AgentDuet's would remove that app's login item on a Mac that runs both.
+    static let launchAgentLabel = team ? "com.b3networks.agentduet-team" : "com.b3networks.agentduet-desktop"
+
     /// The app's own name, from its bundle — so a partner's build is named as its plist names it.
     static var appName: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
-            ?? (recorder ? "AgentDuet Recorder" : aiOnly ? "AgentDuet AI" : "AgentDuet Desktop")
+            ?? (recorder ? "AgentDuet Recorder" : aiOnly ? "AgentDuet AI"
+                : team ? "AgentDuet Team" : "AgentDuet Desktop")
     }
 
     /// What the app keeps in the owner's folder, for the sentences that name it.

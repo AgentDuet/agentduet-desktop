@@ -54,6 +54,7 @@ _edition.py
 macos/.build-recorder/
 /build-recorder/
 macos/.build-ai/
+macos/.build-team/
 
 # Finder folder metadata
 .DS_Store
