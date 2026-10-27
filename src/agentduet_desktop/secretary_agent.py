@@ -178,7 +178,7 @@ def _first_text(payload: dict) -> str:
 
     THE INBOUND WA SHAPE IS NOW CONFIRMED, from a real message on 2026-09-07 — read out of the
     platform's own logs rather than guessed. `wss-edge` passes Meta's webhook envelope straight
-    through (`the inbound controller` forwards `request.content.content`), so the body is nested
+    through, so the body is nested
     four levels down:
 
         entry[0].changes[0].value.messages[0].text.body
@@ -290,7 +290,7 @@ def _dduet_text(body: str, *, to: str, session_uid: str, ba_uid: str) -> SendDdu
 
     `to` is the other party's Nexus ACCOUNT UID — not an email; the relay carries account uids
     only. `session_uid` is the Nexus conversation, and a multi-BA connector must send `ba_uid`
-    back or the server answers AMBIGUOUS_BA. Ours backs more than one BA (Hallie, 2026-08-28:
+    back or the server answers AMBIGUOUS_BA. Ours backs more than one BA (the platform team, 2026-08-28:
     one BA has one connector, but one connector can serve several), so it is always passed.
 
     Same reason as `_wa_text`: both senders — answering an asker, and delivering a reply the
