@@ -285,7 +285,3 @@ input[readonly]{font-family:var(--mono);}
   cursor:pointer;border:1px solid rgba(255,255,255,.1);background:var(--slate900);
   color:var(--ink2);transition:background .12s;}
 .sso:hover{background:var(--slate800);}
-.sso.apple{background:#fff;color:#000;border-color:transparent;
-  box-shadow:0 4px 6px -1px rgba(0,0,0,.1);}
-.sso.apple:hover{background:#f1f5f9;}
-.sso svg{width:1rem;height:1rem;flex:0 0 1rem;}

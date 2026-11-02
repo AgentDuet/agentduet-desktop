@@ -690,6 +690,12 @@ derived from no longer exists, it is the only place that says so.
       with **nothing typed and no `.env` at all** — `api_key=None`, `connector_uuid=None`, the
       connector arriving as a claim inside the token, channel live. That is the design's promise
       met. `about` reports `auth.agentduet.com (sign-in)`.
+      **DDUET ONLY SINCE 2026-10-23.** One button, plain "Sign in", on every surface: no
+      user-facing text names dduet, because its login page is being rebranded AgentDuet. The
+      daemon sends `provider=nexus` (`oauth.PROVIDER`) and ignores any provider a page sends, so
+      no page names one. A dduet sign-in may carry no email: name the account with
+      `oauth.account_label()`. A Google sign-in is a DIFFERENT account upstream (wss-edge keys
+      identity on provider and subject, not email), so its connectors do not follow the owner.
       **THE CONNECTOR CLAIM RIDES THE TOKEN FAMILY, which cost an afternoon.** Sign-in kept
       returning `9410b337-…` — the connector the DEV server minted on 2026-08-31 — instead of
       the production `bb27e3d4-…`, and it CONNECTED to `wss-prod` happily, so nothing looked

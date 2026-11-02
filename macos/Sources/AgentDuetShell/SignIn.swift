@@ -35,11 +35,15 @@ import SwiftUI
         notice = nil
     }
 
-    func signInWithGoogle() {
-        guard canSignIn else { notYet("Google"); return }
+    /// dduet is the only provider (2026-10-23), and the daemon names it, so nothing is sent.
+    func signIn() {
+        guard canSignIn else {
+            notice = .init(ok: false, text: "Signing in is not connected yet.")
+            return
+        }
         guard !signingIn else { return }
         Task {
-            let r = await api.post("/api/connector/signin/open", query: ["provider": "google"])
+            let r = await api.post("/api/connector/signin/open")
             guard r.bool("ok") else {
                 let url = r.str("url")
                 notice = .init(ok: false, text: url.isEmpty
@@ -63,13 +67,6 @@ import SwiftUI
             }
             notice = .init(ok: false, text: "Sign-in did not finish. Try again.")
         }
-    }
-
-    /// Only Google works upstream; Apple and Microsoft stay visible and say so when pressed.
-    func notYet(_ who: String) {
-        notice = .init(ok: false, text: canSignIn
-            ? "\(who) sign-in is not available yet — only Google is."
-            : "Signing in with \(who) is not connected yet.")
     }
 
     func checkConnector() {
@@ -102,28 +99,25 @@ import SwiftUI
     }
 }
 
-/// The three ways in, and the fourth under them.
+/// The one way in, and the connector key under it.
 struct SignInPanel: View {
     @ObservedObject var model: SignInModel
 
     var body: some View {
         VStack(spacing: 18) {
-            // "SIGN IN WITH", the one wording all three providers' button guidelines allow
-            // (Microsoft's allows no other), and the one the Settings sheet's title asks for.
-            VStack(spacing: 10) {
-                wide("Sign in with Apple", mark: AnyView(Image(systemName: "apple.logo"))) {
-                    model.notYet("Apple")
-                }
-                wide("Sign in with Google", mark: AnyView(GoogleMark())) { model.signInWithGoogle() }
-                wide("Sign in with Microsoft", mark: AnyView(MicrosoftMark())) { model.notYet("Microsoft") }
+            // ONE BUTTON (2026-10-23): dduet is the only way to sign in, and the label names no
+            // brand, because the login page it opens is being rebranded AgentDuet.
+            Button(action: model.signIn) {
+                Text("Sign in").frame(maxWidth: .infinity)
             }
+            .controlSize(.large)
             .frame(width: 300)
             if let n = model.notice {
                 Text(n.text).font(.callout).foregroundStyle(n.ok ? Color.secondary : Color.red)
                     .multilineTextAlignment(.center).textSelection(.enabled)
                     .padding(.horizontal, 40)
             }
-            // THE FOURTH WAY IN: the pair a person issued, for an install where sign-in does not
+            // THE OTHER WAY IN: the pair a person issued, for an install where sign-in does not
             // reach. Revealed on demand, since most of the time it is not about credentials.
             Button(model.showManual ? "Hide the connector and API key" : "Use a connector and API key") {
                 model.showManual.toggle()
@@ -147,16 +141,5 @@ struct SignInPanel: View {
                 .scrollDisabled(true)
             }
         }
-    }
-
-    private func wide(_ title: String, mark: AnyView, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                mark
-                Text(title)
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .controlSize(.large)
     }
 }

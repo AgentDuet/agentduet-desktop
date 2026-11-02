@@ -2,7 +2,7 @@
 
 WHY A LINK AND NOT AN API. Google's calendar and Gmail APIs need an OAuth token with a
 sensitive scope (`calendar.events`, `gmail.send`), a verified app, and a consent screen. Our
-sign-in is FEDERATED — the app talks to wss-edge, wss-edge talks to Google — so what this
+sign-in is FEDERATED — the app talks to wss-edge, wss-edge talks to dduet — so what this
 install holds is an AgentDuet token, not a Google one. There is no token here to call Google
 with. A link needs none: the owner is already signed in to Google IN THEIR BROWSER, so the
 page opens with their session and their account.
