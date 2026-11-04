@@ -157,7 +157,7 @@ protobuf==7.36.2
     # via onnxruntime
 proxy-tools==0.1.0
     # via pywebview
-pyasn1==0.6.4
+pyasn1==0.6.5
     # via pyasn1-modules
 pyasn1-modules==0.4.2
     # via google-auth
