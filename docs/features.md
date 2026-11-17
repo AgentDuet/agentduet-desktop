@@ -21,6 +21,7 @@ out when it goes.
 - Searches all your calls by meaning, not just exact words.
 - Summarises and translates transcripts.
 - Builds a short profile of each person from your calls.
+- Save a person's summary as a text file from the Summary popover (AgentDuet Desktop and AgentDuet AI).
 - Drafts a calendar event or email for you to send.
 
 **Everyday**
