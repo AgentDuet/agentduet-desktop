@@ -112,6 +112,19 @@ def set_number(number: str) -> None:
                     "it as one. This is what we would need the backend to give us.", number)
 
 
+def clear_number() -> None:
+    """Forget the old line, including across restarts.
+
+    An empty cache is intentional: deleting it would let load_number recover the previous
+    connector's number from historical sessions. Keep those sessions intact.
+    """
+    NUMBER_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temporary = NUMBER_FILE.with_suffix(".tmp")
+    temporary.write_text("")
+    temporary.replace(NUMBER_FILE)
+    _state["number"] = ""
+
+
 def load_number(sessions_file) -> None:
     """Recover the last known number after a restart, before any new inbound arrives.
 
@@ -122,8 +135,9 @@ def load_number(sessions_file) -> None:
     """
     try:
         if NUMBER_FILE.exists():
-            set_number(NUMBER_FILE.read_text().strip())
-            if _state["number"]:
+            number = NUMBER_FILE.read_text().strip()
+            set_number(number)
+            if not number or _state["number"]:
                 return
     except OSError as exc:
         logger.debug("could not read the stored number: %s", exc)

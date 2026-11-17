@@ -731,7 +731,7 @@ def _make_recorder(caller: str, verified: bool, convo: str):
 
 # ---- wiring it to the daemon's ONE client ------------------------------------------------
 
-def register(sm, owner_name: str) -> bool:
+def register(sm, owner_name: str, *, current=None) -> bool:
     """Register a call handler on the daemon's existing SessionManager. True if voice is on."""
     # TAKE THE SLOT FIRST. One connector has one on_incoming_call, so a second registration does
     # not fail on its own — both attach and race for the call.
@@ -745,6 +745,8 @@ def register(sm, owner_name: str) -> bool:
     from agentduet_adapters.qwen import QwenVoice
 
     async def _on_call(noti) -> None:
+        if current is not None and not current():
+            return
         caller = getattr(noti.from_address, "value", str(noti.from_address))
         network = getattr(noti, "network", None)
         verified = people.default_verified(str(getattr(network, "name", network) or "TELCO"))

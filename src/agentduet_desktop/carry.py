@@ -776,7 +776,7 @@ async def _answer_here(call, call_id: str, other: str, done: asyncio.Event,
             transcribe.wake()
 
 
-def register(sm) -> bool:
+def register(sm, *, current=None) -> bool:
     """Claim the connector's inbound-call handler for carrying. True when registered.
 
     MUTUALLY EXCLUSIVE WITH `voice.register`. One connector has one `on_incoming_call`
@@ -787,10 +787,16 @@ def register(sm) -> bool:
     # registration does not fail on its own — both attach and race for the call.
     callmode.claim("carry")
 
+    async def _carry(noti) -> None:
+        # Check inside the task: credentials can change after the SDK queues a notification.
+        # An old connection must not teach us its number after the owner cleared it.
+        if current is None or current():
+            await handle(sm, noti)
+
     async def _handler(noti) -> None:
         # Its own task, for the same reason the voice path does it: blocking the SDK's event
         # bus for the length of a call stops any other call being set up.
-        asyncio.create_task(handle(sm, noti))
+        asyncio.create_task(_carry(noti))
 
     # BOTH DIRECTIONS, and the second one is not a nicety. A call the owner's own line PLACES
     # — a desk phone, or the SIM in their hand — arrives as an outgoing announcement, not an

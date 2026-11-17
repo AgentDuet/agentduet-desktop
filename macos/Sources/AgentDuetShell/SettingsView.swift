@@ -113,6 +113,7 @@ private struct AccountPane: View {
     @StateObject private var editingKey = Local(false)
     @StateObject private var editingName = Local(false)
     @StateObject private var confirmSignOut = Local(false)
+    @StateObject private var confirmDisconnect = Local(false)
 
     var body: some View {
         Form {
@@ -156,6 +157,7 @@ private struct AccountPane: View {
                         HStack {
                             Text(model.cur.str("key_hint")).monospaced()
                             Button("Change…") { editingKey.value = true }
+                            Button("Disconnect…") { confirmDisconnect.value = true }
                         }
                     }
                 } else {
@@ -178,6 +180,11 @@ private struct AccountPane: View {
             Button("Sign Out", role: .destructive) { model.signOut() }
         } message: {
             Text("Calls stop arriving until you sign in again or enter a key.")
+        }
+        .confirmationDialog("Disconnect from AgentDuet?", isPresented: $confirmDisconnect.value) {
+            Button("Disconnect", role: .destructive) { model.disconnect() }
+        } message: {
+            Text("The saved key will be removed. Call recording stops until you sign in or enter a key again. Your recordings are kept.")
         }
     }
 

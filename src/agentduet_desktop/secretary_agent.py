@@ -378,6 +378,11 @@ async def run_channel() -> None:
     # over a string here would freeze a credential that expires in thirty minutes into a daemon
     # that runs for weeks.
     from . import connector, oauth
+    connection = connector.connection_state()
+
+    def current() -> bool:
+        return connector.connection_state() == connection
+
     kwargs = dict(call_audio=CallAudioConfig(sample_rate=connector.CALL_SAMPLE_RATE))
     if oauth.signed_in():
         # TOKEN ONLY. The SDK rejects a config carrying both — "token_provider is a standalone
@@ -692,11 +697,11 @@ async def run_channel() -> None:
         from . import owner as owner_settings
         if owner_settings.calls() == owner_settings.CALLS_CARRY:
             from . import carry
-            calls_on = carry.register(sm)
+            calls_on = carry.register(sm, current=current)
             status.set_voice(False)        # no agent speaks in this mode; do not claim one does
         else:
             from . import voice
-            calls_on = voice.register(sm, owner_name())
+            calls_on = voice.register(sm, owner_name(), current=current)
             status.set_voice(calls_on)
 
         builder = (TriggerConditionsBuilder()
@@ -756,7 +761,7 @@ async def run_channel() -> None:
             # connected, set its triggers, then dropped every 5s forever.
             # We do not want them regardless: `cli stop` owns shutdown and escalates to
             # SIGKILL itself.
-            watch = asyncio.create_task(_close_when_signed_out(sm))
+            watch = asyncio.create_task(_close_when_signed_out(sm, connection))
             try:
                 await sm.run_forever(install_signal_handlers=False)
             finally:
@@ -766,19 +771,24 @@ async def run_channel() -> None:
             status.set_channel("retrying", "disconnected")
 
 
-async def _close_when_signed_out(sm) -> None:
-    """Close a live channel once its credential is gone — a sign-out, or a key removed.
+async def _close_when_signed_out(sm, connection=None) -> None:
+    """Close a live channel when its credentials are removed or replaced.
 
     SIGNING OUT DID NOT STOP CALLS (found 2026-09-29). The session was opened with the token,
     and the SDK asks for a token again only to refresh or reconnect, so a channel signed out of
     stayed live — the hub's light still green, calls still arriving — while Settings said they
     had stopped. `connector_ready` is the same fresh check that opens the channel; when it turns
     false the session is closed, and `main` waits for a credential as a fresh install does.
+    A different but valid key/UUID must also close it: readiness alone stayed true and left
+    the old line connected indefinitely. Compare with the identity captured BEFORE connecting.
     """
+    from . import connector
+    if connection is None:
+        connection = connector.connection_state()
     while True:
         await asyncio.sleep(CONNECTOR_POLL_SECONDS)
-        if not connector_ready():
-            logger.info("The connector's credential is gone (signed out, or the key removed) — "
+        if not connector_ready() or connector.connection_state() != connection:
+            logger.info("The connector's credential changed or was removed — "
                         "closing the channel.")
             await sm.disconnect()
             return

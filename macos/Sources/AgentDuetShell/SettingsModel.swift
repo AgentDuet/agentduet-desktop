@@ -181,6 +181,15 @@ import Foundation
         }
     }
 
+    func disconnect() {
+        Task {
+            let r = await api.post("/api/connector/disconnect")
+            notice[.account] = r["ok"] as? Bool == true ? nil :
+                Notice(ok: false, text: r.str("message").isEmpty ? "Could not disconnect. Try again." : r.str("message"))
+            await poll()
+        }
+    }
+
     // MARK: - Record & Transcribe
 
     var storage: String { panel.str("storage") }

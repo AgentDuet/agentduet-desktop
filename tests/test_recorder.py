@@ -41,6 +41,7 @@ ROUTES = [
     ("/api/setup/current", None), ("/api/permissions", None), ("/api/about", None),
     ("/api/ui", None), ("/api/install", None), ("/api/connector/signin", None),
     ("/api/setup/setting", {"field": "name", "value": "Pat"}),
+    ("/api/connector/disconnect", {}),
     ("/api/seen", {"who": "+6590000000"}),
     ("/api/name", {"who": "+6590000000", "name": "Sam"}),
     ("/app.css", None), ("/logo.png", None),

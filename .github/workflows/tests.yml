@@ -50,7 +50,7 @@ jobs:
           # suite died on an ImportError mid-run from aacbdde on.
           pip install numpy
 
-      # Six suites, each run even if an earlier one fails. A single `&&` chain would report the
+      # Each suite runs even if an earlier one fails. A single `&&` chain would report the
       # first failure and hide the rest, which turns one red run into several round trips.
       - name: Rules (model-free)
         run: python tests/test_rules.py
@@ -58,6 +58,10 @@ jobs:
       - name: Isolation (the asker cannot reach an owner tool)
         if: ${{ !cancelled() }}
         run: python tests/test_isolation.py
+
+      - name: Connector changes and disconnect
+        if: ${{ !cancelled() }}
+        run: python tests/test_connector.py
 
       - name: Sandbox (what a customer tool cannot reach)
         if: ${{ !cancelled() }}
