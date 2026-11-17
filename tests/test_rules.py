@@ -1159,13 +1159,25 @@ def test_hosts() -> None:
     finally:
         del sys.frozen
 
-    # A dry run that changed something would be the worst possible bug in an installer.
-    before = (pathlib.Path.home() / ".claude.json")
-    stamp = before.stat().st_mtime if before.exists() else None
-    text = hosts.connect(apply=False)
-    after = before.stat().st_mtime if before.exists() else None
-    ok("--show changes nothing", stamp == after)
-    ok("--show says what it WOULD do", "would run" in text or "No AI assistant" in text, text[:90])
+    # Exercise every host regardless of what is installed on the test machine. A dry run
+    # may describe a command, a config edit, or manual instructions; all are valid.
+    from unittest.mock import patch
+    for found, expected in [
+        ([], "No AI assistant found"),
+        (["Claude Code"], "would run:"),
+        (["Goose"], f"would add a `{hosts.SERVER_NAME}` stdio extension"),
+        (["Cursor"], "Add this to ~/.cursor/mcp.json"),
+        (["Claude Desktop"], "Add this to claude_desktop_config.json"),
+    ]:
+        label = found[0] if found else "no assistant"
+        with patch.object(hosts, "detect", return_value=found), \
+             patch.object(hosts, "resolve_bin", return_value=str(fake)), \
+             patch.object(hosts.subprocess, "run") as run, \
+             patch.object(pathlib.Path, "write_text") as write:
+            text = hosts.connect(apply=False)
+        ok(f"--show describes the next step: {label}", expected in text, text)
+        ok(f"--show runs no command: {label}", not run.called)
+        ok(f"--show writes no config: {label}", not write.called)
 
     # Real evidence, not a leftover directory: ~/.cursor survived here for months with no
     # cursor binary, and directory-existence reported an assistant that was not installed.
