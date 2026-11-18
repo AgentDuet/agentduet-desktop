@@ -58,3 +58,6 @@ macos/.build-team/
 
 # Finder folder metadata
 .DS_Store
+
+/windows/Recorder/bin/
+/windows/Recorder/obj/

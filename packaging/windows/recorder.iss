@@ -1,6 +1,7 @@
 [Setup]
 AppId=AgentDuet.Recorder
 AppName=AgentDuet Recorder
+SetupIconFile=..\..\windows\Recorder\Recorder.ico
 AppVersion={#AppVersion}
 DefaultDirName={localappdata}\Programs\AgentDuet Recorder
 PrivilegesRequired=lowest

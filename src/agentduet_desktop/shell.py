@@ -178,7 +178,7 @@ def site_url(timeout: float = 20.0) -> str | None:
                 return u
         # A GUESS FROM THE PORT only where the port is fixed: with 0 (any free one) only the
         # recorded address can say where the daemon is.
-        if tok.is_file() and port != "0":
+        if tok.is_file() and port != "0" and not edition.windows_recorder():
             t = tok.read_text().strip()
             if t:
                 return f"http://127.0.0.1:{port}/?t={t}"
@@ -282,6 +282,9 @@ def run_with_window(start_daemon, want_window: bool = True,
         finally:
             stop.set()                            # the window should not outlive the daemon
 
+    if want_window and edition.windows_recorder():
+        # Ask this startup for its own bound endpoint, even after an unclean shutdown.
+        (paths.RUN / "site-url").unlink(missing_ok=True)
     worker = threading.Thread(target=_daemon, name="dduet-daemon", daemon=True)
     worker.start()
 

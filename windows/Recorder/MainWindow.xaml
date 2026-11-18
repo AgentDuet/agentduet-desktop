@@ -38,6 +38,7 @@
      <CheckBox x:Name="Login" Content="Start at login" Click="ChangeLogin"/>
      <Button x:Name="FinishButton" Click="Finish" Style="{ThemeResource AccentButtonStyle}">Finish setup</Button>
     </StackPanel>
+    <Button x:Name="QuitButton" Click="Quit">Quit Recorder</Button>
    </StackPanel>
   </ScrollViewer>
   <Grid x:Name="Library" Grid.Row="2" Visibility="Collapsed" RowSpacing="8">
@@ -48,7 +49,14 @@
     <Grid x:Name="ListPane" RowSpacing="8">
      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
      <TextBlock Text="People" Style="{ThemeResource SubtitleTextBlockStyle}"/>
-     <ListView Grid.Row="1" x:Name="People" AutomationProperties.Name="People" DisplayMemberPath="Name" SelectionChanged="SelectPerson" IsItemClickEnabled="True" ItemClick="OpenPerson"/>
+     <ListView Grid.Row="1" x:Name="People" AutomationProperties.Name="People" SelectionChanged="SelectPerson" IsItemClickEnabled="True" ItemClick="OpenPerson">
+      <ListView.ItemTemplate><DataTemplate>
+       <StackPanel Margin="0,6" Spacing="2">
+        <TextBlock Text="{Binding Name}" Style="{ThemeResource BodyStrongTextBlockStyle}"/>
+        <TextBlock Text="{Binding LastCall}" Style="{ThemeResource CaptionTextBlockStyle}"/>
+       </StackPanel>
+      </DataTemplate></ListView.ItemTemplate>
+     </ListView>
      <TextBlock x:Name="Empty" Grid.Row="1" Text="No calls recorded yet." TextWrapping="Wrap" IsHitTestVisible="False"/>
     </Grid>
     <Grid x:Name="Details" Grid.Column="1" RowSpacing="12">
@@ -65,7 +73,7 @@
       </DataTemplate></ListView.ItemTemplate>
      </ListView>
      <StackPanel Grid.Row="3" x:Name="Playback" Visibility="Collapsed" Spacing="4">
-      <TextBlock x:Name="Playing" TextWrapping="Wrap"/>
+      <TextBlock x:Name="Playing" AutomationProperties.AutomationId="Playing" TextWrapping="Wrap"/>
       <MediaPlayerElement x:Name="Player" Height="64" AreTransportControlsEnabled="True"/>
      </StackPanel>
     </Grid>

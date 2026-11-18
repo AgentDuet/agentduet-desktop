@@ -390,6 +390,8 @@ else:
     exe = EXE(
         pyz, a.scripts, python_options, a.binaries, a.datas,
         name="agentduet-desktop",
+        icon=str(Path(SPECPATH).parent / "windows/Recorder/Recorder.ico")
+             if RECORDER and sys.platform == "win32" else None,
         console=not (RECORDER and sys.platform == "win32"),
         onefile=True,
         upx=False,

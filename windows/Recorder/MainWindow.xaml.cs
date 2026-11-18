@@ -8,7 +8,7 @@ namespace Recorder;
 
 public sealed partial class MainWindow : Window
 {
-    public sealed record Person(string Id, string Name);
+    public sealed record Person(string Id, string Name, string LastCall);
     public sealed record Call(string Id, string Date, string Description, string Path)
     {
         public Visibility PlayVisibility => Visible(Path.Length > 0);
@@ -23,11 +23,16 @@ public sealed partial class MainWindow : Window
     private Call[] calls = [];
     private bool settings, ready, narrowDetail, binding, closed, prefilled;
     private int playbackVersion;
+    private string playbackLabel = "";
 
     public MainWindow()
     {
         InitializeComponent();
         Player.SetMediaPlayer(new Windows.Media.Playback.MediaPlayer());
+        Player.MediaPlayer.MediaOpened += (_, _) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!closed && Player.Source != null) Playing.Text = playbackLabel;
+        });
         Player.MediaPlayer.MediaFailed += (_, _) => DispatcherQueue.TryEnqueue(() =>
             Message("Windows could not play this recording.", InfoBarSeverity.Error));
         Root.Loaded += async (_, _) =>
@@ -95,6 +100,7 @@ public sealed partial class MainWindow : Window
             TermsText.Text = Text(terms, "terms");
             PrivacyText.Text = Text(terms, "privacy");
         }
+        QuitButton.Visibility = Visible(settings);
         bool signedIn = Flag(state["oauth"], "signed_in");
         SignOutButton.Visibility = Visible(signedIn);
         Manual.Visibility = Browser.Visibility = Visible(!signedIn);
@@ -118,13 +124,17 @@ public sealed partial class MainWindow : Window
         await ReadLibrary();
     }
 
+    private static string DisplayDate(string stamp) =>
+        DateTime.TryParse(stamp, out var date) ? date.ToString("g") : stamp;
+
     private async Task ReadLibrary()
     {
         string? requested = selected;
         var data = await api!.Request("threads?open=" + Uri.EscapeDataString(requested ?? ""));
         if (closed || requested != selected) return;
         var rows = data["people"]!.AsArray();
-        var next = rows.Select(p => new Person(Text(p, "who"), First(Text(p, "display"), Text(p, "who")))).ToArray();
+        var next = rows.Select(p => new Person(Text(p, "who"), First(Text(p, "display"), Text(p, "who")),
+            DisplayDate(Text(p, "last")))).ToArray();
         var person = next.FirstOrDefault(p => p.Id == selected) ?? next.FirstOrDefault();
         binding = true;
         try
@@ -148,7 +158,7 @@ public sealed partial class MainWindow : Window
         var nextCalls = items?.Select(c =>
         {
             string stamp = First(Text(c, "started"), Text(c, "at"));
-            string date = DateTime.TryParse(stamp, out var dt) ? dt.ToString("g") : stamp;
+            string date = DisplayDate(stamp);
             string audio = Text(c, "audio");
             string status = audio.Length > 0 ? TimeSpan.FromSeconds((double?)c!["seconds"] ?? 0).ToString("g") :
                 Flag(c, "missed") ? "Missed call" : (int?)c!["files"] > 0 ? "Preparing recording" : "No recording";
@@ -227,6 +237,19 @@ public sealed partial class MainWindow : Window
     private async void ChangeLogin(object sender, RoutedEventArgs e) => await Act("setup/login-item", new { want = Login.IsChecked == true });
     private async void Finish(object sender, RoutedEventArgs e) => await Act("setup/finish", new {});
 
+    private async void Quit(object sender, RoutedEventArgs args)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Root.XamlRoot, Title = "Quit Recorder?",
+            Content = "Quitting stops recording, including any call in progress. Closing the window lets Recorder continue in the background.",
+            PrimaryButtonText = "Quit Recorder", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        try { await api!.Request("quit", new {}); Close(); }
+        catch (Exception e) { Message(e.Message, InfoBarSeverity.Error); }
+    }
+
     private void StopPlayback()
     {
         playbackVersion++;
@@ -243,8 +266,9 @@ public sealed partial class MainWindow : Window
         {
             var file = await StorageFile.GetFileFromPathAsync(call.Path);
             if (version != playbackVersion || closed) return;
+            playbackLabel = $"{PersonName.Text} · {call.Date}";
+            Playing.Text = "Opening recording…";
             Player.Source = MediaSource.CreateFromStorageFile(file);
-            Playing.Text = $"{PersonName.Text} · {call.Date}";
             Playback.Visibility = Visibility.Visible;
             Player.MediaPlayer.Play();
         }
