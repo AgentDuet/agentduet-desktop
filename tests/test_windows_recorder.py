@@ -22,15 +22,15 @@ class RecorderWindow(unittest.IsolatedAsyncioTestCase):
         self.folder = Path(tmp)
 
     async def test_native_folder_selection(self):
-        from agentduet_desktop import settings
-        with patch.object(settings, "set_setting") as save:
-            for invalid in ("relative", str(self.folder / "absent")):
-                response = await self.client.post("/api/pick-folder", json={"path": invalid}, headers=self.headers)
-                self.assertFalse((await response.json())["ok"])
-            save.assert_not_called()
-            response = await self.client.post("/api/pick-folder", json={"path": str(self.folder)}, headers=self.headers)
-            self.assertTrue((await response.json())["changed"])
-            save.assert_called_once_with("recordings", str(self.folder))
+        folder = self.folder / "Call archive"
+        folder.mkdir()
+        choice = {"field": "recordings", "value": str(folder)}
+        response = await self.client.post("/api/setup/setting", json=choice)
+        self.assertEqual(response.status, 401)
+        response = await self.client.post("/api/setup/setting", json=choice, headers=self.headers)
+        self.assertTrue((await response.json())["ok"])
+        current = await self.client.get("/api/setup/current", headers=self.headers)
+        self.assertEqual(Path((await current.json())["carried_dir"]), folder)
 
     async def test_page_setup_and_audio(self):
         from agentduet_desktop import calls, carry, legal, oauth

@@ -250,7 +250,18 @@ public sealed partial class MainWindow : Window
             WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
             picker.FileTypeFilter.Add("*");
             var folder = await picker.PickSingleFolderAsync();
-            if (folder != null) await Act("pick-folder", new { path = folder.Path });
+            if (folder == null) return;
+            if (!System.IO.Path.IsPathFullyQualified(folder.Path))
+            {
+                Message("Choose a folder with a local or network path.", InfoBarSeverity.Error);
+                return;
+            }
+            // Check the folder selected by Windows before changing the saved location.
+            // CreateNew plus DeleteOnClose protects existing files and cleans up on exit.
+            var probe = System.IO.Path.Combine(folder.Path, System.IO.Path.GetRandomFileName());
+            using (new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                                  4096, FileOptions.DeleteOnClose)) { }
+            await Act("setup/setting", new { field = "recordings", value = folder.Path });
         }
         catch (Exception error) { Message(error.Message, InfoBarSeverity.Error); }
     }
