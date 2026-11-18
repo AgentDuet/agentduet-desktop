@@ -54,6 +54,7 @@ jobs:
       # that renaming it would help.
       - name: Attach to the release
         env:
+          RELEASE_TAG: ${{ inputs.tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
@@ -69,12 +70,20 @@ jobs:
             cp "$f" "agentduet-desktop-linux-x86_64" && FILES+=("agentduet-desktop-linux-x86_64")
             break
           done
-          want windows && for f in artifacts/agentduet-desktop-windows-x86_64/*/agentduet-desktop.exe \
-                   artifacts/agentduet-desktop-windows-x86_64/agentduet-desktop.exe; do
-            cp "$f" "agentduet-desktop-windows-x86_64.exe"
-            FILES+=("agentduet-desktop-windows-x86_64.exe")
-            break
-          done
+          if want windows; then
+            if [[ "$RELEASE_TAG" == recorder-v* ]]; then
+              f=artifacts/agentduet-recorder-windows-x86_64-signed/agentduet-recorder-windows-x86_64-setup.exe
+              [[ -f "$f" ]] || { echo "::error::missing signed Recorder installer"; exit 1; }
+              FILES+=("$f")
+            else
+              for f in artifacts/agentduet-desktop-windows-x86_64/*/agentduet-desktop.exe \
+                       artifacts/agentduet-desktop-windows-x86_64/agentduet-desktop.exe; do
+                cp "$f" "agentduet-desktop-windows-x86_64.exe"
+                FILES+=("agentduet-desktop-windows-x86_64.exe")
+                break
+              done
+            fi
+          fi
           [ ${#FILES[@]} -gt 0 ] || { echo "::error::nothing to attach"; exit 1; }
           printf 'attaching: %s\n' "${FILES[@]}"
           gh release upload "${{ inputs.tag }}" "${FILES[@]}" --clobber \

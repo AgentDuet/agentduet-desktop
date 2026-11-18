@@ -30,11 +30,11 @@ import time
 import sys
 import webbrowser
 
-from . import paths
+from . import edition, paths
 
 logger = logging.getLogger("dduet.shell")
 
-TITLE = "AgentDuet Desktop"
+TITLE = "AgentDuet Recorder" if edition.windows_recorder() else "AgentDuet Desktop"
 
 
 #: The caption bar colours, as Windows wants them. See `_match_caption_to_app`.
@@ -220,13 +220,37 @@ def window_support() -> tuple[bool, str]:
             return False, f"pywebview is here but its macOS backend is not ({exc})"
         return True, ""
     if sys.platform.startswith("win"):
-        return True, ""                                           # WebView2, part of the OS
+        import winreg
+        key = r"Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+        for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            try:
+                with winreg.OpenKey(root, key, access=winreg.KEY_READ | winreg.KEY_WOW64_32KEY) as handle:
+                    version, _ = winreg.QueryValueEx(handle, "pv")
+                    if version and version != "0.0.0.0":
+                        return True, ""
+            except OSError:
+                continue
+        return False, "Install Microsoft Edge WebView2 Runtime"
     # Linux: GTK/Qt python bindings are system libraries, absent from a onefile build.
     try:
         import gi                                                 # noqa: F401
         return True, ""
     except ImportError:
         return False, "no GUI backend on this machine — the owner view opens in your browser"
+
+
+def open_window(url: str) -> None:
+    import webview
+    win = webview.create_window(TITLE, url, width=1360, height=900,
+                                min_size=(900, 600), text_select=True)
+    # ON `shown`, NOT BEFORE `start()`: the handle does not exist until the window is
+    # realised, so theming it any earlier silently themes nothing. Subscribing is itself
+    # guarded — an older pywebview without this event must not cost us the window.
+    try:
+        win.events.shown += lambda: _match_caption_to_app(win)
+    except Exception as exc:
+        logger.debug("cannot hook window shown event (%s)", exc)
+    webview.start(gui="edgechromium" if edition.windows_recorder() else None)
 
 
 def run_with_window(start_daemon, want_window: bool = True,
@@ -276,16 +300,7 @@ def run_with_window(start_daemon, want_window: bool = True,
             # copied, and there is no other route to it. app.css already draws the line in the
             # right place — chrome that is furniture stays unselectable, so dragging across the
             # sidebar still does not highlight the navigation. Reported by Stanley 2026-09-09.
-            win = webview.create_window(TITLE, url, width=1360, height=900,
-                                        min_size=(900, 600), text_select=True)
-            # ON `shown`, NOT BEFORE `start()`: the handle does not exist until the window is
-            # realised, so theming it any earlier silently themes nothing. Subscribing is itself
-            # guarded — an older pywebview without this event must not cost us the window.
-            try:
-                win.events.shown += lambda: _match_caption_to_app(win)
-            except Exception as exc:
-                logger.debug("cannot hook window shown event (%s)", exc)
-            webview.start()
+            open_window(url)
             return 0
         except Exception as exc:
             # The window is OPTIONAL and the site is the primary surface, so a windowing

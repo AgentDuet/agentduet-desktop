@@ -98,6 +98,8 @@ if RECORDER:
                    or (g.endswith("/**/*") and rel.startswith(g[:-4]))
                    for g in _edition_mod.AI_DATA)
     datas = [d for d in datas if not _ai_data(*d)]
+    if sys.platform == "win32":
+        datas += collect_data_files("agentduet_desktop", includes=["windows/**/*"])
 
 # THE CA ROOTS, NAMED ON PURPOSE — and this is load-bearing, not tidiness.
 #
@@ -386,7 +388,7 @@ else:
     exe = EXE(
         pyz, a.scripts, python_options, a.binaries, a.datas,
         name="agentduet-desktop",
-        console=True,
+        console=not (RECORDER and sys.platform == "win32"),
         onefile=True,
         upx=False,
     )

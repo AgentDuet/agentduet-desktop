@@ -56,6 +56,8 @@ def home() -> pathlib.Path:
     # THE RECORDER EDITION KEEPS ITS OWN, so the two products never share an instance: a
     # recorder must not inherit an agent's knowledge, and the full product must not find an
     # instance seeded without any. The shell resolves the same name (Daemon.swift).
+    if _edition.windows_recorder():
+        return pathlib.Path(os.environ["LOCALAPPDATA"]) / "AgentDuet Recorder"
     return pathlib.Path.home() / _edition.home_name()
 
 

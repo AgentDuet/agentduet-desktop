@@ -171,6 +171,8 @@ def _app_bundle() -> pathlib.Path | None:
 
 def install() -> str:
     """Put this where it belongs. Idempotent."""
+    if sys.platform == "win32":
+        return "Use the Windows installer to install or update this app."
     if not getattr(sys, "frozen", False):
         return ("Running from source, so there is nothing to install — the installed layout "
                 "only applies to the downloaded binary.")

@@ -43,10 +43,13 @@ def cmd_run(args) -> int:
         # Launching it again almost always means the person lost the tab or window, not that
         # they want a second daemon. Show them the one that IS running rather than refusing —
         # a refusal, from a double-clicked icon with no terminal, looks like nothing happened.
-        from . import shell
+        from . import edition, shell
         url = shell.site_url(timeout=2)
         if url and not args.headless:
-            shell.open_in_browser(url)
+            if edition.windows_recorder() and not args.no_window:
+                shell.open_window(url)
+            else:
+                shell.open_in_browser(url)
             print(f"  already running (pid {pid}) — opened {url}")
         else:
             print(f"  already running (pid {pid}). Use `agentduet-desktop stop` to stop it.")

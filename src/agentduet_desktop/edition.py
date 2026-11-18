@@ -18,6 +18,7 @@ tester's machine.
 from __future__ import annotations
 
 import os
+import sys
 
 FULL, RECORDER = "full", "recorder"
 #: AGENTDUET AI (2026-10-03): the AI half alone, beside AgentDuet Recorder. It has no phone line
@@ -80,6 +81,10 @@ def name() -> str:
         return _built()                         # a single-edition binary cannot be talked out of it
     asked = os.getenv("AGENTDUET_EDITION", "").strip().lower()
     return asked if asked in (RECORDER, AI_ONLY, TEAM) else FULL
+
+
+def windows_recorder() -> bool:
+    return sys.platform == "win32" and name() == RECORDER
 
 
 def ai() -> bool:

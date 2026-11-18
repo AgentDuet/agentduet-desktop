@@ -47,7 +47,8 @@ def shell_strings(shell: pathlib.Path) -> None:
 
 def main(app: pathlib.Path) -> int:
     contents = app / "Contents"
-    daemon = contents / "MacOS" / "agentduet-desktop"
+    windows = app.suffix.lower() == ".exe"
+    daemon = app if windows else contents / "MacOS" / "agentduet-desktop"
     print(f"auditing {app}")
 
     # 1. THE PYTHON MODULES, from the archive inside the executable.
@@ -69,6 +70,24 @@ def main(app: pathlib.Path) -> int:
             finding("the build is not stamped as the recorder (_edition)")
     except Exception as exc:                    # absent: the edition would read "full"
         finding(f"no _edition stamp in the archive ({exc})")
+
+    if windows:
+        page = "agentduet_desktop/windows/recorder.html"
+        entries = {name.replace(chr(92), "/"): name for name in pkg.toc}
+        if page not in entries:
+            finding("missing Windows Recorder page")
+        else:
+            for word in set(AI_WORDS.findall(pkg.extract(entries[page]).decode("utf-8"))):
+                finding(f"AI page text {word}")
+        for name in entries:
+            rel = name.removeprefix("agentduet_desktop/")
+            if name != page and name.startswith("agentduet_desktop/") and any(
+                    fnmatch.fnmatchcase(rel, g) or rel.startswith(g.removesuffix("/**/*") + "/")
+                    for g in edition.AI_DATA):
+                finding(f"AI data {name}")
+            if name.lower().endswith((".dll", ".pyd", ".exe")) and AI_LIBS.search(name):
+                finding(f"AI runtime {name}")
+        return int(bool(findings))
 
     # 2. NATIVE LIBRARIES, anywhere in the bundle.
     for f in contents.rglob("*"):

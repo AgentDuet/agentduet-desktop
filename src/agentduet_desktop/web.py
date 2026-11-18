@@ -142,6 +142,8 @@ def make_app(token: str) -> web.Application:
     async def index(request):
         if not authed(request):
             return web.Response(status=401, text="bad or missing token")
+        if edition.windows_recorder():
+            return _page("windows/recorder.html")
         return _page("setup.html" if needs_setup() else "web.html")
 
     async def setup_page(request):
@@ -375,6 +377,8 @@ def make_app(token: str) -> web.Application:
         want = bool(body.get("want"))
         settings.set_setting("start_at_login", "yes" if want else "no")
         said = await asyncio.to_thread(loginitem.apply, want)
+        if edition.windows_recorder() and (loginitem.registered() == "on") != want:
+            return web.json_response({"ok": False, "message": said})
         logger.info("start at login -> %s: %s", want, said)
         return web.json_response({"ok": True, "want": want, "message": said})
 
@@ -991,6 +995,13 @@ def make_app(token: str) -> web.Application:
             return web.json_response({"ok": False, "message": f"Cannot show a folder chooser: {exc}"})
         if not chosen:
             return web.json_response({"ok": True, "changed": False, "message": ""})
+        if edition.windows_recorder():
+            import tempfile
+            try:
+                with tempfile.TemporaryFile(dir=chosen):
+                    pass
+            except OSError:
+                return web.json_response({"ok": False, "message": "Choose a folder you can write to."})
         await asyncio.to_thread(settings.set_setting, "recordings", chosen)
         return web.json_response({"ok": True, "changed": True,
                                   "message": _saved("recordings", chosen)})
@@ -1151,7 +1162,33 @@ def make_app(token: str) -> web.Application:
         row = await asyncio.to_thread(_upd.check)
         return web.json_response({"update": row})
 
+    async def recorder_audio(request):
+        if not authed(request):
+            raise web.HTTPUnauthorized()
+        from . import calls, carry
+        row = calls.get(request.query.get("id", ""))
+        if row:
+            folder, names = carry.call_audio(row.get("recordings", []), row["call_id"])
+            if len(names) == 1 and folder != carry.legs():
+                path = folder / names[0]
+                if (path.suffix.lower() == ".wav" and path.resolve().parent == folder.resolve()
+                        and path.is_file()):
+                    return web.FileResponse(path, headers={"Cache-Control": "private, no-store"})
+        raise web.HTTPNotFound()
+
+    async def recorder_finish(request):
+        if not authed(request):
+            raise web.HTTPUnauthorized()
+        from . import oauth
+        if not legal.agreed() or not oauth.signed_in():
+            return web.json_response({"ok": False, "message": "Accept the terms and sign in first."})
+        _mark_setup_done()
+        return web.json_response({"ok": (paths.RUN / "setup-done").exists()})
+
     app = web.Application()
+    if edition.windows_recorder():
+        app.add_routes([web.get("/api/recording", recorder_audio),
+                        web.post("/api/setup/finish", recorder_finish)])
     app.add_routes([
         web.get("/", index),
         web.get("/setup", setup_page),

@@ -48,6 +48,32 @@ FORCE = getattr(signal, "SIGKILL", signal.SIGTERM)
 GRACE_SECONDS = 10
 
 
+def _windows_executable(pid: int) -> pathlib.Path | None:
+    """Query the process image without signalling it. On Windows even kill(pid, 0) terminates."""
+    import ctypes
+    from ctypes import wintypes
+
+    if pid <= 0:
+        return None
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.QueryFullProcessImageNameW.argtypes = [
+        wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
+    handle = kernel.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return None
+    try:
+        size = wintypes.DWORD(32768)
+        buf = ctypes.create_unicode_buffer(size.value)
+        if kernel.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size)):
+            return pathlib.Path(buf.value)
+        return None
+    finally:
+        kernel.CloseHandle(handle)
+
+
 def _alive(pid: int) -> bool:
     """Running, and not a corpse waiting to be reaped.
 
@@ -56,6 +82,8 @@ def _alive(pid: int) -> bool:
     daemon is spawned by the mcp server and stays its child, so between exiting and the parent
     reaping it there is a window where the pid still answers.
     """
+    if sys.platform == "win32":
+        return _windows_executable(pid) is not None
     try:
         os.kill(pid, 0)
     except (OSError, ProcessLookupError):
@@ -93,6 +121,10 @@ def _is_ours(pid: int) -> bool:
 
     So: the executable is named agentduet-desktop (frozen), or argv names our module (from source).
     """
+    if sys.platform == "win32":
+        return bool(getattr(sys, "frozen", False) and
+                    _windows_executable(pid) == pathlib.Path(sys.executable))
+
     def _matches(argv: list[str]) -> bool:
         if not argv:
             return False

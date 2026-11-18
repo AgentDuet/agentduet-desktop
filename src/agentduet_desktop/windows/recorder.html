@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer"><title>AgentDuet Recorder</title>
+<style>
+:root{font:16px "Segoe UI",system-ui,sans-serif;color:#172235;background:#f5f7fa}
+body{max-width:54rem;margin:auto;padding:2rem}header{display:flex;align-items:center;gap:.75rem}
+header img{width:2.5rem}h1{font-size:1.5rem}h2{font-size:1.2rem}
+section{background:white;border:1px solid #d7dfe8;border-radius:.6rem;padding:1.2rem;margin:1rem 0}
+button{font:inherit;padding:.45rem .8rem;margin:.2rem .4rem .2rem 0;cursor:pointer}
+pre{white-space:pre-wrap;font:inherit;max-height:14rem;overflow:auto}
+li{padding:.65rem 0;border-bottom:1px solid #dee4ec}ol{padding-left:1.4rem}
+#folder{overflow-wrap:anywhere}#message{color:#843d10}audio{width:100%}
+</style>
+<header><img src="/logo.png" alt=""><h1>AgentDuet Recorder</h1></header>
+<p id="message" role="status"></p>
+<section id="terms" hidden><h2>Review the terms</h2><details><summary>Terms of Use</summary><pre id="legalTerms"></pre></details>
+<details><summary>Privacy Policy</summary><pre id="privacy"></pre></details><button id="agree">I agree</button></section>
+<section id="account" hidden><h2>Sign in to your phone line</h2><button id="signin">Sign in</button></section>
+<section id="storage" hidden><h2>Recording settings</h2><p id="folder"></p><button id="choose">Choose folder</button>
+<button id="openFolder">Open folder</button><label><input type="checkbox" id="login">Start at login</label>
+<p><button id="finish" hidden>Finish setup</button></p></section>
+<section id="history" hidden><h2>Calls</h2><p id="connection"></p><p id="empty">No calls recorded yet.</p><ol id="calls"></ol>
+<div id="player" hidden><p id="playing"></p><audio id="audio" controls></audio></div></section>
+<script>
+const el = id => document.getElementById(id);
+const token = new URLSearchParams(location.search).get('t');
+let version, previousCalls;
+async function api(path, body) {
+  const options = {headers:{'X-Token':token},cache:'no-store'};
+  if (body !== undefined) Object.assign(options,{method:'POST',body:JSON.stringify(body),
+    headers:{...options.headers,'Content-Type':'application/json'}});
+  const response = await fetch('/api/'+path,options);
+  if (!response.ok) throw Error('Recorder could not complete the request ('+response.status+').');
+  const data = await response.json();
+  if (data.ok === false) throw Error(data.message || 'Request failed. Please try again.');
+  return data;
+}
+function showCalls(people) {
+  const rows = people.flatMap(p => p.calls.map(c => ({...c, person:p.display || p.who})))
+    .sort((a,b) => b.at.localeCompare(a.at));
+  const snapshot = JSON.stringify(rows);
+  if (snapshot === previousCalls) return;
+  previousCalls = snapshot;
+  el('empty').hidden = rows.length > 0;
+  el('calls').replaceChildren(...rows.map(c => {
+    const row = document.createElement('li');
+    const label = [c.person,c.outgoing?'Outgoing':'Incoming',c.started || c.at].join(' · ');
+    row.append(label+' ');
+    if (c.audio) {
+      const play = document.createElement('button');
+      play.textContent = 'Play';
+      play.onclick = async () => {
+        el('player').hidden = false;
+        el('playing').textContent = label;
+        el('audio').src = '/api/recording?'+new URLSearchParams({id:c.call_id,t:token});
+        try { await el('audio').play(); } catch { el('message').textContent='Unable to play this recording.'; }
+      };
+      row.append(play);
+    } else row.append(c.missed?'Missed call':c.files?'Preparing recording':'No recording');
+    return row;
+  }));
+}
+async function refresh() {
+  const s = await api('setup/current');
+  const signed = s.terms_agreed && s.oauth.signed_in;
+  el('terms').hidden = s.terms_agreed;
+  el('account').hidden = !s.terms_agreed || signed;
+  el('storage').hidden = !signed;
+  el('history').hidden = !signed || !s.setup_done;
+  if (!s.terms_agreed && !version) {
+    const docs = await api('terms');
+    el('legalTerms').textContent = docs.terms;
+    el('privacy').textContent = docs.privacy;
+    version = docs.version;
+  }
+  el('folder').textContent = s.carried_dir;
+  el('login').checked = s.start_at_login;
+  el('finish').hidden = s.setup_done;
+  if (signed && s.setup_done) {
+    const {channel} = await api('state');
+    el('connection').textContent = channel.channel === 'live' ? 'Connected to your line' :
+      'Line disconnected · '+(channel.detail || channel.channel);
+    showCalls((await api('threads')).people);
+  }
+}
+function action(id, work) {
+  el(id).onclick = async () => {
+    el(id).disabled = true;
+    try { el('message').textContent=''; await work(); await refresh(); }
+    catch(e) { el('message').textContent=e.message; }
+    finally { el(id).disabled=false; }
+  };
+}
+action('agree',()=>api('terms',{version}));
+action('signin',async()=>{await api('connector/signin/open',{}); el('message').textContent='Complete sign-in in your browser. You can retry here.';});
+action('choose',()=>api('pick-folder',{}));
+action('openFolder',()=>api('reveal',{folder:'recordings'}));
+action('finish',()=>api('setup/finish',{}));
+action('login',()=>api('setup/login-item',{want:el('login').checked}));
+async function poll() {
+  try { await refresh(); } catch(e) { el('connection').textContent='Recorder unavailable'; el('message').textContent=e.message; }
+  setTimeout(poll,4000);
+}
+poll();
+</script></html>

@@ -1,0 +1,78 @@
+name: Windows Recorder
+on:
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: Sign a release candidate with the CI Authenticode certificate
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  build:
+    if: ${{ !inputs.sign || github.ref == 'refs/heads/main' }}
+    runs-on: windows-2022
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - run: python -m pip install ".[ui]" pyinstaller
+      - run: python tests/test_recorder.py
+      - run: python tests/test_windows_recorder.py
+      - name: Freeze and audit Recorder
+        env:
+          AGENTDUET_EDITION: recorder
+        run: |
+          pyinstaller --noconfirm --distpath dist-bin packaging/agentduet-desktop.spec
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python packaging/audit-recorder.py dist-bin/agentduet-desktop.exe
+      - name: Sign Recorder executable
+        if: inputs.sign
+        env:
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: ./packaging/windows/sign.ps1 dist-bin/agentduet-desktop.exe
+      - name: Assemble per-user installer
+        run: |
+          $bootstrap = 'dist-bin/MicrosoftEdgeWebview2Setup.exe'
+          Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $bootstrap
+          $signature = Get-AuthenticodeSignature $bootstrap
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation,') { throw 'Invalid Microsoft bootstrapper signature' }
+          $version = python -c "from importlib.metadata import version; print(version('agentduet-desktop'))"
+          & "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" "/DAppVersion=$version" packaging/windows/recorder.iss
+      - name: Sign installer
+        if: inputs.sign
+        env:
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: ./packaging/windows/sign.ps1 dist-installer/agentduet-recorder-windows-x86_64-setup.exe
+      - name: Install and boot under a fresh profile directory
+        run: |
+          $installer = (Get-ChildItem dist-installer/*.exe).FullName
+          $dir = Join-Path $env:RUNNER_TEMP 'Recorder installed'
+          $p = Start-Process $installer -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$dir`"" -Wait -PassThru
+          if ($p.ExitCode) { throw "Installer failed ($($p.ExitCode))" }
+          $env:AGENTDUET_HOME = Join-Path $env:RUNNER_TEMP 'Recorder smoke'
+          $p = Start-Process "$dir/AgentDuet Recorder.exe" -ArgumentList 'run --headless --no-channel' -PassThru
+          try {
+            for ($i=0; $i -lt 60; $i++) {
+              if ($p.HasExited) { throw 'Recorder exited during startup' }
+              if (Test-Path "$env:AGENTDUET_HOME/run/site-url") { break }
+              Start-Sleep 1
+            }
+            $url = Get-Content "$env:AGENTDUET_HOME/run/site-url" -Raw
+            $page = Invoke-WebRequest $url.Trim()
+            if ($page.Content -notmatch '<title>AgentDuet Recorder</title>') { throw 'Recorder page missing' }
+          } finally { taskkill /pid $p.Id /t /f }
+          $u = Start-Process "$dir/unins000.exe" -ArgumentList '/VERYSILENT /NORESTART' -Wait -PassThru
+          if ($u.ExitCode -or !(Test-Path "$env:AGENTDUET_HOME/run/web-token")) { throw 'Uninstall failed or removed instance data' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agentduet-recorder-windows-x86_64-${{ inputs.sign && 'signed' || 'internal' }}
+          path: dist-installer/*.exe
+          if-no-files-found: error
