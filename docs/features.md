@@ -25,6 +25,8 @@ out when it goes.
 
 **Everyday**
 - Sign in, and nothing to configure.
+- Change or disconnect an API-key connection in Settings. Changing connections clears the old
+  line number; the next call learns the new one. Disconnecting keeps your recordings.
 - A menu bar icon that keeps running when the window is closed, and can start at login.
 - Right-click a call to delete its recording and transcript.
 - Tells you when a new version is out.

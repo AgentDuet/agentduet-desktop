@@ -995,6 +995,21 @@ def make_app(token: str) -> web.Application:
         return web.json_response({"ok": True, "changed": True,
                                   "message": _saved("recordings", chosen)})
 
+    async def api_connector_disconnect(request):
+        """The API-key counterpart of sign-out. The native view owns only the confirmation."""
+        if not authed(request):
+            return web.json_response({"error": "unauthorised"}, status=401)
+        from . import oauth
+        if oauth.signed_in():
+            return web.json_response({"ok": False, "message": "Use Sign Out for this account."})
+        try:
+            message = settings.disconnect_connector()
+        except OSError:
+            logger.exception("could not remove the saved connector")
+            return web.json_response({"ok": False, "message":
+                "Could not remove the saved connection. Check that the app's data folder is writable."})
+        return web.json_response({"ok": True, "message": message})
+
     async def api_connector_signout(request):
         """Forget the tokens.
 
@@ -1186,6 +1201,7 @@ def make_app(token: str) -> web.Application:
         web.post("/api/connector/signin/open", api_signin_open),
         web.post("/api/connector/signin", api_connector_signin),
         web.post("/api/connector/signout", api_connector_signout),
+        web.post("/api/connector/disconnect", api_connector_disconnect),
         web.post("/api/reveal", api_reveal),
         web.post("/api/pick-folder", api_pick_folder),
         web.get("/callback", oauth_callback),

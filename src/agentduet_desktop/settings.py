@@ -110,6 +110,9 @@ def save_connector(api_key: str, connector_uuid: str) -> str:
     api_key, connector_uuid = api_key.strip(), connector_uuid.strip()
     if not api_key or not connector_uuid:
         return "Give both the API key and the connector uuid."
+    changed = (api_key, connector_uuid) != (os.getenv(connector.API_KEY), os.getenv(connector.UUID))
+    if changed:
+        connector.credentials_changed()
     _write_env({connector.API_KEY: api_key, connector.UUID: connector_uuid})
     # Visible to this process immediately — and the channel loop polls the environment, so it
     # picks this up within seconds without a restart.
@@ -117,6 +120,14 @@ def save_connector(api_key: str, connector_uuid: str) -> str:
     os.environ[connector.UUID] = connector_uuid
     return (f"Saved. Key ending {api_key[-4:]}, connector {connector_uuid}.\n"
             "The channel picks this up within a few seconds — no restart needed.")
+
+
+def disconnect_connector() -> str:
+    """Forget this instance's API-key connection, leaving recordings and shared prefill alone."""
+    connector.credentials_changed()
+    _forget_env([connector.API_KEY, connector.UUID])
+    return "Disconnected. Sign in or enter a key to record calls again."
+
 
 def _write_env(values: dict) -> None:
     """Upsert keys in the instance .env, preserving everything else and the file mode."""

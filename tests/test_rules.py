@@ -5537,7 +5537,7 @@ def test_signing_out_closes_a_live_channel() -> None:
     ok("and is closed once the credential is gone", sm.closed)
     src = (pathlib.Path(sa.__file__)).read_text()
     ok("the channel is watched while it runs",
-       "watch = asyncio.create_task(_close_when_signed_out(sm))" in src)
+       "watch = asyncio.create_task(_close_when_signed_out(sm, connection))" in src)
     ok("and a signed-out daemon waits for a credential rather than retrying without one",
        "# SIGNED OUT SINCE THE LAST CONNECT" in src)
 

@@ -18,8 +18,8 @@ THE ONE-CLIENT CONSTRAINT MAKES VERIFYING AWKWARD
 
 Checking a connector means connecting to it, and only one client may hold a connector at a time.
 So we refuse to live-test the uuid the running daemon is already holding — there we save and
-report that it takes effect on restart. A DIFFERENT uuid is safe to test, which is the case that
-matters: the owner is adding or changing one.
+let the channel reconnect with the changed credential. A DIFFERENT uuid is safe to test, which
+is the case that matters: the owner is adding or changing one.
 """
 
 import asyncio
@@ -31,6 +31,30 @@ logger = logging.getLogger("dduet.connector")
 
 API_KEY = "AGENTDUET_API_KEY"
 UUID = "AGENTDUET_CONNECTOR_UUID"
+
+# Distinguishes a disconnect/reconnect to the SAME pair between channel polls.
+_revision = 0
+
+
+def connection_state() -> tuple:
+    """Identity of the configured connection, for comparison only. Never log this: it holds a key.
+
+    OAuth refreshes rotate tokens without changing the connection. Only its connector claim
+    belongs here, not the access or refresh token.
+    """
+    from . import oauth
+    if oauth.signed_in():
+        return ("oauth", oauth.connector_uuid(), _revision)
+    return ("key", os.getenv(API_KEY, ""), os.getenv(UUID, ""), _revision)
+
+
+def credentials_changed() -> None:
+    """Invalidate the learned line and call callbacks belonging to the previous connection."""
+    from . import status
+    global _revision
+    status.clear_number()
+    _revision += 1
+
 
 #: Where an OAuth sign-in would begin. UNSET today, on purpose.
 #:
