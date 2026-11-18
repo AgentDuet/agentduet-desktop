@@ -77,7 +77,11 @@ def main(app: pathlib.Path) -> int:
         if page not in entries:
             finding("missing Windows Recorder page")
         else:
-            for word in set(AI_WORDS.findall(pkg.extract(entries[page]).decode("utf-8"))):
+            markup = pkg.extract(entries[page]).decode("utf-8")
+            # HTML uses <summary> for the clickable heading of a disclosure.
+            # Check its contents, attributes and scripts just like the rest of the UI.
+            markup = re.sub(r"</?summary(?=[\s>])", "<", markup, flags=re.I)
+            for word in set(AI_WORDS.findall(markup)):
                 finding(f"AI page text {word}")
         for name in entries:
             rel = name.removeprefix("agentduet_desktop/")
