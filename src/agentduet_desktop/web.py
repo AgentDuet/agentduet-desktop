@@ -1179,9 +1179,9 @@ def make_app(token: str) -> web.Application:
     async def recorder_finish(request):
         if not authed(request):
             raise web.HTTPUnauthorized()
-        from . import oauth
-        if not legal.agreed() or not oauth.signed_in():
-            return web.json_response({"ok": False, "message": "Accept the terms and sign in first."})
+        from . import connector
+        if not legal.agreed() or not connector.configured():
+            return web.json_response({"ok": False, "message": "Accept the terms and connect your phone line first."})
         _mark_setup_done()
         return web.json_response({"ok": (paths.RUN / "setup-done").exists()})
 

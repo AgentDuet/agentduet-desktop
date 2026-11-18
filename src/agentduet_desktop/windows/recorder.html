@@ -9,13 +9,20 @@ section{background:white;border:1px solid #d7dfe8;border-radius:.6rem;padding:1.
 button{font:inherit;padding:.45rem .8rem;margin:.2rem .4rem .2rem 0;cursor:pointer}
 pre{white-space:pre-wrap;font:inherit;max-height:14rem;overflow:auto}
 li{padding:.65rem 0;border-bottom:1px solid #dee4ec}ol{padding-left:1.4rem}
+form{display:grid;gap:.5rem;max-width:28rem;margin-top:.8rem}form input{font:inherit;padding:.45rem}form button{justify-self:start}
 #folder{overflow-wrap:anywhere}#message{color:#843d10}audio{width:100%}
 </style>
 <header><img src="/logo.png" alt=""><h1>AgentDuet Recorder</h1></header>
 <p id="message" role="status"></p>
 <section id="terms" hidden><h2>Review the terms</h2><details><summary>Terms of Use</summary><pre id="legalTerms"></pre></details>
 <details><summary>Privacy Policy</summary><pre id="privacy"></pre></details><button id="agree">I agree</button></section>
-<section id="account" hidden><h2>Sign in to your phone line</h2><button id="signin">Sign in</button></section>
+<section id="account" hidden><h2>Sign in to your phone line</h2><button id="signin">Sign in with browser</button>
+<details id="manual"><summary>Use a connector UUID and API key</summary>
+<form id="credentials" method="post">
+<label for="uuid">Connector UUID</label><input id="uuid" required spellcheck="false" autocomplete="off">
+<label for="key">API key</label><input id="key" type="password" required autocomplete="off">
+<button id="connect" type="submit">Connect phone line</button>
+</form></details></section>
 <section id="storage" hidden><h2>Recording settings</h2><p id="folder"></p><button id="choose">Choose folder</button>
 <button id="openFolder">Open folder</button><label><input type="checkbox" id="login">Start at login</label>
 <p><button id="finish" hidden>Finish setup</button></p></section>
@@ -24,7 +31,7 @@ li{padding:.65rem 0;border-bottom:1px solid #dee4ec}ol{padding-left:1.4rem}
 <script>
 const el = id => document.getElementById(id);
 const token = new URLSearchParams(location.search).get('t');
-let version, previousCalls;
+let version, previousCalls, prefilled = false;
 async function api(path, body) {
   const options = {headers:{'X-Token':token},cache:'no-store'};
   if (body !== undefined) Object.assign(options,{method:'POST',body:JSON.stringify(body),
@@ -62,11 +69,20 @@ function showCalls(people) {
 }
 async function refresh() {
   const s = await api('setup/current');
-  const signed = s.terms_agreed && s.oauth.signed_in;
+  const ready = s.terms_agreed && s.connector_configured;
+  if (s.terms_agreed && !ready && !prefilled) {
+    el('uuid').value = s.offer_uuid || s.connector_uuid || '';
+    if (s.offer_key) {
+      el('key').placeholder = 'Use saved key ' + s.offer_key;
+      el('key').required = false;
+    }
+    el('manual').open = Boolean(s.offer_uuid || s.offer_key);
+    prefilled = true;
+  }
   el('terms').hidden = s.terms_agreed;
-  el('account').hidden = !s.terms_agreed || signed;
-  el('storage').hidden = !signed;
-  el('history').hidden = !signed || !s.setup_done;
+  el('account').hidden = !s.terms_agreed || ready;
+  el('storage').hidden = !ready;
+  el('history').hidden = !ready || !s.setup_done;
   if (!s.terms_agreed && !version) {
     const docs = await api('terms');
     el('legalTerms').textContent = docs.terms;
@@ -76,7 +92,7 @@ async function refresh() {
   el('folder').textContent = s.carried_dir;
   el('login').checked = s.start_at_login;
   el('finish').hidden = s.setup_done;
-  if (signed && s.setup_done) {
+  if (ready && s.setup_done) {
     const {channel} = await api('state');
     el('connection').textContent = channel.channel === 'live' ? 'Connected to your line' :
       'Line disconnected · '+(channel.detail || channel.channel);
@@ -93,6 +109,18 @@ function action(id, work) {
 }
 action('agree',()=>api('terms',{version}));
 action('signin',async()=>{await api('connector/signin/open',{}); el('message').textContent='Complete sign-in in your browser. You can retry here.';});
+el('credentials').onsubmit = async event => {
+  event.preventDefault();
+  el('connect').disabled = true;
+  el('message').textContent = 'Checking connector…';
+  try {
+    await api('setup/connector', {uuid:el('uuid').value.trim(), key:el('key').value.trim()});
+    el('key').value = '';
+    el('message').textContent = 'Connector saved.';
+    await refresh();
+  } catch (e) { el('message').textContent = e.message; }
+  finally { el('connect').disabled = false; }
+};
 action('choose',()=>api('pick-folder',{}));
 action('openFolder',()=>api('reveal',{folder:'recordings'}));
 action('finish',()=>api('setup/finish',{}));

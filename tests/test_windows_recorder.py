@@ -34,6 +34,18 @@ class RecorderWindow(unittest.IsolatedAsyncioTestCase):
             result = await self.client.post("/api/setup/finish", headers=self.headers)
             self.assertTrue((await result.json())["ok"])
 
+        from agentduet_desktop import connector
+        pair = {"uuid": "test-uuid", "key": "test-key"}
+        with patch.object(oauth, "signed_in", return_value=False), patch.object(
+                connector, "verify", return_value=(True, "verified")) as verify:
+            result = await self.client.post("/api/setup/connector", json=pair, headers=self.headers)
+            self.assertTrue((await result.json())["ok"])
+            verify.assert_awaited_once_with("test-key", "test-uuid")
+            current = await self.client.get("/api/setup/current", headers=self.headers)
+            self.assertTrue((await current.json())["connector_configured"])
+            result = await self.client.post("/api/setup/finish", headers=self.headers)
+            self.assertTrue((await result.json())["ok"])
+
         path = self.folder / "call.wav"
         with wave.open(str(path), "wb") as audio:
             audio.setparams((2, 2, 24000, 0, "NONE", "uncompressed"))
