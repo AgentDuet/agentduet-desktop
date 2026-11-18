@@ -51,6 +51,7 @@ try {
             Start-Sleep -Milliseconds 500
         }
         if (!$caption -or $caption.Current.Name -notmatch '12025550123') { throw 'Recording did not load' }
+        $null = Find-Control 'Pause'
         Save-Window 'recordings'
         Invoke-Control 'Settings'
         $null = Find-Control 'Start at login'

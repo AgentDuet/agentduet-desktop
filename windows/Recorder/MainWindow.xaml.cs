@@ -8,9 +8,13 @@ namespace Recorder;
 
 public sealed partial class MainWindow : Window
 {
-    public sealed record Person(string Id, string Name, string LastCall);
+    public sealed record Person(string Id, string Name, string LastCall)
+    {
+        public override string ToString() => $"{Name}, {LastCall}";
+    }
     public sealed record Call(string Id, string Date, string Description, string Path)
     {
+        public override string ToString() => $"{Date}, {Description}";
         public Visibility PlayVisibility => Visible(Path.Length > 0);
     }
 
@@ -260,13 +264,21 @@ public sealed partial class MainWindow : Window
     {
         if (player != null) return player;
         var element = new MediaPlayerElement { Height = 64, AreTransportControlsEnabled = true };
+        element.TransportControls.IsZoomButtonVisible = false;
         element.SetMediaPlayer(new Windows.Media.Playback.MediaPlayer());
         element.MediaPlayer.MediaOpened += (_, _) => DispatcherQueue.TryEnqueue(() =>
         {
             if (!closed && element.MediaPlayer.Source != null) Playing.Text = playbackLabel;
         });
-        element.MediaPlayer.MediaFailed += (_, _) => DispatcherQueue.TryEnqueue(() =>
-            Message("Windows could not play this recording.", InfoBarSeverity.Error));
+        element.MediaPlayer.MediaFailed += (_, failure) =>
+        {
+            var code = failure.ExtendedErrorCode?.HResult;
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                Playing.Text = playbackLabel;
+                Message($"Playback failed ({code:X8}). Check your sound output or open the recording from its folder.", InfoBarSeverity.Error);
+            });
+        };
         PlayerHost.Content = element;
         player = element;
         return element;
