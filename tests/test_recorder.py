@@ -100,7 +100,7 @@ def stripped_tree(at: pathlib.Path) -> pathlib.Path:
 
 def env(tree: pathlib.Path, home: pathlib.Path, **extra) -> dict:
     keep = {k: v for k, v in os.environ.items() if k in ("PATH", "LANG", "TMPDIR", "SYSTEMROOT", "TEMP", "TMP", "COMSPEC", "PYTHONUTF8")}
-    return {**keep, "LOCALAPPDATA": str(home.parent / "local"), "APPDATA": str(home.parent / "roaming"),
+    return {**keep, "USERPROFILE": str(home.parent), "LOCALAPPDATA": str(home.parent / "local"), "APPDATA": str(home.parent / "roaming"),
             "PYTHONPATH": str(tree), "HOME": str(home.parent),
             "AGENTDUET_OAUTH_URL": "", "AGENTDUET_HOME": str(home), "PYTHONDONTWRITEBYTECODE": "1", **extra}
 
