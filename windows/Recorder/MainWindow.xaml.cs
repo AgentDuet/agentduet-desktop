@@ -28,7 +28,6 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         Player.SetMediaPlayer(new Windows.Media.Playback.MediaPlayer());
-        Player.TransportControls.IsFullWindowButtonVisible = false;
         Player.MediaPlayer.MediaFailed += (_, _) => DispatcherQueue.TryEnqueue(() =>
             Message("Windows could not play this recording.", InfoBarSeverity.Error));
         Root.Loaded += async (_, _) =>

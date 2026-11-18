@@ -91,6 +91,15 @@ def main(app: pathlib.Path) -> int:
                 finding(f"AI data {name}")
             if name.lower().endswith((".dll", ".pyd", ".exe")) and AI_LIBS.search(name):
                 finding(f"AI runtime {name}")
+        # The native UI ships next to the frozen engine. Check the actual publish tree
+        # too: the Windows App SDK also distributes optional machine-learning components.
+        native = app.parent / "window"
+        for required in ("Recorder.exe", "Recorder.dll", "Microsoft.UI.Xaml.dll"):
+            if not (native / required).is_file():
+                finding(f"missing native window component {required}")
+        for file in native.rglob("*"):
+            if file.is_file() and (AI_LIBS.search(file.name) or "Windows.AI." in file.name):
+                finding(f"AI runtime in native window: {file.name}")
         return int(bool(findings))
 
     # 2. NATIVE LIBRARIES, anywhere in the bundle.

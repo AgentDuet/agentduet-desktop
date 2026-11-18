@@ -76,7 +76,8 @@ jobs:
             }
             $url = Get-Content "$env:AGENTDUET_HOME/run/site-url" -Raw
             $page = Invoke-WebRequest $url.Trim()
-            & ./packaging/windows/test-window.ps1 -InstallDir $dir
+            powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./packaging/windows/test-window.ps1 -InstallDir $dir
+            if ($LASTEXITCODE) { throw "Native window check failed" }
             if ($page.Content -notmatch '<title>AgentDuet Recorder</title>') { throw 'Recorder page missing' }
           } finally { taskkill /pid $p.Id /t /f }
           $u = Start-Process "$dir/unins000.exe" -ArgumentList '/VERYSILENT /NORESTART' -Wait -PassThru
