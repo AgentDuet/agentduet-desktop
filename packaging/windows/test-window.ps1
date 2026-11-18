@@ -63,6 +63,19 @@ try {
         $null = Find-Control 'Use a connector UUID and API key'
         Save-Window 'sign-in'
     }
+} catch {
+    Get-Process -Name 'Recorder','AgentDuet Recorder' -ErrorAction SilentlyContinue |
+        Select-Object Id, ProcessName, SessionId, MainWindowTitle | Out-Host
+    if ($window) {
+        $window.FindAll($scope, [System.Windows.Automation.Condition]::TrueCondition) |
+            ForEach-Object { Write-Host $_.Current.AutomationId $_.Current.Name }
+    } else {
+        $desktop.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition) |
+            ForEach-Object { Write-Host $_.Current.ClassName $_.Current.Name }
+    }
+    Get-WinEvent -FilterHashtable @{LogName='Application'; StartTime=(Get-Date).AddMinutes(-4)} -ErrorAction SilentlyContinue |
+        Where-Object { $_.Message -match 'Recorder.exe' } | ForEach-Object { Write-Host $_.Message }
+    throw
 } finally {
     if (!$launcher.HasExited) { taskkill /pid $launcher.Id /t /f | Out-Null }
 }
