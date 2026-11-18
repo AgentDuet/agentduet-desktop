@@ -4,6 +4,9 @@ on:
     branches: [recorder/supports-windows]
     paths:
       - 'windows/**'
+      - 'src/agentduet_desktop/**'
+      - 'tests/test_windows_recorder.py'
+      - 'packaging/agentduet-desktop.spec'
       - 'packaging/windows/**'
       - '.github/workflows/windows-recorder.yml'
   workflow_call:
