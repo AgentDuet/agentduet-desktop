@@ -14,7 +14,7 @@ either carried or answered.
 
 ## Install
 
-Download a build from [Releases](../../releases). macOS (Apple Silicon) and Linux x86-64.
+Download a build from [Releases](../../releases). macOS (Apple Silicon) and Linux x86-64. The standalone Windows x64 Recorder has a separate per-user installer. See [Windows Recorder setup and qualification](docs/windows-recorder.md).
 
 ```
 agentduet-desktop init      # set it up
@@ -22,7 +22,7 @@ agentduet-desktop run       # start it
 agentduet-desktop status    # what is running, and what this build can do
 ```
 
-macOS and Windows set up in a browser page; **Linux sets up in the console**, because that is
+The Windows Recorder installer opens its native setup window on first launch. The full desktop app can set up in a browser page; **Linux sets up in the console**, because that is
 where someone self-hosting is. Both surfaces exist everywhere — this is about which one is
 documented.
 
@@ -93,7 +93,7 @@ sandbox that cannot choose its own destination.
   app the conference audio.
 - **Single sign-on is a stub.** Configure the connector by hand in Settings.
 - **SMS archiving does not exist**, and the cloud-summary path is not wired.
-- **Apple Silicon only** on macOS. No Windows build yet.
+- **Apple Silicon only** on macOS. Windows builds currently cover the standalone Recorder edition.
 
 ## Contributing
 

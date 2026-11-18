@@ -64,6 +64,7 @@ try {
         Save-Window 'sign-in'
     }
 } catch {
+    Get-Content "$env:AGENTDUET_HOME/run/window.log" -ErrorAction SilentlyContinue | Out-Host
     Get-Process -Name 'Recorder','AgentDuet Recorder' -ErrorAction SilentlyContinue |
         Select-Object Id, ProcessName, SessionId, MainWindowTitle | Out-Host
     if ($window) {

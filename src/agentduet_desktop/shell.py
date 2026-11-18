@@ -252,8 +252,10 @@ def _recorder_window() -> Path:
 def open_window(url: str) -> None:
     if edition.windows_recorder():
         # The loopback credential never goes on the process command line.
-        subprocess.run([str(_recorder_window())], input=url + "\n", encoding="utf-8",
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        executable = _recorder_window()
+        with (paths.RUN / "window.log").open("w", encoding="utf-8") as errors:
+            subprocess.run([str(executable)], input=url + "\n", encoding="utf-8", cwd=executable.parent,
+                           stdout=subprocess.DEVNULL, stderr=errors, check=True)
         return
     import webview
     win = webview.create_window(TITLE, url, width=1360, height=900,

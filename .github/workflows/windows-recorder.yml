@@ -32,6 +32,24 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Publish native WinUI window
         run: dotnet publish windows/Recorder/Recorder.csproj -c Release -p:Platform=x64 -o dist-bin/window
+      - name: Launch the published window
+        working-directory: dist-bin/window
+        run: |
+          Set-Content "$env:RUNNER_TEMP/window-input" 'http://127.0.0.1:1/?t=fixture'
+          $errors = "$env:RUNNER_TEMP/window-errors"
+          $window = Start-Process ./Recorder.exe -PassThru -RedirectStandardInput "$env:RUNNER_TEMP/window-input" -RedirectStandardError $errors
+          try {
+            for ($i = 0; $i -lt 30; $i++) {
+              $window.Refresh()
+              if ($window.HasExited) { throw "Native startup exited ($($window.ExitCode))" }
+              if ($window.MainWindowTitle -eq 'AgentDuet Recorder') { break }
+              Start-Sleep 1
+            }
+            if ($window.MainWindowTitle -ne 'AgentDuet Recorder') { throw 'No native window' }
+          } finally {
+            Get-Content $errors
+            if (!$window.HasExited) { Stop-Process -Id $window.Id }
+          }
       - run: python -m pip install . pyinstaller
       - run: python tests/test_recorder.py
       - run: python tests/test_windows_recorder.py
