@@ -10,7 +10,7 @@ if ((Get-FileHash $archive).Hash -ne 'dd10560994de65a7e587fb8b93c0d7e9838292d9c3
     throw 'Unexpected virtual audio driver archive'
 }
 Expand-Archive $archive -DestinationPath $dir
-$devcon = Get-ChildItem "${env:ProgramFiles(x86)}/Windows Kits/10/Tools/*/x64/devcon.exe" | Select-Object -Last 1
+$devcon = Get-ChildItem "${env:ProgramFiles(x86)}/Windows Kits/10/Tools/*/x64/devcon.exe" -ErrorAction SilentlyContinue | Select-Object -Last 1
 if (!$devcon) {
     $wdk = "$dir/wdk.zip"
     Invoke-WebRequest 'https://api.nuget.org/v3-flatcontainer/microsoft.windows.wdk.x64/10.0.26100.6584/microsoft.windows.wdk.x64.10.0.26100.6584.nupkg' -OutFile $wdk

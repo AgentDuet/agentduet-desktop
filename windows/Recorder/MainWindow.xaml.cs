@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         Title = "AgentDuet Recorder";
+        AppWindow.SetIcon(System.IO.Path.Combine(AppContext.BaseDirectory, "Recorder.ico"));
         Root.Loaded += async (_, _) =>
         {
             try
@@ -118,8 +119,13 @@ public sealed partial class MainWindow : Window
         if (!library) return;
 
         var channel = (await api.Request("state"))["channel"];
-        Connection.Text = Text(channel, "channel") == "live" ? "Connected to your line" :
-            "Line disconnected · " + First(Text(channel, "detail"), Text(channel, "channel"));
+        Connection.Text = Text(channel, "channel") switch
+        {
+            "live" => "Connected to your line",
+            "connecting" => "Connecting to your line…",
+            _ => "Line disconnected"
+        };
+        ToolTipService.SetToolTip(Connection, Text(channel, "detail"));
         await ReadLibrary();
     }
 

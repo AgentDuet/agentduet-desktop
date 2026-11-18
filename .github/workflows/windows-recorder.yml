@@ -23,6 +23,8 @@ jobs:
       PYTHONUTF8: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Provision a playback device on the hosted runner
+        run: ./packaging/windows/test-audio-device.ps1
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -80,8 +82,6 @@ jobs:
           WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
           WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
         run: ./packaging/windows/sign.ps1 dist-installer/agentduet-recorder-windows-x86_64-setup.exe
-      - name: Provision a playback device on the hosted runner
-        run: ./packaging/windows/test-audio-device.ps1
       - name: Install and boot under a fresh profile directory
         run: |
           $installer = (Get-ChildItem dist-installer/*.exe).FullName
