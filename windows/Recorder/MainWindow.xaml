@@ -59,23 +59,22 @@
      </ListView>
      <TextBlock x:Name="Empty" Grid.Row="1" Text="No calls recorded yet." TextWrapping="Wrap" IsHitTestVisible="False"/>
     </Grid>
-    <Grid x:Name="Details" Grid.Column="1" RowSpacing="12">
-     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-     <Button x:Name="Back" Click="GoBack">Back to people</Button>
-     <TextBlock x:Name="PersonName" Grid.Row="1" TextWrapping="Wrap" Style="{StaticResource SubtitleTextBlockStyle}"/>
-     <ListView Grid.Row="2" x:Name="Calls" AutomationProperties.Name="Calls" SelectionMode="None">
+    <Grid x:Name="Details" Grid.Column="1" RowSpacing="12" Padding="12" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
+     <StackPanel Spacing="8">
+      <Button x:Name="Back" Click="GoBack">Back to people</Button>
+     <TextBlock x:Name="PersonName" TextWrapping="Wrap" Style="{StaticResource SubtitleTextBlockStyle}"/>
+     </StackPanel>
+     <ListView Grid.Row="1" x:Name="Calls" HorizontalContentAlignment="Stretch" AutomationProperties.Name="Calls" SelectionMode="None">
       <ListView.ItemTemplate><DataTemplate>
-       <StackPanel Margin="0,6" Spacing="4">
+       <StackPanel Margin="0,6" Spacing="4" Loaded="RowLoaded" Unloaded="RowUnloaded" DataContextChanged="RowChanged">
         <TextBlock Text="{Binding Date}" Style="{StaticResource BodyStrongTextBlockStyle}"/>
         <TextBlock Text="{Binding Description}" TextWrapping="Wrap"/>
-        <Button Content="Play recording" Visibility="{Binding PlayVisibility}" Click="Play"/>
+        <Button x:Name="PlayButton" Content="Play recording" Click="Play"/>
+        <ContentControl x:Name="Transport" HorizontalContentAlignment="Stretch"/>
        </StackPanel>
       </DataTemplate></ListView.ItemTemplate>
      </ListView>
-     <StackPanel Grid.Row="3" x:Name="Playback" Visibility="Collapsed" Spacing="4">
-      <TextBlock x:Name="Playing" AutomationProperties.AutomationId="Playing" TextWrapping="Wrap"/>
-      <ContentControl x:Name="PlayerHost" HorizontalContentAlignment="Stretch"/>
-     </StackPanel>
     </Grid>
    </Grid>
   </Grid>

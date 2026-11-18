@@ -43,15 +43,8 @@ try {
     if ($Library) {
         Invoke-Control 'Finish setup'
         Invoke-Control 'Play recording'
-        $playing = [System.Windows.Automation.PropertyCondition]::new(
-            [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'Playing')
-        for ($i = 0; $i -lt 30; $i++) {
-            $caption = $window.FindFirst($scope, $playing)
-            if ($caption -and $caption.Current.Name -match '12025550123') { break }
-            Start-Sleep -Milliseconds 500
-        }
-        if (!$caption -or $caption.Current.Name -notmatch '12025550123') { throw 'Recording did not load' }
         $null = Find-Control 'Pause'
+        $null = Find-Control 'Seek'
         Save-Window 'recordings'
         Invoke-Control 'Settings'
         $null = Find-Control 'Start at login'

@@ -28,7 +28,8 @@ public sealed partial class MainWindow : Window
     private bool settings, ready, narrowDetail, binding, closed, prefilled;
     private MediaPlayerElement? player;
     private int playbackVersion;
-    private string playbackLabel = "";
+    private string? playingId;
+    private StackPanel? playingRow;
 
     public MainWindow()
     {
@@ -84,7 +85,7 @@ public sealed partial class MainWindow : Window
         bool configured = Flag(state, "connector_configured");
         ready = agreed && configured && Flag(state, "setup_done");
         bool library = ready && !settings;
-        if (!library && Playback.Visibility == Visibility.Visible) StopPlayback();
+        if (!library && playingId != null) StopPlayback();
         Heading.Text = library ? "Recordings" : ready ? "Settings" : "Set up Recorder";
         Setup.Visibility = Visible(!library);
         Library.Visibility = Visible(library);
@@ -132,6 +133,9 @@ public sealed partial class MainWindow : Window
     private static string DisplayDate(string stamp) =>
         DateTime.TryParse(stamp, out var date) ? date.ToString("g") : stamp;
 
+    private static string Duration(double seconds) =>
+        TimeSpan.FromSeconds(seconds).ToString(seconds >= 3600 ? @"h\:mm\:ss" : @"m\:ss");
+
     private async Task ReadLibrary()
     {
         string? requested = selected;
@@ -165,12 +169,13 @@ public sealed partial class MainWindow : Window
             string stamp = First(Text(c, "started"), Text(c, "at"));
             string date = DisplayDate(stamp);
             string audio = Text(c, "audio");
-            string status = audio.Length > 0 ? TimeSpan.FromSeconds((double?)c!["seconds"] ?? 0).ToString("g") :
+            string status = audio.Length > 0 ? Duration((double?)c!["seconds"] ?? 0) :
                 Flag(c, "missed") ? "Missed call" : (int?)c!["files"] > 0 ? "Preparing recording" : "No recording";
             return new Call(Text(c, "call_id"), date, (Flag(c, "outgoing") ? "Outgoing" : "Incoming") + " · " + status, audio);
         }).ToArray() ?? [];
         if (!calls.SequenceEqual(nextCalls))
         {
+            if (playingId != null && !nextCalls.Any(c => c.Id == playingId)) StopPlayback();
             calls = nextCalls;
             Calls.ItemsSource = calls;
         }
@@ -266,26 +271,61 @@ public sealed partial class MainWindow : Window
         catch (Exception e) { Message(e.Message, InfoBarSeverity.Error); }
     }
 
+    private void DetachPlayer()
+    {
+        if (playingRow == null) return;
+        ((ContentControl)playingRow.FindName("Transport")).Content = null;
+        if (playingRow.DataContext is Call call)
+            ((Button)playingRow.FindName("PlayButton")).Visibility = call.PlayVisibility;
+        playingRow = null;
+    }
+
+    private void BindRow(StackPanel row)
+    {
+        if (row.FindName("PlayButton") is not Button button || row.DataContext is not Call call) return;
+        if (playingId == call.Id && player != null)
+        {
+            if (playingRow != row)
+            {
+                DetachPlayer();
+                playingRow = row;
+                ((ContentControl)row.FindName("Transport")).Content = player;
+            }
+            button.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            if (playingRow == row) DetachPlayer();
+            button.Visibility = call.PlayVisibility;
+        }
+    }
+
+    private void RowLoaded(object sender, RoutedEventArgs e) => BindRow((StackPanel)sender);
+    private void RowChanged(FrameworkElement sender, DataContextChangedEventArgs e) => BindRow((StackPanel)sender);
+    private void RowUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (sender == playingRow) DetachPlayer();
+    }
+
     private MediaPlayerElement AudioPlayer()
     {
         if (player != null) return player;
-        var element = new MediaPlayerElement { Height = 64, AreTransportControlsEnabled = true };
+        var element = new MediaPlayerElement { Height = 104, AreTransportControlsEnabled = true };
+        element.TransportControls.IsCompact = false;
         element.TransportControls.IsZoomButtonVisible = false;
+        element.TransportControls.IsSeekBarVisible = true;
+        element.TransportControls.ShowAndHideAutomatically = false;
         element.SetMediaPlayer(new Windows.Media.Playback.MediaPlayer());
-        element.MediaPlayer.MediaOpened += (_, _) => DispatcherQueue.TryEnqueue(() =>
-        {
-            if (!closed && element.MediaPlayer.Source != null) Playing.Text = playbackLabel;
-        });
         element.MediaPlayer.MediaFailed += (_, failure) =>
         {
             var code = failure.ExtendedErrorCode?.HResult;
             DispatcherQueue.TryEnqueue(() =>
             {
-                Playing.Text = playbackLabel;
+                if (closed) return;
+                StopPlayback();
                 Message($"Playback failed ({code:X8}). Check your sound output or open the recording from its folder.", InfoBarSeverity.Error);
             });
         };
-        PlayerHost.Content = element;
         player = element;
         return element;
     }
@@ -293,27 +333,27 @@ public sealed partial class MainWindow : Window
     private void StopPlayback()
     {
         playbackVersion++;
+        playingId = null;
         if (player != null)
         {
             player.MediaPlayer.Pause();
             player.MediaPlayer.Source = null;
         }
-        Playback.Visibility = Visibility.Collapsed;
+        DetachPlayer();
     }
 
     private async void Play(object sender, RoutedEventArgs args)
     {
-        if (((FrameworkElement)sender).DataContext is not Call call) return;
+        if (sender is not Button { Parent: StackPanel row, DataContext: Call call }) return;
         int version = ++playbackVersion;
         try
         {
             var file = await StorageFile.GetFileFromPathAsync(call.Path);
-            if (version != playbackVersion || closed) return;
-            playbackLabel = $"{PersonName.Text} · {call.Date}";
-            Playing.Text = "Opening recording…";
+            if (version != playbackVersion || closed || row.DataContext as Call != call) return;
             var media = AudioPlayer().MediaPlayer;
+            playingId = call.Id;
+            BindRow(row);
             media.Source = MediaSource.CreateFromStorageFile(file);
-            Playback.Visibility = Visibility.Visible;
             media.Play();
         }
         catch (Exception e) { Message($"Unable to play recording. {e.Message}", InfoBarSeverity.Error); }
