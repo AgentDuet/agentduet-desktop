@@ -22,19 +22,13 @@ public sealed partial class MainWindow : Window
     private Person[] people = [];
     private Call[] calls = [];
     private bool settings, ready, narrowDetail, binding, closed, prefilled;
+    private MediaPlayerElement? player;
     private int playbackVersion;
     private string playbackLabel = "";
 
     public MainWindow()
     {
         InitializeComponent();
-        Player.SetMediaPlayer(new Windows.Media.Playback.MediaPlayer());
-        Player.MediaPlayer.MediaOpened += (_, _) => DispatcherQueue.TryEnqueue(() =>
-        {
-            if (!closed && Player.Source != null) Playing.Text = playbackLabel;
-        });
-        Player.MediaPlayer.MediaFailed += (_, _) => DispatcherQueue.TryEnqueue(() =>
-            Message("Windows could not play this recording.", InfoBarSeverity.Error));
         Root.Loaded += async (_, _) =>
         {
             try
@@ -232,7 +226,18 @@ public sealed partial class MainWindow : Window
     private async void SignIn(object sender, RoutedEventArgs e) => await Act("connector/signin/open", new {}, "Complete sign-in in your browser. You can also use a connector UUID and API key here.");
     private async void SignOut(object sender, RoutedEventArgs e) => await Act("connector/signout", new {});
     private async void Connect(object sender, RoutedEventArgs e) => await Act("setup/connector", new { uuid = Uuid.Text.Trim(), key = Key.Password.Trim() });
-    private async void ChooseFolder(object sender, RoutedEventArgs e) => await Act("pick-folder", new {});
+    private async void ChooseFolder(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var picker = new Windows.Storage.Pickers.FolderPicker();
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+            picker.FileTypeFilter.Add("*");
+            var folder = await picker.PickSingleFolderAsync();
+            if (folder != null) await Act("pick-folder", new { path = folder.Path });
+        }
+        catch (Exception error) { Message(error.Message, InfoBarSeverity.Error); }
+    }
     private async void OpenFolder(object sender, RoutedEventArgs e) => await Act("reveal", new { folder = "recordings" });
     private async void ChangeLogin(object sender, RoutedEventArgs e) => await Act("setup/login-item", new { want = Login.IsChecked == true });
     private async void Finish(object sender, RoutedEventArgs e) => await Act("setup/finish", new {});
@@ -250,11 +255,30 @@ public sealed partial class MainWindow : Window
         catch (Exception e) { Message(e.Message, InfoBarSeverity.Error); }
     }
 
+    private MediaPlayerElement AudioPlayer()
+    {
+        if (player != null) return player;
+        var element = new MediaPlayerElement { Height = 64, AreTransportControlsEnabled = true };
+        element.SetMediaPlayer(new Windows.Media.Playback.MediaPlayer());
+        element.MediaPlayer.MediaOpened += (_, _) => DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!closed && element.MediaPlayer.Source != null) Playing.Text = playbackLabel;
+        });
+        element.MediaPlayer.MediaFailed += (_, _) => DispatcherQueue.TryEnqueue(() =>
+            Message("Windows could not play this recording.", InfoBarSeverity.Error));
+        PlayerHost.Content = element;
+        player = element;
+        return element;
+    }
+
     private void StopPlayback()
     {
         playbackVersion++;
-        Player.MediaPlayer.Pause();
-        Player.Source = null;
+        if (player != null)
+        {
+            player.MediaPlayer.Pause();
+            player.MediaPlayer.Source = null;
+        }
         Playback.Visibility = Visibility.Collapsed;
     }
 
@@ -268,9 +292,10 @@ public sealed partial class MainWindow : Window
             if (version != playbackVersion || closed) return;
             playbackLabel = $"{PersonName.Text} · {call.Date}";
             Playing.Text = "Opening recording…";
-            Player.Source = MediaSource.CreateFromStorageFile(file);
+            var media = AudioPlayer().MediaPlayer;
+            media.Source = MediaSource.CreateFromStorageFile(file);
             Playback.Visibility = Visibility.Visible;
-            Player.MediaPlayer.Play();
+            media.Play();
         }
         catch (Exception e) { Message($"Unable to play recording. {e.Message}", InfoBarSeverity.Error); }
     }

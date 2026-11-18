@@ -74,7 +74,7 @@
      </ListView>
      <StackPanel Grid.Row="3" x:Name="Playback" Visibility="Collapsed" Spacing="4">
       <TextBlock x:Name="Playing" AutomationProperties.AutomationId="Playing" TextWrapping="Wrap"/>
-      <MediaPlayerElement x:Name="Player" Height="64" AreTransportControlsEnabled="True"/>
+      <ContentControl x:Name="PlayerHost" HorizontalContentAlignment="Stretch"/>
      </StackPanel>
     </Grid>
    </Grid>

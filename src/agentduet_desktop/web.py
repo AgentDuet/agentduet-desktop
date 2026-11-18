@@ -989,10 +989,18 @@ def make_app(token: str) -> web.Application:
         if not authed(request):
             return web.json_response({"error": "unauthorised"}, status=401)
         from . import owner as _own, reveal
-        try:
-            chosen = await asyncio.to_thread(reveal.pick_folder, str(_own.recordings_dir()))
-        except RuntimeError as exc:
-            return web.json_response({"ok": False, "message": f"Cannot show a folder chooser: {exc}"})
+        chosen = None
+        if edition.windows_recorder() and request.can_read_body:
+            body = await request.json()
+            if "path" in body:
+                chosen = body["path"]
+                if not isinstance(chosen, str) or not pathlib.Path(chosen).is_absolute():
+                    return web.json_response({"ok": False, "message": "Choose an absolute folder path."})
+        if chosen is None:
+            try:
+                chosen = await asyncio.to_thread(reveal.pick_folder, str(_own.recordings_dir()))
+            except RuntimeError as exc:
+                return web.json_response({"ok": False, "message": f"Cannot show a folder chooser: {exc}"})
         if not chosen:
             return web.json_response({"ok": True, "changed": False, "message": ""})
         if edition.windows_recorder():
