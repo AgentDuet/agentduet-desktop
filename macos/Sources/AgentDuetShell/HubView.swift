@@ -973,9 +973,20 @@ private struct Conversation: View {
                                 }
                                 .help("Summary")
                                 .popover(isPresented: $showingSummary.value, arrowEdge: .bottom) {
-                                    SummaryBody(person: person) {
-                                        showingSummary.value = false
-                                        correcting.value = true
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        SummaryBody(person: person) {
+                                            showingSummary.value = false
+                                            correcting.value = true
+                                        }
+                                        #if !TEAM
+                                        if !person.str("summary").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                            Divider()
+                                            HStack {
+                                                Spacer()
+                                                SaveSummaryButton(summary: person.str("summary"))
+                                            }
+                                        }
+                                        #endif
                                     }
                                     .padding(16)
                                     .frame(width: 400)
