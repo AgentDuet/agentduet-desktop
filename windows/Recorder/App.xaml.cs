@@ -7,6 +7,11 @@ public partial class App : Application
     private Window? window;
     public App()
     {
+        if (Environment.GetEnvironmentVariable("RECORDER_XAML_DIAGNOSTICS") == "1")
+        {
+            DebugSettings.IsXamlResourceReferenceTracingEnabled = true;
+            DebugSettings.XamlResourceReferenceFailed += (_, args) => Console.Error.WriteLine(args.Message);
+        }
         UnhandledException += (_, error) => ReportStartup(error.Exception);
         try { InitializeComponent(); }
         catch (Exception error) { ReportStartup(error); throw; }

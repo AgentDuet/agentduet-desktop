@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Title = "AgentDuet Recorder";
         Root.Loaded += async (_, _) =>
         {
             try
