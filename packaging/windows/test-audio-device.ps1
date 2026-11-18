@@ -5,8 +5,8 @@ Start-Service AudioEndpointBuilder
 Start-Service Audiosrv
 $dir = New-Item -ItemType Directory -Force "$env:RUNNER_TEMP/Recorder audio device"
 $archive = "$dir/driver.zip"
-Invoke-WebRequest 'https://github.com/VirtualDrivers/Virtual-Audio-Driver/releases/download/25.7.14/Virtual.Audio.Driver.Signed.-.25.7.14.zip' -OutFile $archive
-if ((Get-FileHash $archive).Hash -ne 'dd10560994de65a7e587fb8b93c0d7e9838292d9c3566a0976c2786d727292bd') {
+Invoke-WebRequest 'https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack46.zip' -OutFile $archive
+if ((Get-FileHash $archive).Hash -ne 'bc44e8974191a5a2427d6c979e2dab08dbb09925f3f435dfa2f0ba3e45b6eb90') {
     throw 'Unexpected virtual audio driver archive'
 }
 Expand-Archive $archive -DestinationPath $dir
@@ -25,6 +25,10 @@ $signature = Get-AuthenticodeSignature $devcon.FullName
 if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation,') {
     throw 'Expected Microsoft-signed DevCon'
 }
-$inf = Get-ChildItem $dir -Recurse -Filter VirtualAudioDriver.inf
-& $devcon.FullName install $inf.FullName 'ROOT\VirtualAudioDriver'
+# VB-CABLE (vb-audio.com/Cable) is donationware, fetched only by the test VM.
+$catalog = Get-AuthenticodeSignature "$dir/vbaudio_cable64_win10.cat"
+if ($catalog.Status -ne 'Valid' -or $catalog.SignerCertificate.Subject -notmatch 'CN=Microsoft Windows Hardware Compatibility Publisher,') {
+    throw 'Expected a Microsoft hardware-signed audio driver'
+}
+& $devcon.FullName install "$dir/vbMmeCable64_win10.inf" 'VBAudioVACWDM'
 if ($LASTEXITCODE -ne 0) { throw 'Could not install the test speaker' }

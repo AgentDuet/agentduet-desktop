@@ -18,12 +18,14 @@ permissions:
 jobs:
   build:
     if: ${{ !inputs.sign || github.ref == 'refs/heads/main' }}
-    runs-on: windows-2025
+    runs-on: windows-2022
+    timeout-minutes: 25
     env:
       PYTHONUTF8: '1'
     steps:
       - uses: actions/checkout@v4
       - name: Provision a playback device on the hosted runner
+        timeout-minutes: 4
         run: ./packaging/windows/test-audio-device.ps1
       - uses: actions/setup-python@v5
         with:
