@@ -1,5 +1,11 @@
 name: Windows Recorder
 on:
+  push:
+    branches: [recorder/supports-windows]
+    paths:
+      - 'windows/**'
+      - 'packaging/windows/**'
+      - '.github/workflows/windows-recorder.yml'
   workflow_call:
   workflow_dispatch:
     inputs:
@@ -21,7 +27,12 @@ jobs:
         with:
           python-version: '3.12'
           architecture: x64
-      - run: python -m pip install ".[ui]" pyinstaller
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Publish native WinUI window
+        run: dotnet publish windows/Recorder/Recorder.csproj -c Release -p:Platform=x64 -o dist-bin/window
+      - run: python -m pip install . pyinstaller
       - run: python tests/test_recorder.py
       - run: python tests/test_windows_recorder.py
       - name: Freeze and audit Recorder
@@ -36,13 +47,11 @@ jobs:
         env:
           WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
           WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
-        run: ./packaging/windows/sign.ps1 dist-bin/agentduet-desktop.exe
+        run: |
+          ./packaging/windows/sign.ps1 dist-bin/agentduet-desktop.exe
+          ./packaging/windows/sign.ps1 dist-bin/window/Recorder.exe
       - name: Assemble per-user installer
         run: |
-          $bootstrap = 'dist-bin/MicrosoftEdgeWebview2Setup.exe'
-          Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $bootstrap
-          $signature = Get-AuthenticodeSignature $bootstrap
-          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation,') { throw 'Invalid Microsoft bootstrapper signature' }
           $version = python -c "from importlib.metadata import version; print(version('agentduet-desktop'))"
           & "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" "/DAppVersion=$version" packaging/windows/recorder.iss
       - name: Sign installer
@@ -67,6 +76,7 @@ jobs:
             }
             $url = Get-Content "$env:AGENTDUET_HOME/run/site-url" -Raw
             $page = Invoke-WebRequest $url.Trim()
+            & ./packaging/windows/test-window.ps1 -InstallDir $dir
             if ($page.Content -notmatch '<title>AgentDuet Recorder</title>') { throw 'Recorder page missing' }
           } finally { taskkill /pid $p.Id /t /f }
           $u = Start-Process "$dir/unins000.exe" -ArgumentList '/VERYSILENT /NORESTART' -Wait -PassThru

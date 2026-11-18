@@ -16,7 +16,7 @@ CloseApplications=yes
 
 [Files]
 Source: "..\..\dist-bin\agentduet-desktop.exe"; DestDir: "{app}"; DestName: "AgentDuet Recorder.exe"; Flags: ignoreversion
-Source: "..\..\dist-bin\MicrosoftEdgeWebview2Setup.exe"; Flags: dontcopy
+Source: "..\..\dist-bin\window\*"; DestDir: "{app}\window"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\NOTICE.recorder"; DestDir: "{app}"; DestName: "NOTICE"
 Source: "..\..\LICENSE"; DestDir: "{app}"
 
@@ -25,22 +25,3 @@ Name: "{userprograms}\AgentDuet Recorder"; Filename: "{app}\AgentDuet Recorder.e
 
 [UninstallDelete]
 Type: files; Name: "{userstartup}\agentduet-recorder.cmd"
-
-[Code]
-function HasRuntime(Root: Integer): Boolean;
-var Version: String;
-begin
-  Result := RegQueryStringValue(Root, 'Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Version)
-    and (Version <> '') and (Version <> '0.0.0.0');
-end;
-
-function PrepareToInstall(var NeedsRestart: Boolean): String;
-var ExitCode: Integer;
-begin
-  Result := '';
-  if HasRuntime(HKCU) or HasRuntime(HKLM32) then Exit;
-  ExtractTemporaryFile('MicrosoftEdgeWebview2Setup.exe');
-  if not Exec(ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe'), '/install', '', SW_SHOW,
-    ewWaitUntilTerminated, ExitCode) or not (HasRuntime(HKCU) or HasRuntime(HKLM32)) then
-    Result := 'Install Microsoft Edge WebView2 Runtime and retry setup.';
-end;

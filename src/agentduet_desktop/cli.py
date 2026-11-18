@@ -50,7 +50,7 @@ def cmd_run(args) -> int:
                 shell.open_window(url)
             else:
                 shell.open_in_browser(url)
-            print(f"  already running (pid {pid}) — opened {url}")
+            print(f"  already running (pid {pid}) — opened the owner view")
         else:
             print(f"  already running (pid {pid}). Use `agentduet-desktop stop` to stop it.")
         return 0

@@ -25,6 +25,8 @@ some route on every platform rather than depending on one library being importab
 """
 
 import logging
+from pathlib import Path
+import subprocess
 import threading
 import time
 import sys
@@ -209,6 +211,10 @@ def window_support() -> tuple[bool, str]:
     providers and the speech engine — the build says what it can do rather than letting the
     owner infer it from what happens.
     """
+    if edition.windows_recorder():
+        if _recorder_window().is_file():
+            return True, ""
+        return False, "Reinstall AgentDuet Recorder to restore its native window"
     try:
         import webview                                            # noqa: F401
     except ImportError:
@@ -239,7 +245,16 @@ def window_support() -> tuple[bool, str]:
         return False, "no GUI backend on this machine — the owner view opens in your browser"
 
 
+def _recorder_window() -> Path:
+    return Path(sys.executable).parent / "window" / "Recorder.exe"
+
+
 def open_window(url: str) -> None:
+    if edition.windows_recorder():
+        # The loopback credential never goes on the process command line.
+        subprocess.run([str(_recorder_window())], input=url + "\n", encoding="utf-8",
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        return
     import webview
     win = webview.create_window(TITLE, url, width=1360, height=900,
                                 min_size=(900, 600), text_select=True)
@@ -250,7 +265,7 @@ def open_window(url: str) -> None:
         win.events.shown += lambda: _match_caption_to_app(win)
     except Exception as exc:
         logger.debug("cannot hook window shown event (%s)", exc)
-    webview.start(gui="edgechromium" if edition.windows_recorder() else None)
+    webview.start()
 
 
 def run_with_window(start_daemon, want_window: bool = True,
@@ -276,6 +291,13 @@ def run_with_window(start_daemon, want_window: bool = True,
         print("  the owner site did not come up — see the log in", paths.RUN / "daemon.log")
         worker.join()
         return 1
+
+    if want_window and edition.windows_recorder():
+        open_window(url)
+        # Closing the library must not interrupt an active recording. The Start menu
+        # reopens the window against this same daemon via cmd_run's existing-PID path.
+        worker.join()
+        return 0
 
     webview = None
     if want_window:
