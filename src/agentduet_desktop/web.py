@@ -395,17 +395,23 @@ def make_app(token: str) -> web.Application:
         key, uuid = connector.fill_from_files(key, uuid)
         if not key or not uuid:
             return web.json_response({"ok": False, "message": "Both fields are needed."})
+        from . import oauth
+        switch_to_key = edition.windows_recorder() and body.get("use_key") is True and oauth.signed_in()
         if connector.in_use(uuid):
             # Live-testing the connector the daemon is already holding would be a second client
             # on it — the documented race. Save and say when it takes effect.
             out = settings.save_connector(key, uuid)
+            if switch_to_key:
+                oauth.sign_out()
             return web.json_response({"ok": True, "message": out + "\n(Not re-tested: the "
                                       "running daemon already holds this connector.)"})
         ok, why = await connector.verify(key, uuid)
         if not ok:
             return web.json_response({"ok": False, "message": f"NOT saved — {why}"})
-        return web.json_response({"ok": True, "message": settings.save_connector(key, uuid)
-                                  + f"\nChecked: {why}"})
+        saved = settings.save_connector(key, uuid)
+        if switch_to_key:
+            oauth.sign_out()
+        return web.json_response({"ok": True, "message": saved + f"\nChecked: {why}"})
 
     async def api_quit(request):
         """Stop the daemon from the owner's own view.
@@ -466,6 +472,7 @@ def make_app(token: str) -> web.Application:
             "available": oauth.available(),
             "signed_in": oauth.signed_in(),
             "email": oauth.email(),
+            "failed": _pending_signin.get("failed", False),
             "connector": oauth.connector_uuid(),
             # Sign-in needs a browser to send the owner to. On a headless box it cannot work,
             # and offering it there is a button that goes nowhere.
@@ -1036,6 +1043,9 @@ def make_app(token: str) -> web.Application:
         from . import oauth
         err = request.query.get("error")
         if err:
+            if _pending_signin.get("state") and secrets.compare_digest(request.query.get("state", ""), _pending_signin["state"]):
+                _pending_signin.clear()
+                _pending_signin["failed"] = True
             return web.Response(content_type="text/html", text=_signin_page(
                 "Sign-in was refused", request.query.get("error_description") or err))
 
@@ -1051,6 +1061,8 @@ def make_app(token: str) -> web.Application:
         try:
             who = await asyncio.to_thread(oauth.complete, code, verifier, PORT)
         except Exception as exc:
+            if not _pending_signin.get("state"):
+                _pending_signin["failed"] = True
             logger.warning("sign-in exchange failed: %s", exc)
             # THE DETAIL IS THE LOG'S, not the page's (CodeQL py/stack-trace-exposure): an exception
             # can carry the provider's response or our internals, and Export Logs already has it.

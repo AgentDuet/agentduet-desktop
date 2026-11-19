@@ -9,7 +9,9 @@ from agentduet_desktop import calls, carry, names, paths, settings
 
 if paths.HOME != Path(os.environ["RUNNER_TEMP"]) / "Recorder smoke":
     raise SystemExit("Expected the disposable Windows workflow instance")
-settings.save_connector("fixture-local-only", "00000000-0000-4000-8000-000000000032")
+settings.save_connector("fixture-local-VSC0", "00000000-0000-4000-8000-000000000032")
+settings.set_setting("name", "Alex Morgan")
+settings.set_setting("phone", "+12025550123")
 folder = carry.recordings()
 folder.mkdir(parents=True, exist_ok=True)
 name = "20261003T100000-ci-call.wav"

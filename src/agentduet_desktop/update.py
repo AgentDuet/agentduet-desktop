@@ -39,7 +39,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
-from . import __built__, __version__, paths
+from . import __built__, __version__, edition, paths
 
 logger = logging.getLogger("dduet.update")
 
@@ -160,6 +160,8 @@ def state() -> dict:
         return {}
     # `current` is stamped by `check()` on every successful pass, so its absence means a row
     # from before this field existed — also not to be trusted.
+    if edition.windows_recorder() and row.get("platform") != "windows":
+        return {}
     if row.get("current") != __version__:
         return {}
     return row
@@ -193,19 +195,23 @@ def check() -> dict:
     being out of date.
     """
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    platform = {"platform": "windows"} if edition.windows_recorder() else {}
     previous = state()
     try:
         rows = _fetch()
     except (urllib.error.URLError, OSError, ValueError, TimeoutError) as exc:
         # OFFLINE IS NORMAL HERE and must not read as a fault. Logged at info for that reason.
         logger.info("could not reach GitHub to check for a release: %s", exc)
-        return _save({**previous, "checked": now, "reachable": False})
+        return _save({**previous, **platform, "current": __version__, "checked": now, "reachable": False})
 
     mine = _order(__version__)
     best, best_order = None, None
     for row in rows:
         if row.get("draft"):
             continue                        # not published; nobody can install it
+        if platform and not any(a.get("name") == "agentduet-recorder-windows-x86_64-setup.exe"
+                                for a in row.get("assets", [])):
+            continue
         own = _own(row.get("tag_name", ""))
         if own is None:
             continue                        # another app's release
@@ -213,7 +219,7 @@ def check() -> dict:
         if order and (best_order is None or order > best_order):
             best, best_order = row, order
 
-    answer = {"checked": now, "reachable": True, "current": __version__,
+    answer = {**platform, "checked": now, "reachable": True, "current": __version__,
               "version": "", "url": "", "published": "", "newer": False, "note": ""}
     if best is None or mine is None:
         # Not an error, and not "up to date" either — we simply cannot order these. Saying
@@ -227,7 +233,7 @@ def check() -> dict:
     built, out = _built_at(), _published(best)
     if best_order > mine:
         answer.update(newer=True, note=f"Version {answer['version']} is available.")
-    elif best_order == mine and built and out and out > built:
+    elif not platform and best_order == mine and built and out and out > built:
         # THE REUSED-TAG CASE — trap 2. The name matches and the build does not, so a version
         # comparison alone would report this copy as current.
         answer.update(newer=True,

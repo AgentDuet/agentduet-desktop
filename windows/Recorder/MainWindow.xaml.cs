@@ -33,11 +33,15 @@ public sealed partial class MainWindow : Window
     private bool agreed, configured;
     private int section;
     private Call[] calls = [];
-    private bool settings, ready, narrowDetail, binding, closed, prefilled;
+    private bool settings, ready, narrowDetail, binding, closed, loadingLogin;
     private MediaPlayerElement? player;
     private int playbackVersion;
     private string? playingId;
-    private StackPanel? playingRow;
+    private Flyout? playbackFlyout;
+    private string connectorId = "";
+    private ConnectionDialog? connectionDialog;
+    private bool checkingUpdates;
+    private (string Path, DateTime Checked, string Warning)? folderCheck;
 
     public MainWindow()
     {
@@ -51,12 +55,13 @@ public sealed partial class MainWindow : Window
             AppWindow.TitleBar.ButtonForegroundColor = Microsoft.UI.Colors.White;
             AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
             AppWindow.TitleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
-            Header.Padding = new Thickness(16, 0, 148, 0);
+            AppWindow.TitleBar.LayoutMetricsChanged += (_, _) => CaptionInsets();
         }
         Root.Loaded += async (_, _) =>
         {
             try
             {
+                CaptionInsets();
                 api = new RecorderApi(Console.In.ReadLine());
                 await Refresh();
                 timer.Start();
@@ -106,11 +111,8 @@ public sealed partial class MainWindow : Window
         Heading.Text = library ? "Recordings" : ready ? "Settings" : "Set up Recorder";
         Setup.Visibility = Visible(!library);
         Library.Visibility = Visible(library);
-        Navigation.Visibility = Visible(ready);
-        string destination = settings ? "Back to recordings" : "Settings";
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(Navigation, destination);
-        ToolTipService.SetToolTip(Navigation, destination);
-        NavIcon.Glyph = settings ? "\uE72B" : "\uE713";
+        Navigation.Visibility = Visible(agreed && !settings);
+        SettingsBack.Visibility = Visible(settings);
         ShowSection();
         if (!agreed && termsVersion == null)
         {
@@ -119,45 +121,31 @@ public sealed partial class MainWindow : Window
             TermsText.Text = Text(terms, "terms");
             PrivacyText.Text = Text(terms, "privacy");
         }
-        OwnerName.Text = First(Text(state, "name"), "Account name");
-        bool signedIn = Flag(state["oauth"], "signed_in");
-        AccountStatus.Text = signedIn ? "Signed in with browser" :
-            configured ? "Saved API key " + Text(state, "key_hint") : "";
-        AccountStatus.Visibility = Visible(configured || signedIn);
-        OwnerPanel.Visibility = Visible(configured);
-        SignOutButton.Visibility = Visible(signedIn);
-        Manual.Visibility = Browser.Visibility = Visible(!signedIn);
-        Identity.Text = signedIn ? Text(state["oauth"], "email") : configured
-            ? First(Text(state, "line"), Text(state, "connector_uuid")) : "Connect your AgentDuet phone line.";
-        if (!prefilled && agreed)
-        {
-            Uuid.Text = First(Text(state, "offer_uuid"), Text(state, "connector_uuid"));
-            string hint = Text(state, "offer_key");
-            if (hint.Length > 0) Key.PlaceholderText = $"Use saved key {hint}";
-            prefilled = true;
-        }
+        OwnerName.Text = First(Text(state, "name"), First(Text(state, "os_name"), "Not set"));
+        Number.Text = First(Text(state, "line"), First(Text(state, "phone"), "Unavailable"));
+        NumberRow.Visibility = KeyRow.Visibility = Visible(configured);
+        SignInRow.Visibility = Visible(!configured);
+        KeyHint.Text = First(Text(state, "key_hint"), "No saved key");
+        AccountStatus.Text = Connection.Text = configured ? "Connected" : "Not signed in";
+        StatusDot.Visibility = Visibility.Visible;
+        AccountDot.Fill = StatusDot.Fill = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
+            configured ? "SystemFillColorSuccessBrush" : "TextFillColorSecondaryBrush"];
+        connectorId = First(Text(state, "connector_uuid"), First(Text(state["oauth"], "connector"), Text(state, "offer_uuid")));
+        connectionDialog?.Observe(state);
         Folder.Text = Text(state, "carried_dir");
-        Login.IsChecked = Flag(state, "start_at_login");
-        FinishButton.Visibility = Visible(agreed && configured && !Flag(state, "setup_done"));
-        FolderAccess.Text = "Recordings folder: " + Folder.Text;
-        StatusDot.Visibility = Connection.Visibility = Visible(configured);
-        if (!configured) return;
-        if (settings && section == 4 && Version.Text.Length == 0)
-            Version.Text = Text(await api.Request("about"), "version");
-
-        var channel = (await api.Request("state"))["channel"];
-        Connection.Text = Text(channel, "channel") switch
+        ToolTipService.SetToolTip(Folder, Folder.Text);
+        loadingLogin = true;
+        Login.IsOn = Flag(state, "start_at_login");
+        loadingLogin = false;
+        FinishButton.Visibility = Visible(!settings && agreed && configured && !Flag(state, "setup_done"));
+        if (Storage.Visibility == Visibility.Visible || Permissions.Visibility == Visibility.Visible)
+            await CheckFolder();
+        if (settings && section == 3 && !checkingUpdates)
         {
-            "live" => "Connected to your line",
-            "connecting" => "Connecting to your line…",
-            _ => "Line disconnected"
-        };
-        StatusDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(Text(channel, "channel") switch
-        {
-            "live" => Microsoft.UI.Colors.MediumSeaGreen, "connecting" => Microsoft.UI.Colors.Goldenrod,
-            _ => Microsoft.UI.Colors.Gray
-        });
-        ToolTipService.SetToolTip(Connection, Text(channel, "detail"));
+            var about = await api.Request("about");
+            Version.Text = Text(about, "version");
+            if (!checkingUpdates) RenderUpdate(about["update"]);
+        }
         if (library) await ReadLibrary();
     }
 
@@ -191,11 +179,13 @@ public sealed partial class MainWindow : Window
             string date = DisplayDate(stamp);
             string audio = Text(c, "audio");
             string status = audio.Length > 0 ? "" :
-                Flag(c, "missed") ? "Missed call" : (int?)c!["files"] > 0 ? "Preparing recording" : "No recording";
+                Flag(c, "missed") ? "Missed call." : (int?)c!["files"] > 0 ? "Preparing recording" : "No recording";
             string direction = Flag(c, "outgoing") ? "Outgoing" : "Incoming";
+            direction += " · Voice call";
             if (audio.Length > 0) direction += " · " + Duration((double?)c!["seconds"] ?? 0);
             return new Call(Text(c, "call_id"), date, direction, audio, status);
         }).ToArray() ?? [];
+        NoCalls.Visibility = Visible(selected != null && nextCalls.Length == 0);
         if (!calls.SequenceEqual(nextCalls))
         {
             if (playingId != null && !nextCalls.Any(c => c.Id == playingId)) StopPlayback();
@@ -244,11 +234,10 @@ public sealed partial class MainWindow : Window
         if (About == null) return;
         Terms.Visibility = Visible(!agreed);
         Account.Visibility = Visible(agreed && (settings ? section == 0 : !configured));
-        Storage.Visibility = Visible(agreed && configured && (!settings || section == 1));
-        Permissions.Visibility = Visible(agreed && configured && (!settings || section == 2));
-        QuitButton.Visibility = Visible(settings && section == 3);
-        About.Visibility = Visible(settings && section == 4);
-        if (settings) Heading.Text = ((ListViewItem)Sections.Items[section]).Content.ToString();
+        Storage.Visibility = Visible(agreed && (settings ? section == 1 : configured));
+        Permissions.Visibility = Visible(agreed && (settings ? section == 2 : configured));
+        About.Visibility = Visible(settings && section == 3);
+        if (settings) Heading.Text = ((ListViewItem)Sections.Items[section]).Tag.ToString();
         Layout();
     }
 
@@ -258,7 +247,7 @@ public sealed partial class MainWindow : Window
         section = Sections.SelectedIndex;
         CompactSections.SelectedIndex = section;
         ShowSection();
-        if (section == 4) _ = Refresh();
+        _ = Refresh();
     }
 
     private void ChangeCompactSection(object sender, SelectionChangedEventArgs args)
@@ -283,7 +272,7 @@ public sealed partial class MainWindow : Window
 
     private async void EditOwner(object sender, RoutedEventArgs args)
     {
-        var name = await AskName("Edit account name", OwnerName.Text == "Account name" ? "" : OwnerName.Text);
+        var name = await AskName("Edit account name", OwnerName.Text == "Not set" ? "" : OwnerName.Text);
         if (name != null) await Act("setup/setting", new { field = "name", value = name });
     }
 
@@ -364,7 +353,6 @@ public sealed partial class MainWindow : Window
         {
             if (closed) return;
             await api.Request(path, body);
-            Key.Password = "";
             Notice.IsOpen = false;
             if (success != null) Message(success, InfoBarSeverity.Informational);
             await ReadState();
@@ -374,9 +362,74 @@ public sealed partial class MainWindow : Window
     }
 
     private async void Agree(object sender, RoutedEventArgs e) => await Act("terms", new { version = termsVersion });
-    private async void SignIn(object sender, RoutedEventArgs e) => await Act("connector/signin/open", new {}, "Complete sign-in in your browser. You can also use a connector UUID and API key here.");
-    private async void SignOut(object sender, RoutedEventArgs e) => await Act("connector/signout", new {});
-    private async void Connect(object sender, RoutedEventArgs e) => await Act("setup/connector", new { uuid = Uuid.Text.Trim(), key = Key.Password.Trim() });
+    private void CaptionInsets()
+    {
+        if (!ExtendsContentIntoTitleBar || Root.XamlRoot == null) return;
+        var bar = AppWindow.TitleBar;
+        double scale = Root.XamlRoot.RasterizationScale;
+        Header.Padding = new Thickness(10 + bar.LeftInset / scale, 0, 8 + bar.RightInset / scale, 0);
+    }
+
+    private void RenderUpdate(JsonNode? update)
+    {
+        string checkedAt = Text(update, "checked");
+        string message = checkedAt.Length == 0 ? "No check yet." :
+            !Flag(update, "reachable") ? "Couldn’t check for updates." :
+            Flag(update, "newer") ? $"Version {Text(update, "version")} is available." :
+            Text(update, "version").Length == 0 ? "No published Windows release found." : "You are on the latest version.";
+        UpdateStatus.Text = checkedAt.Length == 0 ? message : $"{message} Last checked {DisplayDate(checkedAt)}.";
+    }
+
+    private async void CheckUpdates(object sender, RoutedEventArgs args)
+    {
+        if (checkingUpdates || api == null) return;
+        checkingUpdates = true;
+        UpdateButton.IsEnabled = false;
+        UpdateStatus.Text = "Checking for updates…";
+        try { RenderUpdate((await api.Request("about/check", new {}))["update"]); }
+        catch (Exception) { UpdateStatus.Text = "Couldn’t check for updates. Try again."; }
+        finally { checkingUpdates = false; UpdateButton.IsEnabled = true; }
+    }
+
+    private static string FolderProblem(string path)
+    {
+        try
+        {
+            using var probe = new FileStream(System.IO.Path.Combine(path, System.IO.Path.GetRandomFileName()),
+                FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.DeleteOnClose);
+            return "";
+        }
+        catch (DirectoryNotFoundException) { return "The recordings folder is missing. Choose a folder to continue."; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
+        { return "Recorder can’t write to this folder. Choose a writable folder."; }
+    }
+
+    private async Task CheckFolder()
+    {
+        var path = Folder.Text;
+        if (folderCheck is not { } cached || cached.Path != path || DateTime.UtcNow - cached.Checked > TimeSpan.FromSeconds(30))
+            folderCheck = (path, DateTime.UtcNow, await Task.Run(() => FolderProblem(path)));
+        var warning = folderCheck.Value.Warning;
+        FolderWarning.Text = warning;
+        FolderWarning.Visibility = FixFolder.Visibility = Visible(warning.Length > 0);
+        FolderAccess.Text = warning.Length == 0 ? "Allowed" : "Not allowed";
+        FolderAccess.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[
+            warning.Length == 0 ? "SystemFillColorSuccessBrush" : "SystemFillColorCriticalBrush"];
+    }
+
+    private async Task ShowConnection(bool manual)
+    {
+        if (api == null || connectionDialog != null) return;
+        try
+        {
+            connectionDialog = new ConnectionDialog(api, connectorId, manual) { XamlRoot = Root.XamlRoot };
+            await connectionDialog.ShowAsync();
+            await Refresh();
+        }
+        finally { connectionDialog = null; }
+    }
+    private async void SignIn(object sender, RoutedEventArgs args) => await ShowConnection(false);
+    private async void ChangeKey(object sender, RoutedEventArgs args) => await ShowConnection(true);
     private async void ChooseFolder(object sender, RoutedEventArgs e)
     {
         try
@@ -396,12 +449,13 @@ public sealed partial class MainWindow : Window
             var probe = System.IO.Path.Combine(folder.Path, System.IO.Path.GetRandomFileName());
             using (new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None,
                                   4096, FileOptions.DeleteOnClose)) { }
+            folderCheck = null;
             await Act("setup/setting", new { field = "recordings", value = folder.Path });
         }
         catch (Exception error) { Message(error.Message, InfoBarSeverity.Error); }
     }
     private async void OpenFolder(object sender, RoutedEventArgs e) => await Act("reveal", new { folder = "recordings" });
-    private async void ChangeLogin(object sender, RoutedEventArgs e) => await Act("setup/login-item", new { want = Login.IsChecked == true });
+    private async void ChangeLogin(object sender, RoutedEventArgs e) { if (!loadingLogin && api != null) await Act("setup/login-item", new { want = Login.IsOn }); }
     private async void Finish(object sender, RoutedEventArgs e) => await Act("setup/finish", new {});
 
     private async void Quit(object sender, RoutedEventArgs args)
@@ -415,42 +469,6 @@ public sealed partial class MainWindow : Window
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         try { await api!.Request("quit", new {}); Close(); }
         catch (Exception e) { Message(e.Message, InfoBarSeverity.Error); }
-    }
-
-    private void DetachPlayer()
-    {
-        if (playingRow == null) return;
-        ((ContentControl)playingRow.FindName("Transport")).Content = null;
-        if (playingRow.DataContext is Call call)
-            ((Button)playingRow.FindName("PlayButton")).Visibility = call.PlayVisibility;
-        playingRow = null;
-    }
-
-    private void BindRow(StackPanel row)
-    {
-        if (row.FindName("PlayButton") is not Button button || row.DataContext is not Call call) return;
-        if (playingId == call.Id && player != null)
-        {
-            if (playingRow != row)
-            {
-                DetachPlayer();
-                playingRow = row;
-                ((ContentControl)row.FindName("Transport")).Content = player;
-            }
-            button.Visibility = Visibility.Collapsed;
-        }
-        else
-        {
-            if (playingRow == row) DetachPlayer();
-            button.Visibility = call.PlayVisibility;
-        }
-    }
-
-    private void RowLoaded(object sender, RoutedEventArgs e) => BindRow((StackPanel)sender);
-    private void RowChanged(FrameworkElement sender, DataContextChangedEventArgs e) => BindRow((StackPanel)sender);
-    private void RowUnloaded(object sender, RoutedEventArgs e)
-    {
-        if (sender == playingRow) DetachPlayer();
     }
 
     private MediaPlayerElement AudioPlayer()
@@ -485,20 +503,31 @@ public sealed partial class MainWindow : Window
             player.MediaPlayer.Pause();
             player.MediaPlayer.Source = null;
         }
-        DetachPlayer();
+        var flyout = playbackFlyout;
+        playbackFlyout = null;
+        if (flyout != null) { flyout.Content = null; flyout.Hide(); }
     }
 
     private async void Play(object sender, RoutedEventArgs args)
     {
-        if (sender is not Button { Parent: Grid { Parent: StackPanel row }, DataContext: Call call }) return;
-        int version = ++playbackVersion;
+        if (sender is not Button { DataContext: Call call } button) return;
+        StopPlayback();
+        int version = playbackVersion;
         try
         {
             var file = await StorageFile.GetFileFromPathAsync(call.Path);
-            if (version != playbackVersion || closed || row.DataContext as Call != call) return;
+            if (version != playbackVersion || closed || button.DataContext as Call != call) return;
             var media = AudioPlayer().MediaPlayer;
             playingId = call.Id;
-            BindRow(row);
+            player!.Width = Math.Clamp(Root.ActualWidth - 88, 180, 400);
+            var flyout = new Flyout { Content = player };
+            playbackFlyout = flyout;
+            flyout.Closed += (_, _) =>
+            {
+                flyout.Content = null;
+                if (playbackFlyout == flyout) StopPlayback();
+            };
+            flyout.ShowAt(button);
             media.Source = MediaSource.CreateFromStorageFile(file);
             media.Play();
         }

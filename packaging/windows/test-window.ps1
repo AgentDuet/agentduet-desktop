@@ -51,12 +51,13 @@ try {
         $search.SetValue('alex')
         $null = Find-Control 'Alex Morgan'
         $search.SetValue('')
-        $null = Find-Control 'Missed call'
+        $null = Find-Control 'Missed call.'
         Save-Window 'people'
         Invoke-Control 'Play recording'
         $null = Find-Control 'Pause'
         $null = Find-Control 'Seek'
         Save-Window 'recordings'
+        [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
         Invoke-Control 'Settings'
         $null = Find-Control 'Edit account name'
         Save-Window 'account'
@@ -64,12 +65,12 @@ try {
         $null = Find-Control 'Choose folder'
         Save-Window 'recording-settings'
         (Find-Control 'About').GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
-        $null = Find-Control 'Installed version'
+        $null = Find-Control 'Check now'
         Save-Window 'about'
-        (Find-Control 'Permissions & startup').GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
-        $null = Find-Control 'Start at login'
+        (Find-Control 'Permissions').GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+        $null = Find-Control 'Start when I log in'
         Save-Window 'settings'
-        $switch = Find-Control 'Start at login'
+        $switch = Find-Control 'Start when I log in'
         $toggle = $switch.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
         $startup = Join-Path ([Environment]::GetFolderPath('Startup')) 'agentduet-recorder.cmd'
         $toggle.Toggle()
@@ -109,9 +110,28 @@ try {
         }
     } else {
         Invoke-Control 'I agree'
-        $null = Find-Control 'Sign in with browser'
-        $null = Find-Control 'Use a connector UUID and API key'
+        Invoke-Control 'Sign in to account'
+        $null = Find-Control 'Sign in to AgentDuet'
+        Save-Window 'first-run-sign-in'
+        Invoke-Control 'Cancel'
+        Invoke-Control 'Settings'
+        $null = Find-Control 'Not signed in'
+        Save-Window 'account-signed-out'
+        Invoke-Control 'Sign in to account'
+        $null = Find-Control 'Sign in'
         Save-Window 'sign-in'
+        Invoke-Control 'Use a connector and API key'
+        $submit = Find-Control 'Connect'
+        if ($submit.Current.IsEnabled) { throw 'Empty fields enabled Connect' }
+        Save-Window 'connector'
+        (Find-Control 'Connector UUID').GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('invalid')
+        (Find-Control 'API key').SetFocus()
+        [System.Windows.Forms.SendKeys]::SendWait('test')
+        Invoke-Control 'Connect'
+        $null = Find-Control 'Enter a UUID in the format 00000000-0000-0000-0000-000000000000.'
+        Invoke-Control 'Back'
+        $null = Find-Control 'Sign in'
+        Invoke-Control 'Cancel'
     }
 } catch {
     Get-Content "$env:AGENTDUET_HOME/run/window.log" -ErrorAction SilentlyContinue | Out-Host
