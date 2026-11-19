@@ -26,5 +26,7 @@ internal sealed class RecorderApi : IDisposable
         return data;
     }
 
+    public Task<byte[]> DownloadLogs() => client.GetByteArrayAsync("logs");
+
     public void Dispose() => client.Dispose();
 }

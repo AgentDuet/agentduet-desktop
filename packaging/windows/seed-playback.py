@@ -5,7 +5,7 @@ import struct
 from pathlib import Path
 import wave
 
-from agentduet_desktop import calls, carry, paths, settings
+from agentduet_desktop import calls, carry, names, paths, settings
 
 if paths.HOME != Path(os.environ["RUNNER_TEMP"]) / "Recorder smoke":
     raise SystemExit("Expected the disposable Windows workflow instance")
@@ -18,4 +18,6 @@ with wave.open(str(folder / name), "wb") as output:
     second = b"".join(struct.pack("<hh", *(int(2500 * math.sin(2 * math.pi * hz * i / 24000))
                                           for hz in (330, 440))) for i in range(24000))
     output.writeframes(second * 24)
+names.set_typed("+12025550123", "Alex Morgan")
+calls.record("ci-missed", "+12025550123", "carried", note="missed")
 calls.record("ci-call", "+12025550123", "carried", recordings=[name])

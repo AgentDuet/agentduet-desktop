@@ -25,6 +25,7 @@ try {
         (Find-Control $label).GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     }
     function Save-Window([string]$screen) {
+        Start-Sleep -Milliseconds 500
         Add-Type -AssemblyName System.Drawing
         $rect = $window.Current.BoundingRectangle
         $bmp = [Drawing.Bitmap]::new([int]$rect.Width, [int]$rect.Height)
@@ -44,11 +45,17 @@ try {
     if (!$window) { throw 'Native window did not appear' }
     if ($Library) {
         Invoke-Control 'Finish setup'
+        $null = Find-Control 'Search people'
+        $null = Find-Control 'Missed call'
+        Save-Window 'people'
         Invoke-Control 'Play recording'
         $null = Find-Control 'Pause'
         $null = Find-Control 'Seek'
         Save-Window 'recordings'
         Invoke-Control 'Settings'
+        $null = Find-Control 'Edit account name'
+        Save-Window 'account'
+        (Find-Control 'Permissions & startup').GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
         $null = Find-Control 'Start at login'
         Save-Window 'settings'
         $switch = Find-Control 'Start at login'

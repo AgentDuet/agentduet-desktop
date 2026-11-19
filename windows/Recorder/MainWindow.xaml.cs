@@ -8,13 +8,18 @@ namespace Recorder;
 
 public sealed partial class MainWindow : Window
 {
-    public sealed record Person(string Id, string Name, string LastCall)
+    public sealed record Person(string Id, string Name, string LastCall, int Count)
     {
-        public override string ToString() => $"{Name}, {LastCall}";
+        public string CountText => Count == 1 ? "1 call" : $"{Count} calls";
+        public string Summary => $"{CountText} · {LastCall}";
+        public string Initials => Name == Id ? "" : string.Concat(Name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Take(2).Select(word => System.Globalization.StringInfo.GetNextTextElement(word))).ToUpperInvariant();
+        public override string ToString() => $"{Name}, {Summary}";
     }
-    public sealed record Call(string Id, string Date, string Description, string Path)
+    public sealed record Call(string Id, string Date, string Description, string Path, string Status)
     {
         public override string ToString() => $"{Date}, {Description}";
+        public Visibility StatusVisibility => Visible(Status.Length > 0);
         public Visibility PlayVisibility => Visible(Path.Length > 0);
     }
 
@@ -24,6 +29,9 @@ public sealed partial class MainWindow : Window
     private string? termsVersion;
     private string? selected;
     private Person[] people = [];
+    private Person[] filtered = [];
+    private bool agreed, configured;
+    private int section;
     private Call[] calls = [];
     private bool settings, ready, narrowDetail, binding, closed, prefilled;
     private MediaPlayerElement? player;
@@ -36,6 +44,15 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         Title = "AgentDuet Recorder";
         AppWindow.SetIcon(System.IO.Path.Combine(AppContext.BaseDirectory, "Recorder.ico"));
+        if (Microsoft.UI.Windowing.AppWindowTitleBar.IsCustomizationSupported())
+        {
+            ExtendsContentIntoTitleBar = true;
+            SetTitleBar(DragArea);
+            AppWindow.TitleBar.ButtonForegroundColor = Microsoft.UI.Colors.White;
+            AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
+            AppWindow.TitleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+            Header.Padding = new Thickness(16, 0, 148, 0);
+        }
         Root.Loaded += async (_, _) =>
         {
             try
@@ -81,8 +98,8 @@ public sealed partial class MainWindow : Window
     {
         var state = await api!.Request("setup/current");
         if (closed) return;
-        bool agreed = Flag(state, "terms_agreed");
-        bool configured = Flag(state, "connector_configured");
+        agreed = Flag(state, "terms_agreed");
+        configured = Flag(state, "connector_configured");
         ready = agreed && configured && Flag(state, "setup_done");
         bool library = ready && !settings;
         if (!library && playingId != null) StopPlayback();
@@ -90,10 +107,11 @@ public sealed partial class MainWindow : Window
         Setup.Visibility = Visible(!library);
         Library.Visibility = Visible(library);
         Navigation.Visibility = Visible(ready);
-        Navigation.Content = settings ? "Back to recordings" : "Settings";
-        Terms.Visibility = Visible(!agreed);
-        Account.Visibility = Visible(agreed && (!configured || settings));
-        Storage.Visibility = Visible(agreed && configured);
+        string destination = settings ? "Back to recordings" : "Settings";
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(Navigation, destination);
+        ToolTipService.SetToolTip(Navigation, destination);
+        NavIcon.Glyph = settings ? "\uE72B" : "\uE713";
+        ShowSection();
         if (!agreed && termsVersion == null)
         {
             var terms = await api.Request("terms");
@@ -101,7 +119,11 @@ public sealed partial class MainWindow : Window
             TermsText.Text = Text(terms, "terms");
             PrivacyText.Text = Text(terms, "privacy");
         }
-        QuitButton.Visibility = Visible(settings);
+        OwnerName.Text = First(Text(state, "name"), "Account name");
+        AccountStatus.Text = signedInStatus();
+        string signedInStatus() => Flag(state["oauth"], "signed_in") ? "Signed in with browser" :
+            configured ? "Connected with API key " + Text(state, "key_hint") : "";
+        OwnerPanel.Visibility = Visible(configured);
         bool signedIn = Flag(state["oauth"], "signed_in");
         SignOutButton.Visibility = Visible(signedIn);
         Manual.Visibility = Browser.Visibility = Visible(!signedIn);
@@ -117,7 +139,11 @@ public sealed partial class MainWindow : Window
         Folder.Text = Text(state, "carried_dir");
         Login.IsChecked = Flag(state, "start_at_login");
         FinishButton.Visibility = Visible(!Flag(state, "setup_done"));
-        if (!library) return;
+        FolderAccess.Text = "Recordings folder: " + Folder.Text;
+        StatusDot.Visibility = Connection.Visibility = Visible(configured);
+        if (!configured) return;
+        if (settings && section == 4 && Version.Text.Length == 0)
+            Version.Text = Text(await api.Request("about"), "version");
 
         var channel = (await api.Request("state"))["channel"];
         Connection.Text = Text(channel, "channel") switch
@@ -126,8 +152,13 @@ public sealed partial class MainWindow : Window
             "connecting" => "Connecting to your line…",
             _ => "Line disconnected"
         };
+        StatusDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(Text(channel, "channel") switch
+        {
+            "live" => Microsoft.UI.Colors.MediumSeaGreen, "connecting" => Microsoft.UI.Colors.Goldenrod,
+            _ => Microsoft.UI.Colors.Gray
+        });
         ToolTipService.SetToolTip(Connection, Text(channel, "detail"));
-        await ReadLibrary();
+        if (library) await ReadLibrary();
     }
 
     private static string DisplayDate(string stamp) =>
@@ -143,35 +174,21 @@ public sealed partial class MainWindow : Window
         if (closed || requested != selected) return;
         var rows = data["people"]!.AsArray();
         var next = rows.Select(p => new Person(Text(p, "who"), First(Text(p, "display"), Text(p, "who")),
-            DisplayDate(Text(p, "last")))).ToArray();
-        var person = next.FirstOrDefault(p => p.Id == selected) ?? next.FirstOrDefault();
-        binding = true;
-        try
-        {
-            if (!people.SequenceEqual(next))
-            {
-                people = next;
-                People.ItemsSource = people;
-            }
-            People.SelectedItem = people.FirstOrDefault(p => p.Id == person?.Id);
-        }
-        finally { binding = false; }
-        Empty.Visibility = Visible(people.Length == 0);
-        PersonName.Text = person?.Name ?? "";
-        if (selected != person?.Id)
-        {
-            ChangePerson(person?.Id);
-            if (selected != null) { await ReadLibrary(); return; }
-        }
+            DisplayDate(Text(p, "last")), (int?)p!["call_count"] ?? p["calls"]!.AsArray().Count)).ToArray();
+        people = next;
+        ApplySearch();
+        if (requested != selected && selected != null) { await ReadLibrary(); return; }
         var items = rows.FirstOrDefault(p => Text(p, "who") == selected)?["calls"]?.AsArray();
         var nextCalls = items?.Select(c =>
         {
             string stamp = First(Text(c, "started"), Text(c, "at"));
             string date = DisplayDate(stamp);
             string audio = Text(c, "audio");
-            string status = audio.Length > 0 ? Duration((double?)c!["seconds"] ?? 0) :
+            string status = audio.Length > 0 ? "" :
                 Flag(c, "missed") ? "Missed call" : (int?)c!["files"] > 0 ? "Preparing recording" : "No recording";
-            return new Call(Text(c, "call_id"), date, (Flag(c, "outgoing") ? "Outgoing" : "Incoming") + " · " + status, audio);
+            string direction = Flag(c, "outgoing") ? "Outgoing" : "Incoming";
+            if (audio.Length > 0) direction += " · " + Duration((double?)c!["seconds"] ?? 0);
+            return new Call(Text(c, "call_id"), date, direction, audio, status);
         }).ToArray() ?? [];
         if (!calls.SequenceEqual(nextCalls))
         {
@@ -180,6 +197,114 @@ public sealed partial class MainWindow : Window
             Calls.ItemsSource = calls;
         }
         Layout();
+    }
+
+    private void ApplySearch()
+    {
+        string query = Search.Text.Trim();
+        var matches = people.Where(p => p.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)
+            || p.Id.Contains(query, StringComparison.OrdinalIgnoreCase)).ToArray();
+        binding = true;
+        try
+        {
+            if (!filtered.SequenceEqual(matches))
+            {
+                filtered = matches;
+                People.ItemsSource = filtered;
+            }
+            var person = filtered.FirstOrDefault(p => p.Id == selected) ?? filtered.FirstOrDefault();
+            People.SelectedItem = person;
+            ChangePerson(person?.Id);
+            PersonName.Text = person?.Name ?? "";
+            Avatar.Initials = person?.Initials ?? "";
+            PersonInfo.Text = person == null ? "" : person.Name == person.Id ? person.CountText : $"{person.Id} · {person.CountText}";
+        }
+        finally { binding = false; }
+        Empty.Text = people.Length == 0 ? "Your recorded calls will appear here." : "No matching people";
+        Empty.Visibility = Visible(filtered.Length == 0);
+        Layout();
+    }
+
+    private async void SearchChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!ready) return;
+        var before = selected;
+        ApplySearch();
+        if (before != selected && selected != null) await Refresh();
+    }
+
+    private void ShowSection()
+    {
+        if (About == null) return;
+        Terms.Visibility = Visible(!agreed);
+        Account.Visibility = Visible(agreed && (settings ? section == 0 : !configured));
+        Storage.Visibility = Visible(agreed && configured && (!settings || section == 1));
+        Permissions.Visibility = Visible(agreed && configured && (!settings || section == 2));
+        QuitButton.Visibility = Visible(settings && section == 3);
+        About.Visibility = Visible(settings && section == 4);
+        if (settings) Heading.Text = ((ListViewItem)Sections.Items[section]).Content.ToString();
+        Layout();
+    }
+
+    private void ChangeSection(object sender, SelectionChangedEventArgs args)
+    {
+        if (CompactSections == null || Sections.SelectedIndex < 0) return;
+        section = Sections.SelectedIndex;
+        CompactSections.SelectedIndex = section;
+        ShowSection();
+        if (section == 4) _ = Refresh();
+    }
+
+    private void ChangeCompactSection(object sender, SelectionChangedEventArgs args)
+    {
+        if (CompactSections?.SelectedIndex >= 0) Sections.SelectedIndex = CompactSections.SelectedIndex;
+    }
+
+    private async Task<string?> AskName(string title, string value)
+    {
+        var input = new TextBox { Header = "Name", Text = value };
+        var dialog = new ContentDialog { XamlRoot = Root.XamlRoot, Title = title, Content = input,
+            PrimaryButtonText = "Save", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary ? input.Text.Trim() : null;
+    }
+
+    private async void EditPerson(object sender, RoutedEventArgs args)
+    {
+        if (People.SelectedItem is not Person person) return;
+        var name = await AskName("Edit person name", person.Name == person.Id ? "" : person.Name);
+        if (name != null) await Act("name", new { who = person.Id, name });
+    }
+
+    private async void EditOwner(object sender, RoutedEventArgs args)
+    {
+        var name = await AskName("Edit account name", OwnerName.Text == "Account name" ? "" : OwnerName.Text);
+        if (name != null) await Act("setup/setting", new { field = "name", value = name });
+    }
+
+    private async Task ShowLegal(string title, string key)
+    {
+        try
+        {
+            var terms = await api!.Request("terms");
+            var body = new TextBlock { Text = Text(terms, key), TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
+            await new ContentDialog { XamlRoot = Root.XamlRoot, Title = title,
+                Content = new ScrollViewer { Content = body }, CloseButtonText = "Close" }.ShowAsync();
+        }
+        catch (Exception e) { Message(e.Message, InfoBarSeverity.Error); }
+    }
+    private async void ShowTerms(object sender, RoutedEventArgs e) => await ShowLegal("Terms of Use", "terms");
+    private async void ShowPrivacy(object sender, RoutedEventArgs e) => await ShowLegal("Privacy Policy", "privacy");
+    private async void ExportLogs(object sender, RoutedEventArgs args)
+    {
+        try
+        {
+            var picker = new Windows.Storage.Pickers.FileSavePicker { SuggestedFileName = "AgentDuet Recorder logs" };
+            picker.FileTypeChoices.Add("ZIP archive", new List<string> { ".zip" });
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+            var file = await picker.PickSaveFileAsync();
+            if (file != null) await FileIO.WriteBytesAsync(file, await api!.DownloadLogs());
+        }
+        catch (Exception e) { Message(e.Message, InfoBarSeverity.Error); }
     }
 
     private void ChangePerson(string? id)
@@ -196,12 +321,16 @@ public sealed partial class MainWindow : Window
     {
         if (ListPane == null) return;
         bool compact = Root.ActualWidth < 700;
+        Sections.Visibility = Visible(settings && !compact);
+        CompactSections.Visibility = Visible(settings && compact);
+        if (CompactSections.SelectedIndex != section) CompactSections.SelectedIndex = section;
+        PersonName.MaxWidth = Math.Max(80, Root.ActualWidth - (compact ? 100 : 370));
         bool showDetail = selected != null && (!compact || narrowDetail);
         bool showList = !compact || !showDetail;
         ListPane.Visibility = Visible(showList);
         Details.Visibility = Visible(showDetail);
         Back.Visibility = Visible(compact);
-        ListColumn.Width = showList && compact ? new GridLength(1, GridUnitType.Star) : new GridLength(showList ? 260 : 0);
+        ListColumn.Width = showList && compact ? new GridLength(1, GridUnitType.Star) : new GridLength(showList ? Math.Clamp(Root.ActualWidth * .22, 210, 280) : 0);
         DetailColumn.Width = showDetail ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
         Panes.ColumnSpacing = showDetail && showList ? 16 : 0;
     }
@@ -355,7 +484,7 @@ public sealed partial class MainWindow : Window
 
     private async void Play(object sender, RoutedEventArgs args)
     {
-        if (sender is not Button { Parent: StackPanel row, DataContext: Call call }) return;
+        if (sender is not Button { Parent: Grid { Parent: StackPanel row }, DataContext: Call call }) return;
         int version = ++playbackVersion;
         try
         {
