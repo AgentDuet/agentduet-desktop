@@ -55,13 +55,13 @@ public sealed partial class MainWindow : Window
             AppWindow.TitleBar.ButtonForegroundColor = Microsoft.UI.Colors.White;
             AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
             AppWindow.TitleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
-            AppWindow.TitleBar.LayoutMetricsChanged += (_, _) => CaptionInsets();
         }
         Root.Loaded += async (_, _) =>
         {
             try
             {
                 CaptionInsets();
+                Root.XamlRoot.Changed += (_, _) => CaptionInsets();
                 api = new RecorderApi(Console.In.ReadLine());
                 await Refresh();
                 timer.Start();

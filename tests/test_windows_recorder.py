@@ -32,6 +32,30 @@ class RecorderWindow(unittest.IsolatedAsyncioTestCase):
         current = await self.client.get("/api/setup/current", headers=self.headers)
         self.assertEqual(Path((await current.json())["carried_dir"]), folder)
 
+    async def test_windows_release_comparison(self):
+        from agentduet_desktop import update
+
+        installer = {"name": "agentduet-recorder-windows-x86_64-setup.exe"}
+        def release(version, assets):
+            return {"tag_name": "recorder-v" + version, "assets": assets,
+                    "published_at": "2099-01-01T00:00:00Z"}
+
+        self.enterContext(patch.object(update, "CACHE", self.folder / "updates.json"))
+        self.enterContext(patch.object(update, "__version__", "0.1.0b11"))
+        self.enterContext(patch.object(update, "_built_at", return_value=update.datetime.now(update.timezone.utc)))
+        for feed, expected, newer in [
+            ([release("0.1.0b12", []), release("0.1.0b11", [installer])], "0.1.0b11", False),
+            ([release("0.1.0b12", [installer])], "0.1.0b12", True),
+            ([release("0.1.0b12", [])], "", False),
+        ]:
+            with patch.object(update, "_fetch", return_value=feed):
+                result = await self.client.post("/api/about/check", headers=self.headers)
+            row = (await result.json())["update"]
+            self.assertEqual((row["version"], row["newer"]), (expected, newer))
+            self.assertTrue(row["checked"])
+            about = await self.client.get("/api/about", headers=self.headers)
+            self.assertEqual((await about.json())["update"], row)
+
     async def test_page_setup_and_audio(self):
         from agentduet_desktop import calls, carry, legal, oauth
         page = await self.client.get("/", headers=self.headers)

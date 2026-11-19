@@ -12,8 +12,8 @@ try {
     $name = [System.Windows.Automation.AutomationElement]::NameProperty
     $title = [System.Windows.Automation.PropertyCondition]::new($name, 'AgentDuet Recorder')
     $scope = [System.Windows.Automation.TreeScope]::Descendants
-    function Find-Control([string]$label) {
-        $condition = [System.Windows.Automation.PropertyCondition]::new($name, $label)
+    function Find-Control([string]$label, $property = $name) {
+        $condition = [System.Windows.Automation.PropertyCondition]::new($property, $label)
         for ($i = 0; $i -lt 30; $i++) {
             $control = $window.FindFirst($scope, $condition)
             if ($control) { return $control }
@@ -21,6 +21,7 @@ try {
         }
         throw "Missing native control: $label"
     }
+    $automationId = [System.Windows.Automation.AutomationElement]::AutomationIdProperty
     function Invoke-Control([string]$label) {
         (Find-Control $label).GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     }
@@ -68,9 +69,9 @@ try {
         $null = Find-Control 'Check now'
         Save-Window 'about'
         (Find-Control 'Permissions').GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
-        $null = Find-Control 'Start when I log in'
+        $null = Find-Control 'Login' $automationId
         Save-Window 'settings'
-        $switch = Find-Control 'Start when I log in'
+        $switch = Find-Control 'Login' $automationId
         $toggle = $switch.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
         $startup = Join-Path ([Environment]::GetFolderPath('Startup')) 'agentduet-recorder.cmd'
         $toggle.Toggle()
@@ -124,8 +125,8 @@ try {
         $submit = Find-Control 'Connect'
         if ($submit.Current.IsEnabled) { throw 'Empty fields enabled Connect' }
         Save-Window 'connector'
-        (Find-Control 'Connector UUID').GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('invalid')
-        (Find-Control 'API key').SetFocus()
+        (Find-Control 'Uuid' $automationId).GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('invalid')
+        (Find-Control 'Key' $automationId).SetFocus()
         [System.Windows.Forms.SendKeys]::SendWait('test')
         Invoke-Control 'Connect'
         $null = Find-Control 'Enter a UUID in the format 00000000-0000-0000-0000-000000000000.'

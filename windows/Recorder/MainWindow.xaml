@@ -28,7 +28,7 @@
   <ContentControl Grid.Row="2" x:Name="Setup" Margin="12,4,12,12" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Visibility="Collapsed">
    <Grid ColumnSpacing="12">
    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
-   <ListView x:Name="Sections" AutomationProperties.Name="Settings sections" Visibility="Collapsed" SelectionChanged="ChangeSection" SelectedIndex="0">
+   <ListView Width="185" x:Name="Sections" AutomationProperties.Name="Settings sections" Visibility="Collapsed" SelectionChanged="ChangeSection" SelectedIndex="0">
     <ListViewItem Tag="Account" AutomationProperties.Name="Account"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon FontSize="16" Glyph="&#xE77B;"/><TextBlock Text="Account"/></StackPanel></ListViewItem>
     <ListViewItem Tag="Recording" AutomationProperties.Name="Recording"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon FontSize="16" Glyph="&#xE717;"/><TextBlock Text="Recording"/></StackPanel></ListViewItem>
     <ListViewItem Tag="Permissions" AutomationProperties.Name="Permissions"><StackPanel Orientation="Horizontal" Spacing="12"><FontIcon FontSize="16" Glyph="&#xEA18;"/><TextBlock Text="Permissions"/></StackPanel></ListViewItem>
@@ -47,7 +47,7 @@
      </StackPanel>
      <StackPanel x:Name="Account" Spacing="12">
       <Border Style="{StaticResource SettingsCard}"><StackPanel>
-       <Grid  Padding="14,9" MinHeight="50" ColumnSpacing="10">
+       <Grid Padding="14,9" MinHeight="50" ColumnSpacing="10">
         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
         <TextBlock Text="Name" VerticalAlignment="Center"/>
         <Grid Grid.Column="1" ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock x:Name="OwnerName" HorizontalAlignment="Right" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" IsTextSelectionEnabled="True"/><StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="8"><Button Content="Edit…" Click="EditOwner" AutomationProperties.Name="Edit account name"/></StackPanel></Grid>
@@ -59,9 +59,9 @@
         <TextBlock Grid.Column="1" x:Name="Number" HorizontalAlignment="Right" VerticalAlignment="Center"/>
        </Grid>
       </StackPanel></Border>
-<TextBlock Text="AgentDuet Connection" FontWeight="SemiBold" Margin="0,6,0,0"/>
+      <TextBlock Text="AgentDuet Connection" FontWeight="SemiBold" Margin="0,6,0,0"/>
       <Border Style="{StaticResource SettingsCard}"><StackPanel>
-       <Grid  Padding="14,9" MinHeight="50" ColumnSpacing="10">
+       <Grid Padding="14,9" MinHeight="50" ColumnSpacing="10">
         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
         <TextBlock Text="Status" VerticalAlignment="Center"/>
         <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="8"><Ellipse x:Name="AccountDot" Width="7" Height="7"/><TextBlock x:Name="AccountStatus" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/></StackPanel>
@@ -82,23 +82,24 @@
      </StackPanel>
      <StackPanel x:Name="Storage" Spacing="12">
       <Border Style="{StaticResource SettingsCard}"><StackPanel>
-       <Grid  Padding="14,9" MinHeight="50" ColumnSpacing="10">
+       <Grid Padding="14,9" MinHeight="50" ColumnSpacing="10">
         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
         <TextBlock Text="Folder" VerticalAlignment="Center"/>
         <Grid Grid.Column="1" ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock x:Name="Folder" HorizontalAlignment="Right" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" IsTextSelectionEnabled="True"/><StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="8"><Button Content="Choose…" Click="ChooseFolder" AutomationProperties.Name="Choose folder"/><Button Content="Open in Explorer" Click="OpenFolder" /></StackPanel></Grid>
        </Grid>
       </StackPanel></Border>
-<TextBlock x:Name="FolderWarning" TextWrapping="Wrap" Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>     </StackPanel>
+      <TextBlock x:Name="FolderWarning" TextWrapping="Wrap" Foreground="{ThemeResource SystemFillColorCriticalBrush}"/>
+     </StackPanel>
      <StackPanel x:Name="Permissions" Spacing="12">
       <Border Style="{StaticResource SettingsCard}"><StackPanel>
-       <Grid  Padding="14,9" MinHeight="50" ColumnSpacing="10">
+       <Grid Padding="14,9" MinHeight="50" ColumnSpacing="10">
         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
         <TextBlock Text="Recordings folder access" VerticalAlignment="Center"/>
         <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="8"><TextBlock x:Name="FolderAccess" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/><HyperlinkButton x:Name="FixFolder" Content="Fix…" Click="ChooseFolder"/></StackPanel>
        </Grid>
       </StackPanel></Border>
       <Border Style="{StaticResource SettingsCard}"><StackPanel>
-       <Grid  Padding="14,9" MinHeight="50" ColumnSpacing="10">
+       <Grid Padding="14,9" MinHeight="50" ColumnSpacing="10">
         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
         <TextBlock Text="Start when I log in" VerticalAlignment="Center"/>
         <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="8"><ToggleSwitch x:Name="Login" AutomationProperties.Name="Start when I log in" OffContent="" OnContent="" MinWidth="0" Toggled="ChangeLogin"/></StackPanel>
@@ -107,20 +108,20 @@
      </StackPanel>
      <StackPanel x:Name="About" Spacing="12">
       <Border Style="{StaticResource SettingsCard}"><StackPanel>
-       <Grid  Padding="14,9" MinHeight="50" ColumnSpacing="10">
+       <Grid Padding="14,9" MinHeight="50" ColumnSpacing="10">
         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
         <TextBlock Text="Version" VerticalAlignment="Center"/>
         <TextBlock Grid.Column="1" x:Name="Version" TextWrapping="Wrap" HorizontalAlignment="Right" VerticalAlignment="Center" IsTextSelectionEnabled="True"/>
        </Grid>
       </StackPanel></Border>
       <Border Style="{StaticResource SettingsCard}"><StackPanel>
-       <Grid  Padding="14,9" MinHeight="50" ColumnSpacing="10">
+       <Grid Padding="14,9" MinHeight="50" ColumnSpacing="10">
         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
         <TextBlock Text="Logs" VerticalAlignment="Center"/>
         <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="8"><Button Content="Export logs…" Click="ExportLogs" /></StackPanel>
        </Grid>
        <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}"/>
-       <Grid  Padding="14,9" MinHeight="50" ColumnSpacing="10">
+       <Grid Padding="14,9" MinHeight="50" ColumnSpacing="10">
         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
         <TextBlock Text="Agreed to" VerticalAlignment="Center"/>
         <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="8"><Button Content="Terms of Use" Click="ShowTerms" /><Button Content="Privacy Policy" Click="ShowPrivacy" /></StackPanel>
