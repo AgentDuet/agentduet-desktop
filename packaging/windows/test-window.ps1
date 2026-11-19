@@ -45,7 +45,12 @@ try {
     if (!$window) { throw 'Native window did not appear' }
     if ($Library) {
         Invoke-Control 'Finish setup'
-        $null = Find-Control 'Search people'
+        $search = (Find-Control 'Search people').GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+        $search.SetValue('unmatched fixture')
+        $null = Find-Control 'No matching people'
+        $search.SetValue('alex')
+        $null = Find-Control 'Alex Morgan'
+        $search.SetValue('')
         $null = Find-Control 'Missed call'
         Save-Window 'people'
         Invoke-Control 'Play recording'
@@ -55,6 +60,12 @@ try {
         Invoke-Control 'Settings'
         $null = Find-Control 'Edit account name'
         Save-Window 'account'
+        (Find-Control 'Recording').GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+        $null = Find-Control 'Choose folder'
+        Save-Window 'recording-settings'
+        (Find-Control 'About').GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+        $null = Find-Control 'Installed version'
+        Save-Window 'about'
         (Find-Control 'Permissions & startup').GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
         $null = Find-Control 'Start at login'
         Save-Window 'settings'

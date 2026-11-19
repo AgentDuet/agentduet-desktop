@@ -120,11 +120,10 @@ public sealed partial class MainWindow : Window
             PrivacyText.Text = Text(terms, "privacy");
         }
         OwnerName.Text = First(Text(state, "name"), "Account name");
-        AccountStatus.Text = signedInStatus();
-        string signedInStatus() => Flag(state["oauth"], "signed_in") ? "Signed in with browser" :
-            configured ? "Connected with API key " + Text(state, "key_hint") : "";
-        OwnerPanel.Visibility = Visible(configured);
         bool signedIn = Flag(state["oauth"], "signed_in");
+        AccountStatus.Text = signedIn ? "Signed in with browser" :
+            configured ? "Saved API key " + Text(state, "key_hint") : "";
+        OwnerPanel.Visibility = Visible(configured);
         SignOutButton.Visibility = Visible(signedIn);
         Manual.Visibility = Browser.Visibility = Visible(!signedIn);
         Identity.Text = signedIn ? Text(state["oauth"], "email") : configured
@@ -161,8 +160,14 @@ public sealed partial class MainWindow : Window
         if (library) await ReadLibrary();
     }
 
-    private static string DisplayDate(string stamp) =>
-        DateTime.TryParse(stamp, out var date) ? date.ToString("g") : stamp;
+    private static string DisplayDate(string stamp)
+    {
+        if (!DateTimeOffset.TryParse(stamp, out var parsed)) return stamp;
+        var local = parsed.LocalDateTime;
+        var day = local.Date == DateTime.Today ? "Today" :
+            local.Date == DateTime.Today.AddDays(-1) ? "Yesterday" : local.ToString("d");
+        return $"{day} at {local:t}";
+    }
 
     private static string Duration(double seconds) =>
         TimeSpan.FromSeconds(seconds).ToString(seconds >= 3600 ? @"h\:mm\:ss" : @"m\:ss");

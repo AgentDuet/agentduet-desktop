@@ -24,7 +24,8 @@
    <Button x:Name="Navigation" Grid.Column="1" Visibility="Collapsed" Click="Navigate" AutomationProperties.Name="Settings" ToolTipService.ToolTip="Settings" Style="{StaticResource SubtleButtonStyle}"><FontIcon x:Name="NavIcon" Glyph="&#xE713;" FontSize="17"/></Button>
   </Grid>
   <InfoBar Grid.Row="1" x:Name="Notice" IsClosable="True"/>
-  <Grid Grid.Row="2" x:Name="Setup" Margin="12,4,12,12" ColumnSpacing="12" Visibility="Collapsed">
+  <ContentControl Grid.Row="2" x:Name="Setup" Margin="12,4,12,12" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Visibility="Collapsed">
+   <Grid ColumnSpacing="12">
    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
    <ListView x:Name="Sections" AutomationProperties.Name="Settings sections" Visibility="Collapsed" SelectionChanged="ChangeSection" SelectedIndex="0">
     <ListViewItem Content="Account"/><ListViewItem Content="Recording"/><ListViewItem Content="Permissions &amp; startup"/><ListViewItem Content="Advanced"/><ListViewItem Content="About"/>
@@ -66,6 +67,7 @@
     </StackPanel></ScrollViewer>
    </Grid>
   </Grid>
+  </ContentControl>
   <Grid x:Name="Library" Grid.Row="2" Visibility="Collapsed" Margin="8,2,10,10">
    <Grid ColumnSpacing="12" x:Name="Panes">
     <Grid.ColumnDefinitions><ColumnDefinition x:Name="ListColumn" Width="232"/><ColumnDefinition x:Name="DetailColumn"/></Grid.ColumnDefinitions>
