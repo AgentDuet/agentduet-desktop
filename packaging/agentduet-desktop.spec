@@ -98,6 +98,8 @@ if RECORDER:
                    or (g.endswith("/**/*") and rel.startswith(g[:-4]))
                    for g in _edition_mod.AI_DATA)
     datas = [d for d in datas if not _ai_data(*d)]
+    if sys.platform == "win32":
+        datas += collect_data_files("agentduet_desktop", includes=["windows/**/*"])
 
 # THE CA ROOTS, NAMED ON PURPOSE — and this is load-bearing, not tidiness.
 #
@@ -208,7 +210,7 @@ hiddenimports = [
     "mcp.server.fastmcp",
     "yaml",          # writing Goose config.yaml
     # The window shell, optional at runtime — absent, `run` uses the browser.
-    "webview",
+    *([] if RECORDER and sys.platform == "win32" else ["webview"]),
     # THE LOCAL SPEECH ENGINE. Imported lazily inside transcribe._load(), and its presence is
     # probed with find_spec rather than an import — so PyInstaller's analysis sees NEITHER, and
     # without this the binary builds clean and reports the engine missing for ever. Exactly the
@@ -274,6 +276,8 @@ except Exception as _exc:
           + ("" if RECORDER else " — transcription will fail"))
 
 excludes = ["tkinter", "test", "unittest"]   # nothing here draws a GUI
+if RECORDER and sys.platform == "win32":
+    excludes.append("webview")
 if RECORDER:
     # OUR AI MODULES AND THE AI LIBRARIES, OUT. `excludes` stops PyInstaller following an import
     # into them, and the hidden imports are filtered so nothing asks for one by name either.
@@ -386,7 +390,9 @@ else:
     exe = EXE(
         pyz, a.scripts, python_options, a.binaries, a.datas,
         name="agentduet-desktop",
-        console=True,
+        icon=str(Path(SPECPATH).parent / "windows/Recorder/Recorder.ico")
+             if RECORDER and sys.platform == "win32" else None,
+        console=not (RECORDER and sys.platform == "win32"),
         onefile=True,
         upx=False,
     )

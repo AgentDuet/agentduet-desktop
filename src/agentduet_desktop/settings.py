@@ -89,7 +89,7 @@ def set_setting(field: str, value: str) -> str:
         body = "\n".join(f"- {i}" for i in items)
     block = f"## {heading}\n{body}\n"
     pattern = re.compile(rf"^## {re.escape(heading)}\b.*?(?=^## |\Z)", re.S | re.M)
-    text = pattern.sub(block + "\n", text, count=1) if pattern.search(text) \
+    text = pattern.sub(lambda _: block + "\n", text, count=1) if pattern.search(text) \
         else text.rstrip() + f"\n\n{block}"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)

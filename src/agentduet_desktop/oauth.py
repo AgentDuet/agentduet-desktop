@@ -88,7 +88,9 @@ class SignedOut(RuntimeError):
 
 def endpoint() -> str:
     """The authorization server, or "" when none is configured."""
-    return (os.getenv("AGENTDUET_OAUTH_URL") or "").rstrip("/")
+    from . import edition
+    default = "https://auth.agentduet.com" if edition.windows_recorder() else ""
+    return os.getenv("AGENTDUET_OAUTH_URL", default).rstrip("/")
 
 
 def available() -> bool:

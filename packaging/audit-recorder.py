@@ -47,7 +47,8 @@ def shell_strings(shell: pathlib.Path) -> None:
 
 def main(app: pathlib.Path) -> int:
     contents = app / "Contents"
-    daemon = contents / "MacOS" / "agentduet-desktop"
+    windows = app.suffix.lower() == ".exe"
+    daemon = app if windows else contents / "MacOS" / "agentduet-desktop"
     print(f"auditing {app}")
 
     # 1. THE PYTHON MODULES, from the archive inside the executable.
@@ -69,6 +70,37 @@ def main(app: pathlib.Path) -> int:
             finding("the build is not stamped as the recorder (_edition)")
     except Exception as exc:                    # absent: the edition would read "full"
         finding(f"no _edition stamp in the archive ({exc})")
+
+    if windows:
+        page = "agentduet_desktop/windows/recorder.html"
+        entries = {name.replace(chr(92), "/"): name for name in pkg.toc}
+        if page not in entries:
+            finding("missing Windows Recorder page")
+        else:
+            markup = pkg.extract(entries[page]).decode("utf-8")
+            # HTML uses <summary> for the clickable heading of a disclosure.
+            # Check its contents, attributes and scripts just like the rest of the UI.
+            markup = re.sub(r"</?summary(?=[\s>])", "<", markup, flags=re.I)
+            for word in set(AI_WORDS.findall(markup)):
+                finding(f"AI page text {word}")
+        for name in entries:
+            rel = name.removeprefix("agentduet_desktop/")
+            if name != page and name.startswith("agentduet_desktop/") and any(
+                    fnmatch.fnmatchcase(rel, g) or rel.startswith(g.removesuffix("/**/*") + "/")
+                    for g in edition.AI_DATA):
+                finding(f"AI data {name}")
+            if name.lower().endswith((".dll", ".pyd", ".exe")) and AI_LIBS.search(name):
+                finding(f"AI runtime {name}")
+        # The native UI ships next to the frozen engine. Check the actual publish tree
+        # too: the Windows App SDK also distributes optional machine-learning components.
+        native = app.parent / "window"
+        for required in ("Recorder.exe", "Recorder.dll", "Microsoft.UI.Xaml.dll"):
+            if not (native / required).is_file():
+                finding(f"missing native window component {required}")
+        for file in native.rglob("*"):
+            if file.is_file() and (AI_LIBS.search(file.name) or "Windows.AI." in file.name):
+                finding(f"AI runtime in native window: {file.name}")
+        return int(bool(findings))
 
     # 2. NATIVE LIBRARIES, anywhere in the bundle.
     for f in contents.rglob("*"):

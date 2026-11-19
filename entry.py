@@ -75,4 +75,9 @@ _readable_mime_files()
 from agentduet_desktop.cli import main  # noqa: E402  — both must run before anything is imported
 
 if __name__ == "__main__":
+    # Windowed PyInstaller executables have no console streams.
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
     sys.exit(main())

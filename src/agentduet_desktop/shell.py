@@ -25,16 +25,18 @@ some route on every platform rather than depending on one library being importab
 """
 
 import logging
+from pathlib import Path
+import subprocess
 import threading
 import time
 import sys
 import webbrowser
 
-from . import paths
+from . import edition, paths
 
 logger = logging.getLogger("dduet.shell")
 
-TITLE = "AgentDuet Desktop"
+TITLE = "AgentDuet Recorder" if edition.windows_recorder() else "AgentDuet Desktop"
 
 
 #: The caption bar colours, as Windows wants them. See `_match_caption_to_app`.
@@ -176,7 +178,7 @@ def site_url(timeout: float = 20.0) -> str | None:
                 return u
         # A GUESS FROM THE PORT only where the port is fixed: with 0 (any free one) only the
         # recorded address can say where the daemon is.
-        if tok.is_file() and port != "0":
+        if tok.is_file() and port != "0" and not edition.windows_recorder():
             t = tok.read_text().strip()
             if t:
                 return f"http://127.0.0.1:{port}/?t={t}"
@@ -209,6 +211,10 @@ def window_support() -> tuple[bool, str]:
     providers and the speech engine — the build says what it can do rather than letting the
     owner infer it from what happens.
     """
+    if edition.windows_recorder():
+        if _recorder_window().is_file():
+            return True, ""
+        return False, "Reinstall AgentDuet Recorder to restore its native window"
     try:
         import webview                                            # noqa: F401
     except ImportError:
@@ -220,13 +226,48 @@ def window_support() -> tuple[bool, str]:
             return False, f"pywebview is here but its macOS backend is not ({exc})"
         return True, ""
     if sys.platform.startswith("win"):
-        return True, ""                                           # WebView2, part of the OS
+        import winreg
+        key = r"Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+        for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            try:
+                with winreg.OpenKey(root, key, access=winreg.KEY_READ | winreg.KEY_WOW64_32KEY) as handle:
+                    version, _ = winreg.QueryValueEx(handle, "pv")
+                    if version and version != "0.0.0.0":
+                        return True, ""
+            except OSError:
+                continue
+        return False, "Install Microsoft Edge WebView2 Runtime"
     # Linux: GTK/Qt python bindings are system libraries, absent from a onefile build.
     try:
         import gi                                                 # noqa: F401
         return True, ""
     except ImportError:
         return False, "no GUI backend on this machine — the owner view opens in your browser"
+
+
+def _recorder_window() -> Path:
+    return Path(sys.executable).parent / "window" / "Recorder.exe"
+
+
+def open_window(url: str) -> None:
+    if edition.windows_recorder():
+        # The loopback credential never goes on the process command line.
+        executable = _recorder_window()
+        with (paths.RUN / "window.log").open("w", encoding="utf-8") as errors:
+            subprocess.run([str(executable)], input=url + "\n", encoding="utf-8", cwd=executable.parent,
+                           stdout=subprocess.DEVNULL, stderr=errors, check=True)
+        return
+    import webview
+    win = webview.create_window(TITLE, url, width=1360, height=900,
+                                min_size=(900, 600), text_select=True)
+    # ON `shown`, NOT BEFORE `start()`: the handle does not exist until the window is
+    # realised, so theming it any earlier silently themes nothing. Subscribing is itself
+    # guarded — an older pywebview without this event must not cost us the window.
+    try:
+        win.events.shown += lambda: _match_caption_to_app(win)
+    except Exception as exc:
+        logger.debug("cannot hook window shown event (%s)", exc)
+    webview.start()
 
 
 def run_with_window(start_daemon, want_window: bool = True,
@@ -243,6 +284,9 @@ def run_with_window(start_daemon, want_window: bool = True,
         finally:
             stop.set()                            # the window should not outlive the daemon
 
+    if want_window and edition.windows_recorder():
+        # Ask this startup for its own bound endpoint, even after an unclean shutdown.
+        (paths.RUN / "site-url").unlink(missing_ok=True)
     worker = threading.Thread(target=_daemon, name="dduet-daemon", daemon=True)
     worker.start()
 
@@ -252,6 +296,13 @@ def run_with_window(start_daemon, want_window: bool = True,
         print("  the owner site did not come up — see the log in", paths.RUN / "daemon.log")
         worker.join()
         return 1
+
+    if want_window and edition.windows_recorder():
+        open_window(url)
+        # Closing the library must not interrupt an active recording. The Start menu
+        # reopens the window against this same daemon via cmd_run's existing-PID path.
+        worker.join()
+        return 0
 
     webview = None
     if want_window:
@@ -276,16 +327,7 @@ def run_with_window(start_daemon, want_window: bool = True,
             # copied, and there is no other route to it. app.css already draws the line in the
             # right place — chrome that is furniture stays unselectable, so dragging across the
             # sidebar still does not highlight the navigation. Reported by Stanley 2026-09-09.
-            win = webview.create_window(TITLE, url, width=1360, height=900,
-                                        min_size=(900, 600), text_select=True)
-            # ON `shown`, NOT BEFORE `start()`: the handle does not exist until the window is
-            # realised, so theming it any earlier silently themes nothing. Subscribing is itself
-            # guarded — an older pywebview without this event must not cost us the window.
-            try:
-                win.events.shown += lambda: _match_caption_to_app(win)
-            except Exception as exc:
-                logger.debug("cannot hook window shown event (%s)", exc)
-            webview.start()
+            open_window(url)
             return 0
         except Exception as exc:
             # The window is OPTIONAL and the site is the primary surface, so a windowing

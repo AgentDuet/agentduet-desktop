@@ -10,6 +10,10 @@ name: build
 on:
   workflow_dispatch:
     inputs:
+      windows_recorder:
+        description: Build only the Windows x64 Recorder installer
+        type: boolean
+        default: false
       shell:
         description: "macOS window: native (the Swift shell, shipping) or pyinstaller (fallback)"
         type: choice
@@ -26,7 +30,11 @@ on:
   # ONE RELEASE PER APP: the tag's prefix says which app it builds (see EDITION below).
 
 jobs:
+  windows-recorder:
+    if: inputs.windows_recorder
+    uses: ./.github/workflows/windows-recorder.yml
   build:
+    if: ${{ !inputs.windows_recorder }}
     strategy:
       fail-fast: false          # a Windows failure must not hide a working Mac build
       matrix:

@@ -1,0 +1,129 @@
+name: Windows Recorder
+on:
+  push:
+    branches: [recorder/supports-windows]
+    paths:
+      - 'windows/**'
+      - 'src/agentduet_desktop/**'
+      - 'tests/test_windows_recorder.py'
+      - 'packaging/agentduet-desktop.spec'
+      - 'packaging/windows/**'
+      - '.github/workflows/windows-recorder.yml'
+  workflow_call:
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: Sign a release candidate with the CI Authenticode certificate
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  build:
+    if: ${{ !inputs.sign || github.ref == 'refs/heads/main' }}
+    runs-on: windows-2022
+    timeout-minutes: 25
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Provision a playback device on the hosted runner
+        timeout-minutes: 4
+        run: ./packaging/windows/test-audio-device.ps1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Publish native WinUI window
+        run: dotnet publish windows/Recorder/Recorder.csproj -c Release -p:Platform=x64 -o dist-bin/window
+      - name: Launch the published window
+        env:
+          RECORDER_XAML_DIAGNOSTICS: "1"
+        working-directory: dist-bin/window
+        run: |
+          Set-Content "$env:RUNNER_TEMP/window-input" 'http://127.0.0.1:1/?t=fixture'
+          $errors = "$env:RUNNER_TEMP/window-errors"
+          $window = Start-Process ./Recorder.exe -PassThru -RedirectStandardInput "$env:RUNNER_TEMP/window-input" -RedirectStandardError $errors
+          try {
+            for ($i = 0; $i -lt 30; $i++) {
+              $window.Refresh()
+              if ($window.HasExited) { throw "Native startup exited ($($window.ExitCode))" }
+              if ($window.MainWindowTitle -eq 'AgentDuet Recorder') { break }
+              Start-Sleep 1
+            }
+            if ($window.MainWindowTitle -ne 'AgentDuet Recorder') { throw 'No native window' }
+          } finally {
+            Get-Content $errors
+            if (!$window.HasExited) { Stop-Process -Id $window.Id }
+          }
+      - run: python -m pip install . pyinstaller
+      - run: python tests/test_recorder.py
+      - run: python tests/test_windows_recorder.py
+      - name: Freeze and audit Recorder
+        env:
+          AGENTDUET_EDITION: recorder
+        run: |
+          pyinstaller --noconfirm --distpath dist-bin packaging/agentduet-desktop.spec
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python packaging/audit-recorder.py dist-bin/agentduet-desktop.exe
+      - name: Sign Recorder executable
+        if: inputs.sign
+        env:
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          ./packaging/windows/sign.ps1 dist-bin/agentduet-desktop.exe
+          ./packaging/windows/sign.ps1 dist-bin/window/Recorder.exe
+      - name: Assemble per-user installer
+        run: |
+          $version = python -c "from importlib.metadata import version; print(version('agentduet-desktop'))"
+          & "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" "/DAppVersion=$version" packaging/windows/recorder.iss
+      - name: Sign installer
+        if: inputs.sign
+        env:
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: ./packaging/windows/sign.ps1 dist-installer/agentduet-recorder-windows-x86_64-setup.exe
+      - name: Install and boot under a fresh profile directory
+        run: |
+          $installer = (Get-ChildItem dist-installer/*.exe).FullName
+          $dir = Join-Path $env:RUNNER_TEMP 'Recorder installed'
+          $p = Start-Process $installer -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$dir`"" -Wait -PassThru
+          if ($p.ExitCode) { throw "Installer failed ($($p.ExitCode))" }
+          $env:AGENTDUET_HOME = Join-Path $env:RUNNER_TEMP 'Recorder smoke'
+          $p = Start-Process "$dir/AgentDuet Recorder.exe" -ArgumentList 'run --headless --no-channel' -PassThru
+          try {
+            for ($i=0; $i -lt 60; $i++) {
+              if ($p.HasExited) { throw 'Recorder exited during startup' }
+              if (Test-Path "$env:AGENTDUET_HOME/run/site-url") { break }
+              Start-Sleep 1
+            }
+            $url = Get-Content "$env:AGENTDUET_HOME/run/site-url" -Raw
+            $page = Invoke-WebRequest $url.Trim()
+            powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./packaging/windows/test-window.ps1 -InstallDir $dir
+            if ($LASTEXITCODE) { throw "Native window check failed" }
+            if ($page.Content -notmatch '<title>AgentDuet Recorder</title>') { throw 'Recorder page missing' }
+          } finally { taskkill /pid $p.Id /t /f }
+          $env:AGENTDUET_EDITION = 'recorder'
+          python packaging/windows/seed-playback.py
+          if ($LASTEXITCODE) { throw "Fixture generation failed" }
+          $upgrade = Start-Process $installer -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$dir`"" -Wait -PassThru
+          if ($upgrade.ExitCode) { throw "Reinstall failed" }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./packaging/windows/test-window.ps1 -InstallDir $dir -Library
+          if ($LASTEXITCODE) { throw "Native library check failed" }
+          $u = Start-Process "$dir/unins000.exe" -ArgumentList '/VERYSILENT /NORESTART' -Wait -PassThru
+          if ($u.ExitCode -or !(Test-Path "$env:AGENTDUET_HOME/run/web-token")) { throw 'Uninstall failed or removed instance data' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-recorder-screens
+          path: ${{ runner.temp }}/Recorder screens/*.png
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agentduet-recorder-windows-x86_64-${{ inputs.sign && 'signed' || 'internal' }}
+          path: dist-installer/*.exe
+          if-no-files-found: error

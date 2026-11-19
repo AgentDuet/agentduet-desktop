@@ -138,17 +138,19 @@ def pick_folder(start: str = "") -> str:
                   f'default location POSIX file {_applescript_string(start)})')
         cmd = ["osascript", "-e", script]
     elif system == "Windows":
-        ps = ("Add-Type -AssemblyName System.Windows.Forms;"
+        ps = ("[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false);"
+              "Add-Type -AssemblyName System.Windows.Forms;"
               "$d = New-Object System.Windows.Forms.FolderBrowserDialog;"
               "if ($d.ShowDialog() -eq 'OK') { $d.SelectedPath }")
-        cmd = ["powershell", "-NoProfile", "-Command", ps]
+        cmd = ["powershell", "-NoProfile", "-STA", "-Command", ps]
     elif shutil.which("kdialog"):
         cmd = ["kdialog", "--getexistingdirectory", start]
     else:
         tool = next(t for t in ("zenity", "qarma", "yad") if shutil.which(t))
         cmd = [tool, "--file-selection", "--directory", f"--filename={start}/"]
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=PICK_TIMEOUT)
+        out = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8" if system == "Windows" else None,
+                             timeout=PICK_TIMEOUT)
     except subprocess.TimeoutExpired:
         # NOT A CANCELLATION. Nobody chose anything, so returning "" says "changed their mind"
         # about someone who never saw a working dialog.

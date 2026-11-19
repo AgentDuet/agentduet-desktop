@@ -50,8 +50,9 @@ LINUX_UNIT = pathlib.Path.home() / f".config/systemd/user/{_SLUG}.service"
 #: Windows. The per-user Startup folder. Task Scheduler would be tidier, but it means shelling out
 #: to schtasks with an XML payload, and a .cmd in Startup is inspectable by the owner — which for
 #: a thing that runs at every login is worth more than tidiness.
+_win_slug = "agentduet-recorder" if _edition.windows_recorder() else _SLUG
 WIN_STARTUP = (pathlib.Path(os.environ.get("APPDATA", pathlib.Path.home()))
-               / "Microsoft/Windows/Start Menu/Programs/Startup" / f"{_SLUG}.cmd")
+               / "Microsoft/Windows/Start Menu/Programs/Startup" / f"{_win_slug}.cmd")
 
 
 def _target() -> pathlib.Path | None:
@@ -120,7 +121,7 @@ def install_login_item() -> str:
                 "download folder or a dev venv. Install it first, then try again.")
     path = _unit_path()
     body = (_plist(exe) if sys.platform == "darwin"
-            else f'@echo off\r\nstart "" "{exe}" run --headless\r\n'
+            else f'@echo off\nstart "" "{str(exe).replace("%", "%%")}" run --headless\n'
             if sys.platform.startswith("win") else _unit(exe))
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
