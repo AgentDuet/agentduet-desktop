@@ -31,7 +31,7 @@
     <ListViewItem Content="Account"/><ListViewItem Content="Recording"/><ListViewItem Content="Permissions &amp; startup"/><ListViewItem Content="Advanced"/><ListViewItem Content="About"/>
    </ListView>
    <Grid Grid.Column="1" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" CornerRadius="10" Padding="16">
-    <ScrollViewer HorizontalScrollBarVisibility="Disabled"><StackPanel MaxWidth="680" HorizontalAlignment="Stretch" Spacing="12">
+    <ScrollViewer HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch"><StackPanel HorizontalAlignment="Stretch" Spacing="12">
      <ComboBox x:Name="CompactSections" AutomationProperties.Name="Settings section" Visibility="Collapsed" HorizontalAlignment="Stretch" SelectionChanged="ChangeCompactSection">
       <x:String>Account</x:String><x:String>Recording</x:String><x:String>Permissions &amp; startup</x:String><x:String>Advanced</x:String><x:String>About</x:String>
      </ComboBox>

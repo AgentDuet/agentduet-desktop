@@ -123,6 +123,7 @@ public sealed partial class MainWindow : Window
         bool signedIn = Flag(state["oauth"], "signed_in");
         AccountStatus.Text = signedIn ? "Signed in with browser" :
             configured ? "Saved API key " + Text(state, "key_hint") : "";
+        AccountStatus.Visibility = Visible(configured || signedIn);
         OwnerPanel.Visibility = Visible(configured);
         SignOutButton.Visibility = Visible(signedIn);
         Manual.Visibility = Browser.Visibility = Visible(!signedIn);
@@ -137,7 +138,7 @@ public sealed partial class MainWindow : Window
         }
         Folder.Text = Text(state, "carried_dir");
         Login.IsChecked = Flag(state, "start_at_login");
-        FinishButton.Visibility = Visible(!Flag(state, "setup_done"));
+        FinishButton.Visibility = Visible(agreed && configured && !Flag(state, "setup_done"));
         FolderAccess.Text = "Recordings folder: " + Folder.Text;
         StatusDot.Visibility = Connection.Visibility = Visible(configured);
         if (!configured) return;
