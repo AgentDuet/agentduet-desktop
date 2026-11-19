@@ -67,7 +67,13 @@ try {
         Save-Window 'recording-settings'
         (Find-Control 'About').GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
         $null = Find-Control 'Check now'
+        $updateStatus = Find-Control 'UpdateStatus' $automationId
+        if ($updateStatus.Current.Name -notmatch 'latest version.*Last checked') { throw 'Installed version was not recognized as current' }
         Save-Window 'about'
+        Invoke-Control 'Check now'
+        $check = Find-Control 'Check now'
+        for ($i = 0; $i -lt 100 -and !$check.Current.IsEnabled; $i++) { Start-Sleep -Milliseconds 200 }
+        if ($updateStatus.Current.Name -notmatch 'Last checked') { throw 'Update check did not report a result and timestamp' }
         (Find-Control 'Permissions').GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
         $null = Find-Control 'Login' $automationId
         Save-Window 'settings'
@@ -77,9 +83,20 @@ try {
         $toggle.Toggle()
         for ($i = 0; $i -lt 30 -and !(Test-Path $startup); $i++) { Start-Sleep -Milliseconds 200 }
         if (!(Test-Path $startup)) { throw 'Native settings did not register start at login' }
+        for ($i = 0; $i -lt 50 -and !$switch.Current.IsEnabled; $i++) { Start-Sleep -Milliseconds 100 }
         $toggle.Toggle()
         for ($i = 0; $i -lt 30 -and (Test-Path $startup); $i++) { Start-Sleep -Milliseconds 200 }
         if (Test-Path $startup) { throw 'Native settings did not remove start at login' }
+        $folder = Join-Path $env:AGENTDUET_HOME 'run/recordings'
+        $moved = "$folder-moved"
+        Move-Item -LiteralPath $folder -Destination $moved
+        try {
+            (Find-Control 'Recording').GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+            $null = Find-Control 'The recordings folder is missing. Choose a folder to continue.'
+            (Find-Control 'Permissions').GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+            $null = Find-Control 'Not allowed'
+            $null = Find-Control 'FixFolder' $automationId
+        } finally { Move-Item -LiteralPath $moved -Destination $folder }
         Invoke-Control 'Back to recordings'
         $null = Find-Control 'Play recording'
         $window.GetCurrentPattern([System.Windows.Automation.TransformPattern]::Pattern).Resize(550, 480)

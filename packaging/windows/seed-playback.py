@@ -5,7 +5,9 @@ import struct
 from pathlib import Path
 import wave
 
-from agentduet_desktop import calls, carry, names, paths, settings
+from datetime import datetime, timezone
+
+from agentduet_desktop import __version__, calls, carry, names, paths, settings, update
 
 if paths.HOME != Path(os.environ["RUNNER_TEMP"]) / "Recorder smoke":
     raise SystemExit("Expected the disposable Windows workflow instance")
@@ -14,6 +16,9 @@ settings.set_setting("name", "Alex Morgan")
 settings.set_setting("phone", "+12025550123")
 folder = carry.recordings()
 folder.mkdir(parents=True, exist_ok=True)
+# A successful prior check, so About exercises cached equal-version rendering offline.
+update._save({"platform": "windows", "current": __version__, "version": __version__,
+              "checked": datetime.now(timezone.utc).isoformat(), "reachable": True, "newer": False})
 name = "20261003T100000-ci-call.wav"
 with wave.open(str(folder / name), "wb") as output:
     output.setparams((2, 2, 24000, 0, "NONE", "uncompressed"))

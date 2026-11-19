@@ -39,7 +39,7 @@
      <ComboBox x:Name="CompactSections" AutomationProperties.Name="Settings section" Visibility="Collapsed" HorizontalAlignment="Stretch" SelectionChanged="ChangeCompactSection">
       <x:String>Account</x:String><x:String>Recording</x:String><x:String>Permissions</x:String><x:String>About</x:String>
      </ComboBox>
-     <TextBlock x:Name="Heading" Style="{StaticResource SubtitleTextBlockStyle}"/>
+     <TextBlock x:Name="Heading" Style="{StaticResource TitleTextBlockStyle}"/>
      <StackPanel x:Name="Terms" Spacing="12">
       <Expander Header="Terms of Use" HorizontalAlignment="Stretch"><TextBlock x:Name="TermsText" TextWrapping="Wrap" IsTextSelectionEnabled="True"/></Expander>
       <Expander Header="Privacy Policy" HorizontalAlignment="Stretch"><TextBlock x:Name="PrivacyText" TextWrapping="Wrap" IsTextSelectionEnabled="True"/></Expander>

@@ -16,6 +16,7 @@ public sealed partial class ConnectionDialog : ContentDialog
         InitializeComponent();
         Uuid.Text = connector;
         SetPage(manual);
+        Loaded += (_, _) => DialogBody.Width = Math.Clamp(XamlRoot.Size.Width - 96, 180, 410);
         Opened += (_, _) => open = true;
         Closed += (_, _) => { open = false; Key.Password = ""; };
         Closing += (_, args) => args.Cancel = saving;
@@ -28,10 +29,7 @@ public sealed partial class ConnectionDialog : ContentDialog
         BrowserButton.IsEnabled = true;
         ManualPage.Visibility = manual ? Visibility.Visible : Visibility.Collapsed;
         BrowserPage.Visibility = manual ? Visibility.Collapsed : Visibility.Visible;
-        // WinUI orders its native footer buttons primary, secondary, close. The
-        // manual footer uses a custom layout to keep Back separate from submission.
-        PrimaryButtonText = "";
-        SecondaryButtonText = "";
+        // Keep Back separate from submission in the connector footer.
         CloseButtonText = manual ? "" : "Cancel";
         ManualFooter.Visibility = ManualPage.Visibility;
         Feedback.Visibility = Visibility.Collapsed;
@@ -93,7 +91,6 @@ public sealed partial class ConnectionDialog : ContentDialog
         }
         saving = true;
         Uuid.IsEnabled = Key.IsEnabled = BackButton.IsEnabled = CancelButton.IsEnabled = false;
-        ManualFooter.IsHitTestVisible = false;
         Validate();
         try
         {
@@ -106,7 +103,6 @@ public sealed partial class ConnectionDialog : ContentDialog
         {
             saving = false;
             Uuid.IsEnabled = Key.IsEnabled = BackButton.IsEnabled = CancelButton.IsEnabled = true;
-            ManualFooter.IsHitTestVisible = true;
             Validate();
         }
     }

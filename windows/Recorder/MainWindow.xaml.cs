@@ -245,6 +245,7 @@ public sealed partial class MainWindow : Window
     {
         if (CompactSections == null || Sections.SelectedIndex < 0) return;
         section = Sections.SelectedIndex;
+        folderCheck = null;
         CompactSections.SelectedIndex = section;
         ShowSection();
         _ = Refresh();
@@ -325,7 +326,7 @@ public sealed partial class MainWindow : Window
         ListPane.Visibility = Visible(showList);
         Details.Visibility = Visible(showDetail);
         Back.Visibility = Visible(compact);
-        ListColumn.Width = showList && compact ? new GridLength(1, GridUnitType.Star) : new GridLength(showList ? Math.Clamp(Root.ActualWidth * .22, 210, 280) : 0);
+        ListColumn.Width = showList && compact ? new GridLength(1, GridUnitType.Star) : new GridLength(showList ? Math.Clamp(Root.ActualWidth * .29, 225, 300) : 0);
         DetailColumn.Width = showDetail ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
         Panes.ColumnSpacing = showDetail && showList ? 16 : 0;
     }
@@ -520,7 +521,7 @@ public sealed partial class MainWindow : Window
             var media = AudioPlayer().MediaPlayer;
             playingId = call.Id;
             player!.Width = Math.Clamp(Root.ActualWidth - 88, 180, 400);
-            var flyout = new Flyout { Content = player };
+            var flyout = new Flyout { Content = player, Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom };
             playbackFlyout = flyout;
             flyout.Closed += (_, _) =>
             {
